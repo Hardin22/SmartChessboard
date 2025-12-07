@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
+
+<StackPane fx:id="gameView" prefHeight="983.0" prefWidth="607.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.ActiveGameController" style="-fx-background-color: #1a1a1a;">
+    
+    <!-- Layer 1: Main Game -->
+    <VBox alignment="CENTER" spacing="20">
+        <padding>
+            <Insets top="20" bottom="20" left="20" right="20"/>
+        </padding>
+
+        <!-- Top Bar: Back Button & Opponent Info -->
+        <HBox alignment="CENTER_LEFT" spacing="20">
+            <Button onAction="#endGame" styleClass="neo-button-secondary" prefHeight="50" prefWidth="50">
+                <graphic>
+                    <ImageView fitHeight="30" fitWidth="30" preserveRatio="true">
+                        <image>
+                            <Image url="@/images/icon_back.png"/>
+                        </image>
+                    </ImageView>
+                </graphic>
+            </Button>
+            <VBox HBox.hgrow="ALWAYS" alignment="CENTER_RIGHT">
+                <Label fx:id="openingNameLabel" styleClass="neo-label-small" text="Opening Name"/>
+                <Label fx:id="topLabel" styleClass="neo-label-large" text="10:00"/>
+            </VBox>
+        </HBox>
+
+        <!-- Chess Board -->
+        <HBox fx:id="boardContainer" alignment="CENTER" prefHeight="400.0" prefWidth="400.0" styleClass="neo-panel">
+            <!-- Board and EvalBar will be added here dynamically -->
+        </HBox>
+
+        <!-- Evaluation & Moves -->
+        <VBox spacing="5" alignment="CENTER">
+            <Label fx:id="evaluationLabel" styleClass="neo-label-small" style="-fx-text-fill: #ccff00;"/>
+            <Label fx:id="move1Label" styleClass="neo-label-small"/>
+            <Label fx:id="move2Label" styleClass="neo-label-small"/>
+            <Label fx:id="move3Label" styleClass="neo-label-small"/>
+        </VBox>
+
+        <!-- Bottom Bar: Player Info & Controls -->
+        <HBox alignment="CENTER_RIGHT" spacing="20">
+             <VBox HBox.hgrow="ALWAYS" alignment="CENTER_LEFT">
+                <Label fx:id="bottomLabel" styleClass="neo-label-large" text="10:00"/>
+            </VBox>
+        </HBox>
+        
+        <!-- Controls -->
+        <HBox alignment="CENTER" spacing="20">
+             <Button onAction="#toggleEvaluation" styleClass="neo-button-secondary" text="VALUTAZIONE" prefHeight="60" prefWidth="150"/>
+             <Button onAction="#toggleBestMoves" styleClass="neo-button-secondary" text="SUGGERIMENTI" prefHeight="60" prefWidth="150"/>
+             <Button fx:id="settingsButton" onAction="#toggleSettings" styleClass="neo-button" prefHeight="60" prefWidth="60">
+                <graphic>
+                    <ImageView fitHeight="30" fitWidth="30" preserveRatio="true">
+                        <image>
+                            <Image url="@/images/icon_settings.png"/>
+                        </image>
+                    </ImageView>
+                </graphic>
+             </Button>
+        </HBox>
+
+        <!-- Hidden Inputs -->
+        <TextField fx:id="moveInputField" onAction="#handleMoveInput" visible="false" managed="false"/>
+        <TextField fx:id="legalMovesInput" onAction="#handleLegalMoves" visible="false" managed="false"/>
+    </VBox>
+
+    <!-- Layer 2: Stockfish Controls Overlay -->
+    <fx:include fx:id="stockfishControls" source="StockfishControls.fxml" visible="false"/>
+
+</StackPane>

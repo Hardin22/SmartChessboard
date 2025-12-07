@@ -1,0 +1,14 @@
+1)bug eval bar quando è scacco matto nel review //fatto
+2) quando si clicca indietro viene salvato il review due volte, se la partita finisce. //fatto
+3) aggiungere immagini di pezzi //fatto
+4) aggiungere labels di best moves a review //fatto
+5) quando non ci sono abbastanza mosse legali mostra le mosse precedentemente calcolate per l'altro giocatore.
+!!!
+6) quando si fa una regina il parser di mosse per il review non la riconosce!! //fatto
+!!!
+
+7) i colori sono invertiti, bisogna cambiare il pov //fatto
+8) si deve valutare in base alla valutazione corrente. //fatto
+9) si devono spegnere i quadrati accesi dopo ogni mossa. //fatto
+
+10) controlla il fatto delle promozioni nel pvc!!!

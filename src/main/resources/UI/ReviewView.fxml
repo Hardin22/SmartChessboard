@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
+
+<StackPane fx:id="reviewView" prefHeight="983.0" prefWidth="607.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.ReviewController" style="-fx-background-color: #1a1a1a;">
+    
+    <!-- Layer 1: Main Review UI -->
+    <VBox alignment="CENTER" spacing="20">
+        <padding>
+            <Insets top="20" bottom="20" left="20" right="20"/>
+        </padding>
+
+        <!-- Top Bar -->
+        <HBox alignment="CENTER_LEFT" spacing="20">
+            <Button onAction="#backToArchive" styleClass="neo-button-secondary" prefHeight="50" prefWidth="50">
+                <graphic>
+                    <ImageView fitHeight="30" fitWidth="30" preserveRatio="true">
+                        <image>
+                            <Image url="@/images/icon_back.png"/>
+                        </image>
+                    </ImageView>
+                </graphic>
+            </Button>
+            <Label fx:id="openingReview" styleClass="neo-label-small" text="Opening Name" maxWidth="Infinity" HBox.hgrow="ALWAYS" alignment="CENTER"/>
+            <Button fx:id="analyzeButton" text="ANALIZZA" onAction="#startFullAnalysis" styleClass="neo-button" prefHeight="50"/>
+        </HBox>
+
+        <!-- Board Container -->
+        <HBox fx:id="reviewHbox" alignment="CENTER" prefHeight="400.0" prefWidth="400.0" styleClass="neo-panel">
+            <!-- Board and EvalBar added dynamically -->
+        </HBox>
+
+        <!-- Evaluation Graph Container -->
+        <VBox fx:id="graphContainer" prefHeight="150" prefWidth="600" styleClass="neo-panel" visible="false" managed="false">
+            <!-- Graph added dynamically -->
+        </VBox>
+        
+        <!-- Analysis Progress -->
+        <VBox fx:id="progressContainer" spacing="5" alignment="CENTER" visible="false" managed="false">
+            <Label text="ANALISI IN CORSO..." styleClass="neo-label-small"/>
+            <javafx.scene.control.ProgressBar fx:id="analysisProgressBar" prefWidth="400" progress="0.0"/>
+        </VBox>
+
+        <!-- Evaluation & Moves -->
+        <VBox spacing="5" alignment="CENTER">
+            <Label fx:id="evalScoreReview" styleClass="neo-label-small" style="-fx-text-fill: #ccff00;"/>
+            <Label fx:id="move1LabelReview" styleClass="neo-label-small" wrapText="true" textAlignment="CENTER" style="-fx-padding: 0 20 0 20; -fx-font-size: 14px;"/>
+            <Label fx:id="move2LabelReview" styleClass="neo-label-small" wrapText="true" textAlignment="CENTER" style="-fx-padding: 0 20 0 20; -fx-font-size: 14px;"/>
+            <Label fx:id="move3LabelReview" styleClass="neo-label-small" wrapText="true" textAlignment="CENTER" style="-fx-padding: 0 20 0 20; -fx-font-size: 14px;"/>
+        </VBox>
+
+        <!-- Controls -->
+        <HBox alignment="CENTER" spacing="20">
+            <Button onAction="#previousMove" styleClass="neo-button-secondary" prefHeight="60" prefWidth="100">
+                <graphic>
+                    <ImageView fitHeight="30" fitWidth="30" preserveRatio="true">
+                        <image>
+                            <Image url="@/images/icon_back.png"/>
+                        </image>
+                    </ImageView>
+                </graphic>
+            </Button>
+            
+            <Button fx:id="settingsButton" onAction="#toggleSettings" styleClass="neo-button" prefHeight="60" prefWidth="60">
+                <graphic>
+                    <ImageView fitHeight="30" fitWidth="30" preserveRatio="true">
+                        <image>
+                            <Image url="@/images/icon_settings.png"/>
+                        </image>
+                    </ImageView>
+                </graphic>
+            </Button>
+
+            <Button onAction="#nextMove" styleClass="neo-button-secondary" prefHeight="60" prefWidth="100">
+                <graphic>
+                    <ImageView fitHeight="30" fitWidth="30" preserveRatio="true" rotate="180">
+                        <image>
+                            <Image url="@/images/icon_back.png"/>
+                        </image>
+                    </ImageView>
+                </graphic>
+            </Button>
+        </HBox>
+    </VBox>
+
+    <!-- Layer 2: Stockfish Controls Overlay -->
+    <fx:include fx:id="stockfishControls" source="StockfishControls.fxml" visible="false"/>
+
+</StackPane>

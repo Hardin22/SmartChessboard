@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Slider?>
+<?import javafx.scene.control.ToggleButton?>
+<?import javafx.scene.control.ToggleGroup?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
+
+<BorderPane fx:id="pvcSetup" prefHeight="200.0" prefWidth="200.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.GameSetupController">
+   <center>
+      <VBox alignment="CENTER" prefHeight="200.0" prefWidth="100.0" spacing="40.0" BorderPane.alignment="CENTER">
+         <children>
+            <Label styleClass="Headers" text="player vs computer">
+               <font>
+                  <Font size="37.0" />
+               </font>
+            </Label>
+            <Label fx:id="difficoltàLabel" text="Difficoltà: 10">
+               <font>
+                  <Font size="19.0" />
+               </font>
+            </Label>
+            <Slider fx:id="difficoltàSlider" max="20" maxWidth="500.0" min="1" prefWidth="400.0" value="10" />
+            <Label text="Gioca con:" />
+            <HBox alignment="CENTER" prefHeight="100.0" prefWidth="200.0" spacing="40.0">
+               <children>
+                  <VBox fx:id="whiteVbox" alignment="CENTER" prefHeight="200.0" prefWidth="100.0" styleClass="choiceactive">
+                     <children>
+                        <ToggleButton fx:id="whiteButton" mnemonicParsing="false" style="-fx-background-color: transparent;">
+                           <toggleGroup>
+                              <ToggleGroup fx:id="colorGroup" />
+                           </toggleGroup>
+                           <graphic>
+                              <ImageView fx:id="white" fitHeight="70.0" fitWidth="70.0" pickOnBounds="true" preserveRatio="true" />
+                           </graphic>
+                        </ToggleButton>
+                        <Label text="Bianco" />
+                     </children>
+                  </VBox>
+                  <VBox fx:id="randomVbox" alignment="CENTER" prefHeight="129.0" prefWidth="121.0" styleClass="choiceactive">
+                     <children>
+                        <ToggleButton fx:id="randomButton" mnemonicParsing="false" selected="true" style="-fx-background-color: transparent;" toggleGroup="$colorGroup">
+                           <graphic>
+                              <ImageView fx:id="random" fitHeight="70.0" fitWidth="70.0" pickOnBounds="true" preserveRatio="true" />
+                           </graphic>
+                        </ToggleButton>
+                        <Label text="Random" />
+                     </children>
+                  </VBox>
+                  <VBox fx:id="blackVbox" alignment="CENTER" prefHeight="200.0" prefWidth="100.0" styleClass="choiceactive">
+                     <children>
+                        <ToggleButton fx:id="blackButton" mnemonicParsing="false" prefHeight="76.0" prefWidth="80.0" style="-fx-background-color: transparent;" toggleGroup="$colorGroup">
+                           <graphic>
+                              <ImageView fx:id="black" fitHeight="70.0" fitWidth="70.0" pickOnBounds="true" preserveRatio="true" />
+                           </graphic>
+                        </ToggleButton>
+                        <Label text="Nero" />
+                     </children>
+                  </VBox>
+               </children>
+            </HBox>
+            <Button mnemonicParsing="false" onAction="#startGamePvC" prefHeight="101.0" prefWidth="256.0" text="inizia" />
+         </children>
+      </VBox>
+   </center>
+   <top>
+      <Button mnemonicParsing="false" onAction="#backToHome" prefHeight="46.0" prefWidth="123.0" styleClass="indietro" text="indietro" BorderPane.alignment="TOP_LEFT">
+         <BorderPane.margin>
+            <Insets left="20.0" top="20.0" />
+         </BorderPane.margin>
+      </Button>
+   </top>
+</BorderPane>

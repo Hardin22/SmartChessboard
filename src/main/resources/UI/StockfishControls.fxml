@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Spinner?>
+<?import javafx.scene.control.ToggleButton?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox fx:id="root" alignment="CENTER" spacing="20" styleClass="neo-panel" maxWidth="350" maxHeight="450" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.StockfishControlsController">
+    <Label text="STOCKFISH" styleClass="neo-label-large" style="-fx-font-size: 24px;"/>
+    
+    <HBox alignment="CENTER_LEFT" spacing="20">
+        <Label text="MASTER SWITCH" styleClass="neo-label"/>
+        <ToggleButton fx:id="masterSwitch" text="ON" selected="true" onAction="#handleMasterSwitch" styleClass="toggle-button"/>
+    </HBox>
+    
+    <VBox spacing="10">
+        <Label text="DEPTH" styleClass="neo-label-small"/>
+        <Spinner fx:id="depthSpinner" prefWidth="150" editable="true" styleClass="spinner"/>
+    </VBox>
+    
+    <VBox spacing="10">
+        <Label text="MULTI PV" styleClass="neo-label-small"/>
+        <Spinner fx:id="multiPvSpinner" prefWidth="150" editable="true" styleClass="spinner"/>
+    </VBox>
+    
+    <Button text="CHIUDI" onAction="#close" styleClass="neo-button-danger" maxWidth="Infinity"/>
+</VBox>

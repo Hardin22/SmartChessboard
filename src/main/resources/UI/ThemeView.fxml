@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<BorderPane fx:id="themeView" prefHeight="200.0" prefWidth="200.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.ThemeController">
+   <top>
+      <Button mnemonicParsing="false" onAction="#backToHome" prefHeight="39.0" prefWidth="124.0" styleClass="indietro" text="indietro" BorderPane.alignment="TOP_LEFT">
+         <BorderPane.margin>
+            <Insets left="20.0" top="20.0" />
+         </BorderPane.margin>
+      </Button>
+   </top>
+   <center>
+      <VBox alignment="CENTER" prefHeight="200.0" prefWidth="100.0" spacing="20.0" BorderPane.alignment="CENTER">
+         <children>
+            <Button mnemonicParsing="false" onAction="#showBoardSelection" prefHeight="200.0" prefWidth="600.0">
+               <graphic>
+                  <HBox alignment="CENTER_LEFT" prefHeight="100.0" prefWidth="200.0" spacing="30.0">
+                     <children>
+                        <ImageView fx:id="boardPreview" fitHeight="170.0" fitWidth="170.0" pickOnBounds="true" preserveRatio="true" />
+                        <Label text="Personalizza scacchiera" />
+                     </children>
+                  </HBox>
+               </graphic>
+            </Button>
+            <Button layoutX="41.0" layoutY="10.0" mnemonicParsing="false" onAction="#showPieceSelection" prefHeight="200.0" prefWidth="600.0">
+               <graphic>
+                  <HBox alignment="CENTER_LEFT" prefHeight="100.0" prefWidth="200.0" spacing="30.0">
+                     <children>
+                        <ImageView fx:id="piecePreview" fitHeight="170.0" fitWidth="170.0" pickOnBounds="true" preserveRatio="true" />
+                        <Label text="Personalizza pezzi" />
+                     </children>
+                  </HBox>
+               </graphic>
+            </Button>
+         </children>
+      </VBox>
+   </center>
+   
+   <!-- Hidden Panes for Selection (Normally would be separate views or overlays, keeping simple for now) -->
+   <!-- Actually, let's make them separate views or just swap content in center if simple -->
+   <!-- For "Production Grade", separate views is better, but let's keep it contained in ThemeController for now as sub-states -->
+   
+   <right>
+       <!-- Placeholder for Board Selection Panel (Visible only when active) -->
+       <VBox fx:id="boardSelectionPanel" visible="false" />
+   </right>
+   
+   <!-- We will implement sub-views logic in Controller to replace Center content -->
+</BorderPane>

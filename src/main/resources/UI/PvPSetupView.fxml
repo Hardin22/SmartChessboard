@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Slider?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
+
+<BorderPane fx:id="pvpSetup" prefHeight="1183.0" prefWidth="611.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.GameSetupController">
+   <top>
+      <Button mnemonicParsing="false" onAction="#backToHome" prefHeight="54.0" prefWidth="135.0" styleClass="indietro" text="indietro">
+         <BorderPane.margin>
+            <Insets left="20.0" top="20.0" />
+         </BorderPane.margin>
+      </Button>
+   </top>
+   <center>
+      <VBox alignment="CENTER" spacing="40.0">
+         <children>
+            <Label styleClass="Headers" text="Player vs Player">
+               <font>
+                  <Font size="59.0" />
+               </font>
+            </Label>
+            <Label fx:id="durataLabel" text="durata: 10min" />
+            <Slider fx:id="durataSlider" max="60" maxWidth="500.0" min="1" prefHeight="20.0" prefWidth="709.0" value="10" />
+            <Label fx:id="incrementoLabel" text="incremento: 0s" />
+            <Slider fx:id="incrementoSlider" max="30" maxWidth="500.0" min="0" prefHeight="20.0" prefWidth="400.0" value="0" />
+            <Button mnemonicParsing="false" onAction="#startGamePvP" prefHeight="96.0" prefWidth="243.0" text="Inizia">
+               <VBox.margin>
+                  <Insets bottom="200.0" />
+               </VBox.margin>
+            </Button>
+         </children>
+      </VBox>
+   </center>
+</BorderPane>
