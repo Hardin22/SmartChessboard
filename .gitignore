@@ -37,3 +37,20 @@ build/
 ### Mac OS ###
 .DS_Store
 config.properties
+### Dati locali / segreti ###
+cookies.json
+
+### Runtime / cache ###
+jcef-bundle/
+jcef-cache/
+hs_err_pid*.log
+debug_captures/
+board_debug*.png
+
+### File troppo grandi per GitHub (>100MB) ###
+puzzles.ser
+data/puzzles.ser
+src/main/resources/data/puzzles.csv
+
+### Dati browser integrato (sessioni) ###
+webview-data/

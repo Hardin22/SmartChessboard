@@ -12,68 +12,91 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 
-<BorderPane fx:id="pvcSetup" prefHeight="200.0" prefWidth="200.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.GameSetupController">
-   <center>
-      <VBox alignment="CENTER" prefHeight="200.0" prefWidth="100.0" spacing="40.0" BorderPane.alignment="CENTER">
-         <children>
-            <Label styleClass="Headers" text="player vs computer">
-               <font>
-                  <Font size="37.0" />
-               </font>
-            </Label>
-            <Label fx:id="difficoltàLabel" text="Difficoltà: 10">
-               <font>
-                  <Font size="19.0" />
-               </font>
-            </Label>
-            <Slider fx:id="difficoltàSlider" max="20" maxWidth="500.0" min="1" prefWidth="400.0" value="10" />
-            <Label text="Gioca con:" />
-            <HBox alignment="CENTER" prefHeight="100.0" prefWidth="200.0" spacing="40.0">
-               <children>
-                  <VBox fx:id="whiteVbox" alignment="CENTER" prefHeight="200.0" prefWidth="100.0" styleClass="choiceactive">
-                     <children>
-                        <ToggleButton fx:id="whiteButton" mnemonicParsing="false" style="-fx-background-color: transparent;">
-                           <toggleGroup>
-                              <ToggleGroup fx:id="colorGroup" />
-                           </toggleGroup>
-                           <graphic>
-                              <ImageView fx:id="white" fitHeight="70.0" fitWidth="70.0" pickOnBounds="true" preserveRatio="true" />
-                           </graphic>
-                        </ToggleButton>
-                        <Label text="Bianco" />
-                     </children>
-                  </VBox>
-                  <VBox fx:id="randomVbox" alignment="CENTER" prefHeight="129.0" prefWidth="121.0" styleClass="choiceactive">
-                     <children>
-                        <ToggleButton fx:id="randomButton" mnemonicParsing="false" selected="true" style="-fx-background-color: transparent;" toggleGroup="$colorGroup">
-                           <graphic>
-                              <ImageView fx:id="random" fitHeight="70.0" fitWidth="70.0" pickOnBounds="true" preserveRatio="true" />
-                           </graphic>
-                        </ToggleButton>
-                        <Label text="Random" />
-                     </children>
-                  </VBox>
-                  <VBox fx:id="blackVbox" alignment="CENTER" prefHeight="200.0" prefWidth="100.0" styleClass="choiceactive">
-                     <children>
-                        <ToggleButton fx:id="blackButton" mnemonicParsing="false" prefHeight="76.0" prefWidth="80.0" style="-fx-background-color: transparent;" toggleGroup="$colorGroup">
-                           <graphic>
-                              <ImageView fx:id="black" fitHeight="70.0" fitWidth="70.0" pickOnBounds="true" preserveRatio="true" />
-                           </graphic>
-                        </ToggleButton>
-                        <Label text="Nero" />
-                     </children>
-                  </VBox>
-               </children>
-            </HBox>
-            <Button mnemonicParsing="false" onAction="#startGamePvC" prefHeight="101.0" prefWidth="256.0" text="inizia" />
-         </children>
-      </VBox>
-   </center>
+<BorderPane fx:id="pvcSetup" prefHeight="200.0" prefWidth="200.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.GameSetupController" style="-fx-background-color: transparent;">
    <top>
-      <Button mnemonicParsing="false" onAction="#backToHome" prefHeight="46.0" prefWidth="123.0" styleClass="indietro" text="indietro" BorderPane.alignment="TOP_LEFT">
+      <Button onAction="#backToHome" styleClass="icon-button" prefHeight="50" prefWidth="50">
+         <graphic>
+            <org.kordamp.ikonli.javafx.FontIcon iconLiteral="mdal-arrow_back" iconSize="28" iconColor="#E0E0E0"/>
+         </graphic>
          <BorderPane.margin>
             <Insets left="20.0" top="20.0" />
          </BorderPane.margin>
       </Button>
    </top>
+   <center>
+      <VBox alignment="CENTER" spacing="40.0" maxWidth="500">
+         <children>
+            <Label styleClass="header-label" text="Player vs Computer" style="-fx-font-size: 42px;"/>
+            
+            <VBox spacing="20" styleClass="glass-card" alignment="CENTER">
+                <Label text="Scegli Avversario:" styleClass="sub-header-label"/>
+                <HBox alignment="CENTER" spacing="15.0">
+                     <VBox fx:id="botStockfishBox" alignment="CENTER" spacing="10" styleClass="choice-card" onMouseClicked="#selectBotStockfish" minWidth="80">
+                         <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-robot" iconSize="30" fx:id="botStockfishIcon"/>
+                         <Label text="Stockfish" styleClass="body-label" style="-fx-font-size: 10px;"/>
+                     </VBox>
+                     <VBox fx:id="botMaia1100Box" alignment="CENTER" spacing="10" styleClass="choice-card" onMouseClicked="#selectBotMaia1100" minWidth="80">
+                         <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-brain" iconSize="30" fx:id="botMaia1100Icon"/>
+                         <Label text="Maia 1100" styleClass="body-label" style="-fx-font-size: 10px;"/>
+                     </VBox>
+                     <VBox fx:id="botMaia1500Box" alignment="CENTER" spacing="10" styleClass="choice-card" onMouseClicked="#selectBotMaia1500" minWidth="80">
+                         <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-brain" iconSize="30" fx:id="botMaia1500Icon"/>
+                         <Label text="Maia 1500" styleClass="body-label" style="-fx-font-size: 10px;"/>
+                     </VBox>
+                     <VBox fx:id="botMaia1900Box" alignment="CENTER" spacing="10" styleClass="choice-card" onMouseClicked="#selectBotMaia1900" minWidth="80">
+                         <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-brain" iconSize="30" fx:id="botMaia1900Icon"/>
+                         <Label text="Maia 1900" styleClass="body-label" style="-fx-font-size: 10px;"/>
+                     </VBox>
+                </HBox>
+                <Label fx:id="difficoltàLabel" text="Difficoltà: 10" styleClass="sub-header-label"/>
+                <Slider fx:id="difficoltàSlider" max="20" min="1" value="10" maxWidth="400"/>
+                
+                <Label text="Gioca con:" styleClass="sub-header-label">
+                    <VBox.margin>
+                        <Insets top="20"/>
+                    </VBox.margin>
+                </Label>
+                
+                <HBox alignment="CENTER" spacing="30.0">
+                   <children>
+                      <VBox fx:id="whiteVbox" alignment="CENTER" spacing="10" styleClass="choice-card" onMouseClicked="#selectWhite">
+                         <children>
+                            <org.kordamp.ikonli.javafx.FontIcon iconLiteral="far-circle" iconSize="40" iconColor="#E0E0E0" fx:id="whiteIcon"/>
+                            <Label text="Bianco" styleClass="body-label"/>
+                         </children>
+                      </VBox>
+                      <VBox fx:id="randomVbox" alignment="CENTER" spacing="10" styleClass="choice-card" onMouseClicked="#selectRandom">
+                         <children>
+                            <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-random" iconSize="40" iconColor="#D4AF37" fx:id="randomIcon"/>
+                            <Label text="Random" styleClass="body-label"/>
+                         </children>
+                      </VBox>
+                      <VBox fx:id="blackVbox" alignment="CENTER" spacing="10" styleClass="choice-card" onMouseClicked="#selectBlack">
+                         <children>
+                            <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-circle" iconSize="40" iconColor="#121212" fx:id="blackIcon"/>
+                            <Label text="Nero" styleClass="body-label"/>
+                         </children>
+                      </VBox>
+                   </children>
+                </HBox>
+                
+                <!-- Hidden Toggles for Controller compatibility -->
+                <HBox visible="false" managed="false">
+                    <ToggleButton fx:id="whiteButton" toggleGroup="$colorGroup"/>
+                    <ToggleButton fx:id="randomButton" selected="true" toggleGroup="$colorGroup"/>
+                    <ToggleButton fx:id="blackButton" toggleGroup="$colorGroup"/>
+                </HBox>
+            </VBox>
+
+            <Button onAction="#startGamePvC" text="INIZIA PARTITA" styleClass="elegant-button" prefHeight="60" prefWidth="250" style="-fx-font-size: 20px;">
+               <graphic>
+                  <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-play" iconSize="28" iconColor="#121212"/>
+               </graphic>
+               <VBox.margin>
+                  <Insets bottom="50.0" />
+               </VBox.margin>
+            </Button>
+         </children>
+      </VBox>
+   </center>
 </BorderPane>

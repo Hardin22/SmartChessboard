@@ -18,10 +18,10 @@ public class EvaluationGraph extends Pane {
     public EvaluationGraph(double width, double height) {
         this.setPrefSize(width, height);
         this.setStyle("-fx-background-color: #1a1a1a; -fx-border-color: #000000; -fx-border-width: 2px;");
-        
+
         canvas = new Canvas(width, height);
         this.getChildren().add(canvas);
-        
+
         // Redraw on resize
         this.widthProperty().addListener((obs, oldVal, newVal) -> {
             canvas.setWidth(newVal.doubleValue());
@@ -52,7 +52,7 @@ public class EvaluationGraph extends Pane {
 
         // Clear
         gc.clearRect(0, 0, width, height);
-        
+
         // Background
         gc.setFill(Color.web("#1a1a1a"));
         gc.fillRect(0, 0, width, height);
@@ -67,33 +67,35 @@ public class EvaluationGraph extends Pane {
         gc.strokeLine(0, height / 2, width, height / 2);
 
         // Draw graph
-        gc.setStroke(Color.web("#ccff00")); // Neon Yellow
+        gc.setStroke(Color.web("#D4AF37")); // Interface Yellow
         gc.setLineWidth(2);
 
         double xStep = width / (analysisData.size() - 1);
-        
-        // Cap evaluation for display purposes (e.g., +/- 5.0 as requested)
-        double maxEval = 5.0; 
+
+        // Cap evaluation for display purposes (e.g., +/- 5.0 pawns = 500 cp)
+        double maxEval = 500.0;
 
         gc.beginPath();
         for (int i = 0; i < analysisData.size(); i++) {
             MoveAnalysis move = analysisData.get(i);
             double score = move.getScore();
-            
+
             if (move.isMate()) {
                 // If mate, force to max/min
                 score = (score > 0) ? maxEval : -maxEval;
             } else {
                 // Clamp score
-                if (score > maxEval) score = maxEval;
-                if (score < -maxEval) score = -maxEval;
+                if (score > maxEval)
+                    score = maxEval;
+                if (score < -maxEval)
+                    score = -maxEval;
             }
 
             // Map score to Y (invert because canvas Y is down)
             // +maxEval -> 0 (top)
             // 0 -> height/2
             // -maxEval -> height (bottom)
-            
+
             double normalizedScore = (score + maxEval) / (2 * maxEval); // 0.0 to 1.0
             double y = height - (normalizedScore * height);
             double x = i * xStep;
@@ -105,7 +107,7 @@ public class EvaluationGraph extends Pane {
             }
         }
         gc.stroke();
-        
+
         // Draw Cursor
         if (currentMoveIndex >= 0 && currentMoveIndex < analysisData.size()) {
             double cursorX = currentMoveIndex * xStep;
@@ -114,19 +116,21 @@ public class EvaluationGraph extends Pane {
             gc.setLineDashes(5);
             gc.strokeLine(cursorX, 0, cursorX, height);
             gc.setLineDashes(null); // Reset
-            
+
             // Draw dot at intersection
             MoveAnalysis move = analysisData.get(currentMoveIndex);
             double score = move.getScore();
             if (move.isMate()) {
                 score = (score > 0) ? maxEval : -maxEval;
             } else {
-                if (score > maxEval) score = maxEval;
-                if (score < -maxEval) score = -maxEval;
+                if (score > maxEval)
+                    score = maxEval;
+                if (score < -maxEval)
+                    score = -maxEval;
             }
             double normalizedScore = (score + maxEval) / (2 * maxEval);
             double cursorY = height - (normalizedScore * height);
-            
+
             gc.setFill(Color.WHITE);
             gc.fillOval(cursorX - 4, cursorY - 4, 8, 8);
         }

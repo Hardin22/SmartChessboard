@@ -42,11 +42,50 @@ public class HomeController implements NavigationAware {
     }
 
     @FXML
-    private void startLichess() {
-        // Assuming WebViewExample can be adapted or we just open it
-        // For now, let's keep the original logic but maybe we need reference to MainLayout's container?
-        // WebViewExample.openLichessInMain(main); 
-        // We might need to expose the container from MainController
-        System.out.println("Lichess clicked - Implementation pending adaptation");
+    private void showPuzzles() {
+        mainController.loadView("PUZZLE_DASHBOARD", "/UI/PuzzleDashboardView.fxml");
+        mainController.navigateTo("PUZZLE_DASHBOARD");
+    }
+
+    @FXML
+    private javafx.scene.layout.VBox onlineChoicesBox;
+
+    @FXML
+    private void toggleOnlineChoices() {
+        boolean isVisible = onlineChoicesBox.isVisible();
+        onlineChoicesBox.setVisible(!isVisible);
+        onlineChoicesBox.setManaged(!isVisible);
+    }
+
+    @FXML
+    private void playChessCom() {
+        launchBrowser("https://www.chess.com/login");
+    }
+
+    @FXML
+    private void playLichess() {
+        launchBrowser("https://lichess.org");
+    }
+
+    @FXML
+    private void navigateToSettings() {
+        mainController.loadView("SETTINGS", "/UI/SettingsView.fxml");
+        mainController.navigateTo("SETTINGS");
+    }
+
+    private void launchBrowser(String url) {
+        if (mainController != null) {
+            // Ensure Browser View is loaded
+            mainController.loadView("BROWSER", "/UI/BrowserView.fxml");
+
+            // Get Controller and Load Page
+            Object controller = mainController.getController("BROWSER");
+            if (controller instanceof BrowserController) {
+                ((BrowserController) controller).loadPage(url);
+            }
+
+            // Navigate (Placeholder, the Swing window will take over)
+            mainController.navigateTo("BROWSER");
+        }
     }
 }

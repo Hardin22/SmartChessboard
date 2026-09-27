@@ -62,12 +62,20 @@ public class ConfigManager {
 
     public static int getIntProperty(String key, int defaultValue) {
         String value = properties.getProperty(key);
-        if (value != null) {
+        if (value != null && !value.isEmpty()) {
             try {
-                return Integer.parseInt(value);
+                return Integer.parseInt(value.trim());
             } catch (NumberFormatException e) {
-                e.printStackTrace();
+                System.err.println("Invalid int property for " + key + ": " + value);
             }
+        }
+        return defaultValue;
+    }
+
+    public static boolean getBooleanProperty(String key, boolean defaultValue) {
+        String value = properties.getProperty(key);
+        if (value != null && !value.isEmpty()) {
+            return Boolean.parseBoolean(value.trim());
         }
         return defaultValue;
     }

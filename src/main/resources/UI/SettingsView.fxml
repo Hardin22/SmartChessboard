@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import org.kordamp.ikonli.javafx.FontIcon?>
+
+<StackPane xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.SettingsController" styleClass="root" maxHeight="Infinity">
+    <VBox spacing="20.0" maxHeight="Infinity">
+        <padding>
+            <Insets top="20" right="20" bottom="20" left="20"/>
+        </padding>
+
+        <!-- Header -->
+        <HBox alignment="CENTER_LEFT" spacing="20">
+            <Button onAction="#backToHome" styleClass="icon-button">
+                <graphic>
+                    <FontIcon iconLiteral="mdal-arrow_back" iconSize="32" iconColor="#E0E0E0"/>
+                </graphic>
+            </Button>
+            <Label text="Impostazioni" styleClass="header-label"/>
+        </HBox>
+
+        <ScrollPane fitToWidth="true" fitToHeight="true" style="-fx-background-color: transparent; -fx-background: transparent;" VBox.vgrow="ALWAYS" maxHeight="Infinity">
+            <VBox spacing="30.0">
+                <padding>
+                    <Insets top="10" right="10" bottom="30" left="10"/>
+                </padding>
+
+                <!-- Section: Gioco -->
+                <VBox spacing="15" styleClass="glass-card">
+                    <HBox alignment="CENTER_LEFT" spacing="10">
+                        <FontIcon iconLiteral="fas-gamepad" iconSize="24" iconColor="#D4AF37"/>
+                        <Label text="Gioco" styleClass="sub-header-label"/>
+                    </HBox>
+                    
+                    <Separator opacity="0.1"/>
+
+                    <HBox alignment="CENTER_LEFT" spacing="20">
+                        <VBox HBox.hgrow="ALWAYS">
+                            <Label text="Suggerimenti Default" styleClass="body-label" style="-fx-text-fill: white;"/>
+                            <Label text="Mostra le frecce delle mosse migliori all'inizio" styleClass="body-label" style="-fx-font-size: 12;"/>
+                        </VBox>
+                        <ToggleButton fx:id="suggestionsToggle" styleClass="elegant-button-secondary" text="OFF"/>
+                    </HBox>
+
+                    <HBox alignment="CENTER_LEFT" spacing="20">
+                        <VBox HBox.hgrow="ALWAYS">
+                            <Label text="Valutazione Default" styleClass="body-label" style="-fx-text-fill: white;"/>
+                            <Label text="Mostra la barra di valutazione all'inizio" styleClass="body-label" style="-fx-font-size: 12;"/>
+                        </VBox>
+                        <ToggleButton fx:id="evaluationToggle" styleClass="elegant-button-secondary" text="OFF"/>
+                    </HBox>
+
+                    <HBox alignment="CENTER_LEFT" spacing="20">
+                        <VBox HBox.hgrow="ALWAYS">
+                            <Label text="Animazione Scaccomatto" styleClass="body-label" style="-fx-text-fill: white;"/>
+                            <Label text="Effetti visivi quando la partita finisce" styleClass="body-label" style="-fx-font-size: 12;"/>
+                        </VBox>
+                        <ToggleButton fx:id="mateAnimationToggle" styleClass="elegant-button-secondary" text="ON"/>
+                    </HBox>
+
+                    <VBox spacing="10">
+                        <HBox alignment="CENTER_LEFT">
+                            <Label text="Livello Bot Avversario" styleClass="body-label" style="-fx-text-fill: white;" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                            <Label fx:id="botLevelLabel" text="10" styleClass="body-label" style="-fx-text-fill: #D4AF37; -fx-font-weight: bold;"/>
+                        </HBox>
+                        <Slider fx:id="botLevelSlider" min="1" max="20" value="10" blockIncrement="1" majorTickUnit="5" minorTickCount="4" showTickMarks="true"/>
+                    </VBox>
+
+                    <VBox spacing="10">
+                        <HBox alignment="CENTER_LEFT">
+                            <Label text="Tempo di Riflessione Bot" styleClass="body-label" style="-fx-text-fill: white;" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                            <Label fx:id="botThinkingTimeLabel" text="2.0s" styleClass="body-label" style="-fx-text-fill: #D4AF37; -fx-font-weight: bold;"/>
+                        </HBox>
+                        <Slider fx:id="botThinkingTimeSlider" min="500" max="10000" value="2000" blockIncrement="500" majorTickUnit="2000" minorTickCount="3" showTickMarks="true"/>
+                    </VBox>
+
+                    <VBox spacing="10">
+                        <HBox alignment="CENTER_LEFT">
+                            <Label text="Durata Default PvP" styleClass="body-label" style="-fx-text-fill: white;" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                            <Label fx:id="pvpDefaultDurationLabel" text="10min" styleClass="body-label" style="-fx-text-fill: #D4AF37; -fx-font-weight: bold;"/>
+                        </HBox>
+                        <Slider fx:id="pvpDefaultDurationSlider" min="1" max="60" value="10" blockIncrement="1" majorTickUnit="10" minorTickCount="9" showTickMarks="true"/>
+                    </VBox>
+
+                    <VBox spacing="10">
+                        <HBox alignment="CENTER_LEFT">
+                            <Label text="Incremento Default PvP" styleClass="body-label" style="-fx-text-fill: white;" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                            <Label fx:id="pvpDefaultIncrementLabel" text="0s" styleClass="body-label" style="-fx-text-fill: #D4AF37; -fx-font-weight: bold;"/>
+                        </HBox>
+                        <Slider fx:id="pvpDefaultIncrementSlider" min="0" max="30" value="0" blockIncrement="1" majorTickUnit="5" minorTickCount="4" showTickMarks="true"/>
+                    </VBox>
+                </VBox>
+
+                <!-- Section: Motore -->
+                <VBox spacing="15" styleClass="glass-card">
+                    <HBox alignment="CENTER_LEFT" spacing="10">
+                        <FontIcon iconLiteral="fas-cogs" iconSize="24" iconColor="#D4AF37"/>
+                        <Label text="Motore Stockfish" styleClass="sub-header-label"/>
+                    </HBox>
+                    <Separator opacity="0.1"/>
+
+                    <VBox spacing="10">
+                        <HBox alignment="CENTER_LEFT">
+                            <Label text="Profondità Default Partita" styleClass="body-label" style="-fx-text-fill: white;" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                            <Label fx:id="gameDepthLabel" text="18" styleClass="body-label" style="-fx-text-fill: #D4AF37; -fx-font-weight: bold;"/>
+                        </HBox>
+                        <Slider fx:id="gameDepthSlider" min="10" max="30" value="18" blockIncrement="1" majorTickUnit="5" minorTickCount="4" showTickMarks="true"/>
+                    </VBox>
+
+                    <VBox spacing="10">
+                        <HBox alignment="CENTER_LEFT">
+                            <Label text="Profondità Analisi Archivio" styleClass="body-label" style="-fx-text-fill: white;" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                            <Label fx:id="analysisDepthLabel" text="12" styleClass="body-label" style="-fx-text-fill: #D4AF37; -fx-font-weight: bold;"/>
+                        </HBox>
+                        <Slider fx:id="analysisDepthSlider" min="8" max="22" value="12" blockIncrement="1" majorTickUnit="2" minorTickCount="1" showTickMarks="true"/>
+                    </VBox>
+
+                    <VBox spacing="10">
+                        <HBox alignment="CENTER_LEFT">
+                            <Label text="Profondità Move Evaluator (LED)" styleClass="body-label" style="-fx-text-fill: white;" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                            <Label fx:id="moveEvalDepthLabel" text="8" styleClass="body-label" style="-fx-text-fill: #D4AF37; -fx-font-weight: bold;"/>
+                        </HBox>
+                        <Slider fx:id="moveEvalDepthSlider" min="4" max="20" value="8" blockIncrement="1" majorTickUnit="4" minorTickCount="3" showTickMarks="true"/>
+                    </VBox>
+                </VBox>
+
+                <!-- Section: Account -->
+                <VBox spacing="15" styleClass="glass-card">
+                    <HBox alignment="CENTER_LEFT" spacing="10">
+                        <FontIcon iconLiteral="fas-globe" iconSize="24" iconColor="#D4AF37"/>
+                        <Label text="Account &amp; API" styleClass="sub-header-label"/>
+                    </HBox>
+                    <Separator opacity="0.1"/>
+
+                    <VBox spacing="10">
+                        <Label text="Lichess Credentials" styleClass="body-label" style="-fx-text-fill: white;"/>
+                        <TextField fx:id="lichessUsernameField" promptText="Username" styleClass="elegant-text-field"/>
+                        <PasswordField fx:id="lichessPasswordField" promptText="Password" styleClass="elegant-text-field"/>
+                    </VBox>
+
+                    <VBox spacing="10">
+                        <Label text="Chess.com Credentials" styleClass="body-label" style="-fx-text-fill: white;"/>
+                        <TextField fx:id="chessComEmailField" promptText="Email / Username" styleClass="elegant-text-field"/>
+                        <PasswordField fx:id="chessComPasswordField" promptText="Password" styleClass="elegant-text-field"/>
+                    </VBox>
+
+                    <VBox spacing="5">
+                        <Label text="Lichess API Key (Aperture)" styleClass="body-label" style="-fx-text-fill: white;"/>
+                        <PasswordField fx:id="lichessApiKeyField" promptText="lip_..." styleClass="elegant-text-field"/>
+                    </VBox>
+                </VBox>
+
+                <!-- Section: Hardware -->
+                <VBox spacing="15" styleClass="glass-card">
+                    <HBox alignment="CENTER_LEFT" spacing="10">
+                        <FontIcon iconLiteral="fas-sliders-h" iconSize="24" iconColor="#D4AF37"/>
+                        <Label text="Hardware" styleClass="sub-header-label"/>
+                    </HBox>
+                    <Separator opacity="0.1"/>
+
+                    <VBox spacing="10">
+                        <HBox alignment="CENTER_LEFT">
+                            <Label text="Luminosità LED" styleClass="body-label" style="-fx-text-fill: white;" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                            <Label fx:id="ledBrightnessLabel" text="100%" styleClass="body-label" style="-fx-text-fill: #D4AF37; -fx-font-weight: bold;"/>
+                        </HBox>
+                        <Slider fx:id="ledBrightnessSlider" min="0" max="100" value="100" blockIncrement="10" majorTickUnit="25" showTickMarks="true"/>
+                    </VBox>
+                </VBox>
+
+                <!-- Save Button -->
+                <Button text="SALVA IMPOSTAZIONI" onAction="#saveSettings" styleClass="elegant-button" maxWidth="Infinity" prefHeight="60">
+                    <graphic>
+                        <FontIcon iconLiteral="fas-save" iconSize="24" iconColor="#121212"/>
+                    </graphic>
+                </Button>
+
+            </VBox>
+        </ScrollPane>
+    </VBox>
+</StackPane>

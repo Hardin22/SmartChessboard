@@ -8,8 +8,8 @@ import com.github.bhlangonijr.chesslib.move.Move;
 import com.github.bhlangonijr.chesslib.move.MoveGenerator;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
-import javafx.scene.control.Label;
-import org.example.javachess.Services.StockfishService;
+
+import org.example.javachess.Services.EngineService;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -19,38 +19,49 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 public abstract class AbstractGame {
     protected Board board;
     protected ChessBoardUI chessBoardUI;
-    protected Label evaluationLabel;
-    protected Label move1Label;
-    protected Label move2Label;
-    protected Label move3Label;
+    // Removed evaluationLabel
+    // Removed move labels
     protected EvalBar evalBar;
     protected boolean gameRunning;
-    protected Stockfish stockfish;
+    protected UCIEngine stockfish;
     protected StringBuilder pgn;
     protected int gameId;
     protected Path archivePath;
     protected boolean saveGame = true;
+    protected String initialFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
     protected Task<Void> moveCalculationTask;
+    protected UCIEngine.AnalysisUpdateCallback analysisCallback;
+    protected java.util.function.Consumer<String> statusCallback;
 
-    public AbstractGame(ChessBoardUI chessBoardUI, Label evaluationLabel, EvalBar evalBar, Label move1Label, Label move2Label, Label move3Label) {
+    public AbstractGame(ChessBoardUI chessBoardUI, EvalBar evalBar) {
         this.board = new Board();
         this.chessBoardUI = chessBoardUI;
-        this.evaluationLabel = evaluationLabel;
+        // Removed evaluationLabel assignment
         this.evalBar = evalBar;
-        this.move1Label = move1Label;
-        this.move2Label = move2Label;
-        this.move3Label = move3Label;
-        this.stockfish = StockfishService.getInstance();
+        // Removed move labels assignment
+        this.stockfish = EngineService.getInstance().getEngine();
         this.pgn = new StringBuilder();
         this.archivePath = copyArchiveJsonToWritableLocation();
         this.gameId = getNextGameId();
+    }
+
+    public void setStatusCallback(java.util.function.Consumer<String> callback) {
+        this.statusCallback = callback;
+    }
+
+    protected void updateStatus(String message) {
+        if (statusCallback != null) {
+            Platform.runLater(() -> statusCallback.accept(message));
+        }
+    }
+
+    public void setAnalysisCallback(UCIEngine.AnalysisUpdateCallback callback) {
+        this.analysisCallback = callback;
     }
 
     public abstract void startGame();
@@ -94,14 +105,16 @@ public abstract class AbstractGame {
         return nextId;
     }
 
-    protected int analysisDepth = 18;
+    protected int analysisDepth = org.example.javachess.Utils.ConfigManager.getIntProperty("game.depth", 18);
     protected int analysisMultiPV = 1;
-    protected boolean analysisEnabled = true;
+    protected boolean analysisEnabled = org.example.javachess.Utils.ConfigManager.getBooleanProperty("game.evaluation",
+            true);
 
     protected void evaluatePositionAndMoves() {
         if (!gameRunning || !analysisEnabled) {
-             if (stockfish != null) stockfish.stopCalculating();
-             return;
+            if (stockfish != null)
+                stockfish.stopCalculating();
+            return;
         }
 
         if (moveCalculationTask != null && moveCalculationTask.isRunning()) {
@@ -111,42 +124,47 @@ public abstract class AbstractGame {
         moveCalculationTask = new Task<Void>() {
             @Override
             protected Void call() {
-                stockfish.startAnalysis(board.getFen(), analysisDepth, analysisMultiPV, move1Label, move2Label, move3Label, chessBoardUI, evaluationLabel, evalBar, showArrows);
+                stockfish.startAnalysis(board.getFen(), analysisDepth, analysisMultiPV, analysisCallback, chessBoardUI,
+                        evalBar, showArrows);
                 return null;
             }
         };
 
         new Thread(moveCalculationTask).start();
     }
-    
+
     public void setAnalysisParams(int depth, int multiPV) {
         this.analysisDepth = depth;
         this.analysisMultiPV = multiPV;
         evaluatePositionAndMoves(); // Restart with new params
     }
-    
+
     public void setAnalysisEnabled(boolean enabled) {
         this.analysisEnabled = enabled;
         if (enabled) {
             evaluatePositionAndMoves();
         } else {
-            if (stockfish != null) stockfish.stopCalculating();
+            if (stockfish != null)
+                stockfish.stopCalculating();
             chessBoardUI.clearArrows();
         }
     }
-    
-    protected boolean showArrows = true;
-    
+
+    protected boolean showArrows = org.example.javachess.Utils.ConfigManager.getBooleanProperty("game.suggestions",
+            true);
+
     public void setShowArrows(boolean show) {
         this.showArrows = show;
         if (!show) {
             chessBoardUI.clearArrows();
         }
         // Restart analysis to update arrows? Or just let next update handle it.
-        // Stockfish.startAnalysis needs to know about this flag if we want to stop sending arrows.
-        // But simpler: just clear them if false, and in Stockfish callback don't draw if false.
+        // Stockfish.startAnalysis needs to know about this flag if we want to stop
+        // sending arrows.
+        // But simpler: just clear them if false, and in Stockfish callback don't draw
+        // if false.
     }
-    
+
     public void clearArrows() {
         chessBoardUI.clearArrows();
     }
@@ -160,10 +178,14 @@ public abstract class AbstractGame {
     }
 
     protected String getDrawReason() {
-        if (board.isStaleMate()) return "Stallo";
-        if (board.isRepetition()) return "Triplice ripetizione";
-        if (board.isInsufficientMaterial()) return "Materiale insufficiente";
-        if (board.getHalfMoveCounter() >= 100) return "Regola delle 50 mosse";
+        if (board.isStaleMate())
+            return "Stallo";
+        if (board.isRepetition())
+            return "Triplice ripetizione";
+        if (board.isInsufficientMaterial())
+            return "Materiale insufficiente";
+        if (board.getHalfMoveCounter() >= 100)
+            return "Regola delle 50 mosse";
         return "Patta";
     }
 
@@ -195,13 +217,20 @@ public abstract class AbstractGame {
 
     protected Piece parsePiece(char pieceChar) {
         switch (Character.toUpperCase(pieceChar)) {
-            case 'R': return board.getSideToMove() == Side.WHITE ? Piece.WHITE_ROOK : Piece.BLACK_ROOK;
-            case 'N': return board.getSideToMove() == Side.WHITE ? Piece.WHITE_KNIGHT : Piece.BLACK_KNIGHT;
-            case 'B': return board.getSideToMove() == Side.WHITE ? Piece.WHITE_BISHOP : Piece.BLACK_BISHOP;
-            case 'Q': return board.getSideToMove() == Side.WHITE ? Piece.WHITE_QUEEN : Piece.BLACK_QUEEN;
-            case 'K': return board.getSideToMove() == Side.WHITE ? Piece.WHITE_KING : Piece.BLACK_KING;
-            case 'P': return board.getSideToMove() == Side.WHITE ? Piece.WHITE_PAWN : Piece.BLACK_PAWN;
-            default: throw new IllegalArgumentException("Pezzo non valido: " + pieceChar);
+            case 'R':
+                return board.getSideToMove() == Side.WHITE ? Piece.WHITE_ROOK : Piece.BLACK_ROOK;
+            case 'N':
+                return board.getSideToMove() == Side.WHITE ? Piece.WHITE_KNIGHT : Piece.BLACK_KNIGHT;
+            case 'B':
+                return board.getSideToMove() == Side.WHITE ? Piece.WHITE_BISHOP : Piece.BLACK_BISHOP;
+            case 'Q':
+                return board.getSideToMove() == Side.WHITE ? Piece.WHITE_QUEEN : Piece.BLACK_QUEEN;
+            case 'K':
+                return board.getSideToMove() == Side.WHITE ? Piece.WHITE_KING : Piece.BLACK_KING;
+            case 'P':
+                return board.getSideToMove() == Side.WHITE ? Piece.WHITE_PAWN : Piece.BLACK_PAWN;
+            default:
+                throw new IllegalArgumentException("Pezzo non valido: " + pieceChar);
         }
     }
 
@@ -209,41 +238,56 @@ public abstract class AbstractGame {
         pgn.append(" ").append(result);
         System.out.println("Partita salvata in formato PGN: " + pgn.toString());
 
-        try {
-            JSONObject gameJson = new JSONObject();
-            gameJson.put("id", gameId);
-            gameJson.put("type", type);
-            gameJson.put("opening", openingName);
-            gameJson.put("pgn", pgn.toString());
-            gameJson.put("fen", board.getFen());
-            gameJson.put("result", result);
-            gameJson.put("time", timeControl);
-
-            LocalDateTime now = LocalDateTime.now();
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm");
-            gameJson.put("datetime", now.format(formatter));
-
-            JSONArray gamesArray;
-            if (Files.exists(archivePath)) {
-                String content = new String(Files.readAllBytes(archivePath));
-                gamesArray = new JSONArray(content);
-            } else {
-                gamesArray = new JSONArray();
-            }
-
-            gamesArray.put(gameJson);
-            Files.write(archivePath, gamesArray.toString(4).getBytes());
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        org.example.javachess.Services.GameArchiveService.saveGame(
+                type,
+                openingName,
+                pgn.toString(),
+                initialFen,
+                board.getFen(),
+                result,
+                timeControl);
     }
 
     public Board getBoard() {
         return board;
     }
 
-    public Stockfish getStockfish() {
+    public UCIEngine getStockfish() {
         return stockfish;
+    }
+
+    // --- LED VISUALIZATION METHODS ---
+    protected void notifyOpponentMove(String from, String to) {
+        // Check for Check/Mate
+        if (board.isMated()) {
+            notifyMate();
+        } else if (board.isKingAttacked()) {
+            notifyCheck();
+        }
+    }
+
+    protected void notifyCheck() {
+        org.example.javachess.Controllers.ArduinoController arduino = org.example.javachess.Controllers.ArduinoController
+                .getInstance();
+        Square kingSq = board.getKingSquare(board.getSideToMove());
+        arduino.sendLedCommand(kingSq.name(), 255, 69, 0); // OrangeRed
+    }
+
+    protected void notifyMate() {
+        if (!org.example.javachess.Utils.ConfigManager.getBooleanProperty("ui.mate.animation", true)) {
+            return;
+        }
+        org.example.javachess.Controllers.ArduinoController arduino = org.example.javachess.Controllers.ArduinoController
+                .getInstance();
+        arduino.playVictoryAnimation();
+
+        // Trigger UI Animation
+        com.github.bhlangonijr.chesslib.Side winner = board.getSideToMove().flip();
+        String winnerText = (winner == com.github.bhlangonijr.chesslib.Side.WHITE ? "IL BIANCO" : "IL NERO") + " VINCE";
+        Platform.runLater(() -> chessBoardUI.showVictoryAnimation("SCACCO MATTO", winnerText));
+    }
+
+    protected void clearBoardLeds() {
+        org.example.javachess.Controllers.ArduinoController.getInstance().clearLeds();
     }
 }

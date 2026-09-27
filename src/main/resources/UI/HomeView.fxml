@@ -9,63 +9,75 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.layout.StackPane?>
 
-<StackPane xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.HomeController" style="-fx-background-color: #1a1a1a;">
-    <VBox alignment="CENTER" spacing="50.0" maxWidth="600">
+<StackPane xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.HomeController" style="-fx-background-color: transparent;">
+    <VBox alignment="CENTER" spacing="40.0" maxWidth="500">
         <padding>
             <Insets top="50" bottom="50" left="20" right="20"/>
         </padding>
 
         <!-- Logo -->
-        <ImageView fitWidth="400.0" preserveRatio="true">
+        <ImageView fitWidth="350.0" preserveRatio="true">
             <image>
                 <Image url="@/images/logo_neon.png" />
             </image>
+            <effect>
+                <javafx.scene.effect.DropShadow color="#D4AF37" radius="20" spread="0.2"/>
+            </effect>
         </ImageView>
 
-        <!-- Main Actions -->
-        <VBox spacing="20.0" alignment="CENTER" maxWidth="500">
-            <Button text="GIOCA VS BOT" onAction="#showPvCSetup" styleClass="neo-button" maxWidth="Infinity" prefHeight="80">
+        <VBox spacing="20.0" alignment="CENTER" maxWidth="450">
+            <Button text="GIOCA VS BOT" onAction="#showPvCSetup" styleClass="elegant-button" maxWidth="Infinity" prefHeight="90">
                 <graphic>
-                    <ImageView fitHeight="40" fitWidth="40" preserveRatio="true">
-                        <image>
-                            <Image url="@/images/icon_bot.png"/>
-                        </image>
-                    </ImageView>
+                    <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-gamepad" iconSize="36" iconColor="#121212"/>
                 </graphic>
             </Button>
 
-            <Button text="GIOCA VS AMICO" onAction="#showPvPSetup" styleClass="neo-button" maxWidth="Infinity" prefHeight="80">
+            <Button text="GIOCA VS AMICO" onAction="#showPvPSetup" styleClass="elegant-button" maxWidth="Infinity" prefHeight="90">
                 <graphic>
-                    <ImageView fitHeight="40" fitWidth="40" preserveRatio="true">
-                        <image>
-                            <Image url="@/images/icon_friend.png"/>
-                        </image>
-                    </ImageView>
+                    <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-users" iconSize="36" iconColor="#121212"/>
+                </graphic>
+            </Button>
+
+            <Button text="GIOCA ONLINE" onAction="#toggleOnlineChoices" styleClass="elegant-button" maxWidth="Infinity" prefHeight="90">
+                <graphic>
+                    <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-globe" iconSize="36" iconColor="#121212"/>
+                </graphic>
+            </Button>
+            
+            <!-- Hidden Choices Container -->
+            <VBox fx:id="onlineChoicesBox" spacing="10" alignment="CENTER" visible="false" managed="false" maxWidth="400">
+                <Button text="CHESS.COM" onAction="#playChessCom" styleClass="elegant-button-secondary" maxWidth="Infinity"/>
+                <Button text="LICHESS.ORG" onAction="#playLichess" styleClass="elegant-button-secondary" maxWidth="Infinity"/>
+            </VBox>
+        </VBox>
+
+        <!-- Secondary Actions Group -->
+        <VBox spacing="15.0" alignment="CENTER" maxWidth="450">
+            <HBox spacing="20.0" alignment="CENTER">
+                <Button text="ARCHIVIO" onAction="#showArchive" styleClass="elegant-button-secondary" maxWidth="Infinity" HBox.hgrow="ALWAYS" prefHeight="80">
+                    <graphic>
+                        <org.kordamp.ikonli.javafx.FontIcon iconLiteral="mdal-history" iconSize="32" iconColor="#E0E0E0"/>
+                    </graphic>
+                </Button>
+
+                <Button text="PUZZLE" onAction="#showPuzzles" styleClass="elegant-button-secondary" maxWidth="Infinity" HBox.hgrow="ALWAYS" prefHeight="80">
+                    <graphic>
+                        <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-puzzle-piece" iconSize="32" iconColor="#E0E0E0"/>
+                    </graphic>
+                </Button>
+            </HBox>
+
+            <Button text="TEMA" onAction="#showTheme" styleClass="elegant-button-secondary" maxWidth="Infinity" prefHeight="80">
+                <graphic>
+                    <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-palette" iconSize="32" iconColor="#E0E0E0"/>
+                </graphic>
+            </Button>
+            
+            <Button text="IMPOSTAZIONI" onAction="#navigateToSettings" styleClass="elegant-button-secondary" maxWidth="Infinity" prefHeight="80">
+                 <graphic>
+                    <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-cog" iconSize="32" iconColor="#E0E0E0"/>
                 </graphic>
             </Button>
         </VBox>
-
-        <!-- Secondary Actions -->
-        <HBox spacing="20.0" alignment="CENTER" maxWidth="500">
-            <Button text="ARCHIVIO" onAction="#showArchive" styleClass="neo-button-secondary" maxWidth="Infinity" HBox.hgrow="ALWAYS" prefHeight="60">
-                <graphic>
-                    <ImageView fitHeight="30" fitWidth="30" preserveRatio="true">
-                        <image>
-                            <Image url="@/images/icon_archive.png"/>
-                        </image>
-                    </ImageView>
-                </graphic>
-            </Button>
-
-            <Button text="TEMA" onAction="#showTheme" styleClass="neo-button-secondary" maxWidth="Infinity" HBox.hgrow="ALWAYS" prefHeight="60">
-                <graphic>
-                    <ImageView fitHeight="30" fitWidth="30" preserveRatio="true">
-                        <image>
-                            <Image url="@/images/icon_theme.png"/>
-                        </image>
-                    </ImageView>
-                </graphic>
-            </Button>
-        </HBox>
     </VBox>
 </StackPane>

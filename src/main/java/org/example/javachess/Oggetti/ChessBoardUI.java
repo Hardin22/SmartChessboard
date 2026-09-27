@@ -24,13 +24,14 @@ public class ChessBoardUI extends StackPane {
     private Board chessBoard;
     private List<String> moveList;
     private int currentMoveIndex;
-    
+
     private Canvas boardCanvas;
     private Canvas pieceCanvas;
     private Canvas highlightCanvas; // For square highlights (moves, legal)
-    private Canvas arrowCanvas;     // For arrows (analysis)
-    private Canvas iconCanvas;      // For analysis icons (Best, Blunder, etc.)
+    private Canvas arrowCanvas; // For arrows (analysis)
+    private Canvas iconCanvas; // For analysis icons (Best, Blunder, etc.)
     private javafx.scene.layout.Pane animationPane; // For piece animations
+    private StackPane overlayPane; // For game over screens
     private javafx.animation.Animation currentAnimation;
 
     public ChessBoardUI(String chessboardStyle, String piecesStyle, int TileSize) {
@@ -38,10 +39,10 @@ public class ChessBoardUI extends StackPane {
         this.chessboardStyle = chessboardStyle;
         this.pieceStyle = piecesStyle;
         this.TILE_SIZE = TileSize;
-        
+
         int width = TILE_SIZE * BOARD_SIZE;
         int height = TILE_SIZE * BOARD_SIZE;
-        
+
         this.setPrefSize(width, height);
         this.setMaxSize(width, height);
         this.setMinSize(width, height);
@@ -54,27 +55,35 @@ public class ChessBoardUI extends StackPane {
         animationPane = new javafx.scene.layout.Pane();
         animationPane.setPrefSize(width, height);
         animationPane.setMouseTransparent(true); // Let clicks pass through
-        
-        // Layer order: Board -> Highlights -> Pieces -> Arrows -> Icons -> Animation
-        this.getChildren().addAll(boardCanvas, highlightCanvas, pieceCanvas, arrowCanvas, iconCanvas, animationPane);
+
+        animationPane.setMouseTransparent(true); // Let clicks pass through
+
+        overlayPane = new StackPane();
+        overlayPane.setPickOnBounds(false); // Let clicks pass through if empty
+        overlayPane.setMouseTransparent(true);
+
+        // Layer order: Board -> Highlights -> Pieces -> Arrows -> Icons -> Animation ->
+        // Overlay
+        this.getChildren().addAll(boardCanvas, highlightCanvas, pieceCanvas, arrowCanvas, iconCanvas, animationPane,
+                overlayPane);
 
         // Optimization: Cache the static board background
         boardCanvas.setCache(true);
         boardCanvas.setCacheHint(javafx.scene.CacheHint.QUALITY); // Background needs to look good
-        
+
         // Cache other layers for performance
         pieceCanvas.setCache(true);
         pieceCanvas.setCacheHint(javafx.scene.CacheHint.SPEED);
-        
+
         highlightCanvas.setCache(true);
         highlightCanvas.setCacheHint(javafx.scene.CacheHint.SPEED);
-        
+
         arrowCanvas.setCache(true);
         arrowCanvas.setCacheHint(javafx.scene.CacheHint.SPEED);
-        
+
         iconCanvas.setCache(true);
         iconCanvas.setCacheHint(javafx.scene.CacheHint.SPEED);
-        
+
         // Animation pane benefits from caching during transitions
         animationPane.setCache(true);
         animationPane.setCacheHint(javafx.scene.CacheHint.SPEED);
@@ -83,7 +92,7 @@ public class ChessBoardUI extends StackPane {
         updateBoard(chessBoard, null, pieceStyle);
         currentMoveIndex = 0;
     }
-    
+
     // ... (drawBoardBackground, updateBoard, drawPieces remain same)
 
     private void stopCurrentAnimation() {
@@ -98,44 +107,50 @@ public class ChessBoardUI extends StackPane {
 
     public void animateMove(Square from, Square to, Piece piece, String pieceStyle, Runnable onFinished) {
         stopCurrentAnimation(); // Ensure no conflict
-        
+
         int fromCol = from.ordinal() % 8;
         int fromRow = 7 - (from.ordinal() / 8);
         int toCol = to.ordinal() % 8;
         int toRow = 7 - (to.ordinal() / 8);
-        
+
         String pieceFileName = getPieceFileName(piece);
         if (pieceFileName == null) {
-            if (onFinished != null) onFinished.run();
+            if (onFinished != null)
+                onFinished.run();
             return;
         }
-        
-        Image pieceImage = ImageCache.getInstance().getImage("/images/Pieces/" + pieceStyle + "/" + pieceFileName, TILE_SIZE, TILE_SIZE);
+
+        Image pieceImage = ImageCache.getInstance().getImage("/images/Pieces/" + pieceStyle + "/" + pieceFileName,
+                TILE_SIZE, TILE_SIZE);
         ImageView animatedPiece = new ImageView(pieceImage);
         animatedPiece.setFitWidth(TILE_SIZE);
         animatedPiece.setFitHeight(TILE_SIZE);
-        
+
         // Use TranslateTransition for GPU acceleration
-        // We set the initial position using layoutX/Y (or just place it at 0,0 and translate)
-        // Better: Place at 'from' position, then translate to 'to' position relative to 'from'.
-        
+        // We set the initial position using layoutX/Y (or just place it at 0,0 and
+        // translate)
+        // Better: Place at 'from' position, then translate to 'to' position relative to
+        // 'from'.
+
         animatedPiece.setLayoutX(fromCol * TILE_SIZE);
         animatedPiece.setLayoutY(fromRow * TILE_SIZE);
-        
+
         animationPane.getChildren().add(animatedPiece);
-        
-        javafx.animation.TranslateTransition transition = new javafx.animation.TranslateTransition(javafx.util.Duration.millis(100), animatedPiece);
+
+        javafx.animation.TranslateTransition transition = new javafx.animation.TranslateTransition(
+                javafx.util.Duration.millis(100), animatedPiece);
         transition.setFromX(0);
         transition.setFromY(0);
         transition.setToX((toCol - fromCol) * TILE_SIZE);
         transition.setToY((toRow - fromRow) * TILE_SIZE);
-        
+
         transition.setOnFinished(e -> {
             animationPane.getChildren().remove(animatedPiece);
             currentAnimation = null;
-            if (onFinished != null) onFinished.run();
+            if (onFinished != null)
+                onFinished.run();
         });
-        
+
         currentAnimation = transition;
         transition.play();
     }
@@ -143,14 +158,17 @@ public class ChessBoardUI extends StackPane {
     private void drawBoardBackground(double width, double height) {
         GraphicsContext gc = boardCanvas.getGraphicsContext2D();
         try {
-            Image boardImage = ImageCache.getInstance().getImage("/images/Scacchiere/" + chessboardStyle, width, height);
+            Image boardImage = ImageCache.getInstance().getImage("/images/Scacchiere/" + chessboardStyle, width,
+                    height);
             if (boardImage != null) {
                 gc.drawImage(boardImage, 0, 0, width, height);
             } else {
                 for (int row = 0; row < 8; row++) {
                     for (int col = 0; col < 8; col++) {
-                        if ((row + col) % 2 == 0) gc.setFill(Color.BEIGE);
-                        else gc.setFill(Color.BROWN);
+                        if ((row + col) % 2 == 0)
+                            gc.setFill(Color.BEIGE);
+                        else
+                            gc.setFill(Color.BROWN);
                         gc.fillRect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                     }
                 }
@@ -168,7 +186,7 @@ public class ChessBoardUI extends StackPane {
         this.chessBoard = board;
         clearHighlights();
         drawPieces(board, pieceStyle, skipSquare);
-        
+
         if (lastMove != null) {
             Square from = lastMove.getFrom();
             Square to = lastMove.getTo();
@@ -180,17 +198,19 @@ public class ChessBoardUI extends StackPane {
     private void drawPieces(Board board, String pieceStyle, Square skipSquare) {
         GraphicsContext gc = pieceCanvas.getGraphicsContext2D();
         gc.clearRect(0, 0, pieceCanvas.getWidth(), pieceCanvas.getHeight());
-        
+
         ImageCache cache = ImageCache.getInstance();
-        
+
         for (Square square : Square.values()) {
-            if (square == skipSquare) continue;
-            
+            if (square == skipSquare)
+                continue;
+
             Piece piece = board.getPiece(square);
             if (piece != Piece.NONE) {
                 String pieceFileName = getPieceFileName(piece);
                 if (pieceFileName != null) {
-                    Image pieceImage = cache.getImage("/images/Pieces/" + pieceStyle + "/" + pieceFileName, TILE_SIZE, TILE_SIZE);
+                    Image pieceImage = cache.getImage("/images/Pieces/" + pieceStyle + "/" + pieceFileName, TILE_SIZE,
+                            TILE_SIZE);
                     if (pieceImage != null) {
                         int col = square.ordinal() % 8;
                         int row = 7 - (square.ordinal() / 8);
@@ -201,24 +221,33 @@ public class ChessBoardUI extends StackPane {
         }
     }
 
-
-
     public void highlightSquare(int col, int row, Color color) {
         GraphicsContext gc = highlightCanvas.getGraphicsContext2D();
         gc.setFill(color);
         gc.fillRect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
     }
 
+    public void highlightErrorSquare(String squareName) {
+        try {
+            Square sq = Square.valueOf(squareName.toUpperCase());
+            int col = sq.ordinal() % 8;
+            int row = 7 - (sq.ordinal() / 8);
+            highlightSquare(col, row, Color.rgb(255, 0, 0, 0.7)); // Red highlight
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     public void clearHighlights() {
         GraphicsContext gc = highlightCanvas.getGraphicsContext2D();
         gc.clearRect(0, 0, highlightCanvas.getWidth(), highlightCanvas.getHeight());
     }
-    
+
     public void clearArrows() {
         GraphicsContext gc = arrowCanvas.getGraphicsContext2D();
         gc.clearRect(0, 0, arrowCanvas.getWidth(), arrowCanvas.getHeight());
     }
-    
+
     public void clearIcons() {
         GraphicsContext gc = iconCanvas.getGraphicsContext2D();
         gc.clearRect(0, 0, iconCanvas.getWidth(), iconCanvas.getHeight());
@@ -229,7 +258,7 @@ public class ChessBoardUI extends StackPane {
         double x = col * TILE_SIZE;
         double y = row * TILE_SIZE;
         double iconSize = TILE_SIZE / 2.5; // Small icon at top-left
-        
+
         try {
             // Load icon (assuming standard path /images/analysis/...)
             // If user provides them elsewhere, we might need to adjust.
@@ -243,48 +272,113 @@ public class ChessBoardUI extends StackPane {
             // Ignore missing icons to prevent crash
         }
     }
-    
+
     public void drawArrowOnBoard(int fromCol, int fromRow, int toCol, int toRow, Color color) {
         GraphicsContext gc = arrowCanvas.getGraphicsContext2D();
         double startX = (fromCol + 0.5) * TILE_SIZE;
         double startY = (fromRow + 0.5) * TILE_SIZE;
         double endX = (toCol + 0.5) * TILE_SIZE;
         double endY = (toRow + 0.5) * TILE_SIZE;
-        
+
         drawArrow(gc, startX, startY, endX, endY, color);
     }
 
     private void drawArrow(GraphicsContext gc, double startX, double startY, double endX, double endY, Color color) {
         // Use a transparent color for the arrow
-        Color transparentColor = Color.rgb((int)(color.getRed()*255), (int)(color.getGreen()*255), (int)(color.getBlue()*255), 0.7);
-        
+        Color transparentColor = Color.rgb((int) (color.getRed() * 255), (int) (color.getGreen() * 255),
+                (int) (color.getBlue() * 255), 0.7);
+
         gc.setStroke(transparentColor);
         gc.setLineWidth(15); // Thicker line
-        
+
         double angle = Math.atan2(endY - startY, endX - startX);
         double arrowLength = 25;
-        
+
         double newEndX = endX - arrowLength * Math.cos(angle);
         double newEndY = endY - arrowLength * Math.sin(angle);
-        
+
         gc.strokeLine(startX, startY, newEndX, newEndY);
-        
+
         double x1 = endX;
         double y1 = endY;
         double x2 = endX - arrowLength * Math.cos(angle - Math.PI / 5); // Wider angle
         double y2 = endY - arrowLength * Math.sin(angle - Math.PI / 5);
         double x3 = endX - arrowLength * Math.cos(angle + Math.PI / 5);
         double y3 = endY - arrowLength * Math.sin(angle + Math.PI / 5);
-        
+
         gc.setFill(transparentColor);
-        gc.fillPolygon(new double[]{x1, x2, x3}, new double[]{y1, y2, y3}, 3);
+        gc.fillPolygon(new double[] { x1, x2, x3 }, new double[] { y1, y2, y3 }, 3);
     }
 
     public void resetBoard() {
+        resetBoard("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    }
+
+    public void resetBoard(String fen) {
         chessBoard = new Board();
+        chessBoard.loadFromFen(fen);
         updateBoard(chessBoard, null, pieceStyle);
         currentMoveIndex = 0;
         clearHighlights();
+        clearOverlay();
+    }
+
+    public void clearOverlay() {
+        overlayPane.getChildren().clear();
+        overlayPane.setVisible(false);
+    }
+
+    public void showVictoryAnimation(String title, String subtitle) {
+        overlayPane.getChildren().clear();
+        overlayPane.setVisible(true);
+        overlayPane.setMouseTransparent(false);
+
+        // 1. Blurry Dark Background
+        javafx.scene.shape.Rectangle background = new javafx.scene.shape.Rectangle(getWidth(), getHeight());
+        background.setFill(Color.rgb(0, 0, 0, 0.75));
+        background.setEffect(new javafx.scene.effect.GaussianBlur(10));
+
+        // 2. Text Container
+        javafx.scene.layout.VBox textContainer = new javafx.scene.layout.VBox(10);
+        textContainer.setAlignment(javafx.geometry.Pos.CENTER);
+
+        // 3. Title Text (SCACCO MATTO)
+        javafx.scene.text.Text titleText = new javafx.scene.text.Text(title);
+        titleText.setFont(javafx.scene.text.Font.font("Segoe UI", javafx.scene.text.FontWeight.BOLD, 48));
+        titleText.setFill(Color.WHITE);
+        titleText.setEffect(new javafx.scene.effect.DropShadow(0, 0, 20, Color.GOLD));
+
+        // 4. Subtitle Text (Winner)
+        javafx.scene.text.Text subText = new javafx.scene.text.Text(subtitle);
+        subText.setFont(javafx.scene.text.Font.font("Segoe UI", javafx.scene.text.FontWeight.SEMI_BOLD, 24));
+        subText.setFill(Color.LIGHTGRAY);
+
+        textContainer.getChildren().addAll(titleText, subText);
+
+        overlayPane.getChildren().addAll(background, textContainer);
+
+        // 5. Animations
+        // Fade In Background
+        javafx.animation.FadeTransition fade = new javafx.animation.FadeTransition(javafx.util.Duration.millis(500),
+                background);
+        fade.setFromValue(0);
+        fade.setToValue(1);
+
+        // Scale Up Text with Bounce
+        javafx.animation.ScaleTransition scale = new javafx.animation.ScaleTransition(javafx.util.Duration.millis(800),
+                textContainer);
+        scale.setFromX(0.0);
+        scale.setFromY(0.0);
+        scale.setToX(1.0);
+        scale.setToY(1.0);
+        scale.setInterpolator(javafx.animation.Interpolator.EASE_OUT);
+
+        javafx.animation.ParallelTransition pt = new javafx.animation.ParallelTransition(fade, scale);
+        pt.play();
+    }
+
+    public Board getBoard() {
+        return chessBoard;
     }
 
     public void setPosition(String fen, Move lastMove) {
@@ -297,8 +391,12 @@ public class ChessBoardUI extends StackPane {
     }
 
     public void loadPgn(String pgn) {
+        loadPgn(pgn, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    }
+
+    public void loadPgn(String pgn, String initialFen) {
         moveList = parsePgnMoves(pgn);
-        resetBoard();
+        resetBoard(initialFen);
     }
 
     private List<String> parsePgnMoves(String pgn) {
@@ -314,16 +412,17 @@ public class ChessBoardUI extends StackPane {
 
     public void nextMove() {
         if (moveList != null && currentMoveIndex < moveList.size()) {
-            boolean wasAnimating = (currentAnimation != null && currentAnimation.getStatus() == javafx.animation.Animation.Status.RUNNING);
+            boolean wasAnimating = (currentAnimation != null
+                    && currentAnimation.getStatus() == javafx.animation.Animation.Status.RUNNING);
             stopCurrentAnimation();
 
             String moveStr = moveList.get(currentMoveIndex);
             Move move = parseMoveFromString(moveStr, chessBoard.getFen());
-            
+
             if (move != null) {
                 chessBoard.doMove(move);
                 currentMoveIndex++;
-                
+
                 if (wasAnimating) {
                     // Skip animation if we were already animating (fast scroll)
                     updateBoard(chessBoard, move, pieceStyle, null);
@@ -340,7 +439,8 @@ public class ChessBoardUI extends StackPane {
 
     public void previousMove() {
         if (moveList != null && currentMoveIndex > 0) {
-            boolean wasAnimating = (currentAnimation != null && currentAnimation.getStatus() == javafx.animation.Animation.Status.RUNNING);
+            boolean wasAnimating = (currentAnimation != null
+                    && currentAnimation.getStatus() == javafx.animation.Animation.Status.RUNNING);
             stopCurrentAnimation();
 
             // Get the move we are undoing
@@ -350,20 +450,21 @@ public class ChessBoardUI extends StackPane {
             // No, it needs FEN to determine color/promotion.
             // The current FEN is AFTER the move.
             // Undo first to get back to state BEFORE move.
-            
+
             chessBoard.undoMove();
             currentMoveIndex--;
-            
+
             // Re-parse move to get coordinates (now we are at state BEFORE move)
             Move move = parseMoveFromString(moveStr, chessBoard.getFen());
-            
+
             if (move != null) {
                 if (wasAnimating) {
                     updateBoard(chessBoard, null, pieceStyle, null);
                 } else {
                     // Backward animation: Piece moves from TO back to FROM
                     // We hide the piece at FROM (where it ends up)
-                    // Captured pieces (at TO) will just appear (handled by updateBoard drawing them, except we don't hide TO)
+                    // Captured pieces (at TO) will just appear (handled by updateBoard drawing
+                    // them, except we don't hide TO)
                     // Wait, if we captured a piece, it is now back at TO.
                     // The moving piece is back at FROM.
                     // We want to animate moving piece from TO -> FROM.
@@ -374,7 +475,7 @@ public class ChessBoardUI extends StackPane {
                     // The captured piece at TO is drawn.
                     // The animated piece moves TO -> FROM.
                     // This looks correct: captured piece reappears, moving piece slides back.
-                    
+
                     updateBoard(chessBoard, null, pieceStyle, move.getFrom());
                     animateMove(move.getTo(), move.getFrom(), chessBoard.getPiece(move.getFrom()), pieceStyle, () -> {
                         updateBoard(chessBoard, null, pieceStyle, null);
@@ -391,7 +492,7 @@ public class ChessBoardUI extends StackPane {
             Square from = Square.valueOf(moveStr.substring(0, 2).toUpperCase());
             Square to = Square.valueOf(moveStr.substring(2, 4).toUpperCase());
             boolean isWhiteToMove = fen.split(" ")[1].equals("w");
-            
+
             if (moveStr.length() == 5) {
                 char promotionChar = moveStr.charAt(4);
                 Piece promotionPiece = getPromotionPiece(promotionChar, isWhiteToMove);
@@ -405,31 +506,39 @@ public class ChessBoardUI extends StackPane {
 
     public Piece getPromotionPiece(char promotionChar, boolean isWhite) {
         switch (Character.toLowerCase(promotionChar)) {
-            case 'q': return isWhite ? Piece.WHITE_QUEEN : Piece.BLACK_QUEEN;
-            case 'r': return isWhite ? Piece.WHITE_ROOK : Piece.BLACK_ROOK;
-            case 'b': return isWhite ? Piece.WHITE_BISHOP : Piece.BLACK_BISHOP;
-            case 'n': return isWhite ? Piece.WHITE_KNIGHT : Piece.BLACK_KNIGHT;
-            default: throw new IllegalArgumentException("Invalid promotion piece: " + promotionChar);
+            case 'q':
+                return isWhite ? Piece.WHITE_QUEEN : Piece.BLACK_QUEEN;
+            case 'r':
+                return isWhite ? Piece.WHITE_ROOK : Piece.BLACK_ROOK;
+            case 'b':
+                return isWhite ? Piece.WHITE_BISHOP : Piece.BLACK_BISHOP;
+            case 'n':
+                return isWhite ? Piece.WHITE_KNIGHT : Piece.BLACK_KNIGHT;
+            default:
+                throw new IllegalArgumentException("Invalid promotion piece: " + promotionChar);
         }
     }
 
-    private String getPieceFileName(Piece piece) {
-        switch (piece) {
-            case WHITE_PAWN: return "wp.png";
-            case WHITE_ROOK: return "wr.png";
-            case WHITE_KNIGHT: return "wn.png";
-            case WHITE_BISHOP: return "wb.png";
-            case WHITE_QUEEN: return "wq.png";
-            case WHITE_KING: return "wk.png";
-            case BLACK_PAWN: return "bp.png";
-            case BLACK_ROOK: return "br.png";
-            case BLACK_KNIGHT: return "bn.png";
-            case BLACK_BISHOP: return "bb.png";
-            case BLACK_QUEEN: return "bq.png";
-            case BLACK_KING: return "bk.png";
-            default: return null;
-        }
+    private static final java.util.Map<Piece, String> PIECE_FILE_NAMES = new java.util.HashMap<>();
+    static {
+        PIECE_FILE_NAMES.put(Piece.WHITE_PAWN, "wp.png");
+        PIECE_FILE_NAMES.put(Piece.WHITE_ROOK, "wr.png");
+        PIECE_FILE_NAMES.put(Piece.WHITE_KNIGHT, "wn.png");
+        PIECE_FILE_NAMES.put(Piece.WHITE_BISHOP, "wb.png");
+        PIECE_FILE_NAMES.put(Piece.WHITE_QUEEN, "wq.png");
+        PIECE_FILE_NAMES.put(Piece.WHITE_KING, "wk.png");
+        PIECE_FILE_NAMES.put(Piece.BLACK_PAWN, "bp.png");
+        PIECE_FILE_NAMES.put(Piece.BLACK_ROOK, "br.png");
+        PIECE_FILE_NAMES.put(Piece.BLACK_KNIGHT, "bn.png");
+        PIECE_FILE_NAMES.put(Piece.BLACK_BISHOP, "bb.png");
+        PIECE_FILE_NAMES.put(Piece.BLACK_QUEEN, "bq.png");
+        PIECE_FILE_NAMES.put(Piece.BLACK_KING, "bk.png");
     }
+
+    private String getPieceFileName(Piece piece) {
+        return PIECE_FILE_NAMES.get(piece);
+    }
+
     public int getMoveCount() {
         return moveList != null ? moveList.size() : 0;
     }

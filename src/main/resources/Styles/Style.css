@@ -1,225 +1,242 @@
-/* Neo-Brutalist Design System */
+/* Global Reset & Variables */
 * {
-    -fx-font-family: 'Poppins';
+    -fx-font-family: 'Poppins', sans-serif;
+    -fx-text-fill: white;
 }
 
 .root {
-    -fx-background-color: #1a1a1a;
-    /* Dark Grey Background */
+    -fx-background-color: #121212;
+    /* Deep Matte Black */
 }
 
-/* Typography */
-.neo-label {
-    -fx-text-fill: #ffffff;
+/* --- Typography --- */
+
+.header-label {
+    -fx-font-size: 32px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #E0E0E0;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.3), 10, 0, 0, 4);
+}
+
+.sub-header-label {
     -fx-font-size: 18px;
-    -fx-font-weight: bold;
+    -fx-text-fill: #B0B0B0;
+    -fx-font-weight: normal;
 }
 
-.neo-label-large {
-    -fx-text-fill: #ccff00;
-    /* Neon Yellow */
-    -fx-font-size: 36px;
-    -fx-font-weight: bold;
-    -fx-effect: dropshadow(one-pass-box, #000000, 0, 0, 4, 4);
-}
-
-.neo-label-small {
-    -fx-text-fill: #aaaaaa;
+.body-label {
     -fx-font-size: 14px;
+    -fx-text-fill: #9E9E9E;
 }
 
-/* Buttons */
-.neo-button {
-    -fx-background-color: #ccff00;
-    /* Neon Yellow */
-    -fx-text-fill: #000000;
-    /* Black Text */
+/* --- Buttons --- */
+
+/* Primary Action Button (Gold/Gradient) */
+.elegant-button {
+    -fx-background-color: linear-gradient(to bottom right, #D4AF37, #C5A028);
+    -fx-text-fill: #121212;
     -fx-font-weight: bold;
-    -fx-font-size: 18px;
-    -fx-background-radius: 0;
-    /* Sharp Edges */
-    -fx-border-color: #000000;
-    -fx-border-width: 3px;
-    -fx-border-radius: 0;
-    -fx-effect: dropshadow(one-pass-box, #000000, 0, 0, 6, 6);
-    /* Hard Shadow */
+    -fx-font-size: 16px;
+    -fx-background-radius: 12;
+    -fx-padding: 12 24;
     -fx-cursor: hand;
-    -fx-padding: 15 30;
+    -fx-effect: dropshadow(gaussian, rgba(212, 175, 55, 0.4), 15, 0, 0, 4);
+    -fx-border-color: rgba(255, 255, 255, 0.1);
+    -fx-border-radius: 12;
+    -fx-border-width: 1;
 }
 
-.neo-button:hover {
-    -fx-background-color: #b3e600;
-    -fx-translate-x: 2;
-    -fx-translate-y: 2;
-    -fx-effect: dropshadow(one-pass-box, #000000, 0, 0, 4, 4);
+.elegant-button:hover {
+    -fx-background-color: linear-gradient(to bottom right, #E5C048, #D4AF37);
+    -fx-scale-x: 1.02;
+    -fx-scale-y: 1.02;
 }
 
-.neo-button:pressed {
-    -fx-translate-x: 6;
-    -fx-translate-y: 6;
+.elegant-button:pressed {
+    -fx-background-color: #B89620;
+    -fx-scale-x: 0.98;
+    -fx-scale-y: 0.98;
     -fx-effect: none;
 }
 
-.neo-button-secondary {
-    -fx-background-color: #ffffff;
-    -fx-text-fill: #000000;
-    -fx-font-weight: bold;
-    -fx-font-size: 16px;
-    -fx-background-radius: 0;
-    -fx-border-color: #000000;
-    -fx-border-width: 3px;
-    -fx-border-radius: 0;
-    -fx-effect: dropshadow(one-pass-box, #000000, 0, 0, 6, 6);
-    -fx-cursor: hand;
+/* Secondary Button (Glass/Dark) */
+.elegant-button-secondary {
+    -fx-background-color: rgba(255, 255, 255, 0.05);
+    -fx-text-fill: #E0E0E0;
+    -fx-font-weight: normal;
+    -fx-font-size: 14px;
+    -fx-background-radius: 12;
     -fx-padding: 10 20;
-}
-
-.neo-button-secondary:hover {
-    -fx-background-color: #eeeeee;
-    -fx-translate-x: 2;
-    -fx-translate-y: 2;
-    -fx-effect: dropshadow(one-pass-box, #000000, 0, 0, 4, 4);
-}
-
-.neo-button-secondary:pressed {
-    -fx-translate-x: 6;
-    -fx-translate-y: 6;
-    -fx-effect: none;
-}
-
-.neo-button-danger {
-    -fx-background-color: #ff3333;
-    -fx-text-fill: #ffffff;
-    -fx-font-weight: bold;
-    -fx-font-size: 16px;
-    -fx-background-radius: 0;
-    -fx-border-color: #000000;
-    -fx-border-width: 3px;
-    -fx-border-radius: 0;
-    -fx-effect: dropshadow(one-pass-box, #000000, 0, 0, 6, 6);
     -fx-cursor: hand;
-    -fx-padding: 10 20;
+    -fx-border-color: rgba(255, 255, 255, 0.1);
+    -fx-border-radius: 12;
+    -fx-border-width: 1;
 }
 
-/* Panels */
-.neo-panel {
-    -fx-background-color: #2a2a2a;
-    -fx-border-color: #000000;
-    -fx-border-width: 3px;
-    -fx-background-radius: 0;
-    -fx-border-radius: 0;
-    -fx-effect: dropshadow(one-pass-box, #000000, 0, 0, 8, 8);
+.elegant-button-secondary:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.1);
+    -fx-border-color: rgba(255, 255, 255, 0.3);
+}
+
+.elegant-button-secondary:pressed {
+    -fx-background-color: rgba(255, 255, 255, 0.02);
+}
+
+.elegant-button-secondary:selected {
+    -fx-background-color: rgba(212, 175, 55, 0.3);
+    -fx-border-color: #D4AF37;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+}
+
+/* Danger/Destructive Button */
+.elegant-button-danger {
+    -fx-background-color: rgba(207, 102, 121, 0.1);
+    -fx-text-fill: #CF6679;
+    -fx-border-color: rgba(207, 102, 121, 0.5);
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
+    -fx-cursor: hand;
+}
+
+.elegant-button-danger:hover {
+    -fx-background-color: rgba(207, 102, 121, 0.2);
+}
+
+/* Theme Toggle Button (Chip Style) */
+.theme-toggle {
+    -fx-background-color: rgba(255, 255, 255, 0.05);
+    -fx-text-fill: #B0B0B0;
+    -fx-font-size: 13px;
+    -fx-font-weight: normal;
+    -fx-background-radius: 20;
+    /* Pill shape */
+    -fx-padding: 8 16;
+    -fx-cursor: hand;
+    -fx-border-color: rgba(255, 255, 255, 0.1);
+    -fx-border-radius: 20;
+    -fx-border-width: 1;
+}
+
+.theme-toggle:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.15);
+    -fx-border-color: rgba(255, 255, 255, 0.3);
+    -fx-text-fill: white;
+}
+
+.theme-toggle:selected {
+    -fx-background-color: rgba(212, 175, 55, 0.25);
+    -fx-border-color: #D4AF37;
+    -fx-text-fill: #D4AF37;
+    -fx-font-weight: bold;
+    -fx-effect: dropshadow(gaussian, rgba(212, 175, 55, 0.4), 10, 0, 0, 0);
+}
+
+/* Icon Button (Circular) */
+.icon-button {
+    -fx-background-color: transparent;
+    -fx-padding: 8;
+    -fx-background-radius: 50%;
+    -fx-cursor: hand;
+}
+
+.icon-button:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* --- Cards & Panels --- */
+
+.glass-card {
+    -fx-background-color: rgba(30, 30, 30, 0.6);
+    /* Semi-transparent dark */
+    -fx-background-radius: 16;
+    -fx-border-color: rgba(255, 255, 255, 0.08);
+    -fx-border-radius: 16;
+    -fx-border-width: 1;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.4), 20, 0, 0, 8);
     -fx-padding: 20;
 }
 
-/* Inputs */
-.text-field {
-    -fx-background-color: #ffffff;
-    -fx-text-fill: #000000;
-    -fx-border-color: #000000;
-    -fx-border-width: 2px;
-    -fx-background-radius: 0;
-    -fx-border-radius: 0;
-    -fx-prompt-text-fill: #888888;
+/* --- Inputs --- */
+
+.elegant-text-field {
+    -fx-background-color: rgba(0, 0, 0, 0.3);
+    -fx-text-fill: white;
+    -fx-prompt-text-fill: #666;
+    -fx-background-radius: 8;
+    -fx-border-color: rgba(255, 255, 255, 0.1);
+    -fx-border-radius: 8;
+    -fx-padding: 10;
 }
 
-.text-field:focused {
-    -fx-border-color: #ccff00;
+.elegant-text-field:focused {
+    -fx-border-color: #D4AF37;
+    -fx-background-color: rgba(0, 0, 0, 0.5);
 }
 
-/* Spinners */
-.spinner {
-    -fx-background-color: #ffffff;
-    -fx-border-color: #000000;
-    -fx-border-width: 2px;
-    -fx-background-radius: 0;
-    -fx-border-radius: 0;
-}
+/* --- Sliders --- */
 
-.spinner .text-field {
-    -fx-background-color: transparent;
-    -fx-text-fill: #000000;
-    -fx-border-width: 0;
-}
-
-.spinner .increment-arrow-button,
-.spinner .decrement-arrow-button {
-    -fx-background-color: #dddddd;
-    -fx-background-radius: 0;
-    -fx-border-color: #000000;
-    -fx-border-width: 0 0 0 1px;
-}
-
-.spinner .increment-arrow-button:hover,
-.spinner .decrement-arrow-button:hover {
-    -fx-background-color: #ccff00;
-}
-
-/* Toggle Button */
-.toggle-button {
+.slider .track {
     -fx-background-color: #333333;
-    -fx-text-fill: #ffffff;
-    -fx-border-color: #000000;
-    -fx-border-width: 2px;
-    -fx-background-radius: 0;
-    -fx-border-radius: 0;
-    -fx-font-weight: bold;
-    -fx-cursor: hand;
+    -fx-background-radius: 5;
 }
 
-.toggle-button:selected {
-    -fx-background-color: #ccff00;
-    -fx-text-fill: #000000;
-    -fx-effect: dropshadow(one-pass-box, #000000, 0, 0, 4, 4);
+.slider .thumb {
+    -fx-background-color: #D4AF37;
+    -fx-background-radius: 50%;
+    -fx-effect: dropshadow(gaussian, rgba(212, 175, 55, 0.6), 10, 0, 0, 2);
 }
 
-/* List View */
+.slider:hover .thumb {
+    -fx-scale-x: 1.2;
+    -fx-scale-y: 1.2;
+}
+
+/* --- List View --- */
+
 .list-view {
     -fx-background-color: transparent;
-    -fx-border-color: #000000;
-    -fx-border-width: 3px;
+    -fx-padding: 10;
+}
+
+.list-view .scroll-bar:horizontal {
+    -fx-opacity: 0;
+    -fx-padding: -7;
 }
 
 .list-cell {
-    -fx-background-color: #2a2a2a;
+    -fx-background-color: transparent;
     -fx-text-fill: white;
-    -fx-border-color: #000000;
-    -fx-border-width: 0 0 2px 0;
-    -fx-padding: 10;
+    -fx-padding: 5;
 }
 
 .list-cell:filled:selected,
 .list-cell:filled:selected:hover {
-    -fx-background-color: #ccff00;
-    -fx-text-fill: #000000;
+    -fx-background-color: rgba(212, 175, 55, 0.2);
+    -fx-background-radius: 8;
 }
 
 .list-cell:even {
-    -fx-background-color: #333333;
+    -fx-background-color: transparent;
 }
 
-/* Scroll Bar */
-.scroll-bar:vertical .track,
-.scroll-bar:horizontal .track {
-    -fx-background-color: #1a1a1a;
-    -fx-border-color: transparent;
-    -fx-background-radius: 0;
+/* --- Scroll Bar --- */
+
+.scroll-bar:vertical,
+.scroll-bar:horizontal {
+    -fx-background-color: transparent;
 }
 
-.scroll-bar:vertical .thumb,
-.scroll-bar:horizontal .thumb {
-    -fx-background-color: #555555;
-    -fx-background-radius: 0;
-    -fx-border-color: #000000;
-    -fx-border-width: 1px;
+.scroll-bar .thumb {
+    -fx-background-color: rgba(255, 255, 255, 0.2);
+    -fx-background-radius: 10;
 }
 
-.scroll-bar:vertical .thumb:hover,
-.scroll-bar:horizontal .thumb:hover {
-    -fx-background-color: #ccff00;
+.scroll-bar .thumb:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.4);
 }
 
-/* Fonts */
+/* --- Fonts --- */
 @font-face {
     font-family: 'Poppins';
     src: url('/Font/Poppins/Poppins-Regular.ttf');
@@ -230,4 +247,64 @@
     font-family: 'Poppins';
     src: url('/Font/Poppins/Poppins-Bold.ttf');
     font-weight: bold;
+}
+
+/* --- Premium Loader --- */
+.premium-loader-container {
+    -fx-background-color: rgba(30, 30, 30, 0.8);
+    -fx-background-radius: 20;
+    -fx-padding: 30;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.5), 30, 0, 0, 15);
+}
+
+.premium-progress .progress-indicator {
+    -fx-progress-color: #D4AF37;
+}
+
+.premium-progress .indicator {
+    -fx-background-color: transparent;
+}
+
+.premium-progress .percentage {
+    -fx-fill: #D4AF37;
+    -fx-font-weight: bold;
+    -fx-font-size: 16px;
+}
+
+.loader-text {
+    -fx-text-fill: #B0B0B0;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-letter-spacing: 2px;
+}
+
+/* --- Accuracy Display --- */
+.accuracy-box-white,
+.accuracy-box-black {
+    -fx-background-color: rgba(255, 255, 255, 0.05);
+    -fx-background-radius: 12;
+    -fx-padding: 10 20;
+    -fx-min-width: 120;
+    -fx-border-color: rgba(255, 255, 255, 0.1);
+    -fx-border-radius: 12;
+}
+
+.accuracy-box-white {
+    -fx-border-color: rgba(255, 255, 255, 0.3);
+}
+
+.accuracy-box-black {
+    -fx-border-color: rgba(212, 175, 55, 0.3);
+}
+
+.accuracy-label-title {
+    -fx-text-fill: #888888;
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+}
+
+.accuracy-value {
+    -fx-text-fill: #D4AF37;
+    -fx-font-size: 24px;
+    -fx-font-weight: bold;
 }

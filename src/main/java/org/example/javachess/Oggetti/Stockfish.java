@@ -5,7 +5,7 @@ import com.github.bhlangonijr.chesslib.Side;
 import com.github.bhlangonijr.chesslib.Square;
 import com.github.bhlangonijr.chesslib.move.Move;
 import javafx.application.Platform;
-import javafx.scene.control.Label;
+
 import javafx.scene.paint.Color;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
@@ -24,21 +24,21 @@ public class Stockfish implements AutoCloseable {
     private BufferedReader reader;
     private OutputStreamWriter writer;
     private final String stockfishPath;
-    
+
     private final ExecutorService commandExecutor = Executors.newSingleThreadExecutor();
     private Thread readerThread;
-    
+
     private volatile boolean isAnalyzing = false;
     private final Object analysisLock = new Object();
-    
+
     // For synchronous requests
     private volatile CompletableFuture<AnalysisResult> syncEvaluationFuture;
     private volatile CompletableFuture<String> syncBestMoveFuture;
     private volatile List<AnalysisResult> currentMultiPVResults; // To accumulate multiPV for sync
-    
+
     // Callbacks for UI updates
     private volatile AnalysisUpdateCallback currentCallback;
-    
+
     private ChessMoveConverter chessMoveConverter = new ChessMoveConverter();
 
     public interface AnalysisUpdateCallback {
@@ -80,13 +80,13 @@ public class Stockfish implements AutoCloseable {
 
             // Initialize Engine Options
             sendCommand("uci");
-            
+
             int threads = ConfigManager.getIntProperty("stockfish.threads", 2);
             int hash = ConfigManager.getIntProperty("stockfish.hash", 32);
-            
+
             sendCommand("setoption name Threads value " + threads);
             sendCommand("setoption name Hash value " + hash);
-            sendCommand("isready"); 
+            sendCommand("isready");
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -128,9 +128,9 @@ public class Stockfish implements AutoCloseable {
         if (line.startsWith("bestmove")) {
             synchronized (analysisLock) {
                 isAnalyzing = false;
-                analysisLock.notifyAll(); 
+                analysisLock.notifyAll();
             }
-            
+
             // Handle Sync Best Move
             if (syncBestMoveFuture != null && !syncBestMoveFuture.isDone()) {
                 String[] parts = line.split(" ");
@@ -140,22 +140,23 @@ public class Stockfish implements AutoCloseable {
                     syncBestMoveFuture.complete(null);
                 }
             }
-            
+
             // Handle Sync Evaluation (Completion)
             if (syncEvaluationFuture != null && !syncEvaluationFuture.isDone()) {
                 if (currentMultiPVResults != null && !currentMultiPVResults.isEmpty()) {
                     syncEvaluationFuture.complete(currentMultiPVResults.get(0));
                 } else {
-                    syncEvaluationFuture.complete(new AnalysisResult(0.0, "", false));
+                    // If no info lines were received, it might be checkmate or draw
+                    syncEvaluationFuture.complete(new AnalysisResult(0.0, "", false, 0));
                 }
             }
-            
+
         } else if (line.startsWith("info")) {
             // Handle Sync Evaluation (Accumulation)
             if (syncEvaluationFuture != null && !syncEvaluationFuture.isDone()) {
                 parseSyncInfoLine(line);
             }
-            
+
             // Handle UI Callback - ONLY if not in sync mode
             if (isAnalyzing && currentCallback != null && !isSyncRunning) {
                 parseInfoLine(line);
@@ -167,36 +168,31 @@ public class Stockfish implements AutoCloseable {
 
     private String currentFenForAnalysis = "";
 
-    public void startAnalysis(String fen, int depth, int multiPV, 
-                              Label move1Label, Label move2Label, Label move3Label, 
-                              ChessBoardUI chessBoard, Label evaluationLabel, EvalBar evalBar, 
-                              boolean showArrows) {
-        
+    public void startAnalysis(String fen, int depth, int multiPV,
+            AnalysisUpdateCallback callback,
+            ChessBoardUI chessBoard, EvalBar evalBar,
+            boolean showArrows) {
+
         this.currentFenForAnalysis = fen;
-        
+
         // Define callback for UI updates
         currentCallback = (pv, bestMove, fullLine, score, moveEvaluations) -> {
+            // Pass data to the provided callback
+            if (callback != null) {
+                callback.onUpdate(pv, bestMove, fullLine, score, moveEvaluations);
+            }
+
+            // Handle internal logic (EvalBar, Arrows)
             Platform.runLater(() -> {
                 if (pv == 0) {
-                    String scoreText = moveEvaluations[0];
-                    evaluationLabel.setText(scoreText);
-                    
-                    if (scoreText.contains("#")) {
-                        if (scoreText.contains("-")) evalBar.updateEvaluation(-100.0);
-                        else evalBar.updateEvaluation(100.0);
-                    } else {
-                        evalBar.updateEvaluation(score);
-                    }
+                    // Update EvalBar
+                    evalBar.updateEvaluation(score);
 
                     if (showArrows) {
                         chessBoard.clearArrows();
                         drawArrowFromMove(bestMove, chessBoard, Color.rgb(156, 204, 101, 0.7));
                     }
                 }
-
-                if (pv == 0) move1Label.setText(fullLine);
-                if (pv == 1) move2Label.setText(fullLine);
-                if (pv == 2) move3Label.setText(fullLine);
             });
         };
 
@@ -212,7 +208,7 @@ public class Stockfish implements AutoCloseable {
                 sendCommand("setoption name MultiPV value " + multiPV);
                 sendCommand("position fen " + fen);
                 sendCommand("go depth " + depth);
-                
+
                 synchronized (analysisLock) {
                     isAnalyzing = true;
                 }
@@ -226,7 +222,7 @@ public class Stockfish implements AutoCloseable {
     public void stopCalculating() {
         commandExecutor.submit(this::stopAndSync);
     }
-    
+
     private void stopAndSync() {
         synchronized (analysisLock) {
             if (isAnalyzing) {
@@ -249,23 +245,61 @@ public class Stockfish implements AutoCloseable {
     }
 
     public String getBestMove(String fen) {
+        return getBestMove(fen, 10); // Default to depth 10 (old behavior)
+    }
+
+    public String getBestMove(String fen, int depth) {
         try {
             return commandExecutor.submit(() -> {
                 ensureEngineRunning();
                 stopAndSync();
-                
+
                 isSyncRunning = true;
                 try {
                     syncBestMoveFuture = new CompletableFuture<>();
                     sendCommand("position fen " + fen);
-                    sendCommand("go depth 10"); // Reduced depth for faster response on Pi
-                    
+                    sendCommand("go depth " + depth);
+
                     synchronized (analysisLock) {
                         isAnalyzing = true;
                     }
-                    
+
                     try {
-                        String move = syncBestMoveFuture.get(10, TimeUnit.SECONDS); // Increased timeout
+                        String move = syncBestMoveFuture.get(10, TimeUnit.SECONDS);
+                        syncBestMoveFuture = null;
+                        return move;
+                    } catch (Exception e) {
+                        return null;
+                    }
+                } finally {
+                    isSyncRunning = false;
+                }
+            }).get();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public String getBestMoveByTime(String fen, int movetime) {
+        try {
+            return commandExecutor.submit(() -> {
+                ensureEngineRunning();
+                stopAndSync();
+
+                isSyncRunning = true;
+                try {
+                    syncBestMoveFuture = new CompletableFuture<>();
+                    sendCommand("position fen " + fen);
+                    sendCommand("go movetime " + movetime);
+
+                    synchronized (analysisLock) {
+                        isAnalyzing = true;
+                    }
+
+                    try {
+                        String move = syncBestMoveFuture.get(movetime + 2000, TimeUnit.MILLISECONDS); // Add buffer for
+                                                                                                      // safety
                         syncBestMoveFuture = null;
                         return move;
                     } catch (Exception e) {
@@ -286,21 +320,21 @@ public class Stockfish implements AutoCloseable {
             return commandExecutor.submit(() -> {
                 ensureEngineRunning();
                 stopAndSync();
-                
+
                 isSyncRunning = true;
                 try {
                     syncEvaluationFuture = new CompletableFuture<>();
                     currentMultiPVResults = new ArrayList<>();
                     this.currentFenForAnalysis = fen; // Needed for parsing
-                    
+
                     sendCommand("setoption name MultiPV value 1");
                     sendCommand("position fen " + fen);
                     sendCommand("go depth " + depth);
-                    
+
                     synchronized (analysisLock) {
                         isAnalyzing = true;
                     }
-                    
+
                     try {
                         AnalysisResult result = syncEvaluationFuture.get(10, TimeUnit.SECONDS);
                         syncEvaluationFuture = null;
@@ -319,24 +353,30 @@ public class Stockfish implements AutoCloseable {
 
     // --- Highlighting Logic (Heavy) ---
 
-    public void highlightLegalMovesWithEvaluation(Board board, Square pieceSquare, ChessBoardUI chessBoard, double currentEvaluation) {
-        // This is a heavy operation. We should run it on the executor but it updates UI.
+    public void highlightLegalMovesWithEvaluation(Board board, Square pieceSquare, ChessBoardUI chessBoard,
+            double currentEvaluation) {
+        // This is a heavy operation. We should run it on the executor but it updates
+        // UI.
         // It calls 'go' many times.
         // We will run the loop in the executor.
-        
+
         commandExecutor.submit(() -> {
             Map<Square, Double> evaluations = evaluateMovesForPiece(board, pieceSquare, currentEvaluation);
-            
+
             Platform.runLater(() -> {
                 for (Map.Entry<Square, Double> entry : evaluations.entrySet()) {
                     Square toSquare = entry.getKey();
                     double evalDifference = entry.getValue();
 
                     Color color;
-                    if (evalDifference >= -0.5) color = Color.GREEN;
-                    else if (evalDifference < -0.5 && evalDifference > -1) color = Color.YELLOW;
-                    else if (evalDifference <= -1.0 && evalDifference > -1.5) color = Color.ORANGE;
-                    else color = Color.RED;
+                    if (evalDifference >= -0.5)
+                        color = Color.GREEN;
+                    else if (evalDifference < -0.5 && evalDifference > -1)
+                        color = Color.YELLOW;
+                    else if (evalDifference <= -1.0 && evalDifference > -1.5)
+                        color = Color.ORANGE;
+                    else
+                        color = Color.RED;
 
                     int col = toSquare.ordinal() % 8;
                     int row = 7 - (toSquare.ordinal() / 8);
@@ -348,7 +388,14 @@ public class Stockfish implements AutoCloseable {
 
     public Map<Square, Double> evaluateMovesForPiece(Board board, Square pieceSquare, double currentEvaluation) {
         Map<Square, Double> moveEvaluations = new HashMap<>();
-        org.example.javachess.Oggetti.ChessHelper chessHelper = new org.example.javachess.Oggetti.ChessHelper(); // Full path to avoid import issues if any
+        org.example.javachess.Oggetti.ChessHelper chessHelper = new org.example.javachess.Oggetti.ChessHelper(); // Full
+                                                                                                                 // path
+                                                                                                                 // to
+                                                                                                                 // avoid
+                                                                                                                 // import
+                                                                                                                 // issues
+                                                                                                                 // if
+                                                                                                                 // any
 
         try {
             List<Square> legalMoves = chessHelper.getLegalMovesForPiece(board, pieceSquare);
@@ -360,48 +407,37 @@ public class Stockfish implements AutoCloseable {
                 Move move = new Move(pieceSquare, toSquare);
                 tempBoard.doMove(move);
 
-                // Synchronous analysis for this move
-                // We are already inside commandExecutor (if called from highlight...), 
-                // BUT evaluateMovesForPiece might be called from elsewhere.
-                // If called from inside commandExecutor, we can't submit to it again (deadlock if not careful, but single thread executor queues).
-                // Wait, SingleThreadExecutor: if we submit a task that submits a task and waits for it -> DEADLOCK.
-                // We must NOT submit to commandExecutor here if we are already in it.
-                // But we are rewriting this class. We can just run the commands directly here since we are likely in the thread.
-                // To be safe, we should assume we are in the thread or we are blocking it.
-                
-                // Let's just run the commands directly.
-                ensureEngineRunning();
-                // We don't need stopAndSync because we are sequential here.
-                
-                isSyncRunning = true;
-                try {
-                    syncEvaluationFuture = new CompletableFuture<>();
-                    currentMultiPVResults = new ArrayList<>();
-                    this.currentFenForAnalysis = tempBoard.getFen();
-                    
-                    sendCommand("setoption name MultiPV value 1");
-                    sendCommand("position fen " + tempBoard.getFen());
-                    sendCommand("go depth 8"); // Low depth for speed
-                    
-                    // We need to wait for bestmove
-                    // We can't use future.get() if we are the one reading? 
-                    // No, readerThread is separate. So we CAN use future.get().
-                    
+                double newEvaluation;
+                if (tempBoard.isMated()) {
+                    newEvaluation = isWhiteToMove ? 1000.0 : -1000.0;
+                } else if (tempBoard.isDraw()) {
+                    newEvaluation = 0.0;
+                } else {
+                    ensureEngineRunning();
+                    isSyncRunning = true;
                     try {
-                        AnalysisResult result = syncEvaluationFuture.get(2, TimeUnit.SECONDS);
-                        double evaluation = result.score;
-                        if (isWhiteToMove) evaluation = -evaluation;
-                        
-                        double diff = calculateEvaluationDifference(currentEvaluation, evaluation, isWhiteToMove);
-                        moveEvaluations.put(toSquare, diff);
-                        
-                    } catch (Exception e) {
-                        // Timeout or error
+                        syncEvaluationFuture = new CompletableFuture<>();
+                        currentMultiPVResults = new ArrayList<>();
+                        this.currentFenForAnalysis = tempBoard.getFen();
+
+                        sendCommand("setoption name MultiPV value 1");
+                        sendCommand("position fen " + tempBoard.getFen());
+                        sendCommand("go depth 8"); // Low depth for speed
+
+                        try {
+                            AnalysisResult result = syncEvaluationFuture.get(2, TimeUnit.SECONDS);
+                            newEvaluation = result.score;
+                        } catch (Exception e) {
+                            newEvaluation = currentEvaluation; // Fallback
+                        }
+                        syncEvaluationFuture = null;
+                    } finally {
+                        isSyncRunning = false;
                     }
-                    syncEvaluationFuture = null;
-                } finally {
-                    isSyncRunning = false;
                 }
+
+                double diff = calculateEvaluationDifference(currentEvaluation, newEvaluation, isWhiteToMove);
+                moveEvaluations.put(toSquare, diff);
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -416,45 +452,46 @@ public class Stockfish implements AutoCloseable {
         String fen = currentFenForAnalysis;
         String[] parts = line.split(" ");
         int multiPVIndex = Arrays.asList(parts).indexOf("multipv");
-        
+
         if (multiPVIndex != -1) {
             int pv = Integer.parseInt(parts[multiPVIndex + 1]) - 1;
             int pvIndex = Arrays.asList(parts).indexOf("pv");
             int scoreIndex = Arrays.asList(parts).indexOf("score");
-            
+
             if (pvIndex != -1 && scoreIndex != -1) {
                 double adjustedScore = calculateAdjustedScore(parts, scoreIndex, fen);
                 String moveEvaluation = formatMoveEvaluation(parts, scoreIndex, adjustedScore);
                 int moveIndex = pvIndex + 1;
                 String bestMove = parts[moveIndex];
                 String fullLine = buildFullLine(moveIndex, parts, fen, moveEvaluation);
-                
-                String[] evals = new String[3]; 
+
+                String[] evals = new String[3];
                 evals[0] = moveEvaluation; // Simplified
-                
+
                 if (currentCallback != null) {
                     currentCallback.onUpdate(pv, bestMove, fullLine, adjustedScore, evals);
                 }
             }
         }
     }
-    
+
     private void parseSyncInfoLine(String line) {
         String fen = currentFenForAnalysis;
         String[] parts = line.split(" ");
         int scoreIndex = Arrays.asList(parts).indexOf("score");
         int pvIndex = Arrays.asList(parts).indexOf("pv");
-        
+
         if (scoreIndex != -1 && pvIndex != -1) {
             double adjustedScore = calculateAdjustedScore(parts, scoreIndex, fen);
             String bestMove = parts[pvIndex + 1];
             boolean isMate = parts[scoreIndex + 1].equals("mate");
-            
+            int mateIn = isMate ? Integer.parseInt(parts[scoreIndex + 2]) : 0;
+
             // Update current results (always index 0 for sync)
             if (currentMultiPVResults.isEmpty()) {
-                currentMultiPVResults.add(new AnalysisResult(adjustedScore, bestMove, isMate));
+                currentMultiPVResults.add(new AnalysisResult(adjustedScore, bestMove, isMate, mateIn));
             } else {
-                currentMultiPVResults.set(0, new AnalysisResult(adjustedScore, bestMove, isMate));
+                currentMultiPVResults.set(0, new AnalysisResult(adjustedScore, bestMove, isMate, mateIn));
             }
         }
     }
@@ -469,15 +506,29 @@ public class Stockfish implements AutoCloseable {
             return sideToMove.equals("b") ? -score : score;
         } else if (scoreType.equals("mate")) {
             int mateIn = Integer.parseInt(parts[scoreIndex + 2]);
-            if (mateIn == 0) return sideToMove.equals("w") ? -10000.0 : 10000.0;
-            return sideToMove.equals("w") ? mateIn : -mateIn;
+            double mateScore;
+            if (mateIn > 0) {
+                // Side to move mates in X. Better if X is smaller.
+                mateScore = 1000.0 - mateIn;
+            } else if (mateIn < 0) {
+                // Side to move is mated in X. Worse if X is smaller.
+                mateScore = -1000.0 - mateIn; // e.g. mateIn = -1 -> -999.0
+            } else {
+                // Checkmate (mate 0)
+                mateScore = -1000.0;
+            }
+            return sideToMove.equals("w") ? mateScore : -mateScore;
         }
         return 0.0;
     }
-    
-    private double calculateEvaluationDifference(double currentEvaluation, double newEvaluation, boolean isWhiteToMove) {
-        double difference = newEvaluation - currentEvaluation;
-        return difference <= 0 ? difference : -difference;
+
+    private double calculateEvaluationDifference(double currentEvaluation, double newEvaluation,
+            boolean isWhiteToMove) {
+        if (isWhiteToMove) {
+            return newEvaluation - currentEvaluation;
+        } else {
+            return currentEvaluation - newEvaluation;
+        }
     }
 
     private String formatMoveEvaluation(String[] parts, int scoreIndex, double adjustedScore) {
@@ -485,8 +536,13 @@ public class Stockfish implements AutoCloseable {
         if (scoreType.equals("cp")) {
             return String.format("%.2f", adjustedScore);
         } else if (scoreType.equals("mate")) {
-            int mateIn = (int) Math.abs(adjustedScore);
-            return adjustedScore > 0 ? "#" + mateIn : "#-" + mateIn;
+            if (adjustedScore > 900) {
+                int mateIn = (int) (1000 - adjustedScore);
+                return "M" + mateIn;
+            } else if (adjustedScore < -900) {
+                int mateIn = (int) (1000 + adjustedScore);
+                return "-M" + mateIn;
+            }
         }
         return "N/A";
     }
@@ -494,21 +550,23 @@ public class Stockfish implements AutoCloseable {
     private String buildFullLine(int moveIndex, String[] parts, String fen, String moveEvaluation) {
         StringBuilder fullLine = new StringBuilder();
         fullLine.append("[").append(moveEvaluation).append("] ");
-        int moveNumber = 1; 
-        boolean isWhiteMove = fen.contains(" w "); 
+        int moveNumber = 1;
+        boolean isWhiteMove = fen.contains(" w ");
 
         Board board = new Board();
         board.loadFromFen(fen);
         try {
             moveNumber = Integer.parseInt(fen.split(" ")[5]);
-        } catch (Exception e) {}
+        } catch (Exception e) {
+        }
 
         for (int i = moveIndex; i < parts.length; i++) {
             if (isWhiteMove) {
                 fullLine.append(moveNumber).append(")");
                 moveNumber++;
             } else {
-                if (i == moveIndex) fullLine.append(moveNumber).append(")..."); 
+                if (i == moveIndex)
+                    fullLine.append(moveNumber).append(")...");
             }
 
             String uciMove = parts[i];
@@ -523,22 +581,31 @@ public class Stockfish implements AutoCloseable {
                 break;
             }
 
-            if (!isWhiteMove) moveNumber++; 
+            if (!isWhiteMove)
+                moveNumber++;
             isWhiteMove = !isWhiteMove;
         }
         return fullLine.toString().trim();
     }
-    
+
     // --- API Methods ---
     public String getOpeningName(String fen) {
         try {
-            HttpResponse<String> response = Unirest.get("https://explorer.lichess.ovh/masters?variant=standard&fen=" + fen).asString();
-            if (response.getStatus() != 200) return "Unknown Opening";
+            String apiKey = ConfigManager.getProperty("lichess.token", "");
+            var request = Unirest.get("https://explorer.lichess.ovh/masters?variant=standard&fen=" + fen);
+            if (!apiKey.isEmpty()) {
+                request.header("Authorization", "Bearer " + apiKey);
+            }
+            HttpResponse<String> response = request.asString();
+            if (response.getStatus() != 200)
+                return "Unknown Opening";
             String body = response.getBody();
-            if (body == null || !body.trim().startsWith("{")) return "Unknown Opening";
+            if (body == null || !body.trim().startsWith("{"))
+                return "Unknown Opening";
             JSONObject jsonResponse = new JSONObject(body);
             if (jsonResponse.has("opening") && !jsonResponse.isNull("opening")) {
-                return jsonResponse.getJSONObject("opening").getString("eco") + " " + jsonResponse.getJSONObject("opening").getString("name");
+                return jsonResponse.getJSONObject("opening").getString("eco") + " "
+                        + jsonResponse.getJSONObject("opening").getString("name");
             }
             return "Unknown Opening";
         } catch (Exception e) {
@@ -548,15 +615,23 @@ public class Stockfish implements AutoCloseable {
 
     public boolean isBookMove(String fen, String moveUci) {
         try {
-            HttpResponse<String> response = Unirest.get("https://explorer.lichess.ovh/masters?variant=standard&fen=" + fen).asString();
-            if (response.getStatus() != 200) return false;
+            String apiKey = ConfigManager.getProperty("lichess.token", "");
+            var request = Unirest.get("https://explorer.lichess.ovh/masters?variant=standard&fen=" + fen);
+            if (!apiKey.isEmpty()) {
+                request.header("Authorization", "Bearer " + apiKey);
+            }
+            HttpResponse<String> response = request.asString();
+            if (response.getStatus() != 200)
+                return false;
             String body = response.getBody();
-            if (body == null || !body.trim().startsWith("{")) return false;
+            if (body == null || !body.trim().startsWith("{"))
+                return false;
             JSONObject jsonResponse = new JSONObject(body);
             if (jsonResponse.has("moves")) {
                 JSONArray moves = jsonResponse.getJSONArray("moves");
                 for (int i = 0; i < moves.length(); i++) {
-                    if (moves.getJSONObject(i).getString("uci").equals(moveUci)) return true;
+                    if (moves.getJSONObject(i).getString("uci").equals(moveUci))
+                        return true;
                 }
             }
             return false;
@@ -567,7 +642,8 @@ public class Stockfish implements AutoCloseable {
 
     // --- Helper Methods ---
     private void drawArrowFromMove(String moveInUci, ChessBoardUI chessBoard, Color color) {
-        if (moveInUci == null || moveInUci.length() < 4) return;
+        if (moveInUci == null || moveInUci.length() < 4)
+            return;
         int fromCol = moveInUci.charAt(0) - 'a';
         int fromRow = '8' - moveInUci.charAt(1);
         int toCol = moveInUci.charAt(2) - 'a';
@@ -578,6 +654,7 @@ public class Stockfish implements AutoCloseable {
     @Override
     public void close() {
         commandExecutor.shutdownNow();
-        if (process != null) process.destroy();
+        if (process != null)
+            process.destroy();
     }
 }

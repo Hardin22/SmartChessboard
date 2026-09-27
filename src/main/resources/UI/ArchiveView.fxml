@@ -7,29 +7,32 @@
 <?import javafx.scene.image.Image?>
 <?import javafx.scene.image.ImageView?>
 <?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
 
-<VBox fx:id="archiveView" alignment="TOP_CENTER" spacing="20" style="-fx-background-color: #1a1a1a;" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.ArchiveController">
-    <padding>
-        <Insets top="20" bottom="20" left="20" right="20"/>
-    </padding>
+<StackPane fx:id="rootPane" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.ArchiveController" style="-fx-background-color: transparent;">
+    
+    <VBox alignment="TOP_CENTER" spacing="30" style="-fx-background-color: transparent;" pickOnBounds="false" StackPane.alignment="TOP_CENTER" maxHeight="Infinity">
+        <padding>
+            <Insets top="80" bottom="0" left="20" right="20"/>
+        </padding>
 
-    <!-- Top Bar -->
-    <HBox alignment="CENTER_LEFT" spacing="20">
-        <Button onAction="#backToHome" styleClass="neo-button-secondary" prefHeight="50" prefWidth="50">
-            <graphic>
-                <ImageView fitHeight="30" fitWidth="30" preserveRatio="true">
-                    <image>
-                        <Image url="@/images/icon_back.png"/>
-                    </image>
-                </ImageView>
-            </graphic>
-        </Button>
-        <Label text="ARCHIVIO" styleClass="neo-label-large" maxWidth="Infinity" HBox.hgrow="ALWAYS" alignment="CENTER"/>
-        <HBox prefWidth="50" /> <!-- Spacer -->
-    </HBox>
+        <!-- Header -->
+        <Label text="Archivio Partite" styleClass="header-label" style="-fx-font-size: 42px;"/>
 
-    <!-- Archive List -->
-    <ListView fx:id="archiveListView" VBox.vgrow="ALWAYS" styleClass="list-view"/>
+        <!-- Archive List Container -->
+        <VBox alignment="TOP_CENTER" VBox.vgrow="ALWAYS" maxWidth="Infinity" maxHeight="Infinity" style="-fx-padding: 0 20 0 20;">
+             <ListView fx:id="archiveListView" VBox.vgrow="ALWAYS" maxHeight="Infinity" styleClass="list-view" style="-fx-background-color: transparent;"/>
+        </VBox>
+    </VBox>
 
-</VBox>
+    <!-- Back Button (Global - Moved to end to be on top) -->
+    <Button onAction="#backToHome" styleClass="icon-button" prefHeight="70" prefWidth="70" StackPane.alignment="TOP_LEFT">
+         <graphic>
+            <org.kordamp.ikonli.javafx.FontIcon iconLiteral="mdal-arrow_back" iconSize="32" iconColor="#E0E0E0"/>
+         </graphic>
+         <StackPane.margin>
+            <javafx.geometry.Insets left="20.0" top="20.0" />
+         </StackPane.margin>
+    </Button>
+</StackPane>

@@ -10,20 +10,27 @@ public class MoveAnalysis {
     private final double cpl; // Centipawn loss
     private final int toSquareIndex; // 0-63 index of destination square
     private final boolean isMate;
+    private final double accuracy;
+    private final double winProbability;
+    private final double bestWp;
 
     public enum MoveClassification {
-        BEST,
+        BRILLIANT,
         GREAT,
+        BEST,
         EXCELLENT,
         GOOD,
+        BOOK_MOVE,
         INACCURACY,
-        MISSED_WIN,
+        MISS,
         MISTAKE,
         BLUNDER,
-        BOOK_MOVE
+        FORCED
     }
 
-    public MoveAnalysis(int moveNumber, String move, String fen, double score, String bestMove, MoveClassification classification, double cpl, int toSquareIndex, boolean isMate) {
+    public MoveAnalysis(int moveNumber, String move, String fen, double score, String bestMove,
+            MoveClassification classification, double cpl, int toSquareIndex, boolean isMate, double accuracy,
+            double winProbability, double bestWp) {
         this.moveNumber = moveNumber;
         this.move = move;
         this.fen = fen;
@@ -33,15 +40,56 @@ public class MoveAnalysis {
         this.cpl = cpl;
         this.toSquareIndex = toSquareIndex;
         this.isMate = isMate;
+        this.accuracy = accuracy;
+        this.winProbability = winProbability;
+        this.bestWp = bestWp;
     }
 
-    public int getMoveNumber() { return moveNumber; }
-    public String getMove() { return move; }
-    public String getFen() { return fen; }
-    public double getScore() { return score; }
-    public String getBestMove() { return bestMove; }
-    public MoveClassification getClassification() { return classification; }
-    public double getCpl() { return cpl; }
-    public int getToSquareIndex() { return toSquareIndex; }
-    public boolean isMate() { return isMate; }
+    public int getMoveNumber() {
+        return moveNumber;
+    }
+
+    public String getMove() {
+        return move;
+    }
+
+    public String getFen() {
+        return fen;
+    }
+
+    public double getScore() {
+        return score;
+    }
+
+    public String getBestMove() {
+        return bestMove;
+    }
+
+    public MoveClassification getClassification() {
+        return classification;
+    }
+
+    public double getCpl() {
+        return cpl;
+    }
+
+    public int getToSquareIndex() {
+        return toSquareIndex;
+    }
+
+    public boolean isMate() {
+        return isMate;
+    }
+
+    public double getAccuracy() {
+        return accuracy;
+    }
+
+    public double getWinProbability() {
+        return winProbability;
+    }
+
+    public double getBestWp() {
+        return bestWp;
+    }
 }

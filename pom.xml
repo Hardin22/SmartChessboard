@@ -23,6 +23,11 @@
             <id>central</id>
             <url>https://repo.maven.apache.org/maven2</url>
         </repository>
+
+        <repository>
+            <id>jogamp</id>
+            <url>https://www.jogamp.org/deployment/maven</url>
+        </repository>
     </repositories>
 
     <dependencies>
@@ -34,30 +39,41 @@
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-controls</artifactId>
-            <version>21</version>
+            <version>21.0.1</version>
         </dependency>
 
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-fxml</artifactId>
-            <version>21</version>
+            <version>21.0.1</version>
         </dependency>
         <dependency>
             <groupId>org.kordamp.ikonli</groupId>
             <artifactId>ikonli-javafx</artifactId>
             <version>12.3.1</version>
         </dependency>
-
-
         <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-web</artifactId>
-            <version>22.0.2</version>
+            <groupId>org.kordamp.ikonli</groupId>
+            <artifactId>ikonli-material2-pack</artifactId>
+            <version>12.3.1</version>
         </dependency>
+        <dependency>
+            <groupId>org.kordamp.ikonli</groupId>
+            <artifactId>ikonli-fontawesome5-pack</artifactId>
+            <version>12.3.1</version>
+        </dependency>
+
+
+
         <dependency>
             <groupId>org.json</groupId>
             <artifactId>json</artifactId>
             <version>20220924</version>
+        </dependency>
+        <dependency>
+            <groupId>me.friwi</groupId>
+            <artifactId>jcefmaven</artifactId>
+            <version>127.3.1</version>
         </dependency>
         <dependency>
             <groupId>org.apache.maven.plugins</groupId>
@@ -92,8 +108,15 @@
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-graphics</artifactId>
-            <version>21</version>
+            <version>21.0.1</version>
         </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-swing</artifactId>
+            <version>21.0.1</version>
+        </dependency>
+        
+        <!-- JOGL Removed: Incompatible with macOS ARM64 and not needed for Windowed Mode -->
 
         <dependency>
             <groupId>com.github.kurbatov</groupId>
@@ -125,6 +148,18 @@
             <artifactId>slf4j-simple</artifactId>
             <version>2.0.9</version>
         </dependency>
+
+        <!-- Computer Vision & AI Dependencies -->
+        <dependency>
+            <groupId>org.openpnp</groupId>
+            <artifactId>opencv</artifactId>
+            <version>4.9.0-0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.microsoft.onnxruntime</groupId>
+            <artifactId>onnxruntime</artifactId>
+            <version>1.23.0</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -154,6 +189,22 @@
                             <noManPages>true</noManPages>
                             <stripDebug>true</stripDebug>
                             <noHeaderFiles>true</noHeaderFiles>
+                            <options>
+                                <option>--add-exports</option>
+                                <option>java.desktop/sun.awt=ALL-UNNAMED</option>
+                                <option>--add-exports</option>
+                                <option>java.desktop/sun.lwawt=ALL-UNNAMED</option>
+                                <option>--add-exports</option>
+                                <option>java.desktop/sun.lwawt.macosx=ALL-UNNAMED</option>
+                                <option>--add-opens</option>
+                                <option>java.desktop/sun.awt=ALL-UNNAMED</option>
+                                <option>--add-opens</option>
+                                <option>java.desktop/sun.lwawt=ALL-UNNAMED</option>
+                                <option>--add-opens</option>
+                                <option>java.desktop/sun.lwawt.macosx=ALL-UNNAMED</option>
+                                <option>--add-exports</option>
+                                <option>javafx.web/com.sun.javafx.webkit=ALL-UNNAMED</option>
+                            </options>
                         </configuration>
                     </execution>
                 </executions>
@@ -174,6 +225,7 @@
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>org.example.javachess.Application.Main</mainClass>
                                 </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                             </transformers>
                         </configuration>
                     </execution>

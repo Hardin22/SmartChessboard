@@ -8,29 +8,40 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 
-<BorderPane fx:id="pvpSetup" prefHeight="1183.0" prefWidth="611.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.GameSetupController">
+<BorderPane fx:id="pvpSetup" prefHeight="1183.0" prefWidth="611.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.GameSetupController" style="-fx-background-color: transparent;">
    <top>
-      <Button mnemonicParsing="false" onAction="#backToHome" prefHeight="54.0" prefWidth="135.0" styleClass="indietro" text="indietro">
+      <Button onAction="#backToHome" styleClass="icon-button" prefHeight="50" prefWidth="50">
+         <graphic>
+            <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-arrow-left" iconSize="28" iconColor="#E0E0E0"/>
+         </graphic>
          <BorderPane.margin>
             <Insets left="20.0" top="20.0" />
          </BorderPane.margin>
       </Button>
    </top>
    <center>
-      <VBox alignment="CENTER" spacing="40.0">
+      <VBox alignment="CENTER" spacing="50.0" maxWidth="500">
          <children>
-            <Label styleClass="Headers" text="Player vs Player">
-               <font>
-                  <Font size="59.0" />
-               </font>
-            </Label>
-            <Label fx:id="durataLabel" text="durata: 10min" />
-            <Slider fx:id="durataSlider" max="60" maxWidth="500.0" min="1" prefHeight="20.0" prefWidth="709.0" value="10" />
-            <Label fx:id="incrementoLabel" text="incremento: 0s" />
-            <Slider fx:id="incrementoSlider" max="30" maxWidth="500.0" min="0" prefHeight="20.0" prefWidth="400.0" value="0" />
-            <Button mnemonicParsing="false" onAction="#startGamePvP" prefHeight="96.0" prefWidth="243.0" text="Inizia">
+            <Label styleClass="header-label" text="Player vs Player" style="-fx-font-size: 48px;"/>
+            
+            <VBox spacing="20" styleClass="glass-card" alignment="CENTER">
+                <Label fx:id="durataLabel" text="Durata: 10min" styleClass="sub-header-label"/>
+                <Slider fx:id="durataSlider" max="60" min="1" value="10" maxWidth="400"/>
+                
+                <Label fx:id="incrementoLabel" text="Incremento: 0s" styleClass="sub-header-label">
+                    <VBox.margin>
+                        <Insets top="20"/>
+                    </VBox.margin>
+                </Label>
+                <Slider fx:id="incrementoSlider" max="30" min="0" value="0" maxWidth="400"/>
+            </VBox>
+
+            <Button onAction="#startGamePvP" text="INIZIA PARTITA" styleClass="elegant-button" prefHeight="60" prefWidth="250" style="-fx-font-size: 20px;">
+               <graphic>
+                  <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-play" iconSize="28" iconColor="#121212"/>
+               </graphic>
                <VBox.margin>
-                  <Insets bottom="200.0" />
+                  <Insets bottom="50.0" />
                </VBox.margin>
             </Button>
          </children>

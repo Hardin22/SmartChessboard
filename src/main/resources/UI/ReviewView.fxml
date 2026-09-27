@@ -10,7 +10,7 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 
-<StackPane fx:id="reviewView" prefHeight="983.0" prefWidth="607.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.ReviewController" style="-fx-background-color: #1a1a1a;">
+<StackPane fx:id="reviewView" prefHeight="983.0" prefWidth="607.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.ReviewController" style="-fx-background-color: transparent;">
     
     <!-- Layer 1: Main Review UI -->
     <VBox alignment="CENTER" spacing="20">
@@ -20,72 +20,174 @@
 
         <!-- Top Bar -->
         <HBox alignment="CENTER_LEFT" spacing="20">
-            <Button onAction="#backToArchive" styleClass="neo-button-secondary" prefHeight="50" prefWidth="50">
+            <Button onAction="#backToArchive" styleClass="icon-button" prefHeight="50" prefWidth="50">
                 <graphic>
-                    <ImageView fitHeight="30" fitWidth="30" preserveRatio="true">
-                        <image>
-                            <Image url="@/images/icon_back.png"/>
-                        </image>
-                    </ImageView>
+                    <org.kordamp.ikonli.javafx.FontIcon iconLiteral="mdal-arrow_back" iconSize="28" iconColor="#E0E0E0"/>
                 </graphic>
             </Button>
-            <Label fx:id="openingReview" styleClass="neo-label-small" text="Opening Name" maxWidth="Infinity" HBox.hgrow="ALWAYS" alignment="CENTER"/>
-            <Button fx:id="analyzeButton" text="ANALIZZA" onAction="#startFullAnalysis" styleClass="neo-button" prefHeight="50"/>
+            <Label fx:id="openingReview" styleClass="sub-header-label" text="Opening Name" maxWidth="Infinity" HBox.hgrow="ALWAYS" alignment="CENTER"/>
+            <Button fx:id="analyzeButton" text="ANALIZZA" onAction="#startFullAnalysis" styleClass="elegant-button" prefHeight="50"/>
         </HBox>
 
         <!-- Board Container -->
-        <HBox fx:id="reviewHbox" alignment="CENTER" prefHeight="400.0" prefWidth="400.0" styleClass="neo-panel">
+        <HBox fx:id="reviewHbox" alignment="CENTER" prefHeight="400.0" prefWidth="400.0" style="-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 20, 0, 0, 10);">
             <!-- Board and EvalBar added dynamically -->
         </HBox>
 
         <!-- Evaluation Graph Container -->
-        <VBox fx:id="graphContainer" prefHeight="150" prefWidth="600" styleClass="neo-panel" visible="false" managed="false">
+        <VBox fx:id="graphContainer" prefHeight="150" prefWidth="600" styleClass="glass-card" visible="false" managed="false">
             <!-- Graph added dynamically -->
+        </VBox>
+
+        <!-- Accuracy & Breakdown Wrapper -->
+        <VBox fx:id="accuracyWrapper" alignment="CENTER" spacing="5" visible="false" managed="false">
+            <!-- Accuracy Display -->
+            <HBox fx:id="accuracyContainer" spacing="30" alignment="CENTER">
+                <VBox alignment="CENTER" spacing="5" styleClass="accuracy-box-white">
+                    <Label text="BIANCO" styleClass="accuracy-label-title"/>
+                    <Label fx:id="whiteAccuracyLabel" styleClass="accuracy-value"/>
+                </VBox>
+                <VBox alignment="CENTER" spacing="5" styleClass="accuracy-box-black">
+                    <Label text="NERO" styleClass="accuracy-label-title"/>
+                    <Label fx:id="blackAccuracyLabel" styleClass="accuracy-value"/>
+                </VBox>
+            </HBox>
+
+            <!-- Toggle Button -->
+            <Button fx:id="toggleBreakdownButton" onAction="#toggleBreakdown" styleClass="icon-button-small" style="-fx-background-color: transparent;">
+                <graphic>
+                    <org.kordamp.ikonli.javafx.FontIcon fx:id="breakdownIcon" iconLiteral="mdal-keyboard_arrow_down" iconSize="24" iconColor="#888888"/>
+                </graphic>
+            </Button>
+
+            <!-- Breakdown Container -->
+            <VBox fx:id="breakdownStatsContainer" visible="false" managed="false" spacing="8" styleClass="breakdown-container" maxWidth="400">
+                <padding>
+                    <Insets top="10" bottom="10" left="20" right="20"/>
+                </padding>
+                
+                <!-- Brilliant -->
+                <HBox alignment="CENTER" spacing="20">
+                    <Label fx:id="wBrilliant" text="0" styleClass="breakdown-count-white" prefWidth="30" alignment="CENTER_RIGHT"/>
+                    <ImageView fitHeight="24" fitWidth="24" preserveRatio="true">
+                        <Image url="@../images/analysis/brilliant.png"/>
+                    </ImageView>
+                    <Label fx:id="bBrilliant" text="0" styleClass="breakdown-count-black" prefWidth="30" alignment="CENTER_LEFT"/>
+                </HBox>
+
+                <!-- Great -->
+                <HBox alignment="CENTER" spacing="20">
+                    <Label fx:id="wGreat" text="0" styleClass="breakdown-count-white" prefWidth="30" alignment="CENTER_RIGHT"/>
+                    <ImageView fitHeight="24" fitWidth="24" preserveRatio="true">
+                        <Image url="@../images/analysis/great.png"/>
+                    </ImageView>
+                    <Label fx:id="bGreat" text="0" styleClass="breakdown-count-black" prefWidth="30" alignment="CENTER_LEFT"/>
+                </HBox>
+
+                <!-- Book -->
+                <HBox alignment="CENTER" spacing="20">
+                    <Label fx:id="wBook" text="0" styleClass="breakdown-count-white" prefWidth="30" alignment="CENTER_RIGHT"/>
+                    <ImageView fitHeight="24" fitWidth="24" preserveRatio="true">
+                        <Image url="@../images/analysis/book.png"/>
+                    </ImageView>
+                    <Label fx:id="bBook" text="0" styleClass="breakdown-count-black" prefWidth="30" alignment="CENTER_LEFT"/>
+                </HBox>
+
+                <!-- Best -->
+                <HBox alignment="CENTER" spacing="20">
+                    <Label fx:id="wBest" text="0" styleClass="breakdown-count-white" prefWidth="30" alignment="CENTER_RIGHT"/>
+                    <ImageView fitHeight="24" fitWidth="24" preserveRatio="true">
+                        <Image url="@../images/analysis/best.png"/>
+                    </ImageView>
+                    <Label fx:id="bBest" text="0" styleClass="breakdown-count-black" prefWidth="30" alignment="CENTER_LEFT"/>
+                </HBox>
+
+                <!-- Excellent -->
+                <HBox alignment="CENTER" spacing="20">
+                    <Label fx:id="wExcellent" text="0" styleClass="breakdown-count-white" prefWidth="30" alignment="CENTER_RIGHT"/>
+                    <ImageView fitHeight="24" fitWidth="24" preserveRatio="true">
+                        <Image url="@../images/analysis/excellent.png"/>
+                    </ImageView>
+                    <Label fx:id="bExcellent" text="0" styleClass="breakdown-count-black" prefWidth="30" alignment="CENTER_LEFT"/>
+                </HBox>
+
+                <!-- Good -->
+                <HBox alignment="CENTER" spacing="20">
+                    <Label fx:id="wGood" text="0" styleClass="breakdown-count-white" prefWidth="30" alignment="CENTER_RIGHT"/>
+                    <ImageView fitHeight="24" fitWidth="24" preserveRatio="true">
+                        <Image url="@../images/analysis/good.png"/>
+                    </ImageView>
+                    <Label fx:id="bGood" text="0" styleClass="breakdown-count-black" prefWidth="30" alignment="CENTER_LEFT"/>
+                </HBox>
+
+                <!-- Inaccuracy -->
+                <HBox alignment="CENTER" spacing="20">
+                    <Label fx:id="wInaccuracy" text="0" styleClass="breakdown-count-white" prefWidth="30" alignment="CENTER_RIGHT"/>
+                    <ImageView fitHeight="24" fitWidth="24" preserveRatio="true">
+                        <Image url="@../images/analysis/inaccuracy.png"/>
+                    </ImageView>
+                    <Label fx:id="bInaccuracy" text="0" styleClass="breakdown-count-black" prefWidth="30" alignment="CENTER_LEFT"/>
+                </HBox>
+
+                <!-- Mistake -->
+                <HBox alignment="CENTER" spacing="20">
+                    <Label fx:id="wMistake" text="0" styleClass="breakdown-count-white" prefWidth="30" alignment="CENTER_RIGHT"/>
+                    <ImageView fitHeight="24" fitWidth="24" preserveRatio="true">
+                        <Image url="@../images/analysis/mistake.png"/>
+                    </ImageView>
+                    <Label fx:id="bMistake" text="0" styleClass="breakdown-count-black" prefWidth="30" alignment="CENTER_LEFT"/>
+                </HBox>
+
+                <!-- Miss -->
+                <HBox alignment="CENTER" spacing="20">
+                    <Label fx:id="wMiss" text="0" styleClass="breakdown-count-white" prefWidth="30" alignment="CENTER_RIGHT"/>
+                    <ImageView fitHeight="24" fitWidth="24" preserveRatio="true">
+                        <Image url="@../images/analysis/missed_win.png"/>
+                    </ImageView>
+                    <Label fx:id="bMiss" text="0" styleClass="breakdown-count-black" prefWidth="30" alignment="CENTER_LEFT"/>
+                </HBox>
+
+                <!-- Blunder -->
+                <HBox alignment="CENTER" spacing="20">
+                    <Label fx:id="wBlunder" text="0" styleClass="breakdown-count-white" prefWidth="30" alignment="CENTER_RIGHT"/>
+                    <ImageView fitHeight="24" fitWidth="24" preserveRatio="true">
+                        <Image url="@../images/analysis/blunder.png"/>
+                    </ImageView>
+                    <Label fx:id="bBlunder" text="0" styleClass="breakdown-count-black" prefWidth="30" alignment="CENTER_LEFT"/>
+                </HBox>
+
+            </VBox>
         </VBox>
         
         <!-- Analysis Progress -->
-        <VBox fx:id="progressContainer" spacing="5" alignment="CENTER" visible="false" managed="false">
-            <Label text="ANALISI IN CORSO..." styleClass="neo-label-small"/>
-            <javafx.scene.control.ProgressBar fx:id="analysisProgressBar" prefWidth="400" progress="0.0"/>
+        <VBox fx:id="progressContainer" spacing="15" alignment="CENTER" visible="false" managed="false" styleClass="premium-loader-container">
+            <StackPane>
+                <javafx.scene.control.ProgressIndicator fx:id="analysisProgressIndicator" prefWidth="80" prefHeight="80" progress="0.0" styleClass="premium-progress"/>
+                <Label fx:id="percentLabel" styleClass="loader-percent-symbol" visible="false"/>
+            </StackPane>
+            <Label text="ANALISI IN CORSO..." styleClass="loader-text"/>
         </VBox>
 
         <!-- Evaluation & Moves -->
-        <VBox spacing="5" alignment="CENTER">
-            <Label fx:id="evalScoreReview" styleClass="neo-label-small" style="-fx-text-fill: #ccff00;"/>
-            <Label fx:id="move1LabelReview" styleClass="neo-label-small" wrapText="true" textAlignment="CENTER" style="-fx-padding: 0 20 0 20; -fx-font-size: 14px;"/>
-            <Label fx:id="move2LabelReview" styleClass="neo-label-small" wrapText="true" textAlignment="CENTER" style="-fx-padding: 0 20 0 20; -fx-font-size: 14px;"/>
-            <Label fx:id="move3LabelReview" styleClass="neo-label-small" wrapText="true" textAlignment="CENTER" style="-fx-padding: 0 20 0 20; -fx-font-size: 14px;"/>
-        </VBox>
+        <VBox fx:id="analysisContainer" maxWidth="680" visible="false" managed="false" />
 
         <!-- Controls -->
         <HBox alignment="CENTER" spacing="20">
-            <Button onAction="#previousMove" styleClass="neo-button-secondary" prefHeight="60" prefWidth="100">
+            <Button onAction="#previousMove" styleClass="elegant-button-secondary" prefHeight="60" prefWidth="100">
                 <graphic>
-                    <ImageView fitHeight="30" fitWidth="30" preserveRatio="true">
-                        <image>
-                            <Image url="@/images/icon_back.png"/>
-                        </image>
-                    </ImageView>
+                    <org.kordamp.ikonli.javafx.FontIcon iconLiteral="mdal-arrow_back" iconSize="24" iconColor="#E0E0E0"/>
                 </graphic>
             </Button>
             
-            <Button fx:id="settingsButton" onAction="#toggleSettings" styleClass="neo-button" prefHeight="60" prefWidth="60">
+            <Button fx:id="settingsButton" onAction="#toggleSettings" styleClass="icon-button" prefHeight="60" prefWidth="60">
                 <graphic>
-                    <ImageView fitHeight="30" fitWidth="30" preserveRatio="true">
-                        <image>
-                            <Image url="@/images/icon_settings.png"/>
-                        </image>
-                    </ImageView>
+                    <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-sliders-h" iconSize="28" iconColor="#E0E0E0"/>
                 </graphic>
             </Button>
 
-            <Button onAction="#nextMove" styleClass="neo-button-secondary" prefHeight="60" prefWidth="100">
+            <Button onAction="#nextMove" styleClass="elegant-button-secondary" prefHeight="60" prefWidth="100">
                 <graphic>
-                    <ImageView fitHeight="30" fitWidth="30" preserveRatio="true" rotate="180">
-                        <image>
-                            <Image url="@/images/icon_back.png"/>
-                        </image>
-                    </ImageView>
+                    <org.kordamp.ikonli.javafx.FontIcon iconLiteral="mdal-arrow_forward" iconSize="24" iconColor="#E0E0E0"/>
                 </graphic>
             </Button>
         </HBox>

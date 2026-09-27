@@ -14,8 +14,9 @@ public class PvpGame extends AbstractGame {
     private boolean isWhiteTurn;
     private int gameDuration;
 
-    public PvpGame(ChessBoardUI chessBoardUI, Label evaluationLabel, EvalBar evalBar, Label move1Label, Label move2Label, Label move3Label, Label openingNameLabel, Label whiteLabel, Label blackLabel, int gameDuration, int increment) {
-        super(chessBoardUI, evaluationLabel, evalBar, move1Label, move2Label, move3Label);
+    public PvpGame(ChessBoardUI chessBoardUI, EvalBar evalBar, Label openingNameLabel,
+            Label whiteLabel, Label blackLabel, int gameDuration, int increment) {
+        super(chessBoardUI, evalBar);
         this.gameDuration = gameDuration;
         this.increment = increment;
         this.openingNameLabel = openingNameLabel;
@@ -27,23 +28,65 @@ public class PvpGame extends AbstractGame {
         gameRunning = true;
         isWhiteTurn = true;
         chessTimer.initializetimer();
-        move1Label.setText("");
-        move2Label.setText("");
-        move3Label.setText("");
-        Platform.runLater(() -> chessTimer.startWhiteTimer());
         pgn.setLength(0);
         evaluatePositionAndMoves();
+
+        // Listen for physical moves and setup
+        org.example.javachess.Services.BoardStateManager manager = org.example.javachess.Controllers.ArduinoController
+                .getInstance().getBoardStateManager();
+
+        manager.setLogicalBoard(board); // Sync initial board state
+        manager.startSetupMode(); // Start setup phase
+
+        manager.setListener(new org.example.javachess.Services.BoardStateManager.BoardMoveListener() {
+            @Override
+            public void onPhysicalMoveDetected(String from, String to) {
+                System.out.println("Physical Move (PvP): " + from + to);
+                handleMoveInput(from + to);
+            }
+
+            @Override
+            public void onBoardSetupComplete() {
+                updateStatus("SCACCHIERA PRONTA! Partita Iniziata");
+                manager.startGameMode(); // ACTIVATE GAME MODE
+                Platform.runLater(() -> chessTimer.startWhiteTimer());
+            }
+
+            @Override
+            public void onSetupProgress(String message) {
+                updateStatus(message);
+            }
+
+            @Override
+            public void onBoardStateUpdated(String fen, String errorSquare) {
+                Platform.runLater(() -> {
+                    chessBoardUI.setPosition(fen, null);
+                    if (errorSquare != null) {
+                        chessBoardUI.highlightErrorSquare(errorSquare);
+                        updateStatus("ERRORE: Controlla " + errorSquare);
+                    }
+                });
+            }
+
+            @Override
+            public void onBotMoveReplicated() {
+                // Not used in PvP
+            }
+        });
+
+        // Start Setup Mode
+        manager.startSetupMode();
+        updateStatus("Posiziona i pezzi...");
     }
 
-    public String getEvaluationLabel(){
-        return evaluationLabel.getText();
-    }
+    // Removed getEvaluationLabel
 
     String openingName = "";
 
     @Override
     public void handleMoveInput(String moveInput) {
-        if (!gameRunning) return;
+        if (!gameRunning)
+            return;
 
         try {
             Move move = parseMoveInput(moveInput);
@@ -51,6 +94,11 @@ public class PvpGame extends AbstractGame {
             if (move != null && MoveGenerator.generateLegalMoves(board).contains(move)) {
                 board.doMove(move);
                 updatePgn(move);
+
+                // Sync logical board to manager
+                org.example.javachess.Controllers.ArduinoController.getInstance()
+                        .getBoardStateManager()
+                        .setLogicalBoard(board);
 
                 Platform.runLater(() -> {
                     chessBoardUI.setPosition(board.getFen(), move);
@@ -61,13 +109,14 @@ public class PvpGame extends AbstractGame {
                     }
 
                     if (board.isMated()) {
-                        saveGame=false;
+                        notifyMate(); // Trigger Victory Animation
+                        saveGame = false;
                         String winner = board.getSideToMove().flip() == Side.WHITE ? "Bianco" : "Nero";
                         endGame("Scaccomatto! Vince il " + winner + ".", true);
                     } else if (board.isDraw() || board.getHalfMoveCounter() >= 100) {
-                        saveGame=false;
+                        saveGame = false;
                         String drawReason = getDrawReason();
-                        evaluationLabel.setText("0.00");
+                        updateStatus("0.00");
                         evalBar.updateEvaluation(0.00);
                         endGame(drawReason, true);
                     } else {
@@ -89,7 +138,7 @@ public class PvpGame extends AbstractGame {
                 System.out.println("Mossa illegale o non valida, riprova.");
             }
         } catch (Exception e) {
-           e.printStackTrace();
+            e.printStackTrace();
         }
     }
 
@@ -103,13 +152,14 @@ public class PvpGame extends AbstractGame {
         chessTimer.stopWhiteTimer();
         chessTimer.stopBlackTimer();
 
-        if (pgn.length() < 20){
+        if (pgn.length() < 20) {
             System.out.println("Partita non salvata, mossa troppo breve");
-            saveGame=false;
+            saveGame = false;
         }
 
         if (saveGame) {
-            String timeControl = (gameDuration / 60) + ":" + String.format("%02d", gameDuration % 60) + "m + " + increment + "s";
+            String timeControl = (gameDuration / 60) + ":" + String.format("%02d", gameDuration % 60) + "m + "
+                    + increment + "s";
             saveGameToJson(endMessage, openingNameLabel.getText(), "Player vs Player", timeControl);
         }
 
@@ -117,11 +167,8 @@ public class PvpGame extends AbstractGame {
             moveCalculationTask.cancel();
         }
 
-        evaluationLabel.setText(endMessage);
-        move1Label.setText("");
-        move2Label.setText("");
-        move3Label.setText("");
+        updateStatus(endMessage);
+        // Removed label clearing
         openingNameLabel.setText("");
     }
 }
-
