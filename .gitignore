@@ -54,3 +54,8 @@ src/main/resources/data/puzzles.csv
 
 ### Dati browser integrato (sessioni) ###
 webview-data/
+
+### Link locali a dati runtime (sviluppo) ###
+/jcef-bundle
+/data
+.worktrees/
