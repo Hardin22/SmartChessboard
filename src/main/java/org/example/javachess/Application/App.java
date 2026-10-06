@@ -31,13 +31,15 @@ public class App extends Application {
             primaryStage.setScene(scene);
             scene.getStylesheets().add(App.class.getResource("/Styles/Style.css").toExternalForm());
             primaryStage.setTitle("Chess Application");
-            primaryStage.setFullScreen(true);
+            boolean fullScreen = DevOptions.placeStage(primaryStage);
+            primaryStage.setFullScreen(fullScreen);
 
             // Seleziona lo schermo desiderato (ad esempio, il secondo schermo)
 
             // Posiziona la finestra sullo schermo selezionato
 
             primaryStage.show();
+            DevOptions.afterShow(primaryStage, fxmlLoader.getController());
         } catch (IOException e) {
             e.printStackTrace();
         }
