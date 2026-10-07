@@ -3,9 +3,18 @@ package org.example.javachess.Oggetti;
 import com.github.bhlangonijr.chesslib.move.Move;
 import javafx.application.Platform;
 
+import org.example.javachess.Services.GameArchiveService;
 import org.example.javachess.Services.LichessGameManager;
+import org.example.javachess.Utils.PgnCodec;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.time.LocalDateTime;
+import java.util.List;
 
 public class OnlineGame extends AbstractGame {
+
+    private static final Logger log = LoggerFactory.getLogger(OnlineGame.class);
 
     private LichessGameManager lichessGameManager;
     private String gameId;
@@ -78,20 +87,19 @@ public class OnlineGame extends AbstractGame {
                     }
 
                     if (lastMove != null) {
-                        // SYNC LOCAL BOARD AND PGN
-                        try {
-                            com.github.bhlangonijr.chesslib.move.Move chessMove = new com.github.bhlangonijr.chesslib.move.Move(
-                                    com.github.bhlangonijr.chesslib.Square
-                                            .valueOf(lastMove.substring(0, 2).toUpperCase()),
-                                    com.github.bhlangonijr.chesslib.Square
-                                            .valueOf(lastMove.substring(2, 4).toUpperCase()));
-
-                            if (board.isMoveLegal(chessMove, true)) {
-                                updatePgn(chessMove);
-                                board.doMove(chessMove);
+                        // SYNC LOCAL BOARD: rebuild from the full move list sent by Lichess, so a missed event or
+                        // a reconnection can never desynchronise it (promotions included).
+                        PgnCodec.Replay replay = PgnCodec.replay(lichessGameManager.getInitialFen(),
+                                lichessGameManager.getMovesUci());
+                        board.loadFromFen(lichessGameManager.getInitialFen());
+                        pgn.setLength(0);
+                        for (String uci : replay.uciMoves()) {
+                            Move m = PgnCodec.fromUci(board, uci);
+                            if (m == null) {
+                                break;
                             }
-                        } catch (Exception e) {
-                            System.err.println("[OnlineGame] Error syncing move: " + e.getMessage());
+                            board.doMove(m);
+                            pgn.append(uci).append(' ');
                         }
                     }
 
@@ -144,7 +152,8 @@ public class OnlineGame extends AbstractGame {
 
             @Override
             public void onGameEnd(String result) {
-                endGame("Partita terminata: " + result, true);
+                String how = lichessGameManager.getTermination();
+                endGame("Partita terminata: " + result + (how.isEmpty() ? "" : " (" + how + ")"), true);
             }
 
             @Override
@@ -170,23 +179,29 @@ public class OnlineGame extends AbstractGame {
         Move move = parseMoveInput(moveInput);
         if (move != null) {
             // Send to Lichess
-            lichessGameManager.sendMove(move.toString());
+            lichessGameManager.sendMove(PgnCodec.toUci(move));
         }
     }
 
     @Override
     public void endGame(String endMessage, boolean saveGame) {
+        boolean wasRunning = gameRunning;
         gameRunning = false;
         lichessGameManager.stop();
-        updateStatus(endMessage);
+        if (wasRunning) {
+            updateStatus(endMessage);
+        }
 
         if (saveGame && !isGameSaved) {
-            // Only save if at least 3 moves were made
-            if (board.getHistory().size() >= 3) {
-                saveGameToJson("Unknown", "Lichess Online", "Online (Lichess)", "N/A");
+            List<String> moves = lichessGameManager.getMovesUci();
+            if (moves.size() >= 3) {
+                GameArchiveService.getInstance().add(new ArchivedGame(0, ArchivedGame.GameMode.LICHESS,
+                        "Lichess " + gameId, lichessGameManager.getWhiteName(), lichessGameManager.getBlackName(),
+                        lichessGameManager.getResult(), lichessGameManager.getTermination(), "", "",
+                        LocalDateTime.now(), lichessGameManager.getInitialFen(), "", moves));
                 isGameSaved = true;
             } else {
-                System.out.println("[OnlineGame] Game too short, not saving (" + board.getHistory().size() + " moves)");
+                log.info("Lichess game {} too short, not archived ({} moves)", gameId, moves.size());
             }
         }
     }

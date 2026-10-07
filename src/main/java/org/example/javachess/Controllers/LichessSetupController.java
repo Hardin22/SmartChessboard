@@ -43,12 +43,14 @@ public class LichessSetupController implements NavigationAware {
 
     @FXML
     public void startSeek() {
-        boolean rated = Boolean.parseBoolean(ratedGroup.getSelectedToggle().getUserData().toString());
-        String color = colorGroup.getSelectedToggle().getUserData().toString();
+        boolean rated = ratedGroup.getSelectedToggle() != null
+                && Boolean.parseBoolean(String.valueOf(ratedGroup.getSelectedToggle().getUserData()));
+        String color = colorGroup.getSelectedToggle() != null
+                ? String.valueOf(colorGroup.getSelectedToggle().getUserData()) : "random";
 
         statusLabel.setText("Cercando avversario...");
 
-        new Thread(() -> {
+        Thread seekThread = new Thread(() -> {
             String gameId = LichessAPIHelper.createSeek(selectedTime, selectedIncrement, rated, color);
 
             Platform.runLater(() -> {
@@ -62,19 +64,24 @@ public class LichessSetupController implements NavigationAware {
                         controller.startOnlineGame(gameId);
                     }
                 } else {
-                    String msg = (gameId != null) ? gameId.replace("ERROR:", "") : "Nessuna partita trovata o timeout.";
-                    statusLabel.setText("Errore: " + msg);
-                    // Parse specific errors for user friendliness
-                    if (msg.contains("Invalid time control")) {
-                        statusLabel.setText("Errore: Tempo non valido per partita Classificata.");
-                    }
+                    // LichessClient already produces a message meant for the user.
+                    String msg = (gameId != null) ? gameId.replace("ERROR:", "") : "Nessuna partita trovata.";
+                    statusLabel.setText(msg);
                 }
             });
-        }).start();
+        }, "lichess-seek");
+        seekThread.setDaemon(true);
+        seekThread.start();
+    }
+
+    @Override
+    public void onNavigatedFrom() {
+        LichessAPIHelper.cancelSeek(); // leaving the screen must not leave a seek open on Lichess
     }
 
     @FXML
     public void goBack() {
+        LichessAPIHelper.cancelSeek();
         mainController.navigateTo("HOME");
     }
 }
