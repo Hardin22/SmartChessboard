@@ -12,7 +12,7 @@ public interface PositionEvaluator extends AutoCloseable {
      *
      * @param fen     the position (must have legal moves)
      * @param multiPv number of lines (1, or 2 for the second best move)
-     * @param nodes   node budget (deterministic and hardware independent, unlike time)
+     * @param nodes   node budget (hardware independent, unlike time)
      */
     PositionEval evaluate(String fen, int multiPv, long nodes) throws Exception;
 
