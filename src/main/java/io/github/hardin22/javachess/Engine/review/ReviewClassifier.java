@@ -127,7 +127,7 @@ public final class ReviewClassifier {
             brilliantFromGood = get("brilliantFromGood", 1) != 0;
             brilliantRule = (int) get("brilliantRule", 1);
             sacMin = get("sacMin", 2);
-            brilliantMaxLoss = get("brilliantMaxLoss", 0.03);
+            brilliantMaxLoss = get("brilliantMaxLoss", 0.05);
             brilliantMinEpAfter = get("brilliantMinEpAfter", 0.48);
             brilliantMaxAlt = get("brilliantMaxAlt", 0.97);
             greatGap = get("greatGap", 0.12);
