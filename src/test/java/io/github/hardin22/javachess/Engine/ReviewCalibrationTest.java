@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * Developer tool, skipped unless {@code -Dreview.dataset=<dir of chess.com game JSON>} is set: reviews the games
  * and writes one JSON line per game (our labels, per-position evaluations, our and chess.com accuracies) to
  * {@code -Dreview.out} for offline calibration. Optional: {@code -Dreview.cache}, {@code -Dreview.nodes},
- * {@code -Dreview.processes}, {@code -Dreview.limit}, {@code -Dreview.tag}.
+ * {@code -Dreview.processes}, {@code -Dreview.limit}, {@code -Dreview.tag}, {@code -Dreview.ids} (comma separated).
  */
 class ReviewCalibrationTest {
 
@@ -57,8 +57,12 @@ class ReviewCalibrationTest {
                 new CachingEvaluator(pool, EvalCache.in(cache, pool.id() + "-" + nodes)), settings,
                 OpeningBook.standard())) {
             String tag = System.getProperty("review.tag", "");
+            List<String> ids = List.of(System.getProperty("review.ids", "").split(","));
             for (Path f : files) {
                 JSONObject g = new JSONObject(Files.readString(f));
+                if (!ids.get(0).isEmpty() && !ids.contains(g.getString("id"))) {
+                    continue;
+                }
                 if (!tag.isEmpty() && !g.optJSONArray("tags", new JSONArray()).toList().contains(tag)) {
                     continue;
                 }

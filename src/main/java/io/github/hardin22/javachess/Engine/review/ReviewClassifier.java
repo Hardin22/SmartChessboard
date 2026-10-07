@@ -24,15 +24,17 @@ import java.util.List;
 public final class ReviewClassifier {
 
     /** Win chance loss thresholds (0..1): a label applies below its bound. */
-    public static final double EXCELLENT_MAX = 0.02;
-    public static final double GOOD_MAX = 0.05;
-    public static final double INACCURACY_MAX = 0.10;
-    public static final double MISTAKE_MAX = 0.20;
+    public static final double EXCELLENT_MAX = tuning("excellent", 0.02);
+    public static final double GOOD_MAX = tuning("good", 0.05);
+    public static final double INACCURACY_MAX = tuning("inaccuracy", 0.10);
+    public static final double MISTAKE_MAX = tuning("mistake", 0.20);
 
     /** Second best line this good (cp, mover POV) means the position was winning anyway: no Great/Brilliant. */
     static final int WINNING_ANYWAY_CP = 700;
     /** Brilliant/Great: the mover must not stand worse than this after the move (chess.com allows about equal). */
     static final double CRITICAL_MIN_EP = 0.40;
+    /** Brilliant may also come from a Good move (a sacrifice our shallower search undervalues), SPEC v1.5. */
+    static final boolean BRILLIANT_FROM_GOOD = tuning("brilliantFromGood", 1) != 0;
     /** Great: the second best move loses at least this much win chance. */
     static final double GREAT_GAP = 0.10;
     /** Miss: the opponent's previous move lost at least this much. */
@@ -40,16 +42,27 @@ public final class ReviewClassifier {
     /** Miss: the mover ends no worse than before the opponent's error, within this tolerance. */
     static final double MISS_NO_WORSE = 0.05;
     /** A Blunder must lose at least this much material (pawns) along the line, or allow mate. */
-    static final int BLUNDER_MATERIAL = 2;
+    static final int BLUNDER_MATERIAL = (int) tuning("blunderMaterial", 2);
     /** MultiPV 2 is only worth it in this win chance range (outside, no Great/Brilliant is possible). */
     static final double SECOND_LINE_MIN_EP = 0.20;
     static final double SECOND_LINE_MAX_EP = 0.97;
     /** A terminal draw reached from this win chance or more gives the game away (Blunder, never Miss). */
     static final double GIVE_AWAY_DRAW_EP = 0.6;
+    /** Book: plies without a named position that can still lead back into one. */
+    static final int BOOK_MAX_GAP = 4;
     /** Book labels stop after this many plies. */
     static final int BOOK_MAX_PLY = 30;
 
     private ReviewClassifier() {
+    }
+
+    /** Calibration knob {@code -Djavachess.review.<name>=<value>} (developer tool; the defaults are the product). */
+    private static double tuning(String name, double def) {
+        try {
+            return Double.parseDouble(System.getProperty("javachess.review." + name, String.valueOf(def)));
+        } catch (NumberFormatException e) {
+            return def;
+        }
     }
 
     // ------------------------------------------------------------------------------------------
@@ -213,9 +226,21 @@ public final class ReviewClassifier {
         }
         double[][] acc = Accuracy.perMove(in.initialFen(), pos);
 
-        List<MoveReview> out = new ArrayList<>(n);
-        boolean inBook = true;
+        // Book: every move up to the last named opening position the game reaches, allowing short gaps (move
+        // orders that transpose back into a named line are theory too)
+        int bookEnd = -1;
         String opening = null;
+        for (int i = 0; i < Math.min(n, BOOK_MAX_PLY); i++) {
+            String name = in.book().nameAfter(replay.fens().get(i + 1)).orElse(null);
+            if (name != null) {
+                bookEnd = i;
+                opening = name;
+            } else if (i - bookEnd > BOOK_MAX_GAP) {
+                break;
+            }
+        }
+
+        List<MoveReview> out = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             String uci = replay.uci().get(i);
             PositionEval p0 = pos.get(i);
@@ -224,15 +249,10 @@ public final class ReviewClassifier {
             boolean isTop = uci.equals(p0.bestMove());
 
             MoveClassification label = null;
-            if (inBook && i < BOOK_MAX_PLY) {
-                String name = in.book().nameAfter(replay.fens().get(i + 1)).orElse(null);
-                if (name != null) {
-                    label = MoveClassification.BOOK_MOVE;
-                    opening = name;
-                }
-            }
-            if (label == null) {
-                inBook = false;
+            // named traps (Fool's Mate...) are in the opening list: a book move never allows or gives mate, nor
+            // throws away a Mistake's worth of win chance
+            if (i <= bookEnd && !played[i].isMate() && epBefore[i] - epAfter[i] < INACCURACY_MAX) {
+                label = MoveClassification.BOOK_MOVE;
             }
             boolean mates = played[i].isCheckmate() && played[i].isMateFor(me);
             if (label == null && !mates && replay.legalMoveCounts().get(i) == 1) {
@@ -240,6 +260,10 @@ public final class ReviewClassifier {
             }
             if (label == null) {
                 label = baseLabel(best, played[i], me, isTop);
+                if (label == MoveClassification.BEST && !isTop && !best.isMate() && !played[i].isMate()) {
+                    // chess.com keeps Best for the engine's move: an equivalent alternative is Excellent
+                    label = MoveClassification.EXCELLENT;
+                }
                 boolean drawn = pos.get(i + 1).terminal() && !played[i].isMate();
                 if (drawn && epBefore[i] >= GIVE_AWAY_DRAW_EP) {
                     label = MoveClassification.BLUNDER; // stalemate (or dead draw) from a winning position
@@ -253,7 +277,9 @@ public final class ReviewClassifier {
                         label = MoveClassification.MISTAKE;
                     }
                 }
-                if ((label == MoveClassification.BEST || label == MoveClassification.EXCELLENT) && !mates) {
+                boolean nearBest = label == MoveClassification.BEST || label == MoveClassification.EXCELLENT
+                        || (BRILLIANT_FROM_GOOD && label == MoveClassification.GOOD);
+                if (nearBest && !mates) {
                     MoveClassification special = special(label, isTop, i, replay, p0, pos.get(i + 1), played[i], epBefore[i],
                             epAfter[i], me);
                     if (special != null) {
