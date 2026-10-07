@@ -92,6 +92,8 @@ public final class ReviewClassifier {
         final double greatMatePunish;
         /** Phase 4: a capture by a player under {@link #greatFreeMaterialRating} with the capture gap is Great. */
         final boolean greatBeginnerCapture;
+        /** Phase 4: a capture collecting what the previous own check won (a fork) is never Great. */
+        final boolean greatNoCollect;
         /** v2.1: a piece or the exchange given for pawns counts as a sacrifice of 2 (Brilliant). */
         final boolean pieceSacrifice;
         /**
@@ -256,6 +258,7 @@ public final class ReviewClassifier {
             greatCaptureGap = get("greatCaptureGap", 0.30);
             greatFreeMaterialRating = get("greatFreeMaterialRating", 1000);
             greatBeginnerCapture = get("greatBeginnerCapture", 1) != 0;
+            greatNoCollect = get("greatNoCollect", 1) != 0;
             greatMatePunish = get("greatMatePunish", 0.20);
             greatCaptureRule = (int) get("greatCaptureRule", 2);
             brilliantWinningCp = get("brilliantWinningCp", 700);
@@ -680,7 +683,7 @@ public final class ReviewClassifier {
                     double oppLoss = i > 0 ? Math.max(0, epBefore[i - 1] - epAfter[i - 1]) : 0;
                     MoveClassification special = special(label, isTop, i, replay, p0, pos.get(i + 1), played[i],
                             epBefore[i], epAfter[i], me, oppLoss, t, me ? kWhite : kBlack,
-                            rating);
+                            rating, i > 0 ? out.get(i - 1).label() : null);
                     if (special != null) {
                         label = special;
                     }
@@ -769,7 +772,7 @@ public final class ReviewClassifier {
     private static MoveClassification special(MoveClassification label, boolean isTop, int i, GameReplay replay,
                                               PositionEval p0, PositionEval p1, Eval played, double epBefore,
                                               double epAfter, boolean me, double oppLoss,
-                                              Tuning t, double k, int rating) {
+                                              Tuning t, double k, int rating, MoveClassification prevLabel) {
         EngineLine second = p0.secondBest();
         Eval alternative = isTop ? (second == null ? null : second.eval()) : p0.eval();
         Board b0 = board(replay.fens().get(i));
@@ -800,7 +803,7 @@ public final class ReviewClassifier {
             return MoveClassification.GREAT; // G+1
         }
         if (t.greatRule == 2) {
-            return greatV21(b0, uci, i, replay, p0.eval(), second, epBefore, me, oppLoss, t, k, rating)
+            return greatV21(b0, uci, i, replay, p0.eval(), second, epBefore, me, oppLoss, t, k, rating, prevLabel)
                     ? MoveClassification.GREAT : null;
         }
         if (epBefore < t.greatMinEp || epBefore > t.greatMaxEp) {
@@ -836,7 +839,8 @@ public final class ReviewClassifier {
      * keeping the material is routine.
      */
     private static boolean greatV21(Board b0, String uci, int i, GameReplay replay, Eval best, EngineLine second,
-                                    double epBefore, boolean me, double oppLoss, Tuning t, double k, int rating) {
+                                    double epBefore, boolean me, double oppLoss, Tuning t, double k, int rating,
+                                    MoveClassification prevLabel) {
         if (second == null || epBefore < t.greatMinEp) {
             return false;
         }
@@ -879,12 +883,12 @@ public final class ReviewClassifier {
             } else if (oppLoss < t.greatCaptureOppLoss) {
                 return false;
             }
-            boolean collects = i > 0 && board(replay.fens().get(i - 1)).isKingAttacked()
-                    && oppLoss < t.greatOpponentLoss;
-            if (t.greatBeginnerCapture && r < t.greatFreeMaterialRating && !collects) {
+            if (t.greatNoCollect && collectsAfterCheck(replay, i, prevLabel)) {
+                return false;
+            }
+            if (t.greatBeginnerCapture && r < t.greatFreeMaterialRating) {
                 // Phase 4: under 1000 a capture the second best move cannot replace is Great even in a won position
-                // (Rxf3 live_123574758978, Qxf3 x2, Rxg8+, Nxg7+...), unless it only collects what a check already
-                // won: the opponent answered the check without error (Nxd1+ live_174367977638 after Nxe3+ Kf2, Best)
+                // (Rxf3 live_123574758978, Qxf3 x2, Rxg8+, Nxg7+...)
                 return true;
             }
         }
@@ -947,6 +951,20 @@ public final class ReviewClassifier {
         String uci = replay.uci().get(i);
         Move m = Tactics.find(b0, uci);
         return m != null && Tactics.isCapture(b0, uci) && Tactics.see(b0, m.getTo()) > 0;
+    }
+
+    /**
+     * Phase 4: the capture collects what the previous own move won with check: the same piece gave check (a fork) and
+     * the opponent answered it without a real error (at worst an Inaccuracy). The Great belongs to the check, not to
+     * taking the piece (Nxc2+ Ke2 Nxa1 live_174290567620, Nxe3+ Kf2 Nxd1+ live_174367977638: chess.com Best; Rc3+ Kd4?
+     * Rxf3 live_123574758978: the answer was a Mistake, Great).
+     */
+    private static boolean collectsAfterCheck(GameReplay replay, int i, MoveClassification prevLabel) {
+        if (i < 2 || prevLabel == null || severity(prevLabel) > severity(MoveClassification.INACCURACY)
+                || !board(replay.fens().get(i - 1)).isKingAttacked()) {
+            return false;
+        }
+        return replay.uci().get(i - 2).substring(2, 4).equals(replay.uci().get(i).substring(0, 2));
     }
 
     /** 0 losing, 1 about equal, 2 winning (SPEC v2.1). */

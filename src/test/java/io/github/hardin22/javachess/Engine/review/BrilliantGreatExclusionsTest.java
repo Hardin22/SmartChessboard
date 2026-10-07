@@ -430,9 +430,29 @@ class BrilliantGreatExclusionsTest {
         assertEquals(MoveClassification.GREAT, label(rxf3, Tuning.DEFAULT));
         assertEquals(MoveClassification.BEST, label(rxf3, Tuning.DEFAULT.with("greatBeginnerCapture", 0)));
         // live_174367977638 ply 36: 17...Nxe3+ 18.Kf2 (no error) Nxd1+ only collects the queen the fork won: Best
-        ReviewInput nxd1 = rated(twoMoves("r2qk1r1/1pp2p2/p1np3p/4p3/2B1P3/2PPnNP1/PP4K1/R2Q3R w q - 0 18", "g2f2",
-                Eval.cp(-802), "g2h2", "e3d1", Eval.cp(-818), "e3d1", Eval.cp(-264), "e3c4", Eval.cp(-818)), 763, 756);
+        ReviewInput nxd1 = withSecond(game("r2qk1r1/1pp2p2/p1np3p/4p3/2B1P1n1/2PPBNP1/PP4K1/R2Q3R b q - 0 17", 763, 756,
+                List.of("g4e3", "g2f2", "e3d1"), List.of(Eval.cp(-773), Eval.cp(-802), Eval.cp(-818), Eval.cp(-810)),
+                List.of("g4e3", "g2h2", "e3d1")), 2, Eval.cp(-264), "e3c4");
         assertEquals(MoveClassification.BEST, label(nxd1, Tuning.DEFAULT));
+        assertEquals(MoveClassification.GREAT, label(nxd1, Tuning.DEFAULT.with("greatNoCollect", 0)));
+    }
+
+    @Test
+    void collectingWhatTheForkWonIsNotGreat() {
+        // live_174290567620 ply 24: 11...Nxc2+ (Great) 12.Ke2 Nxa1 (Black 589) takes the rook the fork won: Best
+        ReviewInput nxa1 = withSecond(game("r1bqk2r/ppp2ppp/3p4/2P1p3/3nP1P1/P1N2NQP/2PP4/R1B1KB2 b Qkq - 0 11", 613, 589,
+                List.of("d4c2", "e1e2", "c2a1"), List.of(Eval.cp(-457), Eval.cp(-439), Eval.cp(-666), Eval.cp(-655)),
+                List.of("d4c2", "e1d1", "c2a1")), 2, Eval.cp(-13), "c7c6");
+        assertEquals(MoveClassification.BEST, label(nxa1, Tuning.DEFAULT));
+        assertEquals(MoveClassification.GREAT, label(nxa1, Tuning.DEFAULT.with("greatNoCollect", 0)));
+    }
+
+    /** {@code in} with a second line in position {@code i}. */
+    private static ReviewInput withSecond(ReviewInput in, int i, Eval second, String secondMove) {
+        List<PositionEval> ps = new ArrayList<>(in.positions());
+        PositionEval p = ps.get(i);
+        ps.set(i, withLines(p.fen(), p.eval(), p.bestMove(), second, secondMove));
+        return new ReviewInput(in.initialFen(), in.uciMoves(), ps, in.book(), in.whiteRating(), in.blackRating());
     }
 
     private static ReviewInput rated(ReviewInput in, int white, int black) {
