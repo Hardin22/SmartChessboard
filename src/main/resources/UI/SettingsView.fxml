@@ -225,16 +225,6 @@
                             </HBox>
                             <Slider fx:id="gameDepthSlider" min="10" max="30" value="18" blockIncrement="1" majorTickUnit="1" minorTickCount="0" snapToTicks="true"/>
                         </VBox>
-                        <VBox styleClass="setting-row" spacing="6">
-                            <HBox alignment="CENTER_LEFT">
-                                <VBox spacing="2" HBox.hgrow="ALWAYS" minWidth="0">
-                                    <Label text="%settings.analysisdepth" styleClass="setting-title"/>
-                                    <Label text="%settings.analysisdepth.description" styleClass="setting-description"/>
-                                </VBox>
-                                <Label fx:id="analysisDepthLabel" text="12" styleClass="setting-value"/>
-                            </HBox>
-                            <Slider fx:id="analysisDepthSlider" min="8" max="22" value="12" blockIncrement="1" majorTickUnit="1" minorTickCount="0" snapToTicks="true"/>
-                        </VBox>
                     </VBox>
                     <Label text="%settings.leds.note" styleClass="caption" wrapText="true"/>
                 </VBox>

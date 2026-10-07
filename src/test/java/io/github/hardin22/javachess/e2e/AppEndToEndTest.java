@@ -239,7 +239,7 @@ class AppEndToEndTest {
             ReviewController r = (ReviewController) main.getController("REVIEW");
             main.navigateTo("REVIEW");
             r.loadGame(game.movesAsUciString(), game.initialFen());
-            r.analyze(6);
+            r.analyze();
             return r;
         });
         waitFor("full analysis", () -> fxGet(() -> {

@@ -49,7 +49,6 @@ public final class ConfigManager {
             Map.entry("game.default.duration", new IntRange(1, 180, 10)),
             Map.entry("game.default.increment", new IntRange(0, 180, 0)),
             Map.entry("game.depth", new IntRange(1, 60, 18)),
-            Map.entry("analysis.depth", new IntRange(1, 60, 12)),
             Map.entry("move.eval.depth", new IntRange(1, 60, 8)),
             Map.entry("hardware.led.brightness", new IntRange(0, 100, 100)),
             Map.entry("stockfish.threads", new IntRange(1, 256, 2)),

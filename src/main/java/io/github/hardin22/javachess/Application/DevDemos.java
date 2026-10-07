@@ -90,7 +90,7 @@ final class DevDemos {
             review.loadGame(chosen.get().movesAsUciString(), chosen.get().initialFen());
             review.goTo(Integer.getInteger("javachess.demo.ply", 20));
             if (Boolean.getBoolean("javachess.demo.analyze")) {
-                review.analyze(Integer.getInteger("javachess.demo.depth", 10));
+                review.analyze();
             }
         } else {
             LOG.warn("No archived game for the review demo");

@@ -36,11 +36,20 @@ public final class ReviewClassifier {
     /** Brilliant may also come from a Good move (a sacrifice our shallower search undervalues), SPEC v1.5. */
     static final boolean BRILLIANT_FROM_GOOD = tuning("brilliantFromGood", 1) != 0;
     /** Great: the second best move loses at least this much win chance. */
-    static final double GREAT_GAP = 0.10;
+    static final double GREAT_GAP = tuning("greatGap", 0.20);
+    /** Great after an opponent's error (oppLoss >= the Miss threshold): smaller gap to the second best move. */
+    static final double GREAT_PUNISH_GAP = tuning("greatPunishGap", 0.05);
+    /** Great only from about equal to clearly better positions (chess.com: 10th-90th percentile 0.49-0.94). */
+    static final double GREAT_MIN_EP = tuning("greatMinEp", 0.45);
+    static final double GREAT_MAX_EP = tuning("greatMaxEp", 0.95);
+    /** Not Great: taking a hanging piece, a plain recapture. */
+    static final boolean GREAT_FILTERS = tuning("greatFilters", 1) != 0;
     /** Miss: the opponent's previous move lost at least this much. */
-    static final double MISS_OPPONENT_LOSS = 0.10;
+    static final double MISS_OPPONENT_LOSS = tuning("missOpponentLoss", 0.08);
     /** Miss: the mover ends no worse than before the opponent's error, within this tolerance. */
-    static final double MISS_NO_WORSE = 0.05;
+    static final double MISS_NO_WORSE = tuning("missNoWorse", 0.10);
+    /** From this win chance loss a move is a Blunder even without losing material (chess.com labels: 43 games). */
+    static final double BLUNDER_ANYWAY_LOSS = tuning("blunderAnyway", 0.30);
     /** A Blunder must lose at least this much material (pawns) along the line, or allow mate. */
     static final int BLUNDER_MATERIAL = (int) tuning("blunderMaterial", 2);
     /** MultiPV 2 is only worth it in this win chance range (outside, no Great/Brilliant is possible). */
@@ -100,6 +109,14 @@ public final class ReviewClassifier {
      * full classification.
      */
     static MoveClassification baseLabel(Eval best, Eval played, boolean me, boolean isTop) {
+        return baseLabel(best, played, me, isTop, false);
+    }
+
+    /**
+     * @param review true for the game review (SPEC v1.6 mate rules fitted on chess.com labels, may answer MISS);
+     *               false for the LEDs (no Miss: a lost mate is judged by how much is left)
+     */
+    static MoveClassification baseLabel(Eval best, Eval played, boolean me, boolean isTop, boolean review) {
         if (played.isCheckmate() && played.isMateFor(me)) {
             return MoveClassification.BEST; // R1: delivering mate
         }
@@ -109,15 +126,23 @@ public final class ReviewClassifier {
         double loss = Math.max(0, best.winChance(me) - played.winChance(me));
         // R4: mate -> mate
         if (best.isMateFor(me) && played.isMateFor(me)) {
-            int d = played.mateIn() - (best.mateIn() - 1);
-            return d <= 0 ? MoveClassification.BEST : d <= 1 ? MoveClassification.EXCELLENT
-                    : d <= 6 ? MoveClassification.GOOD : MoveClassification.INACCURACY;
+            int n = best.mateIn();
+            int d = played.mateIn() - (n - 1);
+            if (d <= 0) {
+                return MoveClassification.BEST;
+            }
+            if (review && n <= 2 && d >= 2) {
+                return MoveClassification.MISS; // a mate in 1-2 missed (chess.com: M1 -> M3 is a Miss)
+            }
+            return d <= 4 ? MoveClassification.EXCELLENT : MoveClassification.GOOD;
         }
         if (best.isMateAgainst(me) && played.isMateAgainst(me)) {
             int n = best.mateIn();
             int m = played.mateIn();
-            return m >= n ? MoveClassification.BEST
-                    : n - m == 1 ? MoveClassification.EXCELLENT : MoveClassification.GOOD;
+            if (m >= n) {
+                return MoveClassification.BEST;
+            }
+            return m == 1 && n >= 3 ? MoveClassification.INACCURACY : MoveClassification.EXCELLENT;
         }
         if (best.isMateFor(me) && played.isMateAgainst(me)) {
             return MoveClassification.BLUNDER;
@@ -125,16 +150,23 @@ public final class ReviewClassifier {
         // R5: forced mate lost
         if (best.isMateFor(me) && !played.isMate()) {
             int c = played.cpFor(me);
+            if (review) {
+                return best.mateIn() >= 4 && c >= 800 ? MoveClassification.GOOD : MoveClassification.MISS;
+            }
             return c >= 800 ? MoveClassification.EXCELLENT : c >= 400 ? MoveClassification.GOOD
                     : c >= 200 ? MoveClassification.INACCURACY : c > 0 ? MoveClassification.MISTAKE
                     : MoveClassification.BLUNDER;
         }
-        // R6: forced mate conceded
+        // R6: forced mate conceded: a fixed label by how the mover stood and how close the mate is
         if (!best.isMateAgainst(me) && played.isMateAgainst(me)) {
             double before = best.winChance(me);
-            MoveClassification floor = before >= 0.20 ? MoveClassification.BLUNDER
-                    : before >= 0.05 ? MoveClassification.MISTAKE : MoveClassification.INACCURACY;
-            return worst(labelForLoss(loss), floor);
+            if (before >= 0.20) {
+                return MoveClassification.BLUNDER;
+            }
+            if (before >= 0.05 || played.mateIn() <= 3) {
+                return MoveClassification.MISTAKE;
+            }
+            return MoveClassification.INACCURACY;
         }
         return labelForLoss(loss); // R7
     }
@@ -259,7 +291,7 @@ public final class ReviewClassifier {
                 label = MoveClassification.FORCED;
             }
             if (label == null) {
-                label = baseLabel(best, played[i], me, isTop);
+                label = baseLabel(best, played[i], me, isTop, true);
                 if (label == MoveClassification.BEST && !isTop && !best.isMate() && !played[i].isMate()) {
                     // chess.com keeps Best for the engine's move: an equivalent alternative is Excellent
                     label = MoveClassification.EXCELLENT;
@@ -273,15 +305,17 @@ public final class ReviewClassifier {
                             epBefore[i]);
                     if (!gives && missOpportunity(i, pos, played, epBefore, epAfter, me)) {
                         label = MoveClassification.MISS;
-                    } else if (label == MoveClassification.BLUNDER && !gives) {
+                    } else if (label == MoveClassification.BLUNDER && !gives
+                            && epBefore[i] - epAfter[i] < BLUNDER_ANYWAY_LOSS) {
                         label = MoveClassification.MISTAKE;
                     }
                 }
                 boolean nearBest = label == MoveClassification.BEST || label == MoveClassification.EXCELLENT
                         || (BRILLIANT_FROM_GOOD && label == MoveClassification.GOOD);
                 if (nearBest && !mates) {
-                    MoveClassification special = special(label, isTop, i, replay, p0, pos.get(i + 1), played[i], epBefore[i],
-                            epAfter[i], me);
+                    double oppLoss = i > 0 ? Math.max(0, epBefore[i - 1] - epAfter[i - 1]) : 0;
+                    MoveClassification special = special(label, isTop, i, replay, p0, pos.get(i + 1), played[i],
+                            epBefore[i], epAfter[i], me, oppLoss);
                     if (special != null) {
                         label = special;
                     }
@@ -363,8 +397,8 @@ public final class ReviewClassifier {
      * engine found only at a deeper search than ours).
      */
     private static MoveClassification special(MoveClassification label, boolean isTop, int i, GameReplay replay,
-                                              PositionEval p0, PositionEval p1, Eval played, double epBefore, double epAfter,
-                                              boolean me) {
+                                              PositionEval p0, PositionEval p1, Eval played, double epBefore,
+                                              double epAfter, boolean me, double oppLoss) {
         EngineLine second = p0.secondBest();
         Eval alternative = isTop ? (second == null ? null : second.eval()) : p0.eval();
         if (alternative == null) {
@@ -381,15 +415,23 @@ public final class ReviewClassifier {
         if (label != MoveClassification.BEST || !isTop || played.isMateFor(me)) {
             return null;
         }
-        Move m = Tactics.find(b0, uci);
-        if (m != null && b0.getPiece(m.getTo()) != Piece.NONE && !Tactics.isSafe(b0, m.getTo())) {
-            return null; // taking a hanging piece is not "great"
-        }
-        if (i > 0 && isRecapture(replay, i)) {
+        if (epBefore < GREAT_MIN_EP || epBefore > GREAT_MAX_EP) {
             return null;
         }
+        if (GREAT_FILTERS) {
+            Move m = Tactics.find(b0, uci);
+            if (m != null && b0.getPiece(m.getTo()) != Piece.NONE && !Tactics.isSafe(b0, m.getTo())) {
+                return null; // taking a hanging piece is not "great"
+            }
+            if (i > 0 && isRecapture(replay, i)) {
+                return null;
+            }
+        }
+        // SPEC v1.6: a Great mostly punishes the opponent's error (gap >= 0.05 is enough then), otherwise it must be
+        // the only good move by a wide margin
         double gap = epBefore - second.eval().winChance(me);
-        return gap >= GREAT_GAP ? MoveClassification.GREAT : null;
+        boolean punishes = oppLoss >= MISS_OPPONENT_LOSS && gap >= GREAT_PUNISH_GAP;
+        return punishes || gap >= GREAT_GAP ? MoveClassification.GREAT : null;
     }
 
     /** Shared precondition of Brilliant and Great (WintrChess "critical candidate"). */

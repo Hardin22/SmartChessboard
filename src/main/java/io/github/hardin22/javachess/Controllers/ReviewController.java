@@ -27,7 +27,6 @@ import io.github.hardin22.javachess.Engine.AnalysisUpdate;
 import io.github.hardin22.javachess.Engine.OpeningExplorer;
 import io.github.hardin22.javachess.Engine.PositionAnalyzer;
 import io.github.hardin22.javachess.Services.GameAnalyzer;
-import io.github.hardin22.javachess.Utils.ConfigManager;
 import io.github.hardin22.javachess.Utils.ImageCache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -193,13 +192,9 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         return result;
     }
 
+    /** Full-game review; its engine budget comes from the engine profile (the sheet only tunes the live lines). */
     @FXML
     private void startFullAnalysis() {
-        // Full-game analysis depth comes from Settings; the sheet only tunes the live lines.
-        startFullAnalysis(ConfigManager.getIntProperty("analysis.depth", 12));
-    }
-
-    private void startFullAnalysis(int depth) {
         if (currentPgn == null) {
             return;
         }
@@ -217,12 +212,21 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         String fenToAnalyze = currentInitialFen;
         Thread.ofPlatform().daemon().name("game-analysis").start(() -> {
             try {
-                List<MoveAnalysis> analysis = analyzer.analyzeGame(pgn, fenToAnalyze, depth, progress -> Platform.runLater(() -> {
+                int totalMoves = reviewChessBoard.getMoveList().size();
+                analyzer.review(pgn, fenToAnalyze, progress -> Platform.runLater(() -> {
                     if (generation == analysisGeneration.get()) { // progress of an older game is ignored
                         analysisProgressIndicator.setProgress(progress);
                         percentLabel.setText(I18n.t("review.analyzing", Math.round(progress * 100)));
                     }
+                }), partial -> Platform.runLater(() -> {
+                    if (generation == analysisGeneration.get()) {
+                        // provisional labels and graph of the moves reviewed so far
+                        currentAnalysis = partial;
+                        evaluationGraph.setData(partial, totalMoves);
+                        updateAnalysisUI();
+                    }
                 }));
+                List<MoveAnalysis> analysis = analyzer.lastAnalysis();
                 if (analysis.isEmpty() && !pgn.isBlank()) {
                     // GameAnalyzer returns nothing when the engine fails mid-way: report it, do not show 0%
                     throw new IllegalStateException("il motore non ha risposto");
@@ -404,9 +408,9 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         handleMoveUpdate();
     }
 
-    /** Runs the full-game analysis at the given depth. Public for DevOptions. */
-    public void analyze(int depth) {
-        startFullAnalysis(depth);
+    /** Runs the full-game analysis (engine budget from the profile). Public for DevOptions. */
+    public void analyze() {
+        startFullAnalysis();
     }
 
     private void handleMoveUpdate() {

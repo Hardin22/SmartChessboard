@@ -59,10 +59,6 @@ public class SettingsController implements NavigationAware {
     @FXML
     private Label gameDepthLabel;
     @FXML
-    private Slider analysisDepthSlider;
-    @FXML
-    private Label analysisDepthLabel;
-    @FXML
     private io.github.hardin22.javachess.Components.PageHeader header;
     @FXML
     private javafx.scene.control.ScrollPane scroll;
@@ -104,7 +100,6 @@ public class SettingsController implements NavigationAware {
         bind(pvpDefaultDurationSlider, pvpDefaultDurationLabel, v -> I18n.t("pvp.value.minutes", v));
         bind(pvpDefaultIncrementSlider, pvpDefaultIncrementLabel, v -> I18n.t("pvp.value.seconds", v));
         bind(gameDepthSlider, gameDepthLabel, String::valueOf);
-        bind(analysisDepthSlider, analysisDepthLabel, String::valueOf);
         bind(ledBrightnessSlider, ledBrightnessLabel, v -> v + "%");
 
         ToggleGroup themeGroup = new ToggleGroup();
@@ -238,7 +233,6 @@ public class SettingsController implements NavigationAware {
         pvpDefaultDurationSlider.setValue(ConfigManager.getIntProperty("game.default.duration", 10));
         pvpDefaultIncrementSlider.setValue(ConfigManager.getIntProperty("game.default.increment", 0));
         gameDepthSlider.setValue(ConfigManager.getIntProperty("game.depth", 18));
-        analysisDepthSlider.setValue(ConfigManager.getIntProperty("analysis.depth", 12));
         ledBrightnessSlider.setValue(ConfigManager.getIntProperty("hardware.led.brightness", 100));
 
         // Screenshots for the docs must never show real accounts.
@@ -262,7 +256,6 @@ public class SettingsController implements NavigationAware {
         values.put("game.default.duration", String.valueOf((int) pvpDefaultDurationSlider.getValue()));
         values.put("game.default.increment", String.valueOf((int) pvpDefaultIncrementSlider.getValue()));
         values.put("game.depth", String.valueOf((int) gameDepthSlider.getValue()));
-        values.put("analysis.depth", String.valueOf((int) analysisDepthSlider.getValue()));
         values.put("hardware.led.brightness", String.valueOf((int) ledBrightnessSlider.getValue()));
         if (!isRedacted()) {
             values.put("lichess.username", lichessUsernameField.getText());
@@ -281,7 +274,7 @@ public class SettingsController implements NavigationAware {
         return System.getProperty("javachess.snapshot") != null || Boolean.getBoolean("javachess.redact");
     }
 
-    /** "Avanzate": engine defaults, analysis depths and manual account fields on a second page. */
+    /** "Avanzate": engine defaults, game analysis depth and manual account fields on a second page. */
     @FXML
     private void showAdvanced() {
         scroll.setVisible(false);

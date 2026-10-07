@@ -20,6 +20,7 @@ public class EvaluationGraph extends Region {
 
     private final Canvas canvas;
     private List<MoveAnalysis> analysisData;
+    private int totalMoves;
     private int currentMoveIndex = -1;
     private IntConsumer onMoveSelected;
 
@@ -52,7 +53,13 @@ public class EvaluationGraph extends Region {
     }
 
     public void setData(List<MoveAnalysis> data) {
+        setData(data, 0);
+    }
+
+    /** Data of the first moves of a game of {@code totalMoves} moves (a review in progress keeps the final scale). */
+    public void setData(List<MoveAnalysis> data, int totalMoves) {
         this.analysisData = data;
+        this.totalMoves = totalMoves;
         draw();
     }
 
@@ -97,7 +104,7 @@ public class EvaluationGraph extends Region {
         }
 
         int n = analysisData.size();
-        double step = width / (n - 1);
+        double step = width / (Math.max(n, totalMoves) - 1);
         double[] xs = new double[n + 2];
         double[] ys = new double[n + 2];
         for (int i = 0; i < n; i++) {
@@ -105,7 +112,7 @@ public class EvaluationGraph extends Region {
             xs[i] = i * step;
             ys[i] = height - normalized * height;
         }
-        xs[n] = width;
+        xs[n] = xs[n - 1];
         ys[n] = height;
         xs[n + 1] = 0;
         ys[n + 1] = height;

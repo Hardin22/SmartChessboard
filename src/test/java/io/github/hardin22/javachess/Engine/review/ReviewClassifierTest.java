@@ -62,8 +62,11 @@ class ReviewClassifierTest {
         // allowing mate is never better than a mistake from a bad position, an inaccuracy from a lost one
         assertEquals(MoveClassification.MISTAKE,
                 ReviewClassifier.fast(Eval.cp(-600), Eval.blackMates(2), true, false).label());
-        assertEquals(MoveClassification.INACCURACY,
+        // from a lost position: a close mate is a mistake, a distant one an inaccuracy (SPEC v1.6 R6)
+        assertEquals(MoveClassification.MISTAKE,
                 ReviewClassifier.fast(Eval.cp(-1500), Eval.blackMates(2), true, false).label());
+        assertEquals(MoveClassification.INACCURACY,
+                ReviewClassifier.fast(Eval.cp(-1500), Eval.blackMates(6), true, false).label());
         // already mated: never a blunder
         assertNotEquals(MoveClassification.BLUNDER,
                 ReviewClassifier.fast(Eval.blackMates(3), Eval.blackMates(1), true, false).label());
