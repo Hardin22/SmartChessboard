@@ -17,7 +17,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * LED move classification on known positions with the real Stockfish (skipped when it is not installed).
- * Uses the production budget numbers ({@link EngineManager.Budget#full()} min/confirm depth).
+ * Uses the production verdict depths ({@link EngineManager.Budget#full()} min/confirm depth) with ONE thread and no
+ * time caps, so the searches are node/depth-limited and the results do not depend on the speed of the machine
+ * (slow CI runners): no sleeps, every wait is on a condition with a generous deadline.
  */
 class MoveCoachIntegrationTest {
 
@@ -32,8 +34,8 @@ class MoveCoachIntegrationTest {
     static void setUp() {
         StockfishTestSupport.requireStockfish();
         EngineManager.Budget full = EngineManager.Budget.full();
-        budget = new EngineManager.Budget(2, 32, 30, full.coachMinDepth(), full.coachConfirmDepth(), full.coachCapMs(),
-                full.candidateNodes(), full.candidateCapMs(), 1, 16, 1_000, 0, 0);
+        budget = new EngineManager.Budget(1, 32, 30, full.coachMinDepth(), full.coachConfirmDepth(), 60_000,
+                full.candidateNodes(), 60_000, 1, 16, 1_000, 0, 0);
         engine = StockfishTestSupport.client("coach-test", budget.threads(), budget.hashMb());
         analyzer = new PositionAnalyzer(() -> engine, () -> budget);
         coach = new MoveCoach(analyzer, () -> budget);
@@ -63,23 +65,39 @@ class MoveCoachIntegrationTest {
         candidates.clear();
     }
 
-    /** Lets the analysis of fenBefore run like a player thinking, then plays the move; returns the last verdict. */
-    static MoveFeedback play(String fenBefore, String uci, long thinkMs) throws Exception {
-        analyzer.analyze(fenBefore, 18, 1, null);
-        Thread.sleep(thinkMs);
+    /** Waits for a condition (polling) with a deadline generous enough for slow CI machines. */
+    static void await(String what, java.util.function.BooleanSupplier cond) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 60_000;
+        while (!cond.getAsBoolean()) {
+            assertTrue(System.currentTimeMillis() < deadline, "timed out waiting for " + what);
+            Thread.sleep(5);
+        }
+    }
+
+    /** Waits until every event already queued on the engine event thread has been delivered. */
+    static void flushEvents() throws Exception {
+        EngineEvents.EXECUTOR.submit(() -> { }).get(60, TimeUnit.SECONDS);
+    }
+
+    /** The player "thinks" until the live analysis of {@code fen} reached {@code depth}. */
+    static void think(String fen, int depth) throws InterruptedException {
+        analyzer.analyze(fen, 18, 1, null);
+        await("analysis of " + fen + " to depth " + depth, () -> {
+            AnalysisUpdate u = analyzer.lastUpdate();
+            return u != null && u.fen().equals(fen) && (u.depth() >= depth || u.finished());
+        });
+    }
+
+    /** Plays the move after the analysis reached the verdict depth; returns the last verdict. */
+    static MoveFeedback play(String fenBefore, String uci) throws Exception {
+        think(fenBefore, budget.coachMinDepth());
         coach.onMovePlayed(fenBefore, uci);
         return awaitFinal(uci);
     }
 
     static MoveFeedback awaitFinal(String uci) throws Exception {
-        long deadline = System.currentTimeMillis() + MoveCoach.HARD_DEADLINE_MS + 2_000;
-        while (System.currentTimeMillis() < deadline) {
-            if (coach.isIdle() && verdicts.stream().anyMatch(v -> v.uci().equals(uci))) {
-                break;
-            }
-            Thread.sleep(20);
-        }
-        Thread.sleep(50); // let the event thread deliver
+        await("verdict for " + uci, () -> coach.isIdle() && verdicts.stream().anyMatch(v -> v.uci().equals(uci)));
+        flushEvents();
         List<MoveFeedback> mine = new ArrayList<>(verdicts.stream().filter(v -> v.uci().equals(uci)).toList());
         assertFalse(mine.isEmpty(), "no verdict for " + uci);
         return mine.get(mine.size() - 1);
@@ -113,7 +131,7 @@ class MoveCoachIntegrationTest {
     }
 
     void classify(String fen, String move, String expected, String description) throws Exception {
-        MoveFeedback fb = play(fen.trim(), move.trim(), 800);
+        MoveFeedback fb = play(fen.trim(), move.trim());
         MoveQuality q = fb.quality();
         switch (expected.trim()) {
             case "OK" -> assertFalse(q.isError(), description + ": got " + q);
@@ -130,25 +148,26 @@ class MoveCoachIntegrationTest {
     @Test
     void liftedPieceGetsOneVerdictPerDestinationAndInstantMoveVerdict() throws Exception {
         String fen = "r1bqkbnr/pppp1ppp/2n5/4p2Q/4P3/8/PPPP1PPP/RNB1KBNR w KQkq - 2 3";
-        analyzer.analyze(fen, 18, 1, null);
-        Thread.sleep(500);
-        CandidateFeedback fb = coach.onPieceLifted(fen, "H5").get(5, TimeUnit.SECONDS);
+        think(fen, budget.coachMinDepth());
+        CandidateFeedback fb = coach.onPieceLifted(fen, "H5").get(60, TimeUnit.SECONDS);
         assertNotNull(fb);
         assertEquals(MoveQuality.BLUNDER, fb.destinations().get("E5"), fb.toString());
         assertEquals(MoveQuality.BLUNDER, fb.destinations().get("F7"), fb.toString());
         assertEquals(13, fb.destinations().size(), "every queen move scored: " + fb);
-        assertTrue(fb.latencyMs() < budget.candidateCapMs(), "candidate latency " + fb.latencyMs());
         System.out.printf("lift hints: %d moves, depth %d, %d ms%n", fb.destinations().size(), fb.depth(), fb.latencyMs());
-        Thread.sleep(50);
+        flushEvents();
         assertEquals(1, candidates.size(), "candidate event emitted once");
 
-        // the move of the lifted piece gets an immediate (preliminary) verdict from the same search
+        // The move of the lifted piece gets an immediate (preliminary) verdict from the same search, when that
+        // search was deep enough (node-limited: the depth depends on the Stockfish version, not on the machine).
         coach.onMovePlayed(fen, "h5e5");
-        Thread.sleep(30);
+        flushEvents();
         MoveFeedback first = verdicts.stream().filter(v -> v.uci().equals("h5e5")).findFirst().orElse(null);
-        assertNotNull(first, "instant verdict expected");
-        assertEquals(MoveQuality.BLUNDER, first.quality());
-        assertTrue(first.latencyMs() < 50, "latency " + first.latencyMs());
+        if (fb.depth() >= budget.coachMinDepth() - 2) {
+            assertNotNull(first, "instant verdict expected (candidate depth " + fb.depth() + ")");
+            assertTrue(first.preliminary());
+            assertEquals(MoveQuality.BLUNDER, first.quality());
+        }
         assertEquals(MoveQuality.BLUNDER, awaitFinal("h5e5").quality());
     }
 
@@ -167,10 +186,8 @@ class MoveCoachIntegrationTest {
     void verdictIsGuaranteedWhenTheGameMovesOnImmediately() throws Exception {
         // PvC with an instant bot (Maia): the analysis jumps to the position after the bot reply within ms.
         String fen = "r1bqkbnr/pppp1ppp/2n5/4p2Q/4P3/8/PPPP1PPP/RNB1KBNR w KQkq - 2 3";
-        analyzer.analyze(fen, 18, 1, null);
-        Thread.sleep(300);
+        think(fen, budget.coachMinDepth());
         coach.onMovePlayed(fen, "h5e5");
-        Thread.sleep(5);
         analyzer.analyze("r1bqkbnr/pppp1ppp/8/4n3/4P3/8/PPPP1PPP/RNB1KBNR w KQkq - 0 4", 18, 1, null);
         MoveFeedback fb = awaitFinal("h5e5");
         assertEquals(MoveQuality.BLUNDER, fb.quality());
@@ -180,7 +197,7 @@ class MoveCoachIntegrationTest {
     void searchmovesSearchHonoursTheNodeLimit() throws Exception {
         String fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         SearchResult r = engine.search(fen, List.of(), SearchLimits.nodes(20_000).withMultiPv(2)
-                .withSearchMoves(List.of("g1f3", "g1h3")), null).result().get(10, TimeUnit.SECONDS);
+                .withSearchMoves(List.of("g1f3", "g1h3")), null).result().get(60, TimeUnit.SECONDS);
         assertTrue(r.nodes() < 40_000, "nodes " + r.nodes());
         assertEquals(2, r.lines().size());
         assertTrue(r.lines().stream().allMatch(l -> l.move().startsWith("g1")));
@@ -189,11 +206,22 @@ class MoveCoachIntegrationTest {
     @Test
     void staleLiftIsDropped() throws Exception {
         String fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+        // a huge node budget: the hint search cannot finish before the piece is put down
+        EngineManager.Budget slow = new EngineManager.Budget(1, 32, 30, budget.coachMinDepth(),
+                budget.coachConfirmDepth(), 60_000, 500_000_000L, 60_000, 1, 16, 1_000, 0, 0);
+        MoveCoach local = new MoveCoach(analyzer, () -> slow);
+        List<CandidateFeedback> seen = new CopyOnWriteArrayList<>();
+        local.setFeedbackListener(new MoveFeedbackListener() {
+            @Override
+            public void onCandidates(CandidateFeedback fb) {
+                seen.add(fb);
+            }
+        });
         analyzer.analyze(fen, 18, 1, null);
-        CompletableFuture<CandidateFeedback> f = coach.onPieceLifted(fen, "G1");
-        coach.onPieceReleased();
-        assertNull(f.get(5, TimeUnit.SECONDS));
-        Thread.sleep(50);
-        assertTrue(candidates.isEmpty());
+        CompletableFuture<CandidateFeedback> f = local.onPieceLifted(fen, "G1");
+        local.onPieceReleased();
+        assertNull(f.get(60, TimeUnit.SECONDS));
+        flushEvents();
+        assertTrue(seen.isEmpty());
     }
 }

@@ -11,7 +11,7 @@ import org.example.javachess.Engine.OpeningExplorer;
 import org.example.javachess.Engine.Score;
 import org.example.javachess.Engine.SearchLimits;
 import org.example.javachess.Engine.SearchResult;
-import org.example.javachess.Engine.UciClient;
+import org.example.javachess.Engine.PositionAnalyzer;
 import org.example.javachess.Oggetti.MoveAnalysis;
 import org.example.javachess.Oggetti.MoveAnalysis.MoveClassification;
 import org.slf4j.Logger;
@@ -90,10 +90,10 @@ public class GameAnalyzer {
         // 2. Search every position once (N+1 searches)
         List<List<Eval>> evals = new ArrayList<>();
         EngineManager manager = EngineManager.get();
-        UciClient engine = manager.acquireReviewClient();
+        PositionAnalyzer engine = manager.analyzer();
         long t0 = System.nanoTime();
-        try {
-            engine.newGame().get(30, TimeUnit.SECONDS);
+        // The review shares the analysis process: the live analysis pauses until it is done (no extra process).
+        try (AutoCloseable pause = engine.holdLive()) {
             int cap = manager.budget().reviewMovetimeCapMs();
             for (int i = 0; i <= totalMoves; i++) {
                 evals.add(search(engine, fens.get(i), depth, cap));
@@ -104,8 +104,6 @@ public class GameAnalyzer {
         } catch (Exception e) {
             log.error("review engine failed: {}", e.toString());
             return analysisList;
-        } finally {
-            manager.releaseReviewClient();
         }
         log.info("review: {} positions searched at depth {} in {} ms", totalMoves + 1, depth,
                 (System.nanoTime() - t0) / 1_000_000);
@@ -263,7 +261,7 @@ public class GameAnalyzer {
         return analysisList;
     }
 
-    private static List<Eval> search(UciClient engine, String fen, int depth, int capMs) throws Exception {
+    private static List<Eval> search(PositionAnalyzer engine, String fen, int depth, int capMs) throws Exception {
         Board b = new Board();
         b.loadFromFen(fen);
         if (b.legalMoves().isEmpty()) {
@@ -273,8 +271,8 @@ public class GameAnalyzer {
         if (capMs > 0) {
             limits = limits.withMovetime(capMs);
         }
-        SearchResult r = engine.search(fen, limits.withTimeout(Math.max(capMs, 30_000) + 5_000L)).result()
-                .get(120, TimeUnit.SECONDS);
+        SearchResult r = engine.submit(PositionAnalyzer.Priority.REVIEW, fen,
+                limits.withTimeout(Math.max(capMs, 30_000) + 5_000L), Map.of()).get(120, TimeUnit.SECONDS);
         List<Eval> out = new ArrayList<>();
         for (InfoLine l : r.lines()) {
             out.add(new Eval(l.score(), l.move(), l.pv()));

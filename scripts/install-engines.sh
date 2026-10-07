@@ -34,6 +34,9 @@ warn() { printf '\033[1;33m[engines]\033[0m %s\n' "$*" >&2; }
 die() { printf '\033[1;31m[engines]\033[0m %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1; }
 
+SUDO=""
+if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -116,7 +119,7 @@ PY
 install_stockfish_apt() {
   [ "$os" = Linux ] && need apt-get || return 1
   log "trying the distribution package (apt)..."
-  sudo apt-get update -qq && sudo apt-get install -y -qq stockfish || return 1
+  $SUDO apt-get update -qq && $SUDO apt-get install -y -qq stockfish || return 1
   local bin
   bin="$(command -v stockfish || echo /usr/games/stockfish)"
   uci_ok "$bin" || return 1
@@ -159,8 +162,8 @@ install_lc0() {
   fi
   if need apt-get; then
     log "installing lc0 build dependencies (sudo)..."
-    sudo apt-get update -qq
-    sudo apt-get install -y -qq git ninja-build meson pkg-config g++ libopenblas-dev zlib1g-dev || return 1
+    $SUDO apt-get update -qq
+    $SUDO apt-get install -y -qq git ninja-build meson pkg-config g++ libopenblas-dev zlib1g-dev || return 1
   fi
   local tag
   tag="$(curl -fsSL https://api.github.com/repos/LeelaChessZero/lc0/releases/latest | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4 || true)"

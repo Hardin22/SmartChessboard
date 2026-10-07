@@ -39,16 +39,14 @@ class GameAnalyzerTest {
     }
 
     @Test
-    void secondReviewReusesTheEngineProcess() {
+    void reviewRunsOnTheSharedAnalysisProcess() {
         StockfishTestSupport.requireStockfish();
         GameAnalyzer analyzer = new GameAnalyzer();
         analyzer.analyzeGame("e2e4 e7e5", 8, null);
-        UciClient first = EngineManager.get().acquireReviewClient();
-        EngineManager.get().releaseReviewClient();
-        int started = first.processesStarted();
+        UciClient engine = EngineManager.get().analysisClient();
+        int started = engine.processesStarted();
         analyzer.analyzeGame("d2d4 d7d5", 8, null);
-        assertSame(first, EngineManager.get().acquireReviewClient());
-        EngineManager.get().releaseReviewClient();
-        assertEquals(started, first.processesStarted(), "no new process per review");
+        assertSame(engine, EngineManager.get().analysisClient(), "no separate review process");
+        assertEquals(started, engine.processesStarted(), "no new process per review");
     }
 }

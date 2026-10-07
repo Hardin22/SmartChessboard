@@ -33,7 +33,7 @@ class PositionAnalyzerTest {
     }
 
     static void await(java.util.function.BooleanSupplier cond) throws InterruptedException {
-        long deadline = System.currentTimeMillis() + 5_000;
+        long deadline = System.currentTimeMillis() + 60_000;
         while (!cond.getAsBoolean() && System.currentTimeMillis() < deadline) {
             Thread.sleep(10);
         }
@@ -64,7 +64,7 @@ class PositionAnalyzerTest {
         analyzer.analyze(START, 0, 1, first::add); // depth raised to the coach confirm depth (6)
         analyzer.analyze(AFTER_E4, 6, 1, second::add);
         await(() -> second.stream().anyMatch(AnalysisUpdate::finished));
-        Thread.sleep(100);
+        EngineEvents.EXECUTOR.submit(() -> { }).get(30, TimeUnit.SECONDS); // flush pending deliveries
         assertTrue(first.stream().allMatch(u -> u.fen().equals(START)));
         assertTrue(second.stream().allMatch(u -> u.fen().equals(AFTER_E4)));
         assertFalse(first.stream().anyMatch(AnalysisUpdate::finished), "old request must not finish after replacement");
@@ -98,10 +98,45 @@ class PositionAnalyzerTest {
     }
 
     @Test
+    void foregroundSearchesRunByPriorityWithoutPreemptingEachOther() throws Exception {
+        List<String> order = new CopyOnWriteArrayList<>();
+        analyzer.analyze(START, 30, 1, null);
+        var review = analyzer.submit(PositionAnalyzer.Priority.REVIEW, START, SearchLimits.depth(8), java.util.Map.of());
+        var hint = analyzer.submit(PositionAnalyzer.Priority.HINT, START, SearchLimits.depth(2), java.util.Map.of());
+        var bot = analyzer.submit(PositionAnalyzer.Priority.BOT, START, SearchLimits.depth(2),
+                java.util.Map.of("Skill Level", "3"));
+        review.thenRun(() -> order.add("review"));
+        hint.thenRun(() -> order.add("hint"));
+        bot.thenRun(() -> order.add("bot"));
+        assertEquals("g1f3", bot.get(30, TimeUnit.SECONDS).bestMove(), "per-search Skill Level applied");
+        hint.get(30, TimeUnit.SECONDS);
+        SearchResult r = review.get(30, TimeUnit.SECONDS);
+        assertFalse(r.stopped(), "the running review search was not preempted");
+        assertEquals(8, r.depth());
+        await(() -> order.size() == 3);
+        assertEquals(List.of("review", "bot", "hint"), order, "queued by priority");
+        assertEquals("e2e4", analyzer.submit(PositionAnalyzer.Priority.VERDICT, START, SearchLimits.depth(2),
+                        java.util.Map.of()).get(30, TimeUnit.SECONDS).bestMove(),
+                "Skill Level restored after the bot search");
+    }
+
+    @Test
+    void holdLivePausesTheBackgroundAnalysis() throws Exception {
+        List<AnalysisUpdate> u = new CopyOnWriteArrayList<>();
+        try (AutoCloseable hold = analyzer.holdLive()) {
+            analyzer.analyze(START, 6, 1, u::add);
+            analyzer.submit(PositionAnalyzer.Priority.REVIEW, START, SearchLimits.depth(3), java.util.Map.of())
+                    .get(30, TimeUnit.SECONDS);
+            EngineEvents.EXECUTOR.submit(() -> { }).get(30, TimeUnit.SECONDS);
+            assertTrue(u.isEmpty(), "no live updates while held");
+        }
+        await(() -> u.stream().anyMatch(AnalysisUpdate::finished));
+    }
+
+    @Test
     void scoringInterruptsAndThenResumesTheLiveAnalysis() throws Exception {
         List<AnalysisUpdate> u = new CopyOnWriteArrayList<>();
         analyzer.analyze(START, 30, 1, u::add); // long search on the fake engine (10 ms per depth)
-        Thread.sleep(80);
         SearchResult r = analyzer.scoreMoves(START, List.of("g1f3", "b1c3"), 5_000, 300).get(5, TimeUnit.SECONDS);
         assertNotNull(r.best());
         await(() -> u.stream().anyMatch(AnalysisUpdate::finished));

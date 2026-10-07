@@ -7,21 +7,27 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Latency of the LED verdict on a simulated Raspberry Pi 5.
+ * Latency of the LED verdict on a simulated Raspberry Pi.
  *
- * <p>Simulation: the analysis engine runs with ONE thread here and the measured time is divided by the
- * per-core speed ratio of a Pi 5 vs an Apple M-series core ({@code -Dpi5.ratio}, default 0.33). On the Pi the
- * analysis engine has 2 threads, so this is a pessimistic estimate. The player "thinks" 300 ms only (a fast
- * move, warm hash of the parent position as in the real flow) and the move is not lifted first (no instant
- * verdict from the candidate search): this measures the post-move search path.</p>
+ * <p>Simulation independent of the machine running the test: the single-thread speed of THIS machine is measured
+ * first, then every latency is scaled by {@code thisNps / piNps}. Pi numbers: SF19 aarch64 does 1.08 M nps on one
+ * Apple-silicon core in the linux/arm64 container; a Cortex-A76 (Pi 5) core is ~3.5x slower (310 k) and a
+ * Cortex-A72 (Pi 4) core ~9x slower (120 k). Override with {@code -Dpi5.nps}, {@code -Dpi4.nps} once measured on a
+ * real board ({@code engines/stockfish/stockfish bench}). A slow CI runner measures longer latencies but also a lower nps, so the
+ * estimate and the assertions stay stable. The analysis engine has ONE thread here (two on the real Pi), so the
+ * estimate is pessimistic. The player "thinks" until the live analysis of the position reached the verdict depth,
+ * and does not lift the piece first (no instant verdict from the hint search): this measures the post-move path.</p>
  */
 class CoachLatencyTest {
 
-    static final double PI5 = Double.parseDouble(System.getProperty("pi5.ratio", "0.25"));
+    static final long PI5_NPS = Long.getLong("pi5.nps", 310_000);
+    static final long PI4_NPS = Long.getLong("pi4.nps", 120_000);
+    static final String MIDDLEGAME = "r1bq1rk1/pp2bppp/2n1pn2/3p4/2PP4/2N1PN2/PP1B1PPP/R2QKB1R w KQ - 0 8";
 
     /** Middlegame / opening positions with a natural move each. */
     static final String[][] CASES = {
@@ -40,15 +46,21 @@ class CoachLatencyTest {
     };
 
     @Test
-    void verdictLatencyOnSimulatedPi5() throws Exception {
+    void verdictLatencyOnSimulatedPi() throws Exception {
         StockfishTestSupport.requireStockfish();
         EngineManager.Budget full = EngineManager.Budget.full();
         EngineManager.Budget b = new EngineManager.Budget(1, 16, 30, full.coachMinDepth(), full.coachConfirmDepth(),
                 full.coachCapMs(), full.candidateNodes(), full.candidateCapMs(), 1, 16, 1_000, 0, 0);
         List<MoveFeedback> verdicts = new CopyOnWriteArrayList<>();
-        List<Long> prelim = new ArrayList<>();
+        List<Long> latency = new ArrayList<>();
         List<Integer> depths = new ArrayList<>();
+        long nps;
         try (UciClient engine = StockfishTestSupport.client("latency", 1, 16)) {
+            engine.start().get(60, TimeUnit.SECONDS);
+            SearchResult speed = engine.search(MIDDLEGAME, SearchLimits.movetime(1_000)).result().get(60, TimeUnit.SECONDS);
+            nps = Math.max(1, speed.nodes() * 1000 / Math.max(1, speed.elapsedMs()));
+            engine.newGame().get(60, TimeUnit.SECONDS);
+
             PositionAnalyzer analyzer = new PositionAnalyzer(() -> engine, () -> b);
             MoveCoach coach = new MoveCoach(analyzer, () -> b);
             coach.setFeedbackListener(new MoveFeedbackListener() {
@@ -57,38 +69,48 @@ class CoachLatencyTest {
                     verdicts.add(fb);
                 }
             });
-            engine.start().get();
             for (String[] c : CASES) {
                 verdicts.clear();
                 analyzer.analyze(c[0], 18, 1, null);
-                Thread.sleep(300);
+                await(() -> {
+                    AnalysisUpdate u = analyzer.lastUpdate();
+                    return u != null && u.fen().equals(c[0]) && (u.depth() >= b.coachMinDepth() || u.finished());
+                });
                 coach.onMovePlayed(c[0], c[1]);
-                long deadline = System.currentTimeMillis() + MoveCoach.HARD_DEADLINE_MS;
-                while (verdicts.isEmpty() && System.currentTimeMillis() < deadline) {
-                    Thread.sleep(5);
-                }
-                assertFalse(verdicts.isEmpty(), "no verdict for " + c[1]);
+                await(() -> !verdicts.isEmpty());
                 MoveFeedback first = verdicts.get(0);
-                prelim.add(first.latencyMs());
+                latency.add(first.latencyMs());
                 depths.add(first.depth());
                 // depth 0 = the move ended the game (mate/stalemate): exact verdict without search
                 assertTrue(first.depth() >= b.coachMinDepth() || first.depth() == 0, "depth " + first.depth());
-                while (!coach.isIdle() && System.currentTimeMillis() < deadline) {
-                    Thread.sleep(10);
-                }
+                await(coach::isIdle);
             }
             analyzer.stop();
         }
-        long p50 = pct(prelim, 50);
-        long p95 = pct(prelim, 95);
+        double toPi5 = (double) nps / PI5_NPS;
+        double toPi4 = (double) nps / PI4_NPS;
+        long p50 = pct(latency, 50);
+        long p95 = pct(latency, 95);
         String report = String.format(Locale.ROOT,
-                "verdict latency, Mac 1 thread: p50=%d ms p95=%d ms | simulated Pi 5 (x%.2f): p50=%d ms p95=%d ms | depth min=%d (min required %d)",
-                p50, p95, PI5, (long) (p50 / PI5), (long) (p95 / PI5),
+                "verdict latency, this machine (1 thread, %d nps): p50=%d ms p95=%d ms | Pi 5 est. (%d nps/core): p50=%d ms "
+                        + "p95=%d ms | Pi 4 est. (%d nps/core): p50=%d ms p95=%d ms | min depth %d (required %d)",
+                nps, p50, p95, PI5_NPS, Math.round(p50 * toPi5), Math.round(p95 * toPi5), PI4_NPS,
+                Math.round(p50 * toPi4), Math.round(p95 * toPi4),
                 depths.stream().mapToInt(Integer::intValue).filter(d -> d > 0).min().orElse(0), b.coachMinDepth());
         System.out.println(report);
-        // Realistic Pi 5 targets: a verdict within ~1 s typically and ~2 s worst case after the piece is put down.
-        assertTrue(p50 / PI5 < 1_200, report);
-        assertTrue(p95 / PI5 < 2_500, report);
+        // Targets (EngineManager.Budget): verdict after the piece is put down within 0.5 s typical / 1.5 s worst
+        // on a Pi 5, 1 s / 3 s on a Pi 4 (pessimistic: one analysis thread here).
+        assertTrue(p50 * toPi5 < 500, report);
+        assertTrue(p95 * toPi5 < 1_500, report);
+        assertTrue(p95 * toPi4 < 3_000, report);
+    }
+
+    static void await(java.util.function.BooleanSupplier cond) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 60_000;
+        while (!cond.getAsBoolean()) {
+            assertTrue(System.currentTimeMillis() < deadline, "timed out");
+            Thread.sleep(2);
+        }
     }
 
     static long pct(List<Long> v, int p) {

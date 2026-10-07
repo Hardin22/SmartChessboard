@@ -6,8 +6,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.PriorityQueue;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -34,7 +37,6 @@ public final class PositionAnalyzer {
         void onUpdate(AnalysisUpdate update);
     }
 
-    private static volatile PositionAnalyzer instance;
 
     private final Supplier<UciClient> clientSupplier;
     private final Supplier<EngineManager.Budget> budgetSupplier;
@@ -44,7 +46,6 @@ public final class PositionAnalyzer {
     private Request current;
     private int generation;
     private UciClient.SearchHandle mainHandle;
-    private UciClient.SearchHandle candidateHandle;
     private boolean mainFinished;
     private AnalysisUpdate lastUpdate;
 
@@ -61,20 +62,9 @@ public final class PositionAnalyzer {
                            int generation) {
     }
 
+    /** The analyzer of the application's engine manager. */
     public static PositionAnalyzer get() {
-        PositionAnalyzer a = instance;
-        if (a == null) {
-            synchronized (PositionAnalyzer.class) {
-                a = instance;
-                if (a == null) {
-                    EngineManager m = EngineManager.get();
-                    a = new PositionAnalyzer(m::analysisClient, m::budget);
-                    m.onAnalysisReconfigured(a::refresh);
-                    instance = a;
-                }
-            }
-        }
-        return a;
+        return EngineManager.get().analyzer();
     }
 
     /** For tests: an analyzer on a given client. */
@@ -180,55 +170,162 @@ public final class PositionAnalyzer {
         observers.remove(l);
     }
 
+    /** Priority of a foreground search; higher runs first. Foreground searches pause the live analysis. */
+    public enum Priority {
+        /** Full game review, one position at a time. */
+        REVIEW,
+        /** Lift hints (cancelled when the piece is put down). */
+        HINT,
+        /** Move verdict for the LEDs. */
+        VERDICT,
+        /** Bot move when the bot shares this engine (low-memory boards). */
+        BOT
+    }
+
+    private final class Job {
+        final Priority priority;
+        final long seq;
+        final String fen;
+        final SearchLimits limits;
+        final Map<String, String> overrides;
+        final CompletableFuture<SearchResult> future = new CompletableFuture<>();
+        UciClient.SearchHandle handle;
+
+        Job(Priority priority, long seq, String fen, SearchLimits limits, Map<String, String> overrides) {
+            this.priority = priority;
+            this.seq = seq;
+            this.fen = fen;
+            this.limits = limits;
+            this.overrides = overrides;
+        }
+    }
+
+    // guarded by this
+    private final PriorityQueue<Job> queue = new PriorityQueue<>(
+            Comparator.comparing((Job j) -> j.priority).reversed().thenComparingLong(j -> j.seq));
+    private Job running;
+    private Job lastHint;
+    private long jobSeq;
+    private int liveHolds;
+
+    /**
+     * Runs a search on the analysis engine ahead of the live analysis, which pauses and then resumes on the same
+     * position with a warm hash. Foreground searches never preempt each other: they run one at a time, highest
+     * priority first. {@code overrides} are UCI options valid for this search only.
+     */
+    public CompletableFuture<SearchResult> submit(Priority priority, String fen, SearchLimits limits,
+                                                  Map<String, String> overrides) {
+        Job job;
+        synchronized (this) {
+            job = new Job(priority, jobSeq++, fen, limits, overrides == null ? Map.of() : overrides);
+            if (priority == Priority.HINT) {
+                lastHint = job;
+            }
+            queue.add(job);
+            pump();
+        }
+        return job.future;
+    }
+
+    /**
+     * Pauses the live analysis until the returned handle is closed (e.g. during a full game review, so it does
+     * not restart between the review searches). Foreground searches still run.
+     */
+    public AutoCloseable holdLive() {
+        synchronized (this) {
+            liveHolds++;
+        }
+        java.util.concurrent.atomic.AtomicBoolean closed = new java.util.concurrent.atomic.AtomicBoolean();
+        return () -> {
+            if (closed.compareAndSet(false, true)) {
+                synchronized (this) {
+                    liveHolds--;
+                    pump();
+                }
+            }
+        };
+    }
+
     /**
      * Scores a set of moves of {@code fen} in one search ({@code go searchmoves ...} with MultiPV = number of
-     * moves), interrupting the live analysis, which resumes afterwards on the same position (warm hash).
+     * moves) as a {@link Priority#HINT} foreground search.
      */
     public CompletableFuture<SearchResult> scoreMoves(String fen, List<String> moves, long nodes, long capMs) {
+        return scoreMoves(fen, moves, nodes, capMs, Priority.HINT);
+    }
+
+    public CompletableFuture<SearchResult> scoreMoves(String fen, List<String> moves, long nodes, long capMs,
+                                                      Priority priority) {
         if (moves.isEmpty()) {
             return CompletableFuture.completedFuture(new SearchResult(null, null, List.of(), 0, 0, 0, false));
         }
-        return interruptingSearch(fen, SearchLimits.nodes(nodes).withMultiPv(moves.size()).withSearchMoves(moves)
-                .withTimeout(capMs));
+        return submit(priority, fen, SearchLimits.nodes(nodes).withMultiPv(moves.size()).withSearchMoves(moves)
+                .withTimeout(capMs), Map.of());
     }
 
-    /** Best move/score of {@code fen} with a node budget, interrupting the live analysis like {@link #scoreMoves}. */
+    /** Best move/score of {@code fen} with a node budget, as a {@link Priority#VERDICT} foreground search. */
     public CompletableFuture<SearchResult> searchBest(String fen, long nodes, long capMs) {
-        return interruptingSearch(fen, SearchLimits.nodes(nodes).withTimeout(capMs));
+        return submit(Priority.VERDICT, fen, SearchLimits.nodes(nodes).withTimeout(capMs), Map.of());
     }
 
-    private CompletableFuture<SearchResult> interruptingSearch(String fen, SearchLimits limits) {
-        UciClient.SearchHandle h;
-        int g;
-        synchronized (this) {
-            g = generation;
-            UciClient client;
-            try {
-                client = clientSupplier.get();
-            } catch (RuntimeException e) {
-                return CompletableFuture.failedFuture(e);
-            }
-            h = client.search(fen, List.of(), limits, null);
-            candidateHandle = h;
-        }
-        UciClient.SearchHandle handle = h;
-        return h.result().whenComplete((r, e) -> resumeAfterCandidates(g, handle));
-    }
-
-    /** Stops a running {@link #scoreMoves} search early (its future completes with partial lines). */
+    /** Stops the latest hint search early (its future completes with partial lines) or drops it if queued. */
     public synchronized void cancelScoring() {
-        if (candidateHandle != null) {
-            candidateHandle.cancel();
+        Job j = lastHint;
+        if (j == null) {
+            return;
+        }
+        if (queue.remove(j)) {
+            j.future.completeExceptionally(new java.util.concurrent.CancellationException("hint cancelled"));
+        } else if (j == running && j.handle != null) {
+            j.handle.cancel();
         }
     }
 
-    private synchronized void resumeAfterCandidates(int g, UciClient.SearchHandle handle) {
-        if (candidateHandle == handle) {
-            candidateHandle = null;
+    /** True when no foreground search is running or queued (for tests and diagnostics). */
+    public synchronized boolean isForegroundIdle() {
+        return running == null && queue.isEmpty();
+    }
+
+    /** Caller holds the lock: starts the next foreground job, or resumes the live analysis. */
+    private void pump() {
+        if (running != null) {
+            return;
         }
-        if (g == generation && current != null && !mainFinished && candidateHandle == null) {
-            startMain(current);
+        Job next = queue.poll();
+        if (next == null) {
+            if (liveHolds == 0 && current != null && !mainFinished
+                    && (mainHandle == null || mainHandle.result().isDone())) {
+                startMain(current);
+            }
+            return;
         }
+        UciClient client;
+        try {
+            client = clientSupplier.get();
+        } catch (RuntimeException e) {
+            next.future.completeExceptionally(e);
+            pump();
+            return;
+        }
+        running = next;
+        next.handle = client.search(next.fen, List.of(), next.limits, null, next.overrides);
+        next.handle.result().whenComplete((r, err) -> {
+            synchronized (PositionAnalyzer.this) {
+                if (running == next) {
+                    running = null;
+                }
+                pump();
+            }
+            if (err != null) {
+                next.future.completeExceptionally(err);
+            } else {
+                next.future.complete(r);
+            }
+        });
+    }
+
+    private boolean liveBlocked() {
+        return running != null || !queue.isEmpty() || liveHolds > 0;
     }
 
     // ------------------------------------------------------------------------------------------
@@ -240,6 +337,9 @@ public final class PositionAnalyzer {
             Score terminal = req.inCheck ? Score.mate(0) : Score.cp(0);
             publish(req, new AnalysisUpdate(req.fen, 0, List.of(), true, terminal, 0, 0));
             return;
+        }
+        if (liveBlocked()) {
+            return; // resumed by pump() when the foreground searches are done
         }
         UciClient client;
         try {

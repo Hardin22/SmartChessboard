@@ -28,6 +28,7 @@ public final class FakeUciEngine {
         AtomicBoolean stop = new AtomicBoolean();
         Thread search = null;
         int multiPv = 1;
+        int skill = 20;
         String line;
         while ((line = in.readLine()) != null) {
             line = line.trim();
@@ -41,6 +42,8 @@ public final class FakeUciEngine {
                 if (!mode.equals("no-readyok")) {
                     say("readyok");
                 }
+            } else if (line.startsWith("setoption name Skill Level value ")) {
+                skill = Integer.parseInt(line.substring("setoption name Skill Level value ".length()).trim());
             } else if (line.startsWith("setoption name MultiPV value ")) {
                 multiPv = Integer.parseInt(line.substring("setoption name MultiPV value ".length()).trim());
             } else if (line.startsWith("go")) {
@@ -57,7 +60,8 @@ public final class FakeUciEngine {
                 stop.set(false);
                 final int k = multiPv;
                 final String go = line;
-                search = new Thread(() -> runSearch(go, k, stop, mode));
+                final String best = skill < 20 ? "g1f3" : "e2e4"; // lets tests see the Skill Level in effect
+                search = new Thread(() -> runSearch(go, k, stop, mode, best));
                 search.setDaemon(true);
                 search.start();
             } else if (line.equals("stop")) {
@@ -70,7 +74,7 @@ public final class FakeUciEngine {
         }
     }
 
-    private static void runSearch(String go, int multiPv, AtomicBoolean stop, String mode) {
+    private static void runSearch(String go, int multiPv, AtomicBoolean stop, String mode, String best) {
         List<String> t = List.of(go.split("\\s+"));
         int maxDepth = t.contains("depth") ? Integer.parseInt(t.get(t.indexOf("depth") + 1)) : Integer.MAX_VALUE;
         long movetime = t.contains("movetime") ? Long.parseLong(t.get(t.indexOf("movetime") + 1)) : Long.MAX_VALUE;
@@ -101,7 +105,7 @@ public final class FakeUciEngine {
         if (mode.equals("ignore-stop") && stop.get()) {
             return;
         }
-        say("bestmove e2e4 ponder e7e5");
+        say("bestmove " + best + " ponder e7e5");
     }
 
     private static synchronized void say(String s) {

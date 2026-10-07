@@ -67,6 +67,16 @@ public final class EngineLocator {
             Path p = Paths.get(expandHome(configured));
             checked.add(configKey + "=" + configured);
             if (isExecutable(p)) {
+                Optional<Path> bundled = packageManagerPath(p) && !ConfigManager.getBooleanProperty(configKey + ".strict", false)
+                        ? bundledEngine(name) : Optional.empty();
+                if (bundled.isPresent()) {
+                    // Old default config pointed at Homebrew/apt; the official release installed by
+                    // scripts/install-engines.sh is preferred (Homebrew's bottle measured 2.5-3x slower).
+                    log.info("{}={} is a package-manager build; using the official binary {} instead "
+                            + "(set {}.strict=true to keep the configured one)", configKey, configured, bundled.get(), configKey);
+                    checked.add(bundled.get().toString());
+                    return new Lookup(name, bundled, List.copyOf(checked));
+                }
                 return new Lookup(name, Optional.of(p), List.copyOf(checked));
             }
             log.warn("{}={} is not an executable file, looking elsewhere", configKey, configured);
@@ -87,6 +97,25 @@ public final class EngineLocator {
         }
         checked.add("PATH");
         return new Lookup(name, Optional.empty(), List.copyOf(checked));
+    }
+
+    /** Homebrew, /usr/local, Debian /usr/games or /usr/bin installs. */
+    static boolean packageManagerPath(Path p) {
+        String s = p.toAbsolutePath().toString();
+        return s.startsWith("/opt/homebrew/") || s.startsWith("/usr/local/") || s.startsWith("/usr/games/")
+                || s.startsWith("/usr/bin/") || s.startsWith("/home/linuxbrew/");
+    }
+
+    /** An executable engine in the project's engines/ folder (installed by scripts/install-engines.sh). */
+    static Optional<Path> bundledEngine(String name) {
+        for (Path dir : engineDirs()) {
+            for (Path candidate : candidatesIn(dir, name)) {
+                if (isExecutable(candidate)) {
+                    return Optional.of(candidate);
+                }
+            }
+        }
+        return Optional.empty();
     }
 
     private static List<Path> engineDirs() {
