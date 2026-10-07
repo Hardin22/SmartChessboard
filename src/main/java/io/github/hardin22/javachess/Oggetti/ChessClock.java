@@ -110,6 +110,12 @@ public final class ChessClock {
         return String.format(Locale.ROOT, "%02d:%02d", seconds / 60, seconds % 60);
     }
 
+    /** Sets a side's remaining time (a resumed game). The running clock keeps running from the new value. */
+    public synchronized void setRemainingMillis(Side side, long millis) {
+        settle();
+        remainingNs[side.ordinal()] = Math.max(0, millis) * 1_000_000L;
+    }
+
     /** Moves the running time into the remaining time. Lock held. */
     private void settle() {
         if (running != null) {

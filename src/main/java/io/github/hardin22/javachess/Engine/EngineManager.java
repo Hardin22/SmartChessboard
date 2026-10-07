@@ -219,7 +219,7 @@ public final class EngineManager implements EngineSelection {
             });
             analysisBudget = budget();
             Map<String, String> opts = stockfishOptions(analysisBudget.threads(), analysisBudget.hashMb());
-            opts.put("Skill Level", "20"); // base value for the per-search override of a shared bot
+            opts.putAll(strengthOptions(BotStrength.full())); // base values for the per-search override of a shared bot
             analysis = new UciClient(EngineSpec.of("analysis", sf, opts));
             analysis.start().exceptionally(t -> {
                 setStatus(EngineStatus.error(activeProfile.id(), "Stockfish non si avvia: " + rootMessage(t)));
@@ -238,23 +238,55 @@ public final class EngineManager implements EngineSelection {
      * @param skillLevel Stockfish "Skill Level" 0..20 (ignored by Maia)
      */
     public CompletableFuture<String> botMove(String fen, int skillLevel) {
-        return botMoveOnce(fen, skillLevel).handle((move, err) -> {
+        BotStrength strength = botStrength;
+        if (strength != null) {
+            return botMove(fen, strength);
+        }
+        return botMove(fen, new BotStrength(skillLevel, 0, 0, 0));
+    }
+
+    /**
+     * Strength used by {@link #botMove(String, int)} instead of its skill level (null = the skill level). Set by a
+     * game that chose a level in Elo or plays with a clock (the bot then thinks within its remaining time).
+     */
+    public void setBotStrength(BotStrength strength) {
+        this.botStrength = strength;
+    }
+
+    public BotStrength botStrength() {
+        return botStrength;
+    }
+
+    private volatile BotStrength botStrength;
+
+    /** Like {@link #botMove(String, int)} with an explicit strength and thinking time. */
+    public CompletableFuture<String> botMove(String fen, BotStrength strength) {
+        return botMoveOnce(fen, strength).handle((move, err) -> {
             if (err == null) {
                 return CompletableFuture.completedFuture(move);
             }
             // typical cause: the profile was switched while the bot was thinking (old engine closed)
             log.info("bot move not completed ({}), retrying once on the current engine", rootMessage(err));
-            return botMoveOnce(fen, skillLevel);
+            return botMoveOnce(fen, strength);
         }).thenCompose(f -> f);
     }
 
-    private CompletableFuture<String> botMoveOnce(String fen, int skillLevel) {
+    /** UCI options of a Stockfish bot for {@code strength}. */
+    static Map<String, String> strengthOptions(BotStrength strength) {
+        Map<String, String> o = new LinkedHashMap<>();
+        o.put("Skill Level", String.valueOf(strength.uciElo() > 0 ? 20 : strength.skillLevel()));
+        o.put("UCI_LimitStrength", strength.uciElo() > 0 ? "true" : "false");
+        o.put("UCI_Elo", String.valueOf(strength.uciElo() > 0 ? strength.uciElo() : BotStrength.MAX_ELO));
+        return o;
+    }
+
+    private CompletableFuture<String> botMoveOnce(String fen, BotStrength strength) {
         EngineProfile p = activeProfile;
-        String skill = String.valueOf(Math.max(0, Math.min(20, skillLevel)));
+        Map<String, String> options = strengthOptions(strength);
         if (!isMaia(p) && plan.botSharesAnalysis()) {
             // Low-memory board: the bot is a high-priority search on the analysis process.
             long t0 = System.nanoTime();
-            return analyzer().submit(PositionAnalyzer.Priority.BOT, fen, stockfishBotLimits(p), Map.of("Skill Level", skill))
+            return analyzer().submit(PositionAnalyzer.Priority.BOT, fen, stockfishBotLimits(p, strength), options)
                     .thenApply(r -> logBotMove(p, r, t0));
         }
         return ensureBot(p).thenCompose(client -> {
@@ -262,20 +294,24 @@ public final class EngineManager implements EngineSelection {
             if (isMaia(p)) {
                 limits = SearchLimits.nodes(Math.max(1, ConfigManager.getIntProperty("maia.nodes", 1))).withTimeout(15_000);
             } else {
-                client.setOption("Skill Level", skill);
-                limits = stockfishBotLimits(p);
+                options.forEach(client::setOption);
+                limits = stockfishBotLimits(p, strength);
             }
             long t0 = System.nanoTime();
             return client.search(fen, limits).result().thenApply(r -> logBotMove(p, r, t0));
         });
     }
 
-    private SearchLimits stockfishBotLimits(EngineProfile p) {
-        int movetime = Math.max(100, ConfigManager.getIntProperty("game.bot.movetime", 2000));
+    private SearchLimits stockfishBotLimits(EngineProfile p, BotStrength strength) {
+        int movetime = strength.movetimeMs() > 0 ? Math.max(50, strength.movetimeMs())
+                : Math.max(100, ConfigManager.getIntProperty("game.bot.movetime", 2000));
         Budget b = isLite(p) ? Budget.lite(plan) : Budget.full(plan);
         SearchLimits limits = SearchLimits.movetime(Math.min(movetime, b.botMaxMovetimeMs()));
         if (b.botMaxNodes() > 0) {
             limits = limits.withNodes(b.botMaxNodes());
+        }
+        if (strength.depth() > 0) {
+            limits = limits.withDepth(strength.depth());
         }
         return limits.withTimeout(limits.movetimeMs() + 3_000L);
     }
