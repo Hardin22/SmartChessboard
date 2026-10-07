@@ -223,6 +223,64 @@ public final class TemplateReader {
         return new BoardReading(out, true, model.inferenceMs());
     }
 
+    /**
+     * True when the picture shows the start position, by occupancy alone (any theme, any piece set): the two rows
+     * at each edge full, the four middle rows empty, and the pieces of the top rows of the other colour than those of
+     * the bottom rows. {@code flipped} must match the brighter (white) pieces being at the top.
+     */
+    public static boolean looksLikeStart(BufferedImage board, boolean flipped) {
+        int[][] cells = new int[64][];
+        double textureLevel = 0;
+        for (int row = 0; row < 8; row++) {
+            for (int col = 0; col < 8; col++) {
+                int[] rgb = cell(board, col, row);
+                cells[row * 8 + col] = rgb;
+                if (row >= 2 && row <= 5) {
+                    textureLevel = Math.max(textureLevel, textureLevel(rgb));
+                }
+            }
+        }
+        int threshold = (int) Math.max(PIECE_THRESHOLD, textureLevel * 1.15);
+        double[] luminance = new double[8];
+        for (int row = 0; row < 8; row++) {
+            double rowLum = 0;
+            for (int col = 0; col < 8; col++) {
+                int[] rgb = cells[row * 8 + col];
+                boolean[] mask = pieceMask(rgb, threshold);
+                int area = count(mask);
+                boolean occupied = area > N * N / 12;
+                boolean edge = row <= 1 || row >= 6;
+                if (occupied != edge) {
+                    return false;
+                }
+                if (occupied) {
+                    rowLum += meanLuminance(rgb, mask);
+                }
+            }
+            luminance[row] = rowLum / 8;
+        }
+        double top = (luminance[0] + luminance[1]) / 2;
+        double bottom = (luminance[6] + luminance[7]) / 2;
+        if (Math.abs(top - bottom) < 20) {
+            return false; // both sides look alike: not two armies
+        }
+        boolean whiteAtBottom = bottom > top;
+        return whiteAtBottom != flipped;
+    }
+
+    private static double meanLuminance(int[] rgb, boolean[] mask) {
+        double sum = 0;
+        int n = 0;
+        for (int i = 0; i < rgb.length; i++) {
+            if (mask[i]) {
+                int p = rgb[i];
+                sum += 0.299 * ((p >> 16) & 0xFF) + 0.587 * ((p >> 8) & 0xFF) + 0.114 * (p & 0xFF);
+                n++;
+            }
+        }
+        return n == 0 ? 0 : sum / n;
+    }
+
     /** Dissimilarity of a square with an example: shape (1 - overlap) plus colour difference on the overlap. */
     private static double score(int[] rgb, boolean[] mask, int area, Example e) {
         int inter = 0;

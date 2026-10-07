@@ -133,6 +133,7 @@ public final class BoardWatcher {
     private long polls;
     private long lastAutoScroll;
     private int autoScrolls;
+    private String lastVisionCheck;
 
     /**
      * @param vision vision model, or null when vision cannot be used at all
@@ -255,6 +256,14 @@ public final class BoardWatcher {
             publish(snapshot);
             return CompletableFuture.completedFuture(null);
         }
+        if (m == ReadMode.PAGE && board != null && board.placement() != null && vision.isCalibrated()
+                && Objects.equals(pageStable, lastVisionCheck)) {
+            // page mode: vision only cross-checks new positions (and stands in when the markup is unreadable);
+            // no picture while nothing changed, to spare the Raspberry Pi's CPU
+            publish(snapshot);
+            return CompletableFuture.completedFuture(null);
+        }
+        lastVisionCheck = pageStable;
         if (board == null && m != ReadMode.VISION_ONLY && snapshot.site() != ChessSite.OTHER) {
             // a known site without a board on this page: nothing to read
             report(null);

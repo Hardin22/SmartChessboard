@@ -171,11 +171,18 @@ public class VisionService implements AutoCloseable {
             modelReads++;
             return TemplateReader.fuse(t, model.read());
         }
+        if (autoCalibrate && TemplateReader.looksLikeStart(board, flipped)) {
+            // the start position, recognised by occupancy whatever the theme: learn this board's pieces from it
+            log.info("Vision calibrated on the start position");
+            templates.learn(board, START, flipped);
+            calibratedReads++;
+            return templates.read(board, flipped);
+        }
         modelReads++;
         BoardReading m = model.read();
         if (autoCalibrate && START.equals(m.withPlacementRules().placement()) && m.minConfidence() >= 0.4f) {
             // the start position recognised by the model: a known position to learn this board's pieces from
-            log.info("Vision calibrated on the start position");
+            log.info("Vision calibrated on the start position (model)");
             templates.learn(board, START, flipped);
         }
         return m;

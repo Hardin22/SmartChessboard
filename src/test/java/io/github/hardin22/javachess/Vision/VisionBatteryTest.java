@@ -247,6 +247,40 @@ class VisionBatteryTest {
         assertTrue(ghosts == 0, "vision must never produce a wrong move: " + failures);
     }
 
+    /** The start position is recognised by occupancy on every theme, and nothing else is taken for it. */
+    @Test
+    void startPositionRecognisedOnEveryTheme() throws Exception {
+        List<Fixture> all = new ArrayList<>(loadCore());
+        all.addAll(loadExtended());
+        assumeTrue(!all.isEmpty(), "no pictures");
+        int starts = 0;
+        int found = 0;
+        int falseStarts = 0;
+        int wrongSide = 0;
+        List<String> misses = new ArrayList<>();
+        for (Fixture f : all) {
+            boolean isStart = f.placement().equals("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
+            boolean seen = TemplateReader.looksLikeStart(f.image(), f.flipped());
+            if (isStart) {
+                starts++;
+                found += seen ? 1 : 0;
+                if (!seen) {
+                    misses.add(f.group() + "/" + f.file());
+                    wrongSide += TemplateReader.looksLikeStart(f.image(), !f.flipped()) ? 1 : 0;
+                }
+            } else if (seen) {
+                falseStarts++;
+                misses.add("false start: " + f.group() + "/" + f.file());
+            }
+        }
+        String report = String.format("Start position by occupancy: %d of %d recognised (%d with the other"
+                + " orientation), %d false starts in %d other pictures%n%s", found, starts, wrongSide, falseStarts,
+                all.size() - starts, String.join("\n", misses));
+        System.out.println(report);
+        write("report-start.md", report);
+        assertTrue(falseStarts == 0, "never a false start: " + misses);
+    }
+
     /**
      * The calibrated reader ({@link TemplateReader}) against the model on the same pictures: per group (one theme
      * and piece set), it learns from the picture marked "calibration" (the start position) and reads the others.

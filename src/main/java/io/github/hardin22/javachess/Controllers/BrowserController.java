@@ -52,8 +52,11 @@ public class BrowserController implements NavigationAware {
 
     private static final Logger log = LoggerFactory.getLogger(BrowserController.class);
 
-    /** Default of the {@code browser.reader} setting (vision, vision-only, page). */
-    public static final String DEFAULT_READER = "vision";
+    /**
+     * Default of the {@code browser.reader} setting (page, vision, vision-only): the page's markup, cross-checked by
+     * vision, which takes over when the markup cannot be read (see docs/browser.md for the field trials).
+     */
+    public static final String DEFAULT_READER = "page";
 
     @FXML
     private Label statusTitle;

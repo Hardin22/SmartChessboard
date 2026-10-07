@@ -100,11 +100,14 @@ public final class BotGameTrial {
         CdpPageDriver page = new CdpPageDriver(browser[0]);
         BotGameTrial trial = new BotGameTrial(site, out, page, new PieceClassifier(PieceClassifier.DEFAULT_MODEL),
                 engine);
+        String pipeline = System.getProperty("trial.pipeline"); // vision-only | vision | page: the app's own classes
         for (int g = 0; g < count; g++) {
             Side mine = g % 2 == 0 ? Side.WHITE : Side.BLACK;
             JSONObject game;
             try {
-                game = trial.playGame(mine, g);
+                game = pipeline != null ? trial.playWithPipeline(mine, g,
+                        io.github.hardin22.javachess.Browser.BoardWatcher.ReadMode.parse(pipeline))
+                        : trial.playGame(mine, g);
             } catch (Exception e) {
                 game = new JSONObject().put("error", e.toString());
                 e.printStackTrace();
@@ -126,19 +129,30 @@ public final class BotGameTrial {
         gameIndex = index;
         fixturePly = 0;
         startGame(mine);
-        // a fresh game: a legal position (normally the start), no result shown
+        // a fresh game: a legal position (normally the start, or the requested one), no result shown
+        String startFen = System.getProperty("trial.fen");
+        Board startBoard = new Board();
+        if (startFen != null) {
+            startBoard.loadFromFen(startFen);
+        }
         BoardSnapshot first = waitFor(s -> s.board() != null && s.board().placement() != null
                 && "game".equals(s.pageHint()) && s.board().result() == null
                 && SetupPosition.build(s.board().placement(), s.board(), s.page(), Side.WHITE) != null
-                && (s.board().placement().equals(SetupPosition.placement(new Board()))
-                || s.board().placement().startsWith("rnbqkbnr/pppppppp")), 60_000, "a new game");
+                && (startFen != null ? sameOrNext(startBoard, s.board().placement())
+                : s.board().placement().startsWith("rnbqkbnr/pppppppp")), 60_000, "a new game");
         Side bottom = first.board().bottomSide();
         System.out.println("Game " + index + " at " + first.url() + ", playing " + bottom);
-        Board known = new Board();
+        Board known = startBoard.clone();
         String lastPlacement = first.board().placement();
         if (!lastPlacement.equals(SetupPosition.placement(known))) {
-            // the bot may already have moved (we are black)
-            known = SetupPosition.build(lastPlacement, first.board(), first.page(), Side.BLACK).board();
+            // the bot already moved
+            PositionResolver.Resolution r = new PositionResolver().resolve(known, BoardReading.certain(lastPlacement),
+                    false);
+            if (r.confident() && r.moves().size() == 1) {
+                known.doMove(r.moves().get(0));
+            } else {
+                known = SetupPosition.build(lastPlacement, first.board(), first.page(), Side.BLACK).board();
+            }
         }
         JSONObject stats = new JSONObject().put("site", site).put("url", first.url()).put("side", bottom.name());
         int plies = 0;
@@ -158,7 +172,7 @@ public final class BotGameTrial {
         checkVision(first, known, stats);
         while (true) {
             long t0 = System.nanoTime();
-            BoardSnapshot s = BoardProbe.read(page).get(10, TimeUnit.SECONDS);
+            BoardSnapshot s = probe();
             probeTimeTotal += (System.nanoTime() - t0) / 1_000_000;
             probes++;
             if (s.challenge()) {
@@ -190,7 +204,7 @@ public final class BotGameTrial {
             }
             if (!placement.equals(lastPlacement) && !animating) {
                 // something moved: it must be exactly one legal move of the side to move (the bot)
-                BoardSnapshot again = BoardProbe.read(page).get(10, TimeUnit.SECONDS);
+                BoardSnapshot again = probe();
                 if (again.board() == null || !placement.equals(again.board().placement())) {
                     continue; // not stable yet
                 }
@@ -243,7 +257,10 @@ public final class BotGameTrial {
                 continue;
             }
             if (known.getSideToMove() == bottom && !animating) {
-                String uci = engine.bestMove(known.getFen());
+                String uci = Boolean.getBoolean("trial.special") ? special(known) : null;
+                if (uci == null) {
+                    uci = engine.bestMove(known.getFen());
+                }
                 Move m = PgnCodec.fromUci(known, uci);
                 String expected;
                 Board after = known.clone();
@@ -253,7 +270,7 @@ public final class BotGameTrial {
                 mover.play(PgnCodec.toUci(m)).get(10, TimeUnit.SECONDS);
                 BoardSnapshot shown = null;
                 for (int i = 0; i < 100; i++) {
-                    BoardSnapshot x = BoardProbe.read(page).get(10, TimeUnit.SECONDS);
+                    BoardSnapshot x = probe();
                     if (x.board() != null && expected.equals(x.board().placement())) {
                         shown = x;
                         break;
@@ -275,7 +292,7 @@ public final class BotGameTrial {
                     // try once more, like the app does
                     mover.play(PgnCodec.toUci(m)).get(10, TimeUnit.SECONDS);
                     Thread.sleep(2000);
-                    BoardSnapshot x = BoardProbe.read(page).get(10, TimeUnit.SECONDS);
+                    BoardSnapshot x = probe();
                     if (x.board() == null || !expected.equals(x.board().placement())) {
                         anomalies.add("own move " + uci + " refused");
                         break;
@@ -323,6 +340,193 @@ public final class BotGameTrial {
                 .put("seconds", (System.currentTimeMillis() - started) / 1000);
     }
 
+    /**
+     * A game followed by the app's own pipeline: {@code BoardWatcher} (reading mode as given) feeding
+     * {@code OnlineGameSync}, our moves made "on the board" (a board without sensors, like the app without the
+     * PCB) and played on the page by BotMover. The page's markup is read independently as the truth.
+     */
+    private JSONObject playWithPipeline(Side mine, int index,
+                                        io.github.hardin22.javachess.Browser.BoardWatcher.ReadMode mode)
+            throws Exception {
+        long started = System.currentTimeMillis();
+        gameIndex = index;
+        startGame(mine);
+        waitFor(s -> s.board() != null && s.board().placement() != null && "game".equals(s.pageHint())
+                && s.board().result() == null
+                && s.board().placement().startsWith("rnbqkbnr/pppppppp"), 60_000, "a new game");
+        java.util.concurrent.ScheduledExecutorService watchThread = java.util.concurrent.Executors
+                .newSingleThreadScheduledExecutor();
+        java.util.concurrent.ExecutorService owner = java.util.concurrent.Executors.newSingleThreadExecutor();
+        io.github.hardin22.javachess.Services.VisionService vision = new io.github.hardin22.javachess.Services
+                .VisionService();
+        java.util.concurrent.atomic.AtomicReference<io.github.hardin22.javachess.Browser.PhysicalBoard.Listener> hands =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        io.github.hardin22.javachess.Browser.PhysicalBoard noSensors = new io.github.hardin22.javachess.Browser
+                .PhysicalBoard() {
+            @Override
+            public boolean isConnected() {
+                return false;
+            }
+
+            @Override
+            public void attach(Listener l) {
+                hands.set(l);
+            }
+
+            @Override
+            public void detach() {
+            }
+
+            @Override
+            public void setup(String fen) {
+                hands.get().onSetupComplete();
+            }
+
+            @Override
+            public void play(Board position, Side movingSide) {
+            }
+
+            @Override
+            public void setPosition(Board position) {
+            }
+
+            @Override
+            public void replicate(Board after, String from, String to) {
+                hands.get().onReplicated();
+            }
+        };
+        List<String> phases = new java.util.concurrent.CopyOnWriteArrayList<>();
+        io.github.hardin22.javachess.Browser.OnlineGameSync sync = new io.github.hardin22.javachess.Browser
+                .OnlineGameSync(noSensors, mover::play, g -> { }, st -> phases.add(st.phase().name()),
+                System::currentTimeMillis, owner);
+        io.github.hardin22.javachess.Browser.BoardWatcher watcher = new io.github.hardin22.javachess.Browser
+                .BoardWatcher(page, vision, watchThread, new io.github.hardin22.javachess.Browser.BoardWatcher.Listener() {
+            @Override
+            public void onSnapshot(BoardSnapshot snapshot) {
+                owner.execute(sync::tick);
+            }
+
+            @Override
+            public void onPosition(io.github.hardin22.javachess.Browser.BoardWatcher.PositionUpdate update) {
+                owner.execute(() -> sync.onPosition(update));
+            }
+
+            @Override
+            public void onProblem(io.github.hardin22.javachess.Browser.BoardWatcher.Problem problem) {
+                if (problem != null) {
+                    phases.add("PROBLEM_" + problem);
+                }
+            }
+        }, mode);
+        BoardSnapshot first = probe();
+        owner.submit(() -> sync.start(io.github.hardin22.javachess.Browser.OnlineGameSync.Mode.PLAY,
+                first.page())).get();
+        watcher.start();
+        int checks = 0;
+        int diverged = 0;
+        int ownMoves = 0;
+        long lastProgress = System.currentTimeMillis();
+        int lastPlies = 0;
+        String result = null;
+        List<String> anomalies = new ArrayList<>();
+        try {
+            while (System.currentTimeMillis() - lastProgress < 90_000) {
+                Thread.sleep(250);
+                io.github.hardin22.javachess.Browser.OnlineGameSync.State st = owner.submit(sync::state).get();
+                Board followed = owner.submit(sync::position).get();
+                if (st.plies() != lastPlies) {
+                    lastPlies = st.plies();
+                    lastProgress = System.currentTimeMillis();
+                }
+                BoardSnapshot truth = probe();
+                if (truth.board() != null && truth.board().result() != null) {
+                    result = truth.board().result();
+                }
+                if (st.phase() == io.github.hardin22.javachess.Browser.OnlineGameSync.Phase.GAME_OVER
+                        || result != null) {
+                    result = result != null ? result : st.result();
+                    break;
+                }
+                if (st.phase() == io.github.hardin22.javachess.Browser.OnlineGameSync.Phase.MY_TURN) {
+                    String uci = engine.bestMove(followed.getFen());
+                    owner.submit(() -> hands.get().onPhysicalMove(uci.substring(0, 2).toUpperCase(),
+                            uci.substring(2, 4).toUpperCase())).get();
+                    ownMoves++;
+                    continue;
+                }
+                boolean settled = st.phase() == io.github.hardin22.javachess.Browser.OnlineGameSync.Phase.OPPONENT_TURN
+                        && truth.board() != null && !truth.board().animating() && truth.board().placement() != null;
+                if (settled) {
+                    // two reads apart: the watcher needs a few polls to see a new position
+                    Thread.sleep(1200);
+                    BoardSnapshot again = probe();
+                    io.github.hardin22.javachess.Browser.OnlineGameSync.State st2 = owner.submit(sync::state).get();
+                    String followedNow = SetupPosition.placement(owner.submit(sync::position).get());
+                    if (again.board() != null && again.board().placement() != null && st2.plies() == st.plies()
+                            && again.board().placement().equals(truth.board().placement())) {
+                        checks++;
+                        if (!followedNow.equals(again.board().placement())) {
+                            diverged++;
+                            anomalies.add("ply " + st2.plies() + ": followed " + followedNow + " page "
+                                    + again.board().placement() + " phase " + st2.phase());
+                        }
+                    }
+                }
+            }
+        } finally {
+            watcher.stop();
+            owner.submit(sync::stop).get();
+            watchThread.shutdownNow();
+            owner.shutdownNow();
+        }
+        screenshot("end-" + site + "-" + mode + "-" + index);
+        long uncertain = phases.stream().filter("UNCERTAIN"::equals).count();
+        long setups = phases.stream().filter("SETUP"::equals).count();
+        long notAccepted = phases.stream().filter("NOT_ACCEPTED"::equals).count();
+        int[] reads = vision.readerStats();
+        vision.close();
+        return new JSONObject().put("site", site).put("pipeline", mode.name()).put("side", mine.name())
+                .put("plies", lastPlies).put("ownMoves", ownMoves).put("result", String.valueOf(result))
+                .put("checks", checks).put("diverged", diverged).put("uncertainPhases", uncertain)
+                .put("setups", setups).put("notAccepted", notAccepted)
+                .put("calibratedReads", reads[0]).put("modelReads", reads[1])
+                .put("visionCalibrated", vision.isCalibrated())
+                .put("anomalies", new JSONArray(anomalies.subList(0, Math.min(10, anomalies.size()))))
+                .put("seconds", (System.currentTimeMillis() - started) / 1000);
+    }
+
+    /** True when the placement is the board's, or the board's after one legal move. */
+    private static boolean sameOrNext(Board board, String placement) {
+        if (SetupPosition.placement(board).equals(placement)) {
+            return true;
+        }
+        for (Move m : com.github.bhlangonijr.chesslib.move.MoveGenerator.generateLegalMoves(board)) {
+            Board b = board.clone();
+            b.doMove(m);
+            if (SetupPosition.placement(b).equals(placement)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** An en passant capture or a promotion when one is legal (to try them on the real sites), else null. */
+    private static String special(Board board) {
+        String promotion = null;
+        for (Move m : com.github.bhlangonijr.chesslib.move.MoveGenerator.generateLegalMoves(board)) {
+            boolean pawn = board.getPiece(m.getFrom()).getPieceType() == com.github.bhlangonijr.chesslib.PieceType.PAWN;
+            if (pawn && m.getTo() == board.getEnPassantTarget() && board.getEnPassantTarget()
+                    != com.github.bhlangonijr.chesslib.Square.NONE) {
+                return PgnCodec.toUci(m);
+            }
+            if (m.getPromotion() != null && m.getPromotion() != com.github.bhlangonijr.chesslib.Piece.NONE
+                    && m.getPromotion().getPieceType() == com.github.bhlangonijr.chesslib.PieceType.QUEEN) {
+                promotion = PgnCodec.toUci(m);
+            }
+        }
+        return promotion;
+    }
+
     private static void note(List<String> special, Board before, Move m, String san) {
         if (san.startsWith("O-O")) {
             special.add("castling " + san);
@@ -345,7 +549,7 @@ public final class BotGameTrial {
                 // the page scrolled the board away (chess.com follows the move list): bring it back, like the app
                 page.evaluate(BotMover.SCROLL_BOARD_INTO_VIEW).get(5, TimeUnit.SECONDS);
                 Thread.sleep(400);
-                s = BoardProbe.read(page).get(10, TimeUnit.SECONDS);
+                s = probe();
                 b = s.board();
                 stats.put("scrolledBack", stats.optInt("scrolledBack") + 1);
             }
@@ -390,6 +594,21 @@ public final class BotGameTrial {
         }
     }
 
+    /** Reads the page, retrying when it does not answer for a moment (the app's watcher does the same). */
+    private BoardSnapshot probe() throws Exception {
+        Exception last = null;
+        for (int attempt = 0; attempt < 4; attempt++) {
+            try {
+                return BoardProbe.read(page).get(10, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                last = e;
+                System.out.println("probe retry " + attempt + ": " + e);
+                Thread.sleep(1000);
+            }
+        }
+        throw last;
+    }
+
     /** Logs the board's piece elements (class, inline style) to understand transient readings. */
     private void dumpPieces(String what) {
         try {
@@ -406,8 +625,11 @@ public final class BotGameTrial {
     // ------------------------------------------------------------------ starting a game against the computer
 
     private void startGame(Side mine) throws Exception {
+        String fen = System.getProperty("trial.fen");
         if (site.equals("lichess")) {
-            navigate("https://lichess.org/");
+            navigate(fen == null ? "https://lichess.org/"
+                    : "https://lichess.org/?fen=" + java.net.URLEncoder.encode(fen, java.nio.charset.StandardCharsets.UTF_8)
+                    + "#ai");
             waitFor(s -> s.title().toLowerCase(Locale.ROOT).contains("lichess"), 30_000, "lichess home");
             // the lobby's "play with the computer" dialog: level 1, our colour
             String colour = mine == Side.WHITE ? "white" : "black";
@@ -422,7 +644,9 @@ public final class BotGameTrial {
             screenshot("lichess-start-failed");
             throw new IllegalStateException("Could not start a game against the computer on lichess");
         }
-        navigate("https://www.chess.com/play/computer");
+        navigate(fen == null ? "https://www.chess.com/play/computer"
+                : "https://www.chess.com/play/computer?fen=" + java.net.URLEncoder.encode(fen,
+                java.nio.charset.StandardCharsets.UTF_8));
         for (int attempt = 0; attempt < 40; attempt++) {
             String r;
             try {
@@ -493,7 +717,7 @@ public final class BotGameTrial {
         long deadline = System.currentTimeMillis() + ms;
         while (System.currentTimeMillis() < deadline) {
             try {
-                BoardSnapshot s = BoardProbe.read(page).get(10, TimeUnit.SECONDS);
+                BoardSnapshot s = probe();
                 if (condition.test(s)) {
                     return s;
                 }
