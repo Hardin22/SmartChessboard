@@ -134,16 +134,15 @@ public class PuzzleController implements NavigationAware {
     @FXML
     public void handleNewPuzzle() {
         // Fetch next puzzle based on criteria
-        PuzzleService service = PuzzleService.getInstance();
-        List<Puzzle> candidates = service.getPuzzlesByThemeAndRating(currentThemes, currentTargetRating, 200);
-        Puzzle nextPuzzle = service.getRandomPuzzle(candidates);
-
-        if (nextPuzzle != null) {
-            setPuzzle(nextPuzzle, currentTargetRating, currentThemes);
-
-        } else {
-            statusLabel.setText("Nessun altro puzzle trovato.");
-        }
+        // the search reads the puzzle database: off the FX thread
+        PuzzleService.getInstance().findPuzzleAsync(currentTargetRating, 200, currentThemes)
+                .thenAccept(nextPuzzle -> javafx.application.Platform.runLater(() -> {
+                    if (nextPuzzle != null) {
+                        setPuzzle(nextPuzzle, currentTargetRating, currentThemes);
+                    } else {
+                        statusLabel.setText("Nessun altro puzzle trovato.");
+                    }
+                }));
     }
 
     @FXML

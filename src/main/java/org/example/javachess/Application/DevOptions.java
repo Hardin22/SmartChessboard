@@ -9,11 +9,17 @@ import javafx.scene.image.WritableImage;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.util.Duration;
+import com.github.bhlangonijr.chesslib.Side;
 import org.example.javachess.Controllers.MainController;
+import org.example.javachess.Hardware.Hardware;
+import org.example.javachess.Hardware.SimulatedBoard;
+import org.example.javachess.Hardware.SimulatorAutoplay;
+import org.example.javachess.Hardware.SimulatorWindow;
 
 import javax.imageio.ImageIO;
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -26,6 +32,10 @@ import java.util.function.Consumer;
  *   <li>{@code -Djavachess.view=NAME} navigate to a view after start-up (MainController view name, e.g. SETTINGS)</li>
  *   <li>{@code -Djavachess.snapshot=out.png} write a PNG of the scene after {@code javachess.snapshot.delayMs} (default 3000)</li>
  *   <li>{@code -Djavachess.snapshot.exit=true} quit after writing the snapshot</li>
+ *   <li>{@code -Djavachess.dev.pvc=...} scripted PvC game, see {@link DevScenario}</li>
+ *   <li>{@code -Djavachess.devgame=pvc} start a game against the bot (player white, lowest level) right away</li>
+ *   <li>{@code -Djavachess.board=sim} software chessboard; with {@code -Djavachess.simulator.window=true} its
+ *       debug window, with {@code -Djavachess.sim.autoplay=N} N moves played on it automatically</li>
  *   <li>{@code -Djavachess.reviewGame=latest|ID} open an archived game in the review screen</li>
  * </ul>
  */
@@ -63,6 +73,20 @@ public final class DevOptions {
         if (view != null && mainController != null) {
             Platform.runLater(() -> navigate(mainController, view));
         }
+        Platform.runLater(() -> DevScenario.startIfRequested(mainController));
+        if ("pvc".equalsIgnoreCase(System.getProperty("javachess.devgame")) && mainController != null) {
+            Platform.runLater(() -> startBotGame(mainController));
+        }
+        SimulatedBoard simulator = System.getProperty("javachess.board", "").startsWith("sim") ? Hardware.simulator() : null;
+        if (simulator != null) {
+            if (Boolean.getBoolean("javachess.simulator.window")) {
+                Platform.runLater(() -> new SimulatorWindow(simulator, Hardware.leds().mapping()).show());
+            }
+            int autoplay = Integer.getInteger("javachess.sim.autoplay", 0);
+            if (autoplay > 0) {
+                new SimulatorAutoplay(simulator, Hardware.boardState(), Side.WHITE, autoplay).start();
+            }
+        }
         String review = System.getProperty("javachess.reviewGame");
         if (review != null && mainController != null) {
             Platform.runLater(() -> openReview(mainController, review));
@@ -77,6 +101,24 @@ public final class DevOptions {
                 }
             }));
             pause.play();
+        }
+    }
+
+    /** Same as choosing "vs bot", white, lowest level, first engine type on the setup screen. */
+    private static void startBotGame(MainController mainController) {
+        try {
+            mainController.navigateTo("GAME");
+            Object controller = mainController.getController("GAME");
+            for (Method method : controller.getClass().getMethods()) {
+                if (method.getName().equals("startPvC") && method.getParameterCount() == 3
+                        && method.getParameterTypes()[2].isEnum()) {
+                    method.invoke(controller, 1, true, method.getParameterTypes()[2].getEnumConstants()[0]);
+                    return;
+                }
+            }
+            System.err.println("[DevOptions] startPvC(int, boolean, enum) not found");
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            System.err.println("[DevOptions] Cannot start the bot game: " + e);
         }
     }
 

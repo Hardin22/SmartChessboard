@@ -67,11 +67,7 @@ public class PieceClassifier implements AutoCloseable {
     private static final float BOARD_FIND_THRESHOLD = 0.50f;
 
     static {
-        try {
-            nu.pattern.OpenCV.loadLocally();
-        } catch (Throwable e) {
-            LoggerFactory.getLogger(PieceClassifier.class).error("OpenCV native library not available", e);
-        }
+        org.example.javachess.Application.NativeLibraries.loadOpenCv(); // loaded lazily, not at app start-up
     }
 
     private final OrtEnvironment env;

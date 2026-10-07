@@ -9,22 +9,38 @@ import com.github.bhlangonijr.chesslib.move.MoveGenerator;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
 
+import org.example.javachess.Engine.AnalysisUpdate;
+import org.example.javachess.Engine.MoveCoach;
+import org.example.javachess.Engine.OpeningExplorer;
+import org.example.javachess.Engine.PositionAnalyzer;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.example.javachess.Hardware.Hardware;
 import org.example.javachess.Services.EngineService;
+import org.example.javachess.Utils.AppExecutors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 public abstract class AbstractGame {
+    private static final Logger log = LoggerFactory.getLogger(AbstractGame.class);
+
     protected Board board;
     protected ChessBoardUI chessBoardUI;
     // Removed evaluationLabel
     // Removed move labels
     protected EvalBar evalBar;
     protected boolean gameRunning;
-    protected UCIEngine stockfish;
     protected StringBuilder pgn;
     protected boolean saveGame = true;
     protected String initialFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
     protected Task<Void> moveCalculationTask;
-    protected UCIEngine.AnalysisUpdateCallback analysisCallback;
+    protected PositionAnalyzer.Listener analysisCallback;
     protected java.util.function.Consumer<String> statusCallback;
 
     public AbstractGame(ChessBoardUI chessBoardUI, EvalBar evalBar) {
@@ -33,7 +49,6 @@ public abstract class AbstractGame {
         // Removed evaluationLabel assignment
         this.evalBar = evalBar;
         // Removed move labels assignment
-        this.stockfish = EngineService.getInstance().getEngine();
         this.pgn = new StringBuilder();
     }
 
@@ -47,7 +62,7 @@ public abstract class AbstractGame {
         }
     }
 
-    public void setAnalysisCallback(UCIEngine.AnalysisUpdateCallback callback) {
+    public void setAnalysisCallback(PositionAnalyzer.Listener callback) {
         this.analysisCallback = callback;
     }
 
@@ -62,27 +77,68 @@ public abstract class AbstractGame {
     protected boolean analysisEnabled = org.example.javachess.Utils.ConfigManager.getBooleanProperty("game.evaluation",
             true);
 
+    /**
+     * Starts (or keeps) the live analysis of the current position: eval bar, arrows and analysis panel.
+     * Non-blocking: the engine layer runs it on its own threads and replaces any previous analysis.
+     */
     protected void evaluatePositionAndMoves() {
         if (!gameRunning || !analysisEnabled) {
-            if (stockfish != null)
-                stockfish.stopCalculating();
+            PositionAnalyzer.get().stop();
             return;
         }
+        PositionAnalyzer.get().analyze(board.getFen(), analysisDepth, analysisMultiPV, this::onAnalysisUpdate);
+    }
 
-        if (moveCalculationTask != null && moveCalculationTask.isRunning()) {
-            moveCalculationTask.cancel();
+    /** Engine event thread: forwards to the controller callback and updates eval bar and arrows. */
+    private void onAnalysisUpdate(AnalysisUpdate update) {
+        if (analysisCallback != null) {
+            analysisCallback.onUpdate(update);
         }
+        double score = update.whitePawns();
+        String best = update.bestMove();
+        boolean arrows = showArrows && shouldShowArrows(update);
+        if (evalBar != null) {
+            evalBar.updateEvaluation(score); // EvalBar hops to the FX thread itself
+        }
+        if (showArrows && chessBoardUI != null) {
+            Platform.runLater(() -> {
+                chessBoardUI.clearArrows();
+                if (arrows && best != null && best.length() >= 4) {
+                    int fromCol = best.charAt(0) - 'a';
+                    int fromRow = '8' - best.charAt(1);
+                    int toCol = best.charAt(2) - 'a';
+                    int toRow = '8' - best.charAt(3);
+                    chessBoardUI.drawArrowOnBoard(fromCol, fromRow, toCol, toRow,
+                            javafx.scene.paint.Color.rgb(156, 204, 101, 0.7));
+                }
+            });
+        }
+    }
 
-        moveCalculationTask = new Task<Void>() {
-            @Override
-            protected Void call() {
-                stockfish.startAnalysis(board.getFen(), analysisDepth, analysisMultiPV, analysisCallback, chessBoardUI,
-                        evalBar, showArrows);
-                return null;
-            }
-        };
+    /** Whether the best-move arrow should be drawn for this update (PvC hides the bot's suggestions). */
+    protected boolean shouldShowArrows(AnalysisUpdate update) {
+        return true;
+    }
 
-        new Thread(moveCalculationTask).start();
+    /** Call after a human move was applied: LED verdict + analysis of the new position. */
+    protected void onHumanMove(String fenBefore, Move move) {
+        if (analysisEnabled && gameRunning) {
+            MoveCoach.get().onMovePlayed(fenBefore, move.toString());
+        }
+    }
+
+    /** Stops the live analysis (game over / left the screen). */
+    protected void stopAnalysis() {
+        PositionAnalyzer.get().stop();
+    }
+
+    /** Looks the opening up asynchronously and shows it in {@code label} when found. */
+    protected void updateOpeningLabel(javafx.scene.control.Label label) {
+        if (label == null) {
+            return;
+        }
+        OpeningExplorer.lookup(board.getFen()).thenAccept(name ->
+                name.ifPresent(n -> Platform.runLater(() -> label.setText(n))));
     }
 
     public void setAnalysisParams(int depth, int multiPV) {
@@ -96,8 +152,7 @@ public abstract class AbstractGame {
         if (enabled) {
             evaluatePositionAndMoves();
         } else {
-            if (stockfish != null)
-                stockfish.stopCalculating();
+            PositionAnalyzer.get().stop();
             chessBoardUI.clearArrows();
         }
     }
@@ -186,60 +241,76 @@ public abstract class AbstractGame {
         }
     }
 
+    /** Appends the result to the PGN and writes the game to the archive on the storage thread. */
     protected void saveGameToJson(String result, String openingName, String type, String timeControl) {
         pgn.append(" ").append(result);
-        System.out.println("Partita salvata in formato PGN: " + pgn.toString());
+        String pgnText = pgn.toString();
+        String startFen = initialFen;
+        String finalFen = board.getFen();
+        log.info("Saving game: {}", pgnText);
+        AppExecutors.storage().execute(() -> org.example.javachess.Services.GameArchiveService.saveGame(
+                type, openingName, pgnText, startFen, finalFen, result, timeControl));
+    }
 
-        org.example.javachess.Services.GameArchiveService.saveGame(
-                type,
-                openingName,
-                pgn.toString(),
-                initialFen,
-                board.getFen(),
-                result,
-                timeControl);
+    // --- delayed actions -----------------------------------------------------------------------------------
+
+    private final Set<ScheduledFuture<?>> pendingActions = ConcurrentHashMap.newKeySet();
+
+    /** Runs {@code action} on the JavaFX thread after {@code delayMs}; cancelled by {@link #cancelPendingActions()}. */
+    protected void runLaterOnFx(long delayMs, Runnable action) {
+        ScheduledFuture<?>[] holder = new ScheduledFuture<?>[1];
+        holder[0] = AppExecutors.scheduler().schedule(() -> {
+            pendingActions.remove(holder[0]);
+            Platform.runLater(action);
+        }, delayMs, TimeUnit.MILLISECONDS);
+        pendingActions.add(holder[0]);
+    }
+
+    /** Cancels the actions scheduled with {@link #runLaterOnFx} (end of game, view closed). */
+    protected void cancelPendingActions() {
+        pendingActions.forEach(f -> f.cancel(false));
+        pendingActions.clear();
+    }
+
+    /** A pawn move to the last rank without promotion piece becomes a queen promotion. */
+    protected Move withAutoQueen(Move move) {
+        if (move == null || move.getPromotion() != Piece.NONE) {
+            return move;
+        }
+        Piece piece = board.getPiece(move.getFrom());
+        boolean lastRank = move.getTo().getRank() == com.github.bhlangonijr.chesslib.Rank.RANK_8
+                || move.getTo().getRank() == com.github.bhlangonijr.chesslib.Rank.RANK_1;
+        if (piece.getPieceType() == com.github.bhlangonijr.chesslib.PieceType.PAWN && lastRank) {
+            return new Move(move.getFrom(), move.getTo(),
+                    board.getSideToMove() == Side.WHITE ? Piece.WHITE_QUEEN : Piece.BLACK_QUEEN);
+        }
+        return move;
     }
 
     public Board getBoard() {
         return board;
     }
 
-    public UCIEngine getStockfish() {
-        return stockfish;
-    }
-
     // --- LED VISUALIZATION METHODS ---
+    // Check, setup and opponent moves are shown by BoardStateManager from the position itself.
+
     protected void notifyOpponentMove(String from, String to) {
-        // Check for Check/Mate
         if (board.isMated()) {
             notifyMate();
-        } else if (board.isKingAttacked()) {
-            notifyCheck();
         }
-    }
-
-    protected void notifyCheck() {
-        org.example.javachess.Controllers.ArduinoController arduino = org.example.javachess.Controllers.ArduinoController
-                .getInstance();
-        Square kingSq = board.getKingSquare(board.getSideToMove());
-        arduino.sendLedCommand(kingSq.name(), 255, 69, 0); // OrangeRed
     }
 
     protected void notifyMate() {
         if (!org.example.javachess.Utils.ConfigManager.getBooleanProperty("ui.mate.animation", true)) {
             return;
         }
-        org.example.javachess.Controllers.ArduinoController arduino = org.example.javachess.Controllers.ArduinoController
-                .getInstance();
-        arduino.playVictoryAnimation();
-
-        // Trigger UI Animation
-        com.github.bhlangonijr.chesslib.Side winner = board.getSideToMove().flip();
-        String winnerText = (winner == com.github.bhlangonijr.chesslib.Side.WHITE ? "IL BIANCO" : "IL NERO") + " VINCE";
+        Hardware.leds().playVictoryWave();
+        Side winner = board.getSideToMove().flip();
+        String winnerText = (winner == Side.WHITE ? "IL BIANCO" : "IL NERO") + " VINCE";
         Platform.runLater(() -> chessBoardUI.showVictoryAnimation("SCACCO MATTO", winnerText));
     }
 
     protected void clearBoardLeds() {
-        org.example.javachess.Controllers.ArduinoController.getInstance().clearLeds();
+        Hardware.moveLeds().clearCandidates();
     }
 }

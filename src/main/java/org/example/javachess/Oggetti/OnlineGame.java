@@ -19,6 +19,7 @@ public class OnlineGame extends AbstractGame {
     private LichessGameManager lichessGameManager;
     private String gameId;
     private boolean isGameSaved = false;
+    private String finalResult;
 
     public OnlineGame(ChessBoardUI chessBoardUI, EvalBar evalBar, String gameId) {
         super(chessBoardUI, evalBar);
@@ -72,12 +73,7 @@ public class OnlineGame extends AbstractGame {
             public void onBoardUpdated(String fen, String lastMove, String errorSquare) {
                 Platform.runLater(() -> {
                     // Update Board UI
-                    Move move = null;
-                    if (lastMove != null) {
-                        move = new Move(
-                                com.github.bhlangonijr.chesslib.Square.valueOf(lastMove.substring(0, 2).toUpperCase()),
-                                com.github.bhlangonijr.chesslib.Square.valueOf(lastMove.substring(2, 4).toUpperCase()));
-                    }
+                    Move move = lastMove != null ? uciToMove(lastMove) : null;
                     chessBoardUI.setPosition(fen, move);
 
                     if (errorSquare != null) {
@@ -164,6 +160,19 @@ public class OnlineGame extends AbstractGame {
 
         // Start the Lichess Stream
         lichessGameManager.startGame();
+    }
+
+    /** "e7e8q" -> promotion included (the side comes from the piece on the from-square). */
+    private Move uciToMove(String uci) {
+        com.github.bhlangonijr.chesslib.Square from = com.github.bhlangonijr.chesslib.Square.valueOf(uci.substring(0, 2).toUpperCase());
+        com.github.bhlangonijr.chesslib.Square to = com.github.bhlangonijr.chesslib.Square.valueOf(uci.substring(2, 4).toUpperCase());
+        if (uci.length() >= 5) {
+            boolean white = board.getPiece(from).getPieceSide() == com.github.bhlangonijr.chesslib.Side.WHITE;
+            String symbol = uci.substring(4, 5);
+            return new Move(from, to, com.github.bhlangonijr.chesslib.Piece.fromFenSymbol(
+                    white ? symbol.toUpperCase() : symbol.toLowerCase()));
+        }
+        return new Move(from, to);
     }
 
     @Override
