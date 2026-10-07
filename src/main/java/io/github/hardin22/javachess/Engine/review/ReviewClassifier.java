@@ -142,6 +142,8 @@ public final class ReviewClassifier {
         final boolean greatPawnFollowUp;
         /** Phase 4: an answer to check taking free material (SEE > 0) follows the free material rule of captures. */
         final boolean greatInCheckFreeMaterial;
+        /** Phase 4: no Great for a bishop retreating from the pawn that has just advanced against it. */
+        final boolean greatKickedBishop;
         /** v1.9: no capture is Great (G-E1). */
         final boolean greatNoCapture;
         /**
@@ -253,6 +255,7 @@ public final class ReviewClassifier {
             greatKingFlightGap = get("greatKingFlightGap", 0.17);
             greatPawnFollowUp = get("greatPawnFollowUp", 1) != 0;
             greatInCheckFreeMaterial = get("greatInCheckFreeMaterial", 1) != 0;
+            greatKickedBishop = get("greatKickedBishop", 1) != 0;
             pieceSacrifice = get("pieceSacrifice", 1) != 0;
             outcomeLow = get("outcomeLow", 0.40);
             outcomeHigh = get("outcomeHigh", 0.60);
@@ -874,6 +877,11 @@ public final class ReviewClassifier {
             // only carry the plan on (Best), however bad the alternatives
             return false;
         }
+        if (t.greatKickedBishop && !capture && i > 0 && kickedBishop(b0, uci, replay, i, me)) {
+            // Phase 4: the bishop driven back by a pawn push (g4 against Bh5, g5 against Bh4, b5 against Bc4) has to
+            // retreat, however much the other moves lose: chess.com Best (177 games: 5 of 5, no Great)
+            return false;
+        }
         if (capture) {
             // v2.3: players under 1500 get Great for a capture from a smaller gap
             double capGap = r < t.greatLowRating ? t.greatCaptureGapLow : t.greatCaptureGap;
@@ -923,6 +931,21 @@ public final class ReviewClassifier {
     }
 
     /** True when {@code uci} pushes a passed pawn that arrived on its square with the mover's previous move. */
+    /** Move i moves a bishop the opponent's last move, a pawn push, attacks. */
+    private static boolean kickedBishop(Board b0, String uci, GameReplay replay, int i, boolean me) {
+        Move m = Tactics.find(b0, uci);
+        Board bp = board(replay.fens().get(i - 1));
+        Move pm = Tactics.find(bp, replay.uci().get(i - 1));
+        if (m == null || pm == null || b0.getPiece(m.getFrom()).getPieceType() != PieceType.BISHOP
+                || bp.getPiece(pm.getFrom()).getPieceType() != PieceType.PAWN
+                || pm.getFrom().getFile() != pm.getTo().getFile()) {
+            return false;
+        }
+        int files = Math.abs(m.getFrom().getFile().ordinal() - pm.getTo().getFile().ordinal());
+        int ranks = m.getFrom().getRank().ordinal() - pm.getTo().getRank().ordinal();
+        return files == 1 && ranks == (me ? -1 : 1);
+    }
+
     private static boolean pushesPassedPawnAgain(Board b0, String uci, String previousOwn) {
         Move m = Tactics.find(b0, uci);
         return m != null && b0.getPiece(m.getFrom()).getPieceType() == PieceType.PAWN

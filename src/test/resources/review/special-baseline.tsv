@@ -1,6 +1,6 @@
 # Brilliant/Great errors accepted today by SpecialLabelsGateTest (Phase 4). It only shrinks: regenerate
 # (-Dreview.special.regen=true) after fixing errors. Allowlisted exceptions are not repeated here.
-# exact 0.6823 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
+# exact 0.6827 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
 id	ply	kind	set	san	ours	chesscom
 daily_1008989784	49	fp-brilliant	ex-holdout49	Bf8	brilliant	excellent
 daily_1009092152	30	fn-great	cv93	Bxb5	best	great
@@ -14,7 +14,6 @@ daily_1014523396	19	fn-great	cv93	Nf5	best	great
 daily_1017137676	11	fn-great	cv93	a3	best	great
 daily_1017235912	22	fn-great	ex-holdout49	Nxg4	best	great
 daily_1017236144	23	fp-great	cv93	fxg6	great	best
-daily_1023306212	11	fp-great	cv93	Bb3	great	best
 daily_1023306212	70	fn-great	cv93	Bxg2	best	great
 daily_1023306212	94	fn-great	cv93	Rf2+	best	great
 daily_1024819088	43	fp-great	cv93	Nd4	great	best
@@ -84,7 +83,6 @@ live_172502515518	58	fn-great	cv93	Qxa2	best	great
 live_173845722776	17	fn-great	ex-holdout49	Nxe5	best	great
 live_173845722776	20	fn-great	ex-holdout49	O-O	best	great
 live_173845722776	39	fn-great	ex-holdout49	Qg6+	best	great
-live_173864617688	28	fp-great	cv93	Bg6	great	best
 live_173888395572	45	fp-great	ex-holdout49	g5	great	best
 live_173888395572	49	fn-great	ex-holdout49	Bc2	best	great
 live_173888395572	51	fn-great	ex-holdout49	g6	best	great
@@ -93,7 +91,6 @@ live_173888395572	156	fn-great	ex-holdout49	Kb5	best	great
 live_173897574620	52	fn-great	cv93	Be6	best	great
 live_173897574620	56	fn-great	cv93	a5	best	great
 live_173897574620	64	fn-great	cv93	Bd5	best	great
-live_173979718496	15	fp-great	cv93	Bg3	great	best
 live_173979718496	20	fn-great	cv93	Bxb2	best	great
 live_173981415730	18	fn-great	cv93	dxe4	best	great
 live_173981415730	38	fp-brilliant	cv93	Nxd4	brilliant	best
@@ -137,7 +134,6 @@ live_183990190310	39	fn-great	ex-holdout49	Nxd6	best	great
 live_184000796490	40	fn-great	cv93	hxg6	best	great
 live_184088750450	32	fn-great	cv93	Nxd3	best	great
 live_184105389336	40	fn-brilliant	ex-holdout49	Qh3	best	brilliant
-live_184135945276	12	fp-great	cv93	Bg6	great	best
 live_184135945276	50	fn-great	cv93	Nb3+	best	great
 live_184135997630	37	fn-great	ex-holdout49	dxe7	best	great
 live_184172948448	21	fn-great	ex-holdout49	exd5	best	great
@@ -179,7 +175,6 @@ aronian_anand_2013	26	fn-brilliant	famous-brilliant	Ng4	excellent	brilliant
 aronian_anand_2013	28	fn-great	famous-brilliant	cxd4	best	great
 aronian_anand_2013	36	fn-great	famous-brilliant	Nxg4	best	great
 aronian_anand_2013	38	fn-great	famous-brilliant	f5	inaccuracy	great
-bai_jinshi_ding_liren_2017	21	fp-great	famous-brilliant	Bg3	great	best
 bai_jinshi_ding_liren_2017	30	fn-brilliant	famous-brilliant	dxc3	good	brilliant
 bai_jinshi_ding_liren_2017	31	fn-great	famous-brilliant	Rxd8	best	great
 bai_jinshi_ding_liren_2017	34	fn-great	famous-brilliant	Rxd8	best	great

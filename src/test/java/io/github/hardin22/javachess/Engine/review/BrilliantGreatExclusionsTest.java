@@ -464,6 +464,15 @@ class BrilliantGreatExclusionsTest {
         assertEquals(MoveClassification.GREAT, label(rxe8, Tuning.DEFAULT.with("greatInCheckFreeMaterial", 0)));
     }
 
+    @Test
+    void aBishopDrivenBackByAPawnPushIsNotGreat() {
+        // live_173864617688 ply 28 (2007): 14.g4 attacks Bh5, 14...Bg6 is the only move (f5 -0.70) but chess.com Best
+        ReviewInput bg6 = rated(twoMoves("r4rk1/1pq1npp1/p1nbp2p/3p3b/3P4/2PBBN1P/PPQN1PP1/R3R1K1 w - - 0 14", "g2g4",
+                Eval.cp(-77), "d3e2", "h5g6", Eval.cp(-129), "h5g6", Eval.cp(70), "f7f5", Eval.cp(-140)), 1909, 2007);
+        assertEquals(MoveClassification.BEST, label(bg6, Tuning.DEFAULT));
+        assertEquals(MoveClassification.GREAT, label(bg6, Tuning.DEFAULT.with("greatKickedBishop", 0)));
+    }
+
     private static ReviewInput rated(ReviewInput in, int white, int black) {
         return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
     }
