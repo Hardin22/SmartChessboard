@@ -145,7 +145,12 @@ public abstract class AbstractGame {
         if (label == null) {
             return;
         }
-        OpeningExplorer.lookup(board.getFen()).thenAccept(name ->
+        String fen = board.getFen();
+        // offline book first (the board often has no network), then the online explorer if it answers
+        java.util.concurrent.CompletableFuture.supplyAsync(
+                () -> io.github.hardin22.javachess.Engine.review.OpeningBook.standard().nameAfter(fen),
+                AppExecutors.compute()).thenAccept(name -> name.ifPresent(n -> Platform.runLater(() -> label.setText(n))));
+        OpeningExplorer.lookup(fen).thenAccept(name ->
                 name.ifPresent(n -> Platform.runLater(() -> label.setText(n))));
     }
 
@@ -190,6 +195,7 @@ public abstract class AbstractGame {
         } else {
             pgn.append(move.toString()).append(" ");
         }
+        recordMove(move);
     }
 
     protected String getDrawReason() {
@@ -284,6 +290,7 @@ public abstract class AbstractGame {
 
     /** Appends the result to the PGN and writes the game to the archive on the storage thread. */
     protected void saveGameToJson(String result, String openingName, String type, String timeControl) {
+        forgetSnapshotIfFinished(result);
         pgn.append(" ").append(result);
         String pgnText = pgn.toString();
         String startFen = initialFen;
@@ -293,6 +300,13 @@ public abstract class AbstractGame {
         String black = blackPlayerName();
         AppExecutors.storage().execute(() -> io.github.hardin22.javachess.Services.GameArchiveService.saveGame(
                 type, openingName, pgnText, startFen, finalFen, result, timeControl, white, black));
+    }
+
+    /** A game that ended with a result is no longer resumable; an interrupted one stays resumable. */
+    protected void forgetSnapshotIfFinished(String result) {
+        if (snapshot() != null && !io.github.hardin22.javachess.Play.GameResume.isInterruption(result)) {
+            io.github.hardin22.javachess.Play.GameSnapshotStore.get().clear();
+        }
     }
 
     /** Name stored in the archive for White ("?" when unknown). */
@@ -380,5 +394,125 @@ public abstract class AbstractGame {
 
     protected void clearBoardLeds() {
         Hardware.moveLeds().clearCandidates();
+    }
+
+    // --- moves, start position, take-back and resuming ----------------------------------------------------
+
+    /** Moves played so far (UCI), in order; kept by {@link #updatePgn}. */
+    protected final List<String> movesUci = new java.util.ArrayList<>();
+    private boolean replaying;
+
+    /** Moves played so far (UCI). */
+    public List<String> getMovesUci() {
+        return List.copyOf(movesUci);
+    }
+
+    /**
+     * Starts the game from {@code fen} instead of the standard position. Call it before {@link #startGame()};
+     * check the position first with {@code Play.PositionSetup}.
+     */
+    public void setStartPosition(String fen) {
+        if (gameRunning) {
+            throw new IllegalStateException("the game has already started");
+        }
+        board.loadFromFen(fen);
+        initialFen = board.getFen();
+        movesUci.clear();
+        pgn.setLength(0);
+    }
+
+    /** Plays saved moves again (a resumed game), before {@link #startGame()}. Stops at the first illegal move. */
+    protected void replayMoves(List<String> uciMoves) {
+        replaying = true;
+        try {
+            for (String uci : uciMoves) {
+                Move m = io.github.hardin22.javachess.Analysis.MoveText.legal(board, uci);
+                if (m == null) {
+                    log.warn("saved move {} is not legal in {}: replay stopped", uci, board.getFen());
+                    break;
+                }
+                board.doMove(m);
+                updatePgn(m);
+            }
+        } finally {
+            replaying = false;
+        }
+    }
+
+    /** Called by {@link #updatePgn}: keeps the move list and saves the game for resuming. */
+    private void recordMove(Move move) {
+        movesUci.add(move.toString());
+        if (!replaying) {
+            saveSnapshot();
+        }
+    }
+
+    /**
+     * Takes back the last {@code plies} half-moves: position, move list, PGN, the board on screen, and the physical
+     * board (the LEDs show which pieces to put back; the game goes on when the board matches). Returns false when
+     * there are not enough moves.
+     */
+    protected boolean undoPlies(int plies) {
+        if (plies <= 0 || plies > movesUci.size()) {
+            return false;
+        }
+        for (int i = 0; i < plies; i++) {
+            board.undoMove();
+            movesUci.remove(movesUci.size() - 1);
+        }
+        rebuildPgn();
+        io.github.hardin22.javachess.Services.BoardStateManager manager = io.github.hardin22.javachess.Controllers.ArduinoController
+                .getInstance().getBoardStateManager();
+        manager.setLogicalBoard(board);
+        manager.resyncToLogical(); // LEDs: pieces to put back; moves are read again once the board matches
+        Move last = movesUci.isEmpty() ? null : new Move(movesUci.get(movesUci.size() - 1),
+                board.getSideToMove().flip());
+        String fen = board.getFen();
+        if (chessBoardUI != null) {
+            Platform.runLater(() -> chessBoardUI.setPosition(fen, last));
+        }
+        return true;
+    }
+
+    /** The PGN text of {@link #movesUci} from the initial position (same format as {@link #updatePgn}). */
+    private void rebuildPgn() {
+        pgn.setLength(0);
+        Board replay = new Board();
+        replay.loadFromFen(initialFen);
+        for (String uci : movesUci) {
+            Move m = io.github.hardin22.javachess.Analysis.MoveText.legal(replay, uci);
+            if (m == null) {
+                break;
+            }
+            replay.doMove(m);
+            if (replay.getSideToMove() == Side.BLACK) {
+                pgn.append(replay.getMoveCounter()).append(". ").append(m).append(" ");
+            } else {
+                pgn.append(m).append(" ");
+            }
+        }
+    }
+
+    /**
+     * Invalidates work pending for the old position after a take-back (a bot answer in flight, retries...).
+     * Subclasses override it.
+     */
+    protected void onPositionReset() {
+    }
+
+    /** What to save for resuming the game, or null when this kind of game is not resumed. */
+    protected io.github.hardin22.javachess.Play.GameSnapshot snapshot() {
+        return null;
+    }
+
+    /** Saves the game for resuming (after each move). */
+    protected void saveSnapshot() {
+        if (!gameRunning) {
+            return;
+        }
+        io.github.hardin22.javachess.Play.GameSnapshot s = snapshot();
+        if (s != null) {
+            io.github.hardin22.javachess.Play.GameSnapshotStore.get().save(s);
+        }
     }
 }

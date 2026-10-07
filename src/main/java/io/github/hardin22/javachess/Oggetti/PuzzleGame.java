@@ -276,6 +276,9 @@ public class PuzzleGame extends AbstractGame {
                 log.info("Wrong puzzle move {} (expected {})", move, expectedUci);
                 updateStatus("Mossa Errata! Riprova.");
                 mistakes++;
+                if (resultListener != null) {
+                    resultListener.wrongMove(currentPuzzle);
+                }
                 // the board manager already took the move: tell it the position did not change, and show on
                 // the LEDs how to put the piece back
                 io.github.hardin22.javachess.Services.BoardStateManager manager =
@@ -369,9 +372,39 @@ public class PuzzleGame extends AbstractGame {
         }
         progressRecorded = true;
         boolean clean = mistakes == 0 && hintLevel == 0 && !gaveUp;
+        if (resultListener != null) {
+            resultListener.finished(puzzle, !gaveUp, clean);
+        }
+        if (!rated) {
+            return; // a timed series does not change the puzzle rating
+        }
+        io.github.hardin22.javachess.Play.PuzzleReview.get().onAttempt(puzzle, clean);
         io.github.hardin22.javachess.Utils.AppExecutors.storage().execute(() ->
                 io.github.hardin22.javachess.Services.PuzzleProgressService.getInstance()
                         .record(puzzle.getId(), puzzle.getRating(), puzzle.getThemes(), clean));
+    }
+
+    // --- results for timed series and the review of failed puzzles ----------------------------------------
+
+    /** Told when a puzzle ends or a wrong move is made (timed series). */
+    public interface ResultListener {
+        /** The puzzle ended: {@code solved} false when given up; {@code clean} = no wrong move and no hint. */
+        void finished(Puzzle puzzle, boolean solved, boolean clean);
+
+        /** A wrong move (the puzzle goes on unless the listener moves to another one). */
+        void wrongMove(Puzzle puzzle);
+    }
+
+    private ResultListener resultListener;
+    private boolean rated = true;
+
+    public void setResultListener(ResultListener listener) {
+        this.resultListener = listener;
+    }
+
+    /** False for puzzles that must not change the rating nor enter the review (timed series). */
+    public void setRated(boolean rated) {
+        this.rated = rated;
     }
 
     private Move persistentHintMove;
