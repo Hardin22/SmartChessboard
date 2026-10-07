@@ -70,6 +70,9 @@ public final class ReviewCv {
         StringBuilder gamesTsv = new StringBuilder(String.join("\t", "game", "fold", "time_class", "avg_rating",
                 "plies", "cc_white", "cc_black", "ours_white", "ours_black", "product_nodes", "second_lines"))
                 .append('\n');
+        // --explain: the numbers behind every Brilliant / Great, ours or chess.com's (false positive / negative lists)
+        boolean explain = Boolean.parseBoolean(a.getOrDefault("explain", "false"));
+        StringBuilder specials = new StringBuilder();
         int n = 0;
         for (EvalDump.Game d : games) {
             LabelledGame g = labelled.get(d.id());
@@ -107,6 +110,23 @@ public final class ReviewCv {
                         s == null ? "" : s.move(), s == null ? "" : s.eval().format(),
                         s == null ? "" : f(s.eval().winChance(me)), String.valueOf(d.positions().get(i).legal()),
                         String.valueOf(p0.depth()), mateCheck(r, i, ours))).append('\n');
+                String cc = g.labels().get(i).name();
+                if (explain && (isSpecial(ours.name()) || isSpecial(cc))) {
+                    Map<String, String> x = io.github.hardin22.javachess.Engine.review.SpecialProbe.explain(in, r, i);
+                    if (specials.isEmpty()) {
+                        specials.append(String.join("\t", "game", "fold", "ply", "color", "san", "uci", "ours", "cc",
+                                "fen_before", "eval_before", "eval_played", "best", "best_pv", "second",
+                                "second_eval", "second_pv")).append('\t').append(String.join("\t", x.keySet()))
+                                .append('\n');
+                    }
+                    EngineLine b = p0.best();
+                    specials.append(String.join("\t", d.id(), fold, String.valueOf(i + 1), me ? "w" : "b", m.san(),
+                            m.uci(), ours.name().toLowerCase(Locale.ROOT), cc.toLowerCase(Locale.ROOT), m.fenBefore(),
+                            p0.eval().format(), m.after().format(), String.valueOf(p0.bestMove()),
+                            b == null ? "" : String.join(" ", b.pv()), s == null ? "" : s.move(),
+                            s == null ? "" : s.eval().format(), s == null ? "" : String.join(" ", s.pv())))
+                            .append('\t').append(String.join("\t", x.values())).append('\n');
+                }
             }
             gamesTsv.append(String.join("\t", d.id(), fold, g.timeClass(),
                     String.valueOf((g.whiteRating() + g.blackRating()) / 2), String.valueOf(g.uci().size()),
@@ -116,6 +136,9 @@ public final class ReviewCv {
         }
         Files.writeString(out.resolve("plies.tsv"), plies.toString(), StandardCharsets.UTF_8);
         Files.writeString(out.resolve("games.tsv"), gamesTsv.toString(), StandardCharsets.UTF_8);
+        if (explain) {
+            Files.writeString(out.resolve("specials.tsv"), specials.toString(), StandardCharsets.UTF_8);
+        }
         System.out.println("classified " + n + " games -> " + out);
     }
 
@@ -139,6 +162,10 @@ public final class ReviewCv {
             return "VIOLATION allows mate in one, labelled " + ours;
         }
         return "";
+    }
+
+    private static boolean isSpecial(String label) {
+        return "BRILLIANT".equals(label) || "GREAT".equals(label);
     }
 
     static Map<String, Integer> folds(Path file) throws java.io.IOException {

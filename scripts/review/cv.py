@@ -62,12 +62,16 @@ def classpath():
     return f"{REPO / 'target' / 'classes'}:{REPO / 'target' / 'test-classes'}:{cp_file.read_text().strip()}"
 
 
-def run_java(cp, knobs, out, budget, mode, dataset, dump):
+def run_java(cp, knobs, out, budget, mode, dataset, dump, labels=None, games=None, folds=None, explain=False):
     cmd = ["java", "-Xss8m"] + [f"-Djavachess.review.{k}={v}" for k, v in sorted(knobs.items())]
     cmd += ["-cp", cp, "io.github.hardin22.javachess.review.ReviewCv", "--out", str(out), "--budget", budget,
-            "--mode", mode, "--set", dataset, "--dump", str(dump), "--labels", str(LABELS_DIR)]
-    if FOLDS:
-        cmd += ["--folds", str(FOLDS)]
+            "--mode", mode, "--set", dataset, "--dump", str(dump), "--labels", str(labels or LABELS_DIR)]
+    if folds or FOLDS:
+        cmd += ["--folds", str(folds or FOLDS)]
+    if games:
+        cmd += ["--games", str(games)]
+    if explain:
+        cmd += ["--explain", "true"]
     r = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(f"ReviewCv failed for {knobs}:\n{r.stdout[-2000:]}\n{r.stderr[-4000:]}")
@@ -503,9 +507,111 @@ def cmd_refs(a):
     print("\n".join("  " + x for x in far[:60]))
 
 
+FP_COLUMNS = ["set", "kind", "id", "ply", "san", "class", "ours", "chesscom", "fen_before", "fen_after", "eval_before",
+              "eval_played", "best", "best_pv", "second", "second_eval", "second_pv", "material_before",
+              "material_after", "rule", "epB", "epA", "loss", "alt_eval", "alt_ep", "gap", "opp_loss", "sac_value",
+              "sac_regain", "is_top", "in_check", "capture"]
+
+
+def chessigma_labels(out):
+    """Label files for the Chessigma benchmark: the chess.com-certified Brilliant ply; every other ply unknown
+    (written as 'best', only the certified ply is scored)."""
+    out.mkdir(parents=True, exist_ok=True)
+    certified = {}
+    for line in (REPO / "src/test/resources/review/chesscom-games.jsonl").read_text().splitlines():
+        g = json.loads(line) if line.strip() else None
+        if not g or "brilliant_benchmark" not in g.get("tags", []):
+            continue
+        plies = {x["ply"] for x in g.get("labels") or [] if str(x.get("label", "")).lower() == "brilliant"}
+        if len(plies) != 1:
+            continue
+        ply = plies.pop()
+        certified[g["id"]] = ply
+        labels = [{"ply": i + 1, "san": s, "label": "brilliant" if i + 1 == ply else "best"}
+                  for i, s in enumerate(g["moves_san"])]
+        (out / f"{g['id']}.json").write_text(json.dumps({"id": g["id"], "labels": labels}))
+    return certified
+
+
+def cmd_fplist(a):
+    """Every false positive / negative of Brilliant and Great (FP_LIST.csv, FN_LIST.csv) on the CV games (SF22 and
+    Torch18), the famous games (SF16 depth 22) and the Chessigma benchmark (recall only), never the hold-out."""
+    if not a.no_build:
+        subprocess.run([str(REPO / "mvnw"), "-q", "test-compile"], cwd=REPO, check=True)
+    cp = classpath()
+    root = REPO / "target" / "cv" / "fp"
+    nofolds = root / "nofolds.json"
+    root.mkdir(parents=True, exist_ok=True)
+    nofolds.write_text('{"folds": {}}')
+    famous_kind = {f.stem: json.loads(f.read_text()).get("kind", "") for f in (DATA / "famous_chesscom").glob("*.json")}
+    certified = chessigma_labels(root / "chessigma-labels")
+    sets = [
+        ("cv-sf22", dict(budget=a.budget, dataset="cv", dump=a.dump, labels=DATA / REFS["sf22"])),
+        ("cv-torch18", dict(budget=a.budget, dataset="cv", dump=a.dump, labels=DATA / REFS["torch18"])),
+        ("famous", dict(budget="lite", dataset="all", dump=DATA / "evals_famous", labels=DATA / "famous_chesscom",
+                        folds=nofolds, games=DATA / "famous")),
+        ("chessigma", dict(budget="lite", dataset="all", dump=DATA / "evals_chessigma", labels=root / "chessigma-labels",
+                           folds=nofolds)),
+    ]
+    fp, fn, summary = [], [], []
+    for name, kw in sets:
+        if not (Path(kw["dump"]) / kw["budget"]).is_dir():
+            print(f"{name}: no dump, skipped")
+            continue
+        run_java(cp, {}, root / name, kw["budget"], a.mode, kw["dataset"], kw["dump"], labels=kw["labels"],
+                 games=kw.get("games"), folds=kw.get("folds"), explain=True)
+        rows = read_tsv(root / name / "specials.tsv") if (root / name / "specials.tsv").stat().st_size else []
+        plies = read_tsv(root / name / "plies.tsv")
+        for r in rows:
+            if name == "chessigma" and r["cc"] != "brilliant" and r["ours"] != "brilliant":
+                continue
+            kind = famous_kind.get(r["game"], "") if name == "famous" else ""
+            for c in ("brilliant", "great"):
+                if name == "chessigma" and c == "great":
+                    continue
+                base = {"set": name, "kind": kind, "id": r["game"], "ply": r["ply"], "san": r["san"], "class": c,
+                        "ours": r["ours"], "chesscom": r["cc"] if name != "chessigma" or r["cc"] == "brilliant" else "unlabelled"}
+                base.update({k: r.get(k, "") for k in FP_COLUMNS if k not in base})
+                if r["ours"] == c and r["cc"] != c and name != "chessigma":
+                    fp.append(base)
+                if r["cc"] == c and r["ours"] != c:
+                    fn.append(base)
+        groups = {"chessigma": [("chessigma", plies)]} if name == "chessigma" else (
+            {"famous": [(f"famous-{k}", [p for p in plies if famous_kind.get(p["game"]) == k]) for k in ("brilliant", "control")]}
+            if name == "famous" else {name: [(name, plies)]})
+        for label, ps in next(iter(groups.values())):
+            for c in ("brilliant", "great"):
+                if label == "chessigma" and c == "great":
+                    continue
+                if label == "chessigma":
+                    tp = sum(1 for p in ps if p["cc"] == "brilliant" and p["ours"] == "brilliant")
+                    pos = sum(1 for p in ps if p["cc"] == "brilliant")
+                    other = sum(1 for p in ps if p["ours"] == "brilliant" and p["cc"] != "brilliant")
+                    summary.append((label, c, pos, tp + other, tp, None, pos - tp, float("nan"), tp / pos if pos else float("nan"), other))
+                    continue
+                tp = sum(1 for p in ps if p["cc"] == c and p["ours"] == c)
+                nfp = sum(1 for p in ps if p["ours"] == c and p["cc"] != c)
+                nfn = sum(1 for p in ps if p["cc"] == c and p["ours"] != c)
+                summary.append((label, c, tp + nfn, tp + nfp, tp, nfp, nfn, tp / (tp + nfp) if tp + nfp else float("nan"),
+                                tp / (tp + nfn) if tp + nfn else float("nan"), None))
+    outdir = Path(a.fp_out)
+    outdir.mkdir(parents=True, exist_ok=True)
+    for fname, rows in (("FP_LIST.csv", fp), ("FN_LIST.csv", fn)):
+        with open(outdir / fname, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=FP_COLUMNS)
+            w.writeheader()
+            w.writerows(rows)
+    print("| set | class | chess.com | ours | TP | FP | FN | precision | recall |")
+    print("|---|---|---:|---:|---:|---:|---:|---:|---:|")
+    for label, c, pos, ours, tp, nfp, nfn, pr, rc, other in summary:
+        fp_txt = f"({other} other plies, unlabelled)" if other is not None else str(nfp)
+        print(f"| {label} | {c} | {pos} | {ours} | {tp} | {fp_txt} | {nfn} | {pr:.0%} | {rc:.0%} |")
+    print(f"{len(fp)} false positives -> {outdir / 'FP_LIST.csv'}; {len(fn)} false negatives -> {outdir / 'FN_LIST.csv'}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", nargs="?", default="cv", choices=["cv", "stability", "ceiling", "noise", "refs"])
+    ap.add_argument("command", nargs="?", default="cv", choices=["cv", "stability", "ceiling", "noise", "refs", "fplist"])
     ap.add_argument("a", nargs="?", help="stability: first budget")
     ap.add_argument("b", nargs="?", help="stability: second budget")
     ap.add_argument("--dump", default=str(DATA / "evals_labeled"))
@@ -520,6 +626,8 @@ def main():
     ap.add_argument("--name", help="output folder name under target/cv")
     ap.add_argument("--deep", default="deep", help="dump compared with --budget for the unstable/rule split ('' = off)")
     ap.add_argument("--margin", type=float, default=0.01, help="unstable when the win chance loss is this close to a threshold")
+    ap.add_argument("--fp-out", default=str(Path.home() / ".javachess-orchestrator/review-team/notes/fp"),
+                    help="fplist: folder of FP_LIST.csv / FN_LIST.csv")
     ap.add_argument("--holdout", action="store_true")
     ap.add_argument("--final", action="store_true")
     ap.add_argument("--no-build", action="store_true", help="skip ./mvnw test-compile")
@@ -527,7 +635,7 @@ def main():
     global LABELS_DIR, FOLDS
     LABELS_DIR = DATA / REFS[a.ref]
     FOLDS = a.folds
-    {"stability": cmd_stability, "ceiling": cmd_ceiling, "noise": cmd_noise, "refs": cmd_refs}.get(a.command, cmd_cv)(a)
+    {"stability": cmd_stability, "ceiling": cmd_ceiling, "noise": cmd_noise, "refs": cmd_refs, "fplist": cmd_fplist}.get(a.command, cmd_cv)(a)
 
 
 if __name__ == "__main__":
