@@ -775,6 +775,19 @@ class BrilliantGreatExclusionsTest {
         assertEquals(MoveClassification.GREAT, label(rxd7, Tuning.DEFAULT.with("greatForcedTradeCp", 0)));
     }
 
+    @Test
+    void cashingInRightAfterTheOwnBrilliantIsNotGreat() {
+        // D. Byrne - Fischer 1956: 11...Na4!! (Brilliant) 12.Qa3 Nxc3: taking the knight the Brilliant aimed at is the
+        // obvious follow-up (chess.com Best), however bad the second best move (Bxf3 +0.18)
+        ReviewInput in = withSecond(withSecond(game("r2q1rk1/pp2ppbp/1np2np1/2Q3B1/3PP1b1/2N2N2/PP3PPP/3RKB1R b K - 6 11",
+                0, 0, List.of("b6a4", "c5a3", "a4c3"),
+                List.of(Eval.cp(-286), Eval.cp(-307), Eval.cp(-288), Eval.cp(-263)), List.of("b6a4", "c5a3", "a4c3")),
+                0, Eval.cp(-25), "b6d7"), 2, Eval.cp(18), "g4f3");
+        assertEquals(MoveClassification.BRILLIANT, ReviewClassifier.classifyGame(in).moves().get(0).label());
+        assertEquals(MoveClassification.BEST, label(in, Tuning.DEFAULT));
+        assertEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT.with("greatNoCashInBrilliant", 0)));
+    }
+
     private static ReviewInput rated(ReviewInput in, int white, int black) {
         return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
     }

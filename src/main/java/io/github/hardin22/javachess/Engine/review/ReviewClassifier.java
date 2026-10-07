@@ -187,6 +187,8 @@ public final class ReviewClassifier {
         /** Phase 4: no Great for a bishop retreating from the pawn that has just advanced against it. */
         /** Phase 4: no Great for a capture right after the mover's own Great (cashing in). */
         final boolean greatNoCashIn;
+        /** Phase 4: ... also after the mover's own Brilliant (rated 1000+ or unrated). */
+        final boolean greatNoCashInBrilliant;
         final boolean greatKickedBishop;
         /** Phase 4 (0 = off): R9 also when the opponent's move lost at least this much, whatever the alternative. */
         final double greatStartsMatePunish;
@@ -314,6 +316,7 @@ public final class ReviewClassifier {
             greatInCheckFreeMaterial = get("greatInCheckFreeMaterial", 1) != 0;
             greatKickedBishop = get("greatKickedBishop", 1) != 0;
             greatNoCashIn = get("greatNoCashIn", 1) != 0;
+            greatNoCashInBrilliant = get("greatNoCashInBrilliant", 1) != 0;
             greatStartsMatePunish = get("greatStartsMatePunish", 0.15);
             greatStartsMateInCheck = get("greatStartsMateInCheck", 1) != 0;
             greatStartsMateKing = get("greatStartsMateKing", 1) != 0;
@@ -764,10 +767,14 @@ public final class ReviewClassifier {
                     label = MoveClassification.GREAT;
                 }
                 if (label == MoveClassification.GREAT && t.greatNoCashIn && i >= 2
-                        && out.get(i - 2).label() == MoveClassification.GREAT
+                        && (out.get(i - 2).label() == MoveClassification.GREAT
+                        || (t.greatNoCashInBrilliant && out.get(i - 2).label() == MoveClassification.BRILLIANT
+                        && (rating <= 0 || rating >= t.greatFreeMaterialRating)))
                         && Tactics.isCapture(board(replay.fens().get(i)), uci)) {
                     // Phase 4: a capture right after the mover's own Great cashes in the idea already rewarded
-                    // (177 games: 3 of 3 chess.com Best, no Great; after a Brilliant chess.com may still say Great)
+                    // (177 games: 3 of 3 chess.com Best, no Great). After the mover's own Brilliant too, from 1000
+                    // (12...Nxc3 after 11...Na4!! Byrne - Fischer 1956: chess.com Best; at 1000+ no capture right
+                    // after an own Brilliant is chess.com Great); under 1000 chess.com rewards it (Qxf6 live_122947746214)
                     label = plain;
                 }
             }
