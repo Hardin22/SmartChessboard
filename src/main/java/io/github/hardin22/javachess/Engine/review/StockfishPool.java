@@ -45,6 +45,11 @@ public final class StockfishPool implements PositionEvaluator {
     }
 
     private final HashMode hashMode;
+    /**
+     * Diagnostic depth cap of every search ({@code -Djavachess.review.depth}, 0 = none): with a large node budget it
+     * emulates a fixed-depth review such as chess.com's "depth 22".
+     */
+    private final int maxDepth = Integer.getInteger("javachess.review.depth", 0);
     /** The process reserved by the calling thread's current block, or null. */
     private final ThreadLocal<UciClient> held = new ThreadLocal<>();
 
@@ -137,6 +142,9 @@ public final class StockfishPool implements PositionEvaluator {
     }
 
     private SearchResult search(String fen, SearchLimits limits, long nodes, boolean clear) throws Exception {
+        if (maxDepth > 0) {
+            limits = limits.withDepth(maxDepth);
+        }
         // generous client-side cap: a node budget normally ends long before (protects against a hung engine)
         long capMs = Math.max(10_000, nodes / 20);
         UciClient block = held.get();
@@ -200,6 +208,11 @@ public final class StockfishPool implements PositionEvaluator {
             throw new EngineException("no line for " + fen);
         }
         return new PositionEval(fen, lines.get(0).eval(), lines, r.depth(), r.nodes(), false);
+    }
+
+    /** The depth cap of every search, 0 for none. */
+    public int maxDepth() {
+        return maxDepth;
     }
 
     public HashMode hashMode() {
