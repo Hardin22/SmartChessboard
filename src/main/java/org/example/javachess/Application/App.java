@@ -43,6 +43,11 @@ public class App extends Application {
             scene.getStylesheets().add(App.class.getResource("/Styles/Style.css").toExternalForm());
             primaryStage.setTitle("Chess Application");
             boolean fullScreen = DevOptions.placeStage(primaryStage);
+            primaryStage.setFullScreenExitHint("");
+            if (Boolean.getBoolean("javachess.kiosk")) {
+                // kiosk (run_pi.sh): Esc must not leave full screen on the board's monitor
+                primaryStage.setFullScreenExitKeyCombination(javafx.scene.input.KeyCombination.NO_MATCH);
+            }
             primaryStage.setFullScreen(fullScreen);
 
             long beforeShow = StartupMetrics.uptimeMs();

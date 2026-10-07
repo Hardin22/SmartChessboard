@@ -1,29 +1,48 @@
 package org.example.javachess.Services;
 
-import org.example.javachess.Oggetti.Puzzle;
 import kong.unirest.HttpResponse;
-import kong.unirest.Unirest;
 import kong.unirest.JsonNode;
+import kong.unirest.Unirest;
+import org.example.javachess.Oggetti.Puzzle;
+import org.example.javachess.Utils.AppExecutors;
 import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.RandomAccessFile;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.channels.Channels;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadLocalRandom;
 
+/**
+ * Puzzles from the local Lichess database.
+ *
+ * <p>Uses the compact database built by {@code scripts/build-puzzle-db.sh} (memory-mapped, a few KB of heap,
+ * a lookup in milliseconds). Without it, falls back to sampling the raw CSV. Neither file is inside the jar:
+ * they are looked up in {@code -Djavachess.puzzles=<file>}, {@code data/}, then {@code ~/.javachess/}.
+ * All lookups may take time on a Raspberry Pi: call them off the JavaFX thread ({@link #findPuzzleAsync}).</p>
+ */
 public class PuzzleService {
 
-    private static PuzzleService instance;
+    private static final Logger log = LoggerFactory.getLogger(PuzzleService.class);
     private static final String DAILY_PUZZLE_URL = "https://lichess.org/api/puzzle/daily";
+    private static final int CANDIDATES = 10;
 
-    // Path to the large CSV file.
-    // In production, this should likely be configured or placed in a standard user
-    // directory.
-    // For this environment, we point to the source resource or a known location.
-    private static final String CSV_PATH = "src/main/resources/data/puzzles.csv";
+    private static PuzzleService instance;
+
+    private final Object dbLock = new Object();
+    private PuzzleDatabase database;
+    private boolean databaseChecked;
 
     private PuzzleService() {
     }
@@ -35,193 +54,216 @@ public class PuzzleService {
         return instance;
     }
 
-    /**
-     * Finds a random puzzle matching the criteria using efficient RandomAccessFile
-     * seeking.
-     * This avoids loading the 1GB file into memory.
-     */
-    public Puzzle findPuzzle(int targetRating, int range, List<String> themes) {
-        File file = new File(CSV_PATH);
-        if (!file.exists()) {
-            file = new File("puzzles.csv");
-            if (!file.exists()) {
-                System.err.println("Puzzle Database not found at: " + CSV_PATH);
-                return null;
-            }
+    // --- locations -----------------------------------------------------------------------------------------
+
+    private static Path userHome() {
+        String home = System.getProperty("javachess.home");
+        return home != null ? Path.of(home) : Path.of(System.getProperty("user.home"), ".javachess");
+    }
+
+    /** Where the compact database is looked for, in order. */
+    public static List<Path> databaseLocations() {
+        List<Path> paths = new ArrayList<>();
+        String configured = System.getProperty("javachess.puzzles");
+        if (configured != null && !configured.isBlank()) {
+            paths.add(Path.of(configured));
         }
+        paths.add(Path.of("data", "puzzles.db"));
+        paths.add(userHome().resolve("puzzles.db"));
+        return paths;
+    }
 
-        try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-            long fileLength = raf.length();
-            // Optimization: Instead of 300 random seeks (slow), we do fewer seeks
-            // but scan a chunk of lines sequentially (fast).
-            // 20 attempts * 2000 lines = 40,000 puzzles checked per call.
-            int maxSeeks = 20;
-            int linesPerChunk = 2000;
+    /** Where the raw Lichess CSV is looked for (fallback), in order. */
+    public static List<Path> csvLocations() {
+        return List.of(Path.of("data", "puzzles.csv"), userHome().resolve("puzzles.csv"),
+                Path.of("src", "main", "resources", "data", "puzzles.csv"), Path.of("puzzles.csv"));
+    }
 
-            for (int i = 0; i < maxSeeks; i++) {
-                // 1. Pick random position
-                long pos = (long) (Math.random() * (fileLength - 10000));
-                if (pos < 0)
-                    pos = 0;
-
-                raf.seek(pos);
-                if (pos != 0)
-                    raf.readLine(); // Discard partial line
-
-                // 2. Scan sequentially
-                for (int j = 0; j < linesPerChunk; j++) {
-                    String line = raf.readLine();
-                    if (line == null)
-                        break; // End of file
-
-                    Puzzle p = parseCsvLine(line);
-                    if (p == null)
-                        continue;
-
-                    // 3. Check Criteria
-                    if (Math.abs(p.getRating() - targetRating) <= range) {
-                        boolean themeMatch = true;
-                        if (themes != null && !themes.isEmpty() && !themes.contains("Tutti")) {
-                            // Valid if ANY of the puzzle's themes matches ANY of the requested themes (OR
-                            // logic)
-                            // Optimization: Check raw string first to avoid extensive list processing if
-                            // possible?
-                            // Current implementation is fine for now.
-                            themeMatch = themes.stream().anyMatch(
-                                    reqTheme -> p.getThemes().stream().anyMatch(pt -> pt.equalsIgnoreCase(reqTheme)));
-                        }
-
-                        if (themeMatch) {
-                            return p;
+    private PuzzleDatabase database() {
+        synchronized (dbLock) {
+            if (!databaseChecked) {
+                databaseChecked = true;
+                for (Path path : databaseLocations()) {
+                    if (Files.isRegularFile(path)) {
+                        try {
+                            long start = System.nanoTime();
+                            database = PuzzleDatabase.open(path);
+                            log.info("Puzzle database {}: {} puzzles, opened in {} ms", path.toAbsolutePath(),
+                                    database.size(), (System.nanoTime() - start) / 1_000_000);
+                            break;
+                        } catch (IOException e) {
+                            log.warn("Cannot open puzzle database {}: {}", path, e.getMessage());
                         }
                     }
                 }
+                if (database == null) {
+                    log.info("No puzzle database found ({}); using the CSV. Build it with scripts/build-puzzle-db.sh",
+                            databaseLocations());
+                }
             }
-        } catch (Exception e) {
-            e.printStackTrace();
+            return database;
         }
-
-        System.out.println(
-                "No puzzle found after extensive search for: " + targetRating + " +/-" + range + " Theme: " + themes);
-        return null;
     }
 
-    // Adapters for existing API calls (redirect to new random seeker)
+    // --- queries -------------------------------------------------------------------------------------------
+
+    /** Same as {@link #findPuzzle} on a background thread. */
+    public CompletableFuture<Puzzle> findPuzzleAsync(int targetRating, int range, List<String> themes) {
+        return CompletableFuture.supplyAsync(() -> findPuzzle(targetRating, range, themes), AppExecutors.compute());
+    }
+
+    /**
+     * A random puzzle rated targetRating±range with any of {@code themes} ("Tutti" or empty = any), widening
+     * the rating window if nothing matches. Null when nothing is found. Blocking.
+     */
+    public Puzzle findPuzzle(int targetRating, int range, List<String> themes) {
+        PuzzleDatabase db = database();
+        if (db != null) {
+            for (int window = range; window <= 3200; window *= 2) {
+                Puzzle puzzle = db.random(targetRating, window, themes);
+                if (puzzle != null) {
+                    return puzzle;
+                }
+            }
+            log.info("No puzzle for rating {} and themes {}", targetRating, themes);
+            return null;
+        }
+        return findInCsv(targetRating, range, themes);
+    }
 
     public List<Puzzle> getPuzzlesByRating(int rating, int range) {
         return getPuzzlesByThemeAndRating(null, rating, range);
     }
 
+    /** Up to ten random candidates. Blocking: call off the JavaFX thread. */
     public List<Puzzle> getPuzzlesByThemeAndRating(List<String> themes, int rating, int range) {
         List<Puzzle> found = new ArrayList<>();
-        // In a real DB we'd query. Here we try 'n' random fetches.
-        // Since findPuzzle does random seeking, calling it multiple times gives
-        // different results.
-        for (int i = 0; i < 50; i++) {
+        int attempts = database() != null ? CANDIDATES : 1; // the CSV fallback is slow: one is enough
+        for (int i = 0; i < attempts; i++) {
             Puzzle p = findPuzzle(rating, range, themes);
             if (p != null) {
                 found.add(p);
-                if (found.size() >= 10)
-                    break; // Limit candidates
             }
         }
         return found;
     }
 
     public Puzzle getRandomPuzzle(List<Puzzle> candidates) {
-        if (candidates == null || candidates.isEmpty())
+        if (candidates == null || candidates.isEmpty()) {
             return null;
-        return candidates.get((int) (Math.random() * candidates.size()));
+        }
+        return candidates.get(ThreadLocalRandom.current().nextInt(candidates.size()));
     }
 
-    private Puzzle parseCsvLine(String line) {
-        try {
-            // PuzzleId,FEN,Moves,Rating,RatingDeviation,Popularity,NbPlays,Themes,GameUrl,OpeningTags
-            String[] parts = line.split(",");
-            if (parts.length < 9)
-                return null; // Relaxed check
+    // --- CSV fallback --------------------------------------------------------------------------------------
 
-            String id = parts[0];
-            String fen = parts[1];
-            List<String> moves = Arrays.asList(parts[2].split(" "));
-            int rating = Integer.parseInt(parts[3]);
-            int ratingDeviation = Integer.parseInt(parts[4]);
-            int popularity = Integer.parseInt(parts[5]);
-            int nbPlays = Integer.parseInt(parts[6]);
-            // Themes can be space separated
-            List<String> themes = Arrays.asList(parts[7].split(" "));
-            String gameUrl = parts[8];
-            String openingTags = parts.length > 9 ? parts[9] : "";
-
-            return new Puzzle(id, fen, moves, rating, ratingDeviation, popularity, nbPlays, themes, gameUrl,
-                    openingTags);
-        } catch (Exception e) {
-            // e.printStackTrace(); // noise on partial lines
+    private Puzzle findInCsv(int targetRating, int range, List<String> themes) {
+        Path csv = csvLocations().stream().filter(Files::isRegularFile).findFirst().orElse(null);
+        if (csv == null) {
+            log.warn("No puzzle data found (looked for {} and {})", databaseLocations(), csvLocations());
             return null;
+        }
+        boolean anyTheme = themes == null || themes.isEmpty() || themes.contains("Tutti");
+        try (FileChannel channel = FileChannel.open(csv, StandardOpenOption.READ)) {
+            long length = channel.size();
+            ThreadLocalRandom random = ThreadLocalRandom.current();
+            for (int seek = 0; seek < 20; seek++) {
+                channel.position(random.nextLong(Math.max(1, length - 10_000)));
+                BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(Channels.newInputStream(channel), StandardCharsets.UTF_8), 1 << 16);
+                reader.readLine(); // partial line
+                for (int i = 0; i < 2000; i++) {
+                    String line = reader.readLine();
+                    if (line == null) {
+                        break;
+                    }
+                    Puzzle p = parseCsvLine(line);
+                    if (p != null && Math.abs(p.getRating() - targetRating) <= range
+                            && (anyTheme || themes.stream().anyMatch(t -> p.getThemes().stream().anyMatch(t::equalsIgnoreCase)))) {
+                        return p;
+                    }
+                }
+            }
+        } catch (IOException e) {
+            log.warn("Cannot read {}: {}", csv, e.getMessage());
+        }
+        log.info("No puzzle found in the CSV for {} +/-{} {}", targetRating, range, themes);
+        return null;
+    }
+
+    static Puzzle parseCsvLine(String line) {
+        // PuzzleId,FEN,Moves,Rating,RatingDeviation,Popularity,NbPlays,Themes,GameUrl,OpeningTags
+        String[] parts = line.split(",", -1);
+        if (parts.length < 9) {
+            return null;
+        }
+        try {
+            return new Puzzle(parts[0], parts[1], Arrays.asList(parts[2].split(" ")), Integer.parseInt(parts[3]),
+                    Integer.parseInt(parts[4]), Integer.parseInt(parts[5]), Integer.parseInt(parts[6]),
+                    Arrays.asList(parts[7].split(" ")), parts[8], parts.length > 9 ? parts[9] : "");
+        } catch (NumberFormatException e) {
+            return null; // header or partial line
         }
     }
 
-    // --- Legacy / Online Fallback ---
+    // --- online daily puzzle -------------------------------------------------------------------------------
 
     public CompletableFuture<Puzzle> fetchDailyPuzzle() {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 HttpResponse<JsonNode> response = Unirest.get(DAILY_PUZZLE_URL).asJson();
                 if (response.isSuccess()) {
-                    org.json.JSONObject json = new org.json.JSONObject(response.getBody().toString());
-                    return parseJsonPuzzle(json);
+                    return parseJsonPuzzle(new JSONObject(response.getBody().toString()));
                 }
                 return null;
-            } catch (Exception e) {
-                e.printStackTrace();
+            } catch (RuntimeException e) {
+                log.warn("Daily puzzle unavailable: {}", e.getMessage());
                 return null;
             }
-        });
+        }, AppExecutors.io());
     }
 
-    private Puzzle parseJsonPuzzle(org.json.JSONObject json) {
-        // Adapt JSON structure to new Puzzle class (mocking missing fields)
-        org.json.JSONObject game = json.getJSONObject("game");
+    private Puzzle parseJsonPuzzle(JSONObject json) {
+        JSONObject game = json.getJSONObject("game");
         JSONObject puzzle = json.getJSONObject("puzzle");
 
         String id = puzzle.getString("id");
         int rating = puzzle.getInt("rating");
         int initialPly = puzzle.getInt("initialPly");
-        String pgn = game.getString("pgn");
-        String fen = calculateFenFromPgn(pgn, initialPly);
+        String fen = calculateFenFromPgn(game.getString("pgn"), initialPly);
 
         List<String> solution = new ArrayList<>();
         org.json.JSONArray solutionArray = puzzle.getJSONArray("solution");
-        for (int i = 0; i < solutionArray.length(); i++)
+        for (int i = 0; i < solutionArray.length(); i++) {
             solution.add(solutionArray.getString(i));
-
+        }
         List<String> themes = new ArrayList<>();
         if (puzzle.has("themes")) {
             org.json.JSONArray themesArray = puzzle.getJSONArray("themes");
-            for (int i = 0; i < themesArray.length(); i++)
+            for (int i = 0; i < themesArray.length(); i++) {
                 themes.add(themesArray.getString(i));
+            }
         }
-
         return new Puzzle(id, fen, solution, rating, 0, 0, 0, themes, "", "");
     }
 
     private String calculateFenFromPgn(String pgn, int initialPly) {
         try {
             com.github.bhlangonijr.chesslib.Board board = new com.github.bhlangonijr.chesslib.Board();
-            String cleanPgn = pgn.replaceAll("\\d+\\.", "").replace("\n", " ");
-            String[] moves = cleanPgn.split("\\s+");
-
+            String[] moves = pgn.replaceAll("\\d+\\.", "").replace("\n", " ").split("\\s+");
             int plysApplied = 0;
             for (String moveSan : moves) {
-                if (plysApplied >= initialPly)
+                if (plysApplied >= initialPly) {
                     break;
-                if (moveSan.trim().isEmpty())
+                }
+                if (moveSan.trim().isEmpty()) {
                     continue;
+                }
                 board.doMove(moveSan);
                 plysApplied++;
             }
             return board.getFen();
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             return com.github.bhlangonijr.chesslib.Constants.startStandardFENPosition;
         }
     }
