@@ -3,81 +3,143 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.Label?>
-<?import javafx.scene.image.Image?>
-<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.ColumnConstraints?>
 <?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.VBox?>
-<?import javafx.scene.layout.StackPane?>
+<?import org.example.javachess.Components.*?>
+<?import org.kordamp.ikonli.javafx.FontIcon?>
 
-<StackPane xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.HomeController" style="-fx-background-color: transparent;">
-    <VBox alignment="CENTER" spacing="40.0" maxWidth="500">
-        <padding>
-            <Insets top="50" bottom="50" left="20" right="20"/>
-        </padding>
+<BorderPane styleClass="page" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="org.example.javachess.Controllers.HomeController">
+    <top>
+        <HBox alignment="CENTER_RIGHT" spacing="8" styleClass="home-bar">
+            <padding><Insets top="16" right="16" bottom="8" left="16"/></padding>
+            <StatusChip fx:id="boardStatus"/>
+            <StatusChip fx:id="engineStatus"/>
+        </HBox>
+    </top>
+    <center>
+        <ScrollPane fitToWidth="true" fitToHeight="true" hbarPolicy="NEVER">
+            <VBox fx:id="content" alignment="CENTER">
+                <padding><Insets top="16" right="16" bottom="32" left="16"/></padding>
+                <ResponsiveColumns fx:id="columns" breakpoint="1100" maxColumnWidth="600" spacing="48" centerVertically="true">
 
-        <!-- Logo -->
-        <ImageView fitWidth="350.0" preserveRatio="true">
-            <image>
-                <Image url="@/images/logo_neon.png" />
-            </image>
-            <effect>
-                <javafx.scene.effect.DropShadow color="#D4AF37" radius="20" spread="0.2"/>
-            </effect>
-        </ImageView>
+                    <!-- Hero -->
+                    <VBox spacing="16" alignment="CENTER" styleClass="home-hero">
+                        <Logo size="96"/>
+                        <Label text="javaChess" styleClass="wordmark"/>
+                        <Label text="%home.tagline" styleClass="lead" wrapText="true" textAlignment="CENTER"/>
+                    </VBox>
 
-        <VBox spacing="20.0" alignment="CENTER" maxWidth="450">
-            <Button text="GIOCA VS BOT" onAction="#showPvCSetup" styleClass="elegant-button" maxWidth="Infinity" prefHeight="90">
-                <graphic>
-                    <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-gamepad" iconSize="36" iconColor="#121212"/>
-                </graphic>
-            </Button>
+                    <VBox spacing="12">
+                    <!-- Play -->
+                    <VBox spacing="12">
+                        <Label text="%home.play" styleClass="section-label"/>
+                        <Button fx:id="pvcTile" onAction="#showPvCSetup" styleClass="tile, tile-primary" maxWidth="Infinity">
+                            <graphic>
+                                <HBox alignment="CENTER_LEFT" spacing="16">
+                                    <VBox styleClass="tile-icon"><FontIcon iconLiteral="fth-cpu" iconSize="22" styleClass="icon"/></VBox>
+                                    <VBox spacing="2" HBox.hgrow="ALWAYS">
+                                        <Label text="%home.pvc.title" styleClass="tile-title"/>
+                                        <Label text="%home.pvc.description" styleClass="tile-description"/>
+                                    </VBox>
+                                    <FontIcon iconLiteral="fth-chevron-right" iconSize="22" styleClass="icon"/>
+                                </HBox>
+                            </graphic>
+                        </Button>
+                        <Button onAction="#showPvPSetup" styleClass="tile" maxWidth="Infinity">
+                            <graphic>
+                                <HBox alignment="CENTER_LEFT" spacing="16">
+                                    <VBox styleClass="tile-icon"><FontIcon iconLiteral="fth-users" iconSize="22" styleClass="icon"/></VBox>
+                                    <VBox spacing="2" HBox.hgrow="ALWAYS">
+                                        <Label text="%home.pvp.title" styleClass="tile-title"/>
+                                        <Label text="%home.pvp.description" styleClass="tile-description"/>
+                                    </VBox>
+                                    <FontIcon iconLiteral="fth-chevron-right" iconSize="22" styleClass="icon-muted"/>
+                                </HBox>
+                            </graphic>
+                        </Button>
+                        <Button fx:id="onlineTile" onAction="#toggleOnlineChoices" styleClass="tile" maxWidth="Infinity">
+                            <graphic>
+                                <HBox alignment="CENTER_LEFT" spacing="16">
+                                    <VBox styleClass="tile-icon"><FontIcon iconLiteral="fth-globe" iconSize="22" styleClass="icon"/></VBox>
+                                    <VBox spacing="2" HBox.hgrow="ALWAYS">
+                                        <Label text="%home.online.title" styleClass="tile-title"/>
+                                        <Label text="%home.online.description" styleClass="tile-description"/>
+                                    </VBox>
+                                    <FontIcon fx:id="onlineChevron" iconLiteral="fth-chevron-down" iconSize="22" styleClass="icon-muted"/>
+                                </HBox>
+                            </graphic>
+                        </Button>
+                        <HBox fx:id="onlineChoicesBox" spacing="12" visible="false" managed="false">
+                            <Button text="Lichess" onAction="#playLichess" styleClass="btn, btn-secondary, btn-lg" maxWidth="Infinity" HBox.hgrow="ALWAYS">
+                                <graphic><FontIcon iconLiteral="fth-zap" iconSize="18" styleClass="icon"/></graphic>
+                            </Button>
+                            <Button text="Chess.com" onAction="#playChessCom" styleClass="btn, btn-secondary, btn-lg" maxWidth="Infinity" HBox.hgrow="ALWAYS">
+                                <graphic><FontIcon iconLiteral="fth-external-link" iconSize="18" styleClass="icon"/></graphic>
+                            </Button>
+                        </HBox>
+                    </VBox>
 
-            <Button text="GIOCA VS AMICO" onAction="#showPvPSetup" styleClass="elegant-button" maxWidth="Infinity" prefHeight="90">
-                <graphic>
-                    <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-users" iconSize="36" iconColor="#121212"/>
-                </graphic>
-            </Button>
-
-            <Button text="GIOCA ONLINE" onAction="#toggleOnlineChoices" styleClass="elegant-button" maxWidth="Infinity" prefHeight="90">
-                <graphic>
-                    <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-globe" iconSize="36" iconColor="#121212"/>
-                </graphic>
-            </Button>
-            
-            <!-- Hidden Choices Container -->
-            <VBox fx:id="onlineChoicesBox" spacing="10" alignment="CENTER" visible="false" managed="false" maxWidth="400">
-                <Button text="CHESS.COM" onAction="#playChessCom" styleClass="elegant-button-secondary" maxWidth="Infinity"/>
-                <Button text="LICHESS.ORG" onAction="#playLichess" styleClass="elegant-button-secondary" maxWidth="Infinity"/>
+                    <!-- Train & configure -->
+                    <VBox spacing="12">
+                        <VBox.margin><Insets top="12"/></VBox.margin>
+                        <Label text="%home.train" styleClass="section-label"/>
+                        <GridPane hgap="12" vgap="12">
+                            <columnConstraints>
+                                <ColumnConstraints percentWidth="50"/>
+                                <ColumnConstraints percentWidth="50"/>
+                            </columnConstraints>
+                            <Button onAction="#showPuzzles" styleClass="tile, tile-small" maxWidth="Infinity" GridPane.columnIndex="0">
+                                <graphic>
+                                    <HBox alignment="CENTER_LEFT" spacing="12">
+                                        <FontIcon iconLiteral="fth-target" iconSize="22" styleClass="icon"/>
+                                        <Label text="%home.puzzles" styleClass="tile-title"/>
+                                    </HBox>
+                                </graphic>
+                            </Button>
+                            <Button onAction="#showArchive" styleClass="tile, tile-small" maxWidth="Infinity" GridPane.columnIndex="1">
+                                <graphic>
+                                    <HBox alignment="CENTER_LEFT" spacing="12">
+                                        <FontIcon iconLiteral="fth-archive" iconSize="22" styleClass="icon"/>
+                                        <Label text="%home.archive" styleClass="tile-title"/>
+                                    </HBox>
+                                </graphic>
+                            </Button>
+                        </GridPane>
+                        <Label text="%home.preferences" styleClass="section-label">
+                            <VBox.margin><Insets top="12"/></VBox.margin>
+                        </Label>
+                        <GridPane hgap="12" vgap="12">
+                            <columnConstraints>
+                                <ColumnConstraints percentWidth="50"/>
+                                <ColumnConstraints percentWidth="50"/>
+                            </columnConstraints>
+                            <Button onAction="#showTheme" styleClass="tile, tile-small" maxWidth="Infinity" GridPane.columnIndex="0">
+                                <graphic>
+                                    <HBox alignment="CENTER_LEFT" spacing="12">
+                                        <FontIcon iconLiteral="fth-grid" iconSize="22" styleClass="icon"/>
+                                        <Label text="%home.boards" styleClass="tile-title"/>
+                                    </HBox>
+                                </graphic>
+                            </Button>
+                            <Button onAction="#navigateToSettings" styleClass="tile, tile-small" maxWidth="Infinity" GridPane.columnIndex="1">
+                                <graphic>
+                                    <HBox alignment="CENTER_LEFT" spacing="12">
+                                        <FontIcon iconLiteral="fth-settings" iconSize="22" styleClass="icon"/>
+                                        <Label text="%home.settings" styleClass="tile-title"/>
+                                    </HBox>
+                                </graphic>
+                            </Button>
+                        </GridPane>
+                    </VBox>
+                    </VBox>
+                </ResponsiveColumns>
             </VBox>
-        </VBox>
-
-        <!-- Secondary Actions Group -->
-        <VBox spacing="15.0" alignment="CENTER" maxWidth="450">
-            <HBox spacing="20.0" alignment="CENTER">
-                <Button text="ARCHIVIO" onAction="#showArchive" styleClass="elegant-button-secondary" maxWidth="Infinity" HBox.hgrow="ALWAYS" prefHeight="80">
-                    <graphic>
-                        <org.kordamp.ikonli.javafx.FontIcon iconLiteral="mdal-history" iconSize="32" iconColor="#E0E0E0"/>
-                    </graphic>
-                </Button>
-
-                <Button text="PUZZLE" onAction="#showPuzzles" styleClass="elegant-button-secondary" maxWidth="Infinity" HBox.hgrow="ALWAYS" prefHeight="80">
-                    <graphic>
-                        <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-puzzle-piece" iconSize="32" iconColor="#E0E0E0"/>
-                    </graphic>
-                </Button>
-            </HBox>
-
-            <Button text="TEMA" onAction="#showTheme" styleClass="elegant-button-secondary" maxWidth="Infinity" prefHeight="80">
-                <graphic>
-                    <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-palette" iconSize="32" iconColor="#E0E0E0"/>
-                </graphic>
-            </Button>
-            
-            <Button text="IMPOSTAZIONI" onAction="#navigateToSettings" styleClass="elegant-button-secondary" maxWidth="Infinity" prefHeight="80">
-                 <graphic>
-                    <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-cog" iconSize="32" iconColor="#E0E0E0"/>
-                </graphic>
-            </Button>
-        </VBox>
-    </VBox>
-</StackPane>
+        </ScrollPane>
+    </center>
+</BorderPane>

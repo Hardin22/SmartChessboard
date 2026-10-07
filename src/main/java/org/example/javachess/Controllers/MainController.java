@@ -1,66 +1,90 @@
 package org.example.javachess.Controllers;
 
+import javafx.animation.FadeTransition;
+import javafx.animation.Interpolator;
 import javafx.animation.PauseTransition;
+import javafx.animation.SequentialTransition;
+import javafx.animation.TranslateTransition;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
+import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.Parent;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.input.KeyCode;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.util.Duration;
-import org.example.javachess.Utils.AppExecutors;
+import org.example.javachess.Components.I18n;
+import org.example.javachess.Components.Icons;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
- * Root of the UI: hosts one view at a time and loads views on demand.
+ * Root controller: owns the view container, loads views lazily (and preloads them on a background thread so the
+ * FX thread never blocks on FXML parsing), and hosts the global overlays (bottom sheet and toast).
  *
- * <p>Only HOME is built before the first frame. The views the user is most likely to open next are then
- * built in the background of the UI, one per idle slot ({@link #startIdlePreload()}), so start-up is fast and
- * a tap is never delayed by more than one view load. Any other view is loaded the first time it is shown.</p>
+ * <p>View names are stable identifiers also used by {@code DevOptions} ({@code -Djavachess.view=NAME}).</p>
  */
 public class MainController {
 
-    private static final Logger log = LoggerFactory.getLogger(MainController.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MainController.class);
 
-    /** FXML of every view, by name. */
-    private static final Map<String, String> VIEW_PATHS = new LinkedHashMap<>();
-
+    /** View name -> FXML path. Names are public API (DevOptions, other controllers). */
+    private static final Map<String, String> VIEWS = new LinkedHashMap<>();
     static {
-        VIEW_PATHS.put("HOME", "/UI/HomeView.fxml");
-        VIEW_PATHS.put("PVC_SETUP", "/UI/PvCSetupView.fxml");
-        VIEW_PATHS.put("GAME", "/UI/GameView.fxml");
-        VIEW_PATHS.put("PVP_SETUP", "/UI/PvPSetupView.fxml");
-        VIEW_PATHS.put("PUZZLE_DASHBOARD", "/UI/PuzzleDashboardView.fxml");
-        VIEW_PATHS.put("PUZZLE_GAME", "/UI/PuzzleView.fxml");
-        VIEW_PATHS.put("ARCHIVE", "/UI/ArchiveView.fxml");
-        VIEW_PATHS.put("REVIEW", "/UI/ReviewView.fxml");
-        VIEW_PATHS.put("THEME", "/UI/ThemeView.fxml");
-        VIEW_PATHS.put("SETTINGS", "/UI/SettingsView.fxml");
-        VIEW_PATHS.put("LICHESS_SETUP", "/UI/LichessSetupView.fxml");
-        VIEW_PATHS.put("BROWSER", "/UI/BrowserView.fxml");
+        VIEWS.put("HOME", "/UI/HomeView.fxml");
+        VIEWS.put("PVC_SETUP", "/UI/PvCSetupView.fxml");
+        VIEWS.put("PVP_SETUP", "/UI/PvPSetupView.fxml");
+        VIEWS.put("LICHESS_SETUP", "/UI/LichessSetupView.fxml");
+        VIEWS.put("GAME", "/UI/GameView.fxml");
+        VIEWS.put("ARCHIVE", "/UI/ArchiveView.fxml");
+        VIEWS.put("REVIEW", "/UI/ReviewView.fxml");
+        VIEWS.put("PUZZLE_DASHBOARD", "/UI/PuzzleDashboardView.fxml");
+        VIEWS.put("PUZZLE_GAME", "/UI/PuzzleView.fxml");
+        VIEWS.put("THEME", "/UI/ThemeView.fxml");
+        VIEWS.put("SETTINGS", "/UI/SettingsView.fxml");
+        VIEWS.put("BROWSER", "/UI/BrowserView.fxml");
     }
 
-    /** Views built ahead of time, most likely first. The browser (JCEF) is never preloaded. */
-    private static final List<String> PRELOAD_ORDER = List.of("PVC_SETUP", "GAME", "PVP_SETUP", "PUZZLE_DASHBOARD",
-            "ARCHIVE", "THEME", "SETTINGS", "REVIEW", "LICHESS_SETUP");
-    /** Pause between two preloaded views, leaving the FX thread free for input and animations. */
-    private static final Duration PRELOAD_GAP = Duration.millis(120);
+    /** Views that must be created on the FX thread (JCEF/Swing bridge), never preloaded. */
+    private static final java.util.Set<String> FX_ONLY = java.util.Set.of("BROWSER");
+
+    private record Loaded(Parent view, Object controller) {
+    }
 
     @FXML
+    private StackPane rootPane;
+    @FXML
     private StackPane mainContainer;
+    @FXML
+    private StackPane sheetLayer;
+    @FXML
+    private VBox toastLayer;
 
-    private final Map<String, Parent> views = new HashMap<>();
-    private final Map<String, Object> controllers = new HashMap<>();
-    private final Deque<String> preloadQueue = new ArrayDeque<>();
+    private final Map<String, String> extraPaths = new ConcurrentHashMap<>();
+    private final Map<String, CompletableFuture<Loaded>> loads = new ConcurrentHashMap<>();
+    private final ExecutorService preloader = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "view-preloader");
+        t.setDaemon(true);
+        t.setPriority(Thread.MIN_PRIORITY);
+        return t;
+    });
     private String currentViewName;
+    private Runnable onSheetClosed;
 
     public StackPane getMainContainer() {
         return mainContainer;
@@ -68,114 +92,238 @@ public class MainController {
 
     @FXML
     public void initialize() {
+        sheetLayer.setVisible(false);
+        sheetLayer.setOnMouseClicked(e -> {
+            if (e.getTarget() == sheetLayer) {
+                closeSheet();
+            }
+        });
+        rootPane.setOnKeyPressed(e -> {
+            if (e.getCode() == KeyCode.ESCAPE && sheetLayer.isVisible()) {
+                closeSheet();
+            }
+        });
         navigateTo("HOME");
     }
 
     /**
-     * Builds the other likely views one at a time while the UI is idle. Call once after the first frame.
-     * Disabled with {@code -Djavachess.preload=false}.
+     * Builds the other views off the FX thread, one at a time, so the first tap on any tile is instant.
+     * Called by App after the first frame; disabled with {@code -Djavachess.preload=false}.
      */
     public void startIdlePreload() {
         if (!Boolean.parseBoolean(System.getProperty("javachess.preload", "true"))) {
             return;
         }
-        preloadQueue.addAll(PRELOAD_ORDER);
-        scheduleNextPreload();
+        VIEWS.keySet().stream()
+                .filter(name -> !"HOME".equals(name) && !FX_ONLY.contains(name))
+                .forEach(name -> preloader.submit(() -> {
+                    try {
+                        ensureLoaded(name);
+                    } catch (RuntimeException e) {
+                        LOG.warn("Preload of {} failed", name, e);
+                    }
+                }));
+        preloader.submit(() -> LOG.info("Views preloaded at {} ms",
+                org.example.javachess.Application.StartupMetrics.uptimeMs()));
     }
 
-    private void scheduleNextPreload() {
-        PauseTransition gap = new PauseTransition(PRELOAD_GAP);
-        gap.setOnFinished(e -> {
-            String next = preloadQueue.poll();
-            if (next == null) {
-                log.info("Views preloaded at {} ms", org.example.javachess.Application.StartupMetrics.uptimeMs());
-                return;
-            }
-            if (!views.containsKey(next)) {
-                loadView(next, VIEW_PATHS.get(next));
-            }
-            scheduleNextPreload();
-        });
-        gap.play();
-    }
+    // ------------------------------------------------------------------ navigation
 
     public void navigateTo(String viewName) {
-        Parent view = views.get(viewName);
-        if (view == null && VIEW_PATHS.containsKey(viewName)) {
-            loadView(viewName, VIEW_PATHS.get(viewName));
-            view = views.get(viewName);
-        }
-        if (view == null) {
-            log.error("View not found: {}", viewName);
+        Loaded loaded;
+        try {
+            loaded = ensureLoaded(viewName);
+        } catch (RuntimeException e) {
+            LOG.error("Cannot open view {}", viewName, e);
+            showToast(I18n.t("error.view", viewName));
             return;
         }
-        preloadQueue.remove(viewName);
-
-        // Notify current controller that we are leaving
+        if (loaded == null) {
+            LOG.error("Unknown view {}", viewName);
+            return;
+        }
+        if (viewName.equals(currentViewName) && mainContainer.getChildren().contains(loaded.view())) {
+            notifyNavigatedTo(loaded.controller());
+            return;
+        }
         if (currentViewName != null) {
-            Object currentController = controllers.get(currentViewName);
-            if (currentController instanceof NavigationAware aware) {
+            CompletableFuture<Loaded> current = loads.get(currentViewName);
+            if (current != null && current.isDone() && !current.isCompletedExceptionally()
+                    && current.join().controller() instanceof NavigationAware aware) {
                 aware.onNavigatedFrom();
             }
         }
-
-        mainContainer.getChildren().setAll(view);
+        closeSheet();
+        mainContainer.getChildren().setAll(loaded.view());
         currentViewName = viewName;
+        notifyNavigatedTo(loaded.controller());
+    }
 
-        // Notify new controller that we have arrived
-        Object newController = controllers.get(viewName);
-        if (newController instanceof NavigationAware aware) {
+    private static void notifyNavigatedTo(Object controller) {
+        if (controller instanceof NavigationAware aware) {
             aware.onNavigatedTo();
         }
     }
 
+    public String getCurrentViewName() {
+        return currentViewName;
+    }
+
+    /** Registers (if needed) and loads a view. Kept for compatibility: callers may pass custom FXML paths. */
     public void loadView(String name, String fxmlPath) {
-        if (views.containsKey(name)) {
-            return; // Already loaded
+        if (!VIEWS.containsKey(name) && fxmlPath != null) {
+            extraPaths.put(name, fxmlPath);
         }
+        ensureLoaded(name);
+    }
+
+    public Object getController(String name) {
+        Loaded loaded = ensureLoaded(name);
+        return loaded == null ? null : loaded.controller();
+    }
+
+    /** Loads the view once; concurrent callers (FX thread and preloader) share the same result. */
+    private Loaded ensureLoaded(String name) {
+        String path = VIEWS.getOrDefault(name, extraPaths.get(name));
+        if (path == null) {
+            return null;
+        }
+        CompletableFuture<Loaded> future = loads.get(name);
+        if (future == null) {
+            CompletableFuture<Loaded> mine = new CompletableFuture<>();
+            future = loads.putIfAbsent(name, mine);
+            if (future == null) {
+                future = mine;
+                try {
+                    mine.complete(load(name, path));
+                } catch (RuntimeException e) {
+                    loads.remove(name);
+                    mine.completeExceptionally(e);
+                    throw e;
+                }
+            }
+        }
+        return future.join();
+    }
+
+    private Loaded load(String name, String fxmlPath) {
         long start = System.nanoTime();
         try {
-            FXMLLoader loader = new FXMLLoader(getClass().getResource(fxmlPath));
+            FXMLLoader loader = new FXMLLoader(getClass().getResource(fxmlPath), I18n.bundle());
             Parent view = loader.load();
-            views.put(name, view);
-
             Object controller = loader.getController();
             if (controller instanceof NavigationAware aware) {
                 aware.setMainController(this);
             }
-            controllers.put(name, controller);
-            log.debug("View {} loaded in {} ms", name, (System.nanoTime() - start) / 1_000_000);
+            LOG.debug("Loaded view {} in {} ms on {}", name, (System.nanoTime() - start) / 1_000_000,
+                    Thread.currentThread().getName());
+            return new Loaded(view, controller);
         } catch (IOException e) {
-            log.error("Failed to load view {} from {}", name, fxmlPath, e);
+            throw new IllegalStateException("Failed to load view " + name + " from " + fxmlPath, e);
         }
     }
 
-    public Object getController(String name) {
-        return controllers.get(name);
-    }
-
     public void openLichess() {
-        // Native integration: look for an active game without blocking the UI
-        AppExecutors.io().execute(() -> {
+        org.example.javachess.Utils.AppExecutors.io().execute(() -> {
             String gameId = org.example.javachess.Utils.LichessAPIHelper.getGameId();
             Platform.runLater(() -> {
                 if (gameId != null) {
-                    navigateTo("GAME");
                     ActiveGameController controller = (ActiveGameController) getController("GAME");
-                    if (controller != null) {
-                        controller.startOnlineGame(gameId);
-                    }
+                    navigateTo("GAME");
+                    controller.startOnlineGame(gameId);
                 } else {
-                    log.info("No active Lichess game, opening the setup");
                     navigateTo("LICHESS_SETUP");
                 }
             });
         });
     }
 
-    @FXML
-    private void rotateScreen() {
-        double currentRotate = mainContainer.getRotate();
-        mainContainer.setRotate(currentRotate == 0 ? 180 : 0);
+    /** Rotates the whole UI by 180 degrees (monitor mounted upside down / facing the other player). */
+    public void rotateScreen() {
+        rootPane.setRotate(rootPane.getRotate() == 0 ? 180 : 0);
+    }
+
+    public boolean isRotated() {
+        return rootPane.getRotate() != 0;
+    }
+
+    // ------------------------------------------------------------------ overlays
+
+    /**
+     * Shows a bottom sheet (centred dialog on wide screens) with a title, the given content and a close button.
+     * Tapping outside or pressing Esc closes it.
+     */
+    public void showSheet(String title, Node content) {
+        showSheet(title, content, null);
+    }
+
+    public void showSheet(String title, Node content, Runnable onClosed) {
+        Label titleLabel = new Label(title);
+        titleLabel.getStyleClass().add("sheet-title");
+        Button close = new Button();
+        close.getStyleClass().addAll("btn", "btn-ghost", "icon-btn");
+        close.setGraphic(Icons.of("fth-x", 22));
+        close.setAccessibleText(I18n.t("common.close"));
+        close.setOnAction(e -> closeSheet());
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox head = new HBox(12, titleLabel, spacer, close);
+        head.setAlignment(Pos.CENTER_LEFT);
+
+        VBox sheet = new VBox(16, head, content);
+        sheet.getStyleClass().add("sheet");
+        boolean wide = rootPane.getWidth() > rootPane.getHeight();
+        sheet.setMaxWidth(wide ? 640 : Double.MAX_VALUE);
+        sheet.setMaxHeight(Region.USE_PREF_SIZE);
+        StackPane.setAlignment(sheet, wide ? Pos.CENTER : Pos.BOTTOM_CENTER);
+        if (!wide) {
+            sheet.getStyleClass().add("sheet-bottom");
+        }
+
+        onSheetClosed = onClosed;
+        sheetLayer.getChildren().setAll(sheet);
+        sheetLayer.setVisible(true);
+        TranslateTransition slide = new TranslateTransition(Duration.millis(180), sheet);
+        slide.setFromY(wide ? 16 : 120);
+        slide.setToY(0);
+        slide.setInterpolator(Interpolator.EASE_OUT);
+        slide.play();
+    }
+
+    public void closeSheet() {
+        if (sheetLayer == null || !sheetLayer.isVisible()) {
+            return;
+        }
+        sheetLayer.setVisible(false);
+        sheetLayer.getChildren().clear();
+        Runnable callback = onSheetClosed;
+        onSheetClosed = null;
+        if (callback != null) {
+            callback.run();
+        }
+    }
+
+    /** Short message at the bottom of the screen for ~2.5 s. Safe to call from any thread. */
+    public void showToast(String message) {
+        if (!Platform.isFxApplicationThread()) {
+            Platform.runLater(() -> showToast(message));
+            return;
+        }
+        if (toastLayer == null) {
+            return;
+        }
+        Label toast = new Label(message);
+        toast.getStyleClass().add("toast");
+        toast.setWrapText(true);
+        toast.setMaxWidth(560);
+        toastLayer.getChildren().setAll(toast);
+        FadeTransition in = new FadeTransition(Duration.millis(150), toast);
+        in.setFromValue(0);
+        in.setToValue(1);
+        FadeTransition out = new FadeTransition(Duration.millis(200), toast);
+        out.setToValue(0);
+        SequentialTransition seq = new SequentialTransition(in, new PauseTransition(Duration.seconds(2.5)), out);
+        seq.setOnFinished(e -> toastLayer.getChildren().remove(toast));
+        seq.play();
     }
 }

@@ -29,6 +29,8 @@ import java.util.Random;
  *   <li>{@code -Djavachess.dev.moveDelayMs=3000} pause between the bot reply and the next human move</li>
  *   <li>{@code -Djavachess.dev.switch=3:maia-1500,6:stockfish-lite} switch engine profile after the given
  *       number of human moves (hot switch during the game)</li>
+ *   <li>{@code -Djavachess.dev.review="e2e4 e7e5 ..."} open the review of these UCI moves, run the full analysis
+ *       and step through the moves ({@code javachess.dev.moveDelayMs} apart)</li>
  * </ul>
  */
 final class DevScenario {
@@ -39,6 +41,11 @@ final class DevScenario {
     }
 
     static void startIfRequested(MainController main) {
+        String review = System.getProperty("javachess.dev.review");
+        if (review != null && main != null) {
+            startReview(main, review);
+            return;
+        }
         String pvc = System.getProperty("javachess.dev.pvc");
         if (pvc == null || main == null) {
             return;
@@ -83,6 +90,33 @@ final class DevScenario {
         }));
         tl.setCycleCount(Timeline.INDEFINITE);
         tl.play();
+    }
+
+    private static void startReview(MainController main, String moves) {
+        main.loadView("REVIEW", "/UI/ReviewView.fxml");
+        org.example.javachess.Controllers.ReviewController rc =
+                (org.example.javachess.Controllers.ReviewController) main.getController("REVIEW");
+        rc.loadGame(moves);
+        main.navigateTo("REVIEW");
+        try {
+            java.lang.reflect.Method full = rc.getClass().getDeclaredMethod("startFullAnalysis");
+            full.setAccessible(true);
+            full.invoke(rc);
+            java.lang.reflect.Method next = rc.getClass().getDeclaredMethod("nextMove");
+            next.setAccessible(true);
+            long delay = Long.getLong("javachess.dev.moveDelayMs", 1500L);
+            Timeline tl = new Timeline(new KeyFrame(Duration.millis(delay), e -> {
+                try {
+                    next.invoke(rc);
+                } catch (ReflectiveOperationException ex) {
+                    log.warn("[dev] nextMove failed: {}", ex.toString());
+                }
+            }));
+            tl.setCycleCount(moves.trim().split("\\s+").length);
+            tl.play();
+        } catch (ReflectiveOperationException e) {
+            log.warn("[dev] review scenario failed: {}", e.toString());
+        }
     }
 
     private static AbstractGame currentGame(ActiveGameController c) {

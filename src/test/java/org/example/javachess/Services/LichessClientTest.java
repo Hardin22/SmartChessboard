@@ -48,6 +48,19 @@ class LichessClientTest {
                         "not json",
                         "{\"type\":\"gameState\",\"moves\":\"e2e4 e7e5 d1h5\",\"status\":\"resign\","
                                 + "\"winner\":\"white\"}") + "\n";
+            } else if (path.equals("/api/board/game/stream/silent")) {
+                // sends the first event, then goes silent without closing (dead Wi-Fi)
+                exchange.sendResponseHeaders(200, 0);
+                OutputStream os = exchange.getResponseBody();
+                os.write("{\"type\":\"gameState\",\"moves\":\"e2e4\",\"status\":\"started\"}\n".getBytes());
+                os.flush();
+                try {
+                    Thread.sleep(5000);
+                } catch (InterruptedException ignored) {
+                    // test over
+                }
+                os.close();
+                return;
             } else if (path.endsWith("/move/e2e5")) {
                 status = 400;
                 body = "{\"error\":\"Not your turn, or game already over\"}";
@@ -85,6 +98,17 @@ class LichessClientTest {
         client.streamGame("abc12345", new LichessClient.SeekHandle(), events::add);
         assertEquals(3, events.size());
         assertEquals("gameFull", events.get(0).getString("type"));
+    }
+
+    @Test
+    void silentStreamIsClosedByTheWatchdog() {
+        List<JSONObject> events = new ArrayList<>();
+        long t = System.currentTimeMillis();
+        LichessClient.LichessException e = assertThrows(LichessClient.LichessException.class,
+                () -> client.streamGame("silent", new LichessClient.SeekHandle(), events::add, 400));
+        assertTrue(System.currentTimeMillis() - t < 3000, "closed by the idle watchdog");
+        assertEquals(1, events.size());
+        assertTrue(e.getMessage().contains("nessuna risposta"), e.getMessage());
     }
 
     @Test

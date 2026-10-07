@@ -481,7 +481,7 @@ public class GameAnalyzer {
         int validMoves = 0;
 
         for (MoveAnalysis move : analysis) {
-            boolean isWhiteMove = (move.getMoveNumber() % 2) != 0;
+            boolean isWhiteMove = move.isWhiteMove();
             if (isWhiteMove != isWhite) continue;
 
             if (move.getClassification() == MoveClassification.BOOK_MOVE || 

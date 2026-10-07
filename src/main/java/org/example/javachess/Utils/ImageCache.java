@@ -1,47 +1,49 @@
 package org.example.javachess.Utils;
 
 import javafx.scene.image.Image;
-import java.util.HashMap;
-import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.io.InputStream;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+/** Thread-safe cache of decoded classpath images keyed by path and requested size (views may load off the FX thread). */
 public class ImageCache {
-    private static ImageCache instance;
-    private Map<String, Image> cache = new HashMap<>();
+    private static final Logger LOG = LoggerFactory.getLogger(ImageCache.class);
+    private static final ImageCache INSTANCE = new ImageCache();
+    private final Map<String, Image> cache = new ConcurrentHashMap<>();
 
     private ImageCache() {
     }
 
-    public static synchronized ImageCache getInstance() {
-        if (instance == null) {
-            instance = new ImageCache();
-        }
-        return instance;
+    public static ImageCache getInstance() {
+        return INSTANCE;
     }
 
     public Image getImage(String path) {
         return getImage(path, -1, -1);
     }
 
+    /** Returns the image scaled (smoothly, keeping the ratio) to fit the size, or null if the resource is missing. */
     public Image getImage(String path, double width, double height) {
         String key = path + "_" + width + "_" + height;
-        if (!cache.containsKey(key)) {
-            try {
-                // If width/height are -1, load original size
-                // Otherwise load resized (preserves aspect ratio if one is -1, but here we
-                // usually want exact fit or ratio)
-                // Image constructor arguments: url, requestedWidth, requestedHeight,
-                // preserveRatio, smooth
-                double w = width > 0 ? width : 0; // 0 means load original
-                double h = height > 0 ? height : 0;
-
-                Image image = new Image(getClass().getResourceAsStream(path), w, h, true, true);
-                cache.put(key, image);
-            } catch (Exception e) {
-                System.err.println("Failed to load image: " + path);
+        Image cached = cache.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        try (InputStream in = ImageCache.class.getResourceAsStream(path)) {
+            if (in == null) {
+                LOG.warn("Image not found: {}", path);
                 return null;
             }
+            Image image = new Image(in, Math.max(width, 0), Math.max(height, 0), true, true);
+            cache.put(key, image);
+            return image;
+        } catch (Exception e) {
+            LOG.warn("Failed to load image: {}", path, e);
+            return null;
         }
-        return cache.get(key);
     }
 
     public void preload(String... paths) {

@@ -92,9 +92,12 @@ public class StockfishControlsController {
     private void close() {
         if (onClose != null) {
             onClose.run();
-        } else {
-            root.setVisible(false);
         }
+    }
+
+    /** Root node of the controls, shown by the screens inside a bottom sheet. */
+    public VBox getRoot() {
+        return root;
     }
 
     public int getDepth() {

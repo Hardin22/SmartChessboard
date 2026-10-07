@@ -48,13 +48,9 @@ public class OnlineGame extends AbstractGame {
                 String color = lichessGameManager.isWhite() ? "BIANCO" : "NERO";
                 updateStatus("Connesso! Giochi come: " + color + "\nGame ID: " + gameId);
 
-                // ACTIVATE GAME MODE in BoardStateManager
-                org.example.javachess.Services.BoardStateManager manager = org.example.javachess.Controllers.ArduinoController
-                        .getInstance().getBoardStateManager();
-                manager.startGameMode();
-
-                // Capture Initial FEN
-                initialFen = board.getFen();
+                // Game mode is started once in startGame(): calling it here (every gameFull, i.e. at every
+                // reconnection) would cancel the replication of the opponent's move queued just before.
+                initialFen = lichessGameManager.getInitialFen();
             }
 
             @Override
@@ -70,7 +66,7 @@ public class OnlineGame extends AbstractGame {
 
             @Override
             public void onBoardUpdated(String fen, String lastMove, String errorSquare) {
-                Platform.runLater(() -> {
+                org.example.javachess.Utils.AppExecutors.runOnFx(() -> { // already on the FX thread: no extra hop
                     // Update Board UI
                     Move move = lastMove != null ? uciToMove(lastMove) : null;
                     chessBoardUI.setPosition(fen, move);
@@ -81,7 +77,7 @@ public class OnlineGame extends AbstractGame {
                         return; // Don't overwrite with turn info
                     }
 
-                    if (lastMove != null) {
+                    {
                         // SYNC LOCAL BOARD: rebuild from the full move list sent by Lichess, so a missed event or
                         // a reconnection can never desynchronise it (promotions included).
                         PgnCodec.Replay replay = PgnCodec.replay(lichessGameManager.getInitialFen(),
@@ -139,7 +135,7 @@ public class OnlineGame extends AbstractGame {
 
             @Override
             public void onBotMoveReplicated() {
-                Platform.runLater(() -> {
+                org.example.javachess.Utils.AppExecutors.runOnFx(() -> {
                     updateStatus("✅ Mossa replicata! TOCCA A TE.");
                     // Optional: Flash green or something on UI?
                 });
@@ -157,6 +153,7 @@ public class OnlineGame extends AbstractGame {
             }
         });
 
+        org.example.javachess.Controllers.ArduinoController.getInstance().getBoardStateManager().startGameMode();
         // Start the Lichess Stream
         lichessGameManager.startGame();
     }
@@ -203,10 +200,12 @@ public class OnlineGame extends AbstractGame {
         if (saveGame && !isGameSaved) {
             List<String> moves = lichessGameManager.getMovesUci();
             if (moves.size() >= 3) {
-                GameArchiveService.getInstance().add(new ArchivedGame(0, ArchivedGame.GameMode.LICHESS,
+                ArchivedGame game = new ArchivedGame(0, ArchivedGame.GameMode.LICHESS,
                         "Lichess " + gameId, lichessGameManager.getWhiteName(), lichessGameManager.getBlackName(),
                         lichessGameManager.getResult(), lichessGameManager.getTermination(), "", "",
-                        LocalDateTime.now(), lichessGameManager.getInitialFen(), "", moves));
+                        LocalDateTime.now(), lichessGameManager.getInitialFen(), "", moves);
+                org.example.javachess.Utils.AppExecutors.storage().execute(
+                        () -> GameArchiveService.getInstance().add(game));
                 isGameSaved = true;
             } else {
                 log.info("Lichess game {} too short, not archived ({} moves)", gameId, moves.size());

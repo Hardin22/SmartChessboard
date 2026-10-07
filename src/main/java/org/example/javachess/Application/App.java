@@ -4,7 +4,6 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
-import javafx.scene.text.Font;
 import javafx.stage.Stage;
 import org.example.javachess.Controllers.MainController;
 import org.example.javachess.Hardware.Hardware;
@@ -22,6 +21,9 @@ import java.util.concurrent.TimeUnit;
  */
 public class App extends Application {
 
+    /** Kept to archive the game in progress on exit. */
+    private MainController mainController;
+
     private static final Logger log = LoggerFactory.getLogger(App.class);
 
     @Override
@@ -33,16 +35,13 @@ public class App extends Application {
                 throw new IllegalStateException("Cannot find /UI/MainLayout.fxml");
             }
             FXMLLoader fxmlLoader = new FXMLLoader(resource);
+            org.example.javachess.Components.ThemeManager.loadFonts();
             Scene scene = new Scene(fxmlLoader.load(), 720, 1280);
-            Font.loadFont(App.class.getResource("/Font/Poppins/Poppins-Regular.ttf").toExternalForm(), 10);
-            Font.loadFont(App.class.getResource("/Font/Poppins/Poppins-Medium.ttf").toExternalForm(), 10);
-            Font.loadFont(App.class.getResource("/Font/Poppins/Poppins-Bold.ttf").toExternalForm(), 10);
+            // Fonts, stylesheet, light/dark theme, window title and icons (UI layer).
+            org.example.javachess.Components.ThemeManager.install(scene, primaryStage);
 
             applyRenderingProfile(scene);
-            // Configura la scena
             primaryStage.setScene(scene);
-            scene.getStylesheets().add(App.class.getResource("/Styles/Style.css").toExternalForm());
-            primaryStage.setTitle("Chess Application");
             boolean fullScreen = DevOptions.placeStage(primaryStage);
             primaryStage.setFullScreenExitHint("");
             if (Boolean.getBoolean("javachess.kiosk")) {
@@ -58,9 +57,13 @@ public class App extends Application {
             StartupMetrics.onStageShown(startAt);
 
             MainController mainController = fxmlLoader.getController();
+            this.mainController = mainController;
             // after the first frame: connect the board and build the other views in idle time
             Platform.runLater(() -> {
-                AppExecutors.io().execute(Hardware::get);
+                AppExecutors.io().execute(() -> {
+                    Hardware.get();
+                    org.example.javachess.Hardware.CoachLeds.install(); // move-quality LEDs from the engine coach
+                });
                 mainController.startIdlePreload();
             });
             DevOptions.afterShow(primaryStage, mainController);
@@ -92,15 +95,21 @@ public class App extends Application {
     @Override
     public void stop() {
         log.info("Stopping application...");
+        // A game in progress is archived (as interrupted) like when leaving the game screen.
+        try {
+            if (mainController != null
+                    && mainController.getController("GAME") instanceof org.example.javachess.Controllers.NavigationAware game) {
+                game.onNavigatedFrom();
+            }
+        } catch (RuntimeException e) {
+            log.warn("Could not save the game in progress: {}", e.toString());
+        }
         if (Hardware.isInitialized()) {
             Hardware.shutdown(); // LEDs off, serial port closed
         }
         AppExecutors.shutdown(); // pending archive writes are completed first
         org.example.javachess.Controllers.BrowserController.disposeIfStarted();
-        if (ProcessHandle.current().children().findAny().isPresent()) {
-            // let the engines quit cleanly ("quit" over UCI) before anything is killed
-            org.example.javachess.Engine.EngineManager.get().shutdown();
-        }
+        org.example.javachess.Engine.EngineManager.shutdownIfStarted(); // engines get "quit" before the kill below
         stopChildProcesses();
         logLingeringThreads();
         // Last resort for threads started by libraries that do not use daemon threads.
@@ -154,6 +163,7 @@ public class App extends Application {
             if (Hardware.isInitialized()) {
                 Hardware.shutdown();
             }
+            AppExecutors.shutdown(); // finish pending archive / puzzle progress writes
             org.example.javachess.Controllers.BrowserController.disposeIfStarted();
         }, "shutdown-hook"));
 

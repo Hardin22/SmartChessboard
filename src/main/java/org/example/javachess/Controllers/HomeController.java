@@ -1,11 +1,27 @@
 package org.example.javachess.Controllers;
 
 import javafx.fxml.FXML;
-import javafx.fxml.FXML;
+import javafx.scene.layout.HBox;
+import org.example.javachess.Components.HardwareStatus;
+import org.example.javachess.Components.I18n;
+import org.example.javachess.Components.StatusChip;
+import org.example.javachess.Engine.EngineProfile;
+import org.example.javachess.Engine.EngineSelection;
+import org.example.javachess.Engine.EngineStatus;
+import org.kordamp.ikonli.javafx.FontIcon;
 
 public class HomeController implements NavigationAware {
 
     private MainController mainController;
+
+    @FXML
+    private HBox onlineChoicesBox;
+    @FXML
+    private FontIcon onlineChevron;
+    @FXML
+    private StatusChip boardStatus;
+    @FXML
+    private StatusChip engineStatus;
 
     @Override
     public void setMainController(MainController mainController) {
@@ -14,47 +30,65 @@ public class HomeController implements NavigationAware {
 
     @FXML
     public void initialize() {
-        // Images are loaded directly in FXML
+        EngineSelection selection = EngineSelection.get();
+        selection.activeProfileProperty().addListener((obs, o, n) -> showEngine(n));
+        selection.statusProperty().addListener((obs, o, n) -> showEngine(selection.activeProfileProperty().get()));
+        showEngine(selection.activeProfileProperty().get());
+    }
+
+    @Override
+    public void onNavigatedTo() {
+        HardwareStatus.bind(boardStatus);
+    }
+
+    private void showEngine(EngineProfile profile) {
+        if (profile == null) {
+            engineStatus.set(I18n.t("status.engine.none"), StatusChip.State.OFF);
+        } else {
+            EngineStatus status = EngineSelection.get().statusProperty().get();
+            StatusChip.State state = !profile.available() ? StatusChip.State.WARN
+                    : status == null || status.state() == EngineStatus.State.READY ? StatusChip.State.OK
+                    : status.state() == EngineStatus.State.LOADING ? StatusChip.State.BUSY : StatusChip.State.WARN;
+            engineStatus.set(I18n.t("status.engine", profile.displayName()), state);
+        }
     }
 
     @FXML
     private void showPvCSetup() {
-        mainController.loadView("PVC_SETUP", "/UI/PvCSetupView.fxml");
         mainController.navigateTo("PVC_SETUP");
     }
 
     @FXML
     private void showPvPSetup() {
-        mainController.loadView("PVP_SETUP", "/UI/PvPSetupView.fxml");
         mainController.navigateTo("PVP_SETUP");
     }
 
     @FXML
     private void showArchive() {
-        mainController.loadView("ARCHIVE", "/UI/ArchiveView.fxml");
         mainController.navigateTo("ARCHIVE");
     }
 
     @FXML
     private void showTheme() {
-        mainController.loadView("THEME", "/UI/ThemeView.fxml");
         mainController.navigateTo("THEME");
     }
 
     @FXML
     private void showPuzzles() {
-        mainController.loadView("PUZZLE_DASHBOARD", "/UI/PuzzleDashboardView.fxml");
         mainController.navigateTo("PUZZLE_DASHBOARD");
     }
 
     @FXML
-    private javafx.scene.layout.VBox onlineChoicesBox;
+    private void navigateToSettings() {
+        mainController.navigateTo("SETTINGS");
+    }
 
     @FXML
     private void toggleOnlineChoices() {
-        boolean isVisible = onlineChoicesBox.isVisible();
-        onlineChoicesBox.setVisible(!isVisible);
-        onlineChoicesBox.setManaged(!isVisible);
+        boolean show = !onlineChoicesBox.isVisible();
+        onlineChoicesBox.setVisible(show);
+        onlineChoicesBox.setManaged(show);
+        onlineChevron.setIconLiteral(show ? "fth-chevron-up" : "fth-chevron-down");
     }
 
     @FXML
@@ -64,28 +98,14 @@ public class HomeController implements NavigationAware {
 
     @FXML
     private void playLichess() {
-        launchBrowser("https://lichess.org");
-    }
-
-    @FXML
-    private void navigateToSettings() {
-        mainController.loadView("SETTINGS", "/UI/SettingsView.fxml");
-        mainController.navigateTo("SETTINGS");
+        mainController.openLichess();
     }
 
     private void launchBrowser(String url) {
-        if (mainController != null) {
-            // Ensure Browser View is loaded
-            mainController.loadView("BROWSER", "/UI/BrowserView.fxml");
-
-            // Get Controller and Load Page
-            Object controller = mainController.getController("BROWSER");
-            if (controller instanceof BrowserController) {
-                ((BrowserController) controller).loadPage(url);
-            }
-
-            // Navigate (Placeholder, the Swing window will take over)
-            mainController.navigateTo("BROWSER");
+        Object controller = mainController.getController("BROWSER");
+        if (controller instanceof BrowserController browser) {
+            browser.loadPage(url);
         }
+        mainController.navigateTo("BROWSER");
     }
 }

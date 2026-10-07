@@ -1,97 +1,143 @@
 package org.example.javachess.Controllers;
 
+import javafx.application.Platform;
 import javafx.fxml.FXML;
-import javafx.scene.control.Label;
 import javafx.scene.control.Button;
-import javafx.scene.layout.HBox;
+import javafx.scene.control.Label;
+import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
+import org.example.javachess.Components.BoardThemes;
+import org.example.javachess.Components.I18n;
+import org.example.javachess.Components.PageHeader;
+import org.example.javachess.Components.PuzzleThemes;
+import org.example.javachess.Oggetti.ChessBoardUI;
 import org.example.javachess.Oggetti.EvalBar;
 import org.example.javachess.Oggetti.Puzzle;
 import org.example.javachess.Oggetti.PuzzleGame;
-import org.example.javachess.Oggetti.ChessBoardUI;
 import org.example.javachess.Services.PuzzleService;
-import org.example.javachess.Utils.ConfigManager;
+
 import java.util.List;
 
+/** Puzzle screen. Presentation only; PuzzleGame owns the puzzle logic. */
 public class PuzzleController implements NavigationAware {
 
     private MainController mainController;
 
-    @Override
-    public void setMainController(MainController mainController) {
-        this.mainController = mainController;
-    }
-
     @FXML
-    private HBox puzzleBoardContainer;
+    private PageHeader header;
     @FXML
-    private Label puzzleInfoLabel;
+    private StackPane puzzleBoardContainer;
     @FXML
     private Label statusLabel;
     @FXML
     private Label turnLabel;
+    @FXML
+    private Region turnAvatar;
+    @FXML
+    private Label ratingBadge;
     @FXML
     private Label instructionLabel;
     @FXML
     private Button nextButton;
     @FXML
     private Button hintButton;
+    @FXML
+    private Button giveUpButton;
+    @FXML
+    private FlowPane themeChips;
 
     private PuzzleGame puzzleGame;
     private ChessBoardUI chessBoardUI;
-    private EvalBar evalBar;
-    private int hintStage = 0;
-
-    // Criteria for fetching next puzzle
     private int currentTargetRating = 1500;
+    private Puzzle currentPuzzle;
+    /** Hint, wrong move or give-up on the current puzzle: it no longer counts as solved cleanly. */
+    private boolean currentFailed;
+    private boolean currentRecorded;
     private List<String> currentThemes = null;
+
+    @Override
+    public void setMainController(MainController mainController) {
+        this.mainController = mainController;
+    }
+
+    private String boardStyle;
 
     @FXML
     public void initialize() {
-        // Initialize Components
-        String boardStyle = ConfigManager.getProperty("theme.board", "Marghiacciato.png");
-        String pieceStyle = ConfigManager.getProperty("theme.piece", "Classico");
+        createBoard();
+        // PuzzleGame reports progress through instructionLabel (sometimes off the FX thread).
+        instructionLabel.textProperty().addListener((obs, o, n) -> {
+            if (n != null && !n.isBlank()) {
+                if (Platform.isFxApplicationThread()) {
+                    showStatus(n);
+                } else {
+                    Platform.runLater(() -> showStatus(n));
+                }
+            }
+        });
+    }
 
-        chessBoardUI = new ChessBoardUI(boardStyle, pieceStyle, 85); // Match ActiveGameController
-        evalBar = new EvalBar(50, 640);
-        evalBar.setPrefHeight(640);
+    /** (Re)creates board and game, e.g. when the board or piece style changed since the last puzzle. */
+    private void createBoard() {
+        boardStyle = BoardThemes.currentBoard() + "|" + BoardThemes.currentPieces();
+        chessBoardUI = new ChessBoardUI(BoardThemes.currentBoard(), BoardThemes.currentPieces(), 80);
+        chessBoardUI.setFitToParent(true);
+        puzzleBoardContainer.getChildren().setAll(chessBoardUI);
+        puzzleGame = new PuzzleGame(chessBoardUI, new EvalBar(8, 400), instructionLabel);
+    }
 
-        puzzleBoardContainer.getChildren().add(chessBoardUI);
-        // We might want to add evalBar here too if we want it shown
-
-        puzzleGame = new PuzzleGame(chessBoardUI, evalBar, instructionLabel);
-
-        // Listen to status updates from game
-        // In a real implementation, we'd use property binding or listener
+    private void showStatus(String text) {
+        String pretty = text.equals(text.toUpperCase()) && text.length() > 3
+                ? Character.toUpperCase(text.charAt(0)) + text.substring(1).toLowerCase() : text;
+        statusLabel.setText(pretty);
+        String upper = text.toUpperCase();
+        if (upper.startsWith("MOSSA ERRATA")) {
+            currentFailed = true;
+        }
+        if (upper.startsWith("COMPLIMENTI")) {
+            recordAttempt(!currentFailed);
+            showNext();
+        }
     }
 
     public void setPuzzle(Puzzle puzzle) {
-        // Default only
         setPuzzle(puzzle, puzzle.getRating(), java.util.Collections.singletonList("Tutti"));
     }
 
     public void setPuzzle(Puzzle puzzle, int targetRating, List<String> themes) {
         this.currentTargetRating = targetRating;
         this.currentThemes = themes;
+        if (!boardStyle.equals(BoardThemes.currentBoard() + "|" + BoardThemes.currentPieces())) {
+            puzzleGame.endGame("Menu", false);
+            createBoard();
+        }
 
-        puzzleInfoLabel.setText("Puzzle #" + puzzle.getId() + " • Rating " + puzzle.getRating());
-        statusLabel.setText("Trova la mossa!");
+        currentPuzzle = puzzle;
+        currentFailed = false;
+        currentRecorded = false;
+        header.setSubtitle(I18n.t("puzzle.info", puzzle.getId(), puzzle.getRating()));
+        ratingBadge.setText(String.valueOf(puzzle.getRating()));
+        statusLabel.setText(I18n.t("puzzle.find"));
         nextButton.setVisible(false);
         nextButton.setManaged(false);
-
-        // Reset Hint System
-        hintStage = 0;
-        hintButton.setText("SUGGERIMENTO");
+        giveUpButton.setVisible(true);
+        giveUpButton.setManaged(true);
+        hintButton.setText(I18n.t("puzzle.hint"));
         hintButton.setManaged(true);
         hintButton.setVisible(true);
 
+        themeChips.getChildren().clear();
+        if (puzzle.getThemes() != null) {
+            for (String tag : puzzle.getThemes()) {
+                Label chip = new Label(PuzzleThemes.label(tag));
+                chip.getStyleClass().add("badge");
+                themeChips.getChildren().add(chip);
+            }
+        }
+
         updateTurnIndicator(puzzle.getFen());
-
-        puzzleGame.setOnTurnChange(() -> {
-            javafx.application.Platform.runLater(() -> {
-                updateTurnIndicator(chessBoardUI.getFen());
-            });
-        });
-
+        puzzleGame.setOnTurnChange(() -> Platform.runLater(() -> updateTurnIndicator(chessBoardUI.getFen())));
         puzzleGame.startPuzzle(puzzle);
     }
 
@@ -99,25 +145,19 @@ public class PuzzleController implements NavigationAware {
         String[] parts = fen.split(" ");
         if (parts.length > 1) {
             boolean isWhite = parts[1].equals("w");
-            turnLabel.setText(isWhite ? "Tocca al BIANCO" : "Tocca al NERO");
-            turnLabel.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: "
-                    + (isWhite ? "#FFFFFF" : "#000000") + ";");
-            // Add a background or border if needed for contrast
-            if (!isWhite) {
-                turnLabel.setStyle(turnLabel.getStyle() + " -fx-effect: dropshadow(one-pass-box, white, 2, 2, 0, 0);");
-            }
+            turnLabel.setText(I18n.t(isWhite ? "puzzle.turn.white" : "puzzle.turn.black"));
+            turnAvatar.getStyleClass().removeAll("white", "black");
+            turnAvatar.getStyleClass().add(isWhite ? "white" : "black");
         }
     }
 
     @FXML
     public void handleHint() {
         if (puzzleGame != null) {
+            currentFailed = true;
             int level = puzzleGame.toggleHint();
             if (level == 1) {
-                hintButton.setText("SOLUZIONE");
-            } else if (level == 2) {
-                // Keep showing solution or hide? User usually wants to see it.
-                // hintButton.setVisible(false);
+                hintButton.setText(I18n.t("puzzle.solution"));
             }
         }
     }
@@ -126,21 +166,45 @@ public class PuzzleController implements NavigationAware {
     public void handleSolution() {
         if (puzzleGame != null) {
             puzzleGame.giveUp();
-            nextButton.setVisible(true);
-            nextButton.setManaged(true);
+            recordAttempt(false);
+            showNext();
         }
+    }
+
+    private void showNext() {
+        nextButton.setVisible(true);
+        nextButton.setManaged(true);
+        giveUpButton.setVisible(false);
+        giveUpButton.setManaged(false);
+        hintButton.setVisible(false);
+        hintButton.setManaged(false);
+    }
+
+    /** Stores the result once per puzzle (progress file I/O off the FX thread). */
+    private void recordAttempt(boolean solvedCleanly) {
+        Puzzle puzzle = currentPuzzle;
+        if (puzzle == null || currentRecorded) {
+            return;
+        }
+        currentRecorded = true;
+        org.example.javachess.Utils.AppExecutors.io().execute(() ->
+                org.example.javachess.Services.PuzzleProgressService.getInstance().record(puzzle.getId(),
+                        puzzle.getRating(), puzzle.getThemes() == null ? List.of() : puzzle.getThemes(), solvedCleanly));
     }
 
     @FXML
     public void handleNewPuzzle() {
-        // Fetch next puzzle based on criteria
-        // the search reads the puzzle database: off the FX thread
-        PuzzleService.getInstance().findPuzzleAsync(currentTargetRating, 200, currentThemes)
-                .thenAccept(nextPuzzle -> javafx.application.Platform.runLater(() -> {
-                    if (nextPuzzle != null) {
-                        setPuzzle(nextPuzzle, currentTargetRating, currentThemes);
+        nextButton.setDisable(true);
+        int rating = currentTargetRating;
+        List<String> themes = currentThemes;
+        // The search reads the puzzle database: off the FX thread.
+        PuzzleService.getInstance().findPuzzleAsync(rating, 200, themes)
+                .thenAccept(next -> Platform.runLater(() -> {
+                    nextButton.setDisable(false);
+                    if (next != null) {
+                        setPuzzle(next, rating, themes);
                     } else {
-                        statusLabel.setText("Nessun altro puzzle trovato.");
+                        mainController.showToast(I18n.t("puzzle.none"));
                     }
                 }));
     }
@@ -150,10 +214,6 @@ public class PuzzleController implements NavigationAware {
         if (puzzleGame != null) {
             puzzleGame.endGame("Menu", false);
         }
-        if (mainController != null) {
-            // Ensure Dashboard is loaded
-            mainController.loadView("PUZZLE_DASHBOARD", "/UI/PuzzleDashboardView.fxml");
-            mainController.navigateTo("PUZZLE_DASHBOARD");
-        }
+        mainController.navigateTo("PUZZLE_DASHBOARD");
     }
 }

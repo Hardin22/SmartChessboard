@@ -22,6 +22,9 @@ public class PuzzleGame extends AbstractGame {
     private int currentMoveIndex = 0;
     private Label instructionLabel;
     private boolean isSolving = false;
+    /** A wrong move, a hint or giving up: the puzzle no longer counts as solved cleanly. */
+    private boolean hadMistake;
+    private boolean progressRecorded;
 
     public PuzzleGame(ChessBoardUI chessBoardUI, EvalBar evalBar, Label instructionLabel) {
         super(chessBoardUI, evalBar);
@@ -43,6 +46,8 @@ public class PuzzleGame extends AbstractGame {
         this.currentPuzzle = puzzle;
         this.currentMoveIndex = 0;
         this.isSolving = false;
+        this.hadMistake = false;
+        this.progressRecorded = false;
         // Reset Hints
         this.hintLevel = 0;
         this.mistakes = 0;
@@ -119,6 +124,8 @@ public class PuzzleGame extends AbstractGame {
         // CRITICAL: Use current board FEN (which includes opponent move), NOT
         // puzzle.getFen()
         manager.setSetupTargetFen(board.getFen());
+        // No engine hints while solving: coloured destinations would give the solution away.
+        manager.setEvaluationEnabled(false);
 
         manager.setListener(new org.example.javachess.Services.BoardStateManager.BoardMoveListener() {
             @Override
@@ -260,6 +267,7 @@ public class PuzzleGame extends AbstractGame {
             } else {
                 // Incorrect Move
                 log.info("Wrong puzzle move {} (expected {})", move, expectedUci);
+                hadMistake = true;
                 updateStatus("Mossa Errata! Riprova.");
                 mistakes++;
                 // the board manager already took the move: tell it the position did not change
@@ -293,6 +301,7 @@ public class PuzzleGame extends AbstractGame {
     public void showHint() {
         if (!isSolving || currentPuzzle == null)
             return;
+        hadMistake = true;
 
         if (currentMoveIndex < currentPuzzle.getMoves().size()) {
             String expectedUci = currentPuzzle.getMoves().get(currentMoveIndex);
@@ -341,7 +350,6 @@ public class PuzzleGame extends AbstractGame {
 
     private int mistakes;
     private boolean gaveUp;
-    private boolean progressRecorded;
 
     /** Saves the attempt once per puzzle (solved = no wrong move, no hint, not given up), off the FX thread. */
     private void recordProgress(Puzzle puzzle) {
@@ -431,6 +439,10 @@ public class PuzzleGame extends AbstractGame {
         isSolving = false;
         cancelPendingActions();
         // Cleanup if needed
-        org.example.javachess.Controllers.ArduinoController.getInstance().getBoardStateManager().stopGameMode();
+        org.example.javachess.Services.BoardStateManager manager =
+                org.example.javachess.Controllers.ArduinoController.getInstance().getBoardStateManager();
+        manager.stopGameMode();
+        manager.setEvaluationEnabled(org.example.javachess.Utils.ConfigManager.getBooleanProperty(
+                "game.suggestions", true));
     }
 }

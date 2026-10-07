@@ -3,78 +3,75 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.Label?>
-<?import javafx.scene.control.TextField?>
-<?import javafx.scene.image.Image?>
-<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.control.ToggleButton?>
 <?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
-<?import javafx.scene.text.Font?>
+<?import org.example.javachess.Components.*?>
+<?import org.kordamp.ikonli.javafx.FontIcon?>
 
-<StackPane fx:id="gameView" prefHeight="983.0" prefWidth="607.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.ActiveGameController" style="-fx-background-color: transparent;">
-    
-    <!-- Layer 1: Main Game -->
-    <VBox alignment="CENTER" spacing="15">
-        <padding>
-            <Insets top="20" bottom="20" left="15" right="15"/>
-        </padding>
+<GameLayout fx:id="gameView" styleClass="page" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="org.example.javachess.Controllers.ActiveGameController">
+    <fx:define>
+        <fx:include fx:id="stockfishControls" source="StockfishControls.fxml"/>
+    </fx:define>
 
-        <!-- Top Bar: Back Button & Opponent Info -->
-        <HBox alignment="CENTER_LEFT" spacing="15">
-            <Button onAction="#endGame" styleClass="icon-button" prefHeight="50" prefWidth="50">
-                <graphic>
-                    <org.kordamp.ikonli.javafx.FontIcon iconLiteral="mdal-arrow_back" iconSize="28" iconColor="#E0E0E0"/>
-                </graphic>
-            </Button>
-            
-            <VBox fx:id="topPlayerInfo" HBox.hgrow="ALWAYS" alignment="CENTER_RIGHT" styleClass="glass-card" maxWidth="Infinity">
-                <Label fx:id="openingNameLabel" styleClass="sub-header-label" text="Opening Name"/>
-                <Label fx:id="topLabel" styleClass="header-label" text="10:00" style="-fx-font-size: 42px; -fx-text-fill: #E0E0E0;"/>
+    <header>
+        <PageHeader fx:id="header" title="%game.title" onBack="#endGame">
+            <actions>
+                <StatusChip fx:id="boardStatus"/>
+            </actions>
+        </PageHeader>
+    </header>
+
+    <topBar>
+        <HBox fx:id="topPlayerInfo" styleClass="player-bar">
+            <Region fx:id="topAvatar" styleClass="player-avatar, black"/>
+            <VBox spacing="1" HBox.hgrow="ALWAYS" minWidth="0">
+                <Label fx:id="topName" text="%game.black" styleClass="player-name"/>
+                <Label fx:id="topMeta" text="%game.black" styleClass="player-meta"/>
             </VBox>
+            <Label fx:id="topLabel" text="10:00" styleClass="clock"/>
         </HBox>
+    </topBar>
 
-        <!-- Chess Board -->
-        <HBox fx:id="boardContainer" alignment="CENTER" style="-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 20, 0, 0, 10);">
-            <!-- Board and EvalBar will be added here dynamically -->
-        </HBox>
+    <board>
+        <StackPane fx:id="boardContainer" styleClass="board-holder"/>
+    </board>
 
-        <!-- Evaluation & Moves -->
-        <VBox fx:id="analysisContainer" maxWidth="Infinity" visible="false" managed="false" />
-
-        <!-- Bottom Bar: Player Info -->
-        <HBox alignment="CENTER_RIGHT" spacing="15">
-             <VBox HBox.hgrow="ALWAYS" alignment="CENTER_LEFT" styleClass="glass-card" maxWidth="Infinity">
-                <Label fx:id="bottomLabel" styleClass="header-label" text="10:00" style="-fx-font-size: 42px; -fx-text-fill: #D4AF37;"/>
+    <bottomBar>
+        <HBox fx:id="bottomPlayerInfo" styleClass="player-bar">
+            <Region fx:id="bottomAvatar" styleClass="player-avatar, white"/>
+            <VBox spacing="1" HBox.hgrow="ALWAYS" minWidth="0">
+                <Label fx:id="bottomName" text="%game.white" styleClass="player-name"/>
+                <Label fx:id="bottomMeta" text="%game.white" styleClass="player-meta"/>
             </VBox>
+            <Label fx:id="bottomLabel" text="10:00" styleClass="clock"/>
         </HBox>
-        
-        <!-- Controls -->
-        <HBox alignment="CENTER" spacing="20" maxWidth="Infinity">
-             <Button onAction="#toggleEvaluation" styleClass="elegant-button-secondary" text="VALUTAZIONE" prefHeight="60" maxWidth="Infinity" HBox.hgrow="ALWAYS">
-                <graphic>
-                    <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-chart-line" iconSize="24" iconColor="#E0E0E0"/>
-                </graphic>
-             </Button>
-             
-             <Button onAction="#toggleBestMoves" styleClass="elegant-button-secondary" text="SUGGERIMENTI" prefHeight="60" maxWidth="Infinity" HBox.hgrow="ALWAYS">
-                <graphic>
-                    <org.kordamp.ikonli.javafx.FontIcon iconLiteral="mdal-lightbulb" iconSize="24" iconColor="#E0E0E0"/>
-                </graphic>
-             </Button>
-             
-             <Button fx:id="settingsButton" onAction="#toggleSettings" styleClass="icon-button" prefHeight="60" prefWidth="60" minWidth="60">
-                <graphic>
-                    <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-sliders-h" iconSize="32" iconColor="#E0E0E0"/>
-                </graphic>
-             </Button>
-        </HBox>
+    </bottomBar>
 
-        <!-- Hidden Inputs -->
-        <TextField fx:id="moveInputField" onAction="#handleMoveInput" visible="false" managed="false"/>
-        <TextField fx:id="legalMovesInput" onAction="#handleLegalMoves" visible="false" managed="false"/>
-    </VBox>
-
-    <!-- Layer 2: Stockfish Controls Overlay -->
-    <fx:include fx:id="stockfishControls" source="StockfishControls.fxml" visible="false"/>
-
-</StackPane>
+    <side>
+        <VBox spacing="12">
+            <VBox fx:id="analysisContainer"/>
+            <MoveListView fx:id="moveList" VBox.vgrow="ALWAYS" minHeight="88"/>
+            <HBox styleClass="toolbar" minHeight="-Infinity">
+                <ToggleButton fx:id="evalToggle" onAction="#toggleEvaluation" text="%game.eval" styleClass="btn, btn-secondary, tool-btn" contentDisplay="TOP" maxWidth="Infinity" HBox.hgrow="ALWAYS">
+                    <graphic><FontIcon iconLiteral="fth-bar-chart-2" iconSize="20" styleClass="icon"/></graphic>
+                </ToggleButton>
+                <ToggleButton fx:id="hintsToggle" onAction="#toggleBestMoves" text="%game.hints" styleClass="btn, btn-secondary, tool-btn" contentDisplay="TOP" maxWidth="Infinity" HBox.hgrow="ALWAYS">
+                    <graphic><FontIcon iconLiteral="fth-navigation" iconSize="20" styleClass="icon"/></graphic>
+                </ToggleButton>
+                <Button fx:id="engineButton" onAction="#showEngines" text="%game.engine" styleClass="btn, btn-secondary, tool-btn" contentDisplay="TOP" maxWidth="Infinity" HBox.hgrow="ALWAYS">
+                    <graphic><FontIcon iconLiteral="fth-cpu" iconSize="20" styleClass="icon"/></graphic>
+                </Button>
+                <Button fx:id="settingsButton" onAction="#toggleSettings" text="%game.analysis" styleClass="btn, btn-secondary, tool-btn" contentDisplay="TOP" maxWidth="Infinity" HBox.hgrow="ALWAYS">
+                    <graphic><FontIcon iconLiteral="fth-sliders" iconSize="20" styleClass="icon"/></graphic>
+                </Button>
+                <Button fx:id="endButton" onAction="#endGame" text="%game.end" styleClass="btn, btn-danger, tool-btn" contentDisplay="TOP" maxWidth="Infinity" HBox.hgrow="ALWAYS">
+                    <graphic><FontIcon iconLiteral="fth-flag" iconSize="20" styleClass="icon"/></graphic>
+                </Button>
+            </HBox>
+        </VBox>
+    </side>
+</GameLayout>

@@ -137,7 +137,8 @@ class MoveCoachIntegrationTest {
         assertEquals(MoveQuality.BLUNDER, fb.destinations().get("E5"), fb.toString());
         assertEquals(MoveQuality.BLUNDER, fb.destinations().get("F7"), fb.toString());
         assertEquals(13, fb.destinations().size(), "every queen move scored: " + fb);
-        assertTrue(fb.latencyMs() < budget.candidateCapMs() + 500, "candidate latency " + fb.latencyMs());
+        assertTrue(fb.latencyMs() < budget.candidateCapMs(), "candidate latency " + fb.latencyMs());
+        System.out.printf("lift hints: %d moves, depth %d, %d ms%n", fb.destinations().size(), fb.depth(), fb.latencyMs());
         Thread.sleep(50);
         assertEquals(1, candidates.size(), "candidate event emitted once");
 
@@ -149,6 +150,40 @@ class MoveCoachIntegrationTest {
         assertEquals(MoveQuality.BLUNDER, first.quality());
         assertTrue(first.latencyMs() < 50, "latency " + first.latencyMs());
         assertEquals(MoveQuality.BLUNDER, awaitFinal("h5e5").quality());
+    }
+
+    @Test
+    void instantMoveWithoutPriorAnalysisIsStillJudged() throws Exception {
+        // e.g. first move of a game: no analysis of the position before yet
+        String fen = "r1bqkbnr/pppp1ppp/2n5/4p2Q/4P3/8/PPPP1PPP/RNB1KBNR w KQkq - 2 3";
+        analyzer.analyze(fen, 18, 1, null);
+        coach.onMovePlayed(fen, "h5e5");
+        MoveFeedback fb = awaitFinal("h5e5");
+        assertEquals(MoveQuality.BLUNDER, fb.quality());
+        assertNotNull(fb.bestMoveUci());
+    }
+
+    @Test
+    void verdictIsGuaranteedWhenTheGameMovesOnImmediately() throws Exception {
+        // PvC with an instant bot (Maia): the analysis jumps to the position after the bot reply within ms.
+        String fen = "r1bqkbnr/pppp1ppp/2n5/4p2Q/4P3/8/PPPP1PPP/RNB1KBNR w KQkq - 2 3";
+        analyzer.analyze(fen, 18, 1, null);
+        Thread.sleep(300);
+        coach.onMovePlayed(fen, "h5e5");
+        Thread.sleep(5);
+        analyzer.analyze("r1bqkbnr/pppp1ppp/8/4n3/4P3/8/PPPP1PPP/RNB1KBNR w KQkq - 0 4", 18, 1, null);
+        MoveFeedback fb = awaitFinal("h5e5");
+        assertEquals(MoveQuality.BLUNDER, fb.quality());
+    }
+
+    @Test
+    void searchmovesSearchHonoursTheNodeLimit() throws Exception {
+        String fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+        SearchResult r = engine.search(fen, List.of(), SearchLimits.nodes(20_000).withMultiPv(2)
+                .withSearchMoves(List.of("g1f3", "g1h3")), null).result().get(10, TimeUnit.SECONDS);
+        assertTrue(r.nodes() < 40_000, "nodes " + r.nodes());
+        assertEquals(2, r.lines().size());
+        assertTrue(r.lines().stream().allMatch(l -> l.move().startsWith("g1")));
     }
 
     @Test

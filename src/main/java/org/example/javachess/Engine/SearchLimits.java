@@ -66,18 +66,14 @@ public record SearchLimits(int depth, long nodes, int movetimeMs, int multiPv, L
         return depth <= 0 && nodes <= 0 && movetimeMs <= 0;
     }
 
-    /** The UCI {@code go} command for these limits. */
+    /**
+     * The UCI {@code go} command for these limits. {@code searchmoves} is always LAST: engines (Stockfish
+     * included) read every remaining token as a move, so any limit after it would be silently ignored.
+     */
     public String toGoCommand() {
         StringBuilder sb = new StringBuilder("go");
-        if (!searchMoves.isEmpty()) {
-            sb.append(" searchmoves");
-            for (String m : searchMoves) {
-                sb.append(' ').append(m);
-            }
-        }
         if (isInfinite()) {
             sb.append(" infinite");
-            return sb.toString();
         }
         if (depth > 0) {
             sb.append(" depth ").append(depth);
@@ -87,6 +83,12 @@ public record SearchLimits(int depth, long nodes, int movetimeMs, int multiPv, L
         }
         if (movetimeMs > 0) {
             sb.append(" movetime ").append(movetimeMs);
+        }
+        if (!searchMoves.isEmpty()) {
+            sb.append(" searchmoves");
+            for (String m : searchMoves) {
+                sb.append(' ').append(m);
+            }
         }
         return sb.toString();
     }

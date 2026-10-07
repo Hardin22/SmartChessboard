@@ -26,14 +26,16 @@ import java.util.concurrent.TimeUnit;
  *   <li>how often the LED classification at depth d agrees with a deep reference (depth 20), on moves from
  *       weak self-play games (so there are real inaccuracies, mistakes and blunders).</li>
  * </ol>
- * Pi model: a Pi 5 core does ~1/3 of the nodes per second of an Apple M-series core, a Pi 4 core ~1/7
+ * Pi model: a Pi 5 core does ~1/4 of the nodes per second of an Apple M-series core, a Pi 4 core ~1/9
  * (Cortex-A76 2.4 GHz vs A72 1.8 GHz; override with -Dbench.pi5=0.33 -Dbench.pi4=0.14).
+ * Use the official binary ({@code -Dstockfish.path=engines/stockfish/stockfish}): the Homebrew bottle measured
+ * 2.5-3x slower on the same Mac.
  */
 @EnabledIfSystemProperty(named = "bench", matches = "true")
 class EngineBenchmarkTest {
 
-    static final double PI5 = Double.parseDouble(System.getProperty("bench.pi5", "0.33"));
-    static final double PI4 = Double.parseDouble(System.getProperty("bench.pi4", "0.14"));
+    static final double PI5 = Double.parseDouble(System.getProperty("bench.pi5", "0.25"));
+    static final double PI4 = Double.parseDouble(System.getProperty("bench.pi4", "0.11"));
     static final int MAX_D = 16;
     static final int REF_D = Integer.getInteger("bench.refDepth", 20);
     static final int SAMPLES = Integer.getInteger("bench.samples", 240);

@@ -78,7 +78,8 @@ public class PvpGame extends AbstractGame {
             }
         });
 
-        // Start Setup Mode
+        // Start Setup Mode (explicit target: a previous puzzle or browser game may have left another one)
+        manager.setSetupTargetFen(board.getFen());
         manager.startSetupMode();
         updateStatus("Posiziona i pezzi...");
     }
@@ -150,6 +151,16 @@ public class PvpGame extends AbstractGame {
     }
 
     @Override
+    protected String whitePlayerName() {
+        return "Bianco";
+    }
+
+    @Override
+    protected String blackPlayerName() {
+        return "Nero";
+    }
+
+    @Override
     public void endGame(String endMessage, boolean saveGame) {
         if (!gameRunning) {
             return; // already ended (mate, flag): do not save twice
@@ -164,8 +175,7 @@ public class PvpGame extends AbstractGame {
         }
 
         if (saveGame) {
-            String timeControl = (gameDuration / 60) + ":" + String.format("%02d", gameDuration % 60) + "m + "
-                    + increment + "s";
+            String timeControl = (gameDuration / 60) + "+" + increment; // minutes+seconds, e.g. 10+5
             saveGameToJson(endMessage, openingNameLabel.getText(), "Player vs Player", timeControl);
         }
 
