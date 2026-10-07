@@ -169,6 +169,8 @@ def summary_line(name, m):
 
 SPECIAL = ["brilliant", "great", "miss"]
 # win chance loss thresholds of ReviewClassifier.Tuning (defaults; -D overrides apply) for the "near a threshold" test
+# our top move called Good/Excellent by chess.com while our second line is this close: the engines' best moves differ
+TOP_TIE_PAWNS = 0.30
 THRESHOLDS = {"excellent": 0.02, "good": 0.05, "inaccuracy": 0.10, "mistake": 0.20, "blunderAnyway": 0.30}
 
 
@@ -224,12 +226,28 @@ def classify_far(far, deep, knobs_of, margin, ref):
     from lite to deep, or the move is within `margin` win chance of a threshold) and rule cases (everything else).
     Returns [(ply, [reasons])]."""
     rr = rerun_labels() if ref == "torch18" else {}
+    # the other chess.com engine (Torch18 vs SF22): a ply where they already differ by >= 2 levels is unstable
+    other = {}
+    other_dir = DATA / REFS["torch18" if ref == "sf22" else "sf22"]
+    for gid in {p["game"] for p in far}:
+        f = other_dir / f"{gid}.json"
+        if f.exists():
+            for x in json.loads(f.read_text())["labels"]:
+                other[(gid, str(x["ply"]))] = x["label"]
     out = []
     for p in far:
         why = []
         k = (p["game"], p["ply"])
         if k in rr and rr[k] != p["cc"]:
             why.append(f"chess.com rerun {rr[k]}")
+        o = other.get(k)
+        if o is not None and dist(o, p["cc"]) >= 2:
+            why.append(f"chess.com engines disagree ({'torch18' if ref == 'sf22' else 'sf22'} {o})")
+        w = p["color"] == "w"
+        b, s2 = pawns(p["eval_before"], w), pawns(p["second_eval"], w) if p["second_eval"] else None
+        if p["is_top"] == "true" and p["cc"] in ("good", "excellent") and b is not None and s2 is not None \
+                and b - s2 < TOP_TIE_PAWNS:
+            why.append(f"top-move tie (2nd line {100 * (b - s2):.0f} cp behind)")
         d = deep.get(k)
         if d is not None and d["ours"] != p["ours"]:
             why.append(f"deep {d['ours']}")
@@ -247,6 +265,8 @@ def far_split_md(split, margin, has_deep, ref):
     rule = [p for p, w in split if not w]
     unstable = [(p, w) for p, w in split if w]
     md = [f"Unstable = chess.com changes its label in a recomputed rerun{'' if ref == 'torch18' else ' (no rerun for this reference)'}, "
+          f"or the two chess.com engines (Torch18, SF22) differ by >= 2 levels on the ply, or our top move is called "
+          f"Good/Excellent with our second line < {100 * TOP_TIE_PAWNS:.0f} cp behind (top-move tie), "
           f"or our label changes lite→deep{'' if has_deep else ' (no deep dump)'}, or the win chance loss is within {margin} of a "
           f"threshold. **Rule cases: {len(rule)}**, unstable: {len(unstable)}.", "",
           f"### Rule cases ({len(rule)})", far_table(rule), "", f"### Unstable cases ({len(unstable)})"]
