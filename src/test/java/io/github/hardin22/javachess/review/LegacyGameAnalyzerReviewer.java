@@ -5,7 +5,7 @@ import io.github.hardin22.javachess.Services.GameAnalyzer;
 
 import java.util.List;
 
-/** The pre-redesign review ({@link GameAnalyzer} on the shared review engine): the baseline of the scoreboard. */
+/** The review as the app screens call it ({@link GameAnalyzer} facade); before the redesign this was the legacy review. */
 public final class LegacyGameAnalyzerReviewer implements Reviewer {
 
     private final int depth;
@@ -16,7 +16,7 @@ public final class LegacyGameAnalyzerReviewer implements Reviewer {
 
     @Override
     public String name() {
-        return "GameAnalyzer (legacy) depth " + depth;
+        return "GameAnalyzer facade, depth " + depth;
     }
 
     @Override

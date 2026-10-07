@@ -233,6 +233,9 @@ public final class AgreementReport {
                     mateViolations.add(finding(g, i, o, t, "gives mate, labelled " + o));
                 }
             } else if (MateProbe.mateInOneFor(after) != null && couldAvoidMateInOne(g.fens().get(i))) {
+                if (alreadyMatedAgainst(ours, i)) {
+                    continue; // only a NEW forced mate is a blunder; shortening a lost mate race is not checked
+                }
                 mateInOneAllowed++;
                 if (o == ReviewLabel.BLUNDER) {
                     mateInOneAllowedCalledBlunder++;
@@ -242,6 +245,16 @@ public final class AgreementReport {
                 }
             }
         }
+    }
+
+    /** True when our evaluation before ply {@code i} was already a forced mate against the side that moves. */
+    static boolean alreadyMatedAgainst(Reviewer.Result ours, int i) {
+        if (i == 0 || ours.whiteCp().size() < i) {
+            return false;
+        }
+        double before = ours.whiteCp().get(i - 1); // White POV, mates encoded beyond +/-90000
+        boolean whiteMoves = i % 2 == 0;
+        return whiteMoves ? before < -90_000 : before > 90_000;
     }
 
     /** True when some legal move does not leave a mate in one to the opponent. */
@@ -277,6 +290,24 @@ public final class AgreementReport {
         return totalPlies() == 0 ? Double.NaN : totalMs() / (double) totalPlies();
     }
 
+    public long totalNodes() {
+        return entries.stream().mapToLong(e -> e.ours().nodes()).sum();
+    }
+
+    public int cacheHits() {
+        return entries.stream().mapToInt(e -> e.ours().cacheHits()).sum();
+    }
+
+    /**
+     * Engine time of an 80-ply game on a Raspberry Pi 5: nodes / (per-core nps x parallel single-thread processes),
+     * {@code -Dpi5.nps} (default 350k) and {@code -Dpi5.processes} (default 3: all cores but one).
+     */
+    public double pi5SecondsPer40MoveGame() {
+        long nps = Long.getLong("pi5.nps", 350_000);
+        int procs = Integer.getInteger("pi5.processes", 3);
+        return totalPlies() == 0 ? Double.NaN : totalNodes() / (double) totalPlies() * 80 / (nps * procs);
+    }
+
     /** Wall time of a typical 80-ply game (40 moves) at the measured rate. */
     public double msPer40MoveGame() {
         return msPerPly() * 80;
@@ -303,6 +334,9 @@ public final class AgreementReport {
         o.put("mateInOneAllowedCalledBlunder", mateInOneAllowedCalledBlunder);
         o.put("mateViolations", mateViolations.size());
         o.put("msPerPly", round(msPerPly()));
+        o.put("nodesPerPly", totalPlies() == 0 ? 0 : totalNodes() / totalPlies());
+        o.put("cacheHits", cacheHits());
+        o.put("pi5SecPer40Moves", round(pi5SecondsPer40MoveGame()));
         o.put("totalMs", totalMs());
         return o;
     }
@@ -310,8 +344,15 @@ public final class AgreementReport {
     public String markdown(int worst) {
         StringBuilder sb = new StringBuilder();
         sb.append("### ").append(reviewer).append("\n\n");
-        sb.append(f("Games %d, plies %d. Review time %.1f s total, %.1f ms/ply (%.1f s per 40-move game).%n%n",
-                entries.size(), totalPlies(), totalMs() / 1000.0, msPerPly(), msPer40MoveGame() / 1000.0));
+        sb.append(f("Games %d, plies %d. Review time on this machine %.1f s total, %.1f ms/ply (%.1f s per 40-move game)"
+                + "%s.%n", entries.size(), totalPlies(), totalMs() / 1000.0, msPerPly(), msPer40MoveGame() / 1000.0,
+                cacheHits() > 0 ? f(", %d positions from the disk cache", cacheHits()) : ""));
+        if (totalNodes() > 0) {
+            sb.append(f("Engine work %.0fk nodes/ply; Pi 5 projection %.1f s per 40-move game (%dk nps/core x %d "
+                    + "processes).%n", totalNodes() / 1000.0 / totalPlies(), pi5SecondsPer40MoveGame(),
+                    Long.getLong("pi5.nps", 350_000) / 1000, Integer.getInteger("pi5.processes", 3)));
+        }
+        sb.append('\n');
 
         sb.append("**Accuracy vs chess.com** (ours - chess.com, per player)\n\n");
         sb.append("| set | n | MAE | bias | RMSE | r | within 5 |\n|---|---:|---:|---:|---:|---:|---:|\n");
@@ -321,7 +362,7 @@ public final class AgreementReport {
         sb.append('\n');
 
         sb.append("**Mate sanity** (engine-free truth): mates given ").append(matesGiven)
-                .append(", moves allowing an avoidable mate in one ").append(mateInOneAllowed)
+                .append(", moves allowing a new, avoidable mate in one ").append(mateInOneAllowed)
                 .append(" (called blunder: ").append(mateInOneAllowedCalledBlunder).append("), violations ")
                 .append(mateViolations.size()).append(".\n\n");
         appendFindings(sb, mateViolations, worst);

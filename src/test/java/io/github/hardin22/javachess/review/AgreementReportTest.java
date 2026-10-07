@@ -57,6 +57,17 @@ class AgreementReportTest {
     }
 
     @Test
+    void shorteningAMateAlreadyLostIsNotAViolation() {
+        ChessComDataset.Game g = game(GXH5, 80, 30, null);
+        List<ReviewLabel> ours = new ArrayList<>(Collections.nCopies(13, BEST));
+        List<Double> cp = new ArrayList<>(Collections.nCopies(13, 150.0));
+        cp.set(10, 99_800.0); // after 6.Be2 White already mates in 2 (pretend): 6...gxh5 only shortens it
+        AgreementReport r = new AgreementReport("t");
+        r.add(g, new Reviewer.Result(ours, 80, 30, cp, 1));
+        assertTrue(r.mateViolations().isEmpty(), r.mateViolations().toString());
+    }
+
+    @Test
     void unavoidableMateInOneIsNotAViolation() {
         // 1.f3 e5 2.g4?? Qh4#: White had safe moves, so 2.g4 counts
         assertTrue(AgreementReport.couldAvoidMateInOne(

@@ -42,7 +42,7 @@ class ChessComAgreementTest {
 
         AgreementReport report;
         StringBuilder csv = new StringBuilder("game,ply,san,ours,chesscom,white_cp\n");
-        try (Reviewer reviewer = Reviewers.create(System.getProperty("review.reviewer", "legacy"), depth)) {
+        try (Reviewer reviewer = Reviewers.create(System.getProperty("review.reviewer", "core"), depth)) {
             report = new AgreementReport(reviewer.name());
             int done = 0;
             for (ChessComDataset.Game g : games) {

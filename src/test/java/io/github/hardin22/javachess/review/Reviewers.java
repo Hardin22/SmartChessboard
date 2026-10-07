@@ -8,8 +8,9 @@ final class Reviewers {
 
     static Reviewer create(String name, int depth) {
         return switch (name) {
-            case "legacy" -> new LegacyGameAnalyzerReviewer(depth);
-            default -> throw new IllegalArgumentException("unknown reviewer " + name + " (legacy)");
+            case "core" -> new CoreReviewer(ReviewBenchmarkTest.stockfish());
+            case "analyzer", "legacy" -> new LegacyGameAnalyzerReviewer(depth);
+            default -> throw new IllegalArgumentException("unknown reviewer " + name + " (core, analyzer)");
         };
     }
 }

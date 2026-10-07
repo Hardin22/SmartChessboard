@@ -4,6 +4,8 @@ import com.github.bhlangonijr.chesslib.Board;
 import com.github.bhlangonijr.chesslib.move.Move;
 import io.github.hardin22.javachess.Oggetti.MoveAnalysis;
 import io.github.hardin22.javachess.Oggetti.MoveAnalysis.MoveClassification;
+import io.github.hardin22.javachess.Engine.review.Eval;
+import io.github.hardin22.javachess.Engine.review.ReviewClassifier;
 import io.github.hardin22.javachess.Services.GameAnalyzer;
 import io.github.hardin22.javachess.review.MateProbe;
 import org.junit.jupiter.api.Test;
@@ -158,18 +160,57 @@ class MateRegressionTest {
 
     @Test
     @EnabledIfSystemProperty(named = "review.pending", matches = "true",
-            disabledReason = "pending fix (analysis): lost-position rule downgrades a mate blunder to inaccuracy/good")
+            disabledReason = "pending (realtime): LEDs still use MoveClassifier, whose lost-position rule downgrades a "
+                    + "mate blunder; drop with the switch to ReviewClassifier.fast")
     void allowingMateIsNeverAGoodMove() {
         // Clearly lost (-6) but not yet mated: allowing mate in one must still be an error, never "good"/"best".
         assertTrue(MoveClassifier.classify(Score.cp(-600), Score.mate(-1), false).quality().isError());
         assertTrue(MoveClassifier.classify(Score.cp(-1500), Score.mate(-1), false).quality().isError());
     }
 
+    // ------------------------------------------------------------------ review core, fast verdict (Engine.review)
+
+    @Test
+    void fastVerdictMateRules() {
+        // 6...gxh5??: Black's best about -1.5 (White POV +150), after it White mates in one
+        assertEquals(MoveClassification.BLUNDER,
+                ReviewClassifier.fast(Eval.cp(150), Eval.whiteMates(1), false, false).label());
+        // allowing a new mate is a blunder even when already clearly lost
+        assertEquals(MoveClassification.BLUNDER,
+                ReviewClassifier.fast(Eval.cp(600), Eval.whiteMates(1), false, false).label());
+        assertEquals(MoveClassification.BLUNDER,
+                ReviewClassifier.fast(Eval.cp(-1500), Eval.blackMates(2), true, false).label());
+        // throwing away one's own forced mate is a blunder too
+        assertTrue(ReviewClassifier.fast(Eval.whiteMates(2), Eval.cp(0), true, false).label() != MoveClassification.BEST);
+        // 7.Bxh5# / 2...Qh4#: mate on the board is never an error, whatever the search said before
+        for (boolean playedIsBest : new boolean[] { true, false }) {
+            assertFalse(ERRORS.contains(
+                    ReviewClassifier.fast(Eval.whiteMates(1), Eval.whiteMates(0), true, playedIsBest).label()));
+            assertFalse(ERRORS.contains(
+                    ReviewClassifier.fast(Eval.cp(-900), Eval.blackMates(0), false, playedIsBest).label()));
+            assertFalse(ERRORS.contains(
+                    ReviewClassifier.fast(Eval.cp(300), Eval.whiteMates(0), true, playedIsBest).label()));
+        }
+    }
+
+    @Test
+    void whitePovEvalKeepsTheWinnerOfAMate() {
+        // the eval bar bug at its root: "score mate 0" with Black to move means White has mated
+        assertTrue(Eval.terminal(fenAfter(GXH5_GAME)).orElseThrow().isMateFor(true));
+        assertTrue(Eval.terminal(fenAfter(FOOLS_MATE)).orElseThrow().isMateFor(false));
+        assertTrue(Eval.fromUci(Score.mate(0), false).isMateFor(true));
+        assertTrue(Eval.fromUci(Score.mate(0), true).isMateFor(false));
+        assertTrue(Eval.terminal(fenAfter(GXH5_GAME)).orElseThrow().legacyPawns() > 900);
+        assertTrue(Eval.terminal(fenAfter(FOOLS_MATE)).orElseThrow().legacyPawns() < -900);
+        // stalemate is a draw, never a mate score
+        Eval stalemate = Eval.terminal("k7/8/1Q6/8/8/8/8/2K5 b - - 0 1").orElseThrow();
+        assertFalse(stalemate.isMate());
+        assertEquals(0, stalemate.cpFor(true));
+    }
+
     // ------------------------------------------------------------------ full review (real Stockfish)
 
     @Test
-    @EnabledIfSystemProperty(named = "review.pending", matches = "true",
-            disabledReason = "pending fix (analysis): 'recovery' rule labels 6...gxh5?? as BEST")
     void reviewLabelsGxh5AsBlunderAndBxh5MateAsGood() {
         StockfishTestSupport.requireStockfish();
         GameAnalyzer analyzer = new GameAnalyzer();
@@ -189,6 +230,30 @@ class MateRegressionTest {
         assertEquals(MoveClassification.BLUNDER, a.get(2).getClassification(), "2.g4?? allows mate in one");
         assertFalse(ERRORS.contains(a.get(3).getClassification()), "2...Qh4# gives mate");
         assertMateInvariants(a, FOOLS_MATE);
+    }
+
+    @Test
+    void reviewCriticalCases() {
+        StockfishTestSupport.requireStockfish();
+        GameAnalyzer analyzer = new GameAnalyzer();
+        String start = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+        // Scholar's mate: 3...Nf6?? allows 4.Qxf7#
+        List<String> scholar = List.of("e2e4", "e7e5", "d1h5", "b8c6", "f1c4", "g8f6", "h5f7");
+        List<MoveAnalysis> a = analyzer.analyzeGame(start, scholar, 14, null);
+        assertEquals(MoveClassification.BLUNDER, a.get(5).getClassification(), "3...Nf6??");
+        assertFalse(ERRORS.contains(a.get(6).getClassification()), "4.Qxf7#");
+        assertTrue(a.get(6).getScore() > 50_000, "White mated: " + a.get(6).getScore());
+        assertMateInvariants(a, scholar);
+        // back rank mate from a set position
+        a = analyzer.analyzeGame("6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", List.of("d1d8"), 14, null);
+        assertEquals(1, a.size());
+        assertFalse(ERRORS.contains(a.get(0).getClassification()), "1.Rd8#");
+        assertTrue(a.get(0).getScore() > 50_000);
+        // 1.Qf7?? stalemates when 1.Qf8# mates: blunder, and the evaluation after it is a draw, not a mate
+        a = analyzer.analyzeGame("7k/8/6K1/8/8/8/8/5Q2 w - - 0 1", List.of("f1f7"), 14, null);
+        assertEquals(MoveClassification.BLUNDER, a.get(0).getClassification(), "1.Qf7?? stalemate");
+        assertFalse(a.get(0).isMate());
+        assertEquals(0, a.get(0).getScore(), 1e-9);
     }
 
     /** Engine-independent checks: mate given is never an error, mate in one allowed is never a good move. */
