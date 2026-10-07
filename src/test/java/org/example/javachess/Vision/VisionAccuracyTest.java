@@ -26,6 +26,7 @@ class VisionAccuracyTest {
     static void loadModel() {
         try {
             classifier = new PieceClassifier(PieceClassifier.DEFAULT_MODEL);
+            classifier.setGridRefinement(!Boolean.getBoolean("noRefine"));
         } catch (Throwable e) {
             classifier = null; // onnxruntime/OpenCV natives not available on this platform
         }
@@ -78,7 +79,7 @@ class VisionAccuracyTest {
         Random rnd = new Random(42);
         for (SyntheticBoards.Theme theme : SyntheticBoards.Theme.values()) {
             for (String set : new String[]{"Classico", "Legno"}) {
-                String fen = RandomFenGenerator.generateRandomFen(10 + rnd.nextInt(40)).split(" ")[0];
+                String fen = RandomFenGenerator.generateRandomFen(10 + rnd.nextInt(40), rnd).split(" ")[0];
                 boolean flip = rnd.nextBoolean();
                 BufferedImage img = SyntheticBoards.degrade(SyntheticBoards.render(fen, set, theme, 480, flip),
                         condition, boards);
@@ -132,7 +133,7 @@ class VisionAccuracyTest {
         int resolved = 0;
         int trials = 0;
         for (SyntheticBoards.Theme theme : SyntheticBoards.Theme.values()) {
-            Board board = PgnCodec.boardOrStart(RandomFenGenerator.generateRandomFen(12 + rnd.nextInt(20)));
+            Board board = PgnCodec.boardOrStart(RandomFenGenerator.generateRandomFen(12 + rnd.nextInt(20), rnd));
             var moves = board.legalMoves();
             if (moves.isEmpty()) {
                 continue;
@@ -142,15 +143,71 @@ class VisionAccuracyTest {
             after.doMove(move);
             BufferedImage img = SyntheticBoards.degrade(SyntheticBoards.render(after.getFen().split(" ")[0],
                     "Legno", theme, 400, false), SyntheticBoards.Condition.NOISY, trials);
-            BoardReading reading = classifier.read(img, false, null);
+            BoardReading reading = classifier.read(img, false, null).withPlacementRules();
             PositionResolver.Resolution res = new PositionResolver().resolve(board, reading, false);
             trials++;
             if (res.confident() && res.moves().size() == 1 && res.moves().get(0).equals(move)) {
                 resolved++;
+            } else {
+                System.out.printf("[vision] not resolved: played %s, got %s margin %.1f mismatches %d, read %s vs %s%n",
+                        move, res.moves(), res.margin(), res.mismatches(), reading.placement(),
+                        after.getFen().split(" ")[0]);
             }
         }
         System.out.printf("[vision] moves identified through legality: %d/%d%n", resolved, trials);
         assertEquals(trials, resolved);
+    }
+
+    @Test
+    void findsTheBoardOnAClutteredScreenAndReadsIt() throws Exception {
+        int found = 0;
+        int read = 0;
+        int trials = 0;
+        Random rnd = new Random(11);
+        for (SyntheticBoards.Theme theme : SyntheticBoards.Theme.values()) {
+            String fen = RandomFenGenerator.generateRandomFen(15 + rnd.nextInt(30), rnd).split(" ")[0];
+            int size = 420 + rnd.nextInt(200);
+            int bx = 150 + rnd.nextInt(500);
+            int by = 120 + rnd.nextInt(200);
+            BufferedImage screen = new BufferedImage(1600, 1000, BufferedImage.TYPE_INT_RGB);
+            java.awt.Graphics2D g = screen.createGraphics();
+            g.setColor(new java.awt.Color(38, 36, 33));
+            g.fillRect(0, 0, 1600, 1000);
+            g.setColor(new java.awt.Color(200, 200, 200));
+            g.setFont(new java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.PLAIN, 18));
+            for (int i = 0; i < 30; i++) {
+                g.drawString("Player " + i + "  (" + (1500 + 17 * i) + ")  1. e4 e5 2. Nf3", 1200, 40 + i * 30);
+            }
+            g.fillRect(20, 20, 100, 900); // side bar
+            g.drawImage(SyntheticBoards.render(fen, "Classico", theme, size, false), bx, by, null);
+            g.dispose();
+
+            trials++;
+            java.awt.Rectangle r = classifier.findBoard(screen);
+            if (r == null) {
+                System.out.printf("[vision] %s: board not found (truth %d,%d %dpx)%n", theme, bx, by, size);
+                continue;
+            }
+            java.awt.Rectangle truth = new java.awt.Rectangle(bx, by, size, size);
+            java.awt.Rectangle inter = r.intersection(truth);
+            double iou = inter.isEmpty() ? 0 : (double) inter.width * inter.height
+                    / ((double) r.width * r.height + (double) size * size - (double) inter.width * inter.height);
+            if (iou > 0.85) {
+                found++;
+            }
+            BoardReading reading = classifier.read(screen.getSubimage(r.x, r.y, r.width, r.height), false, null)
+                    .withPlacementRules();
+            if (reading.placement().equals(fen)) {
+                read++;
+            } else {
+                System.out.printf("[vision] %s: found %s (truth %s), read %s vs %s%n", theme, r, truth,
+                        reading.placement(), fen);
+            }
+        }
+        System.out.printf("[vision] full screen: board found %d/%d, position read exactly %d/%d%n", found, trials,
+                read, trials);
+        assertEquals(trials, found);
+        assertTrue(read >= trials - 1, "read " + read + "/" + trials);
     }
 
     @Test

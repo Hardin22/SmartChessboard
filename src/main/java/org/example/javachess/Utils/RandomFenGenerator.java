@@ -11,8 +11,12 @@ import java.util.Random;
 public class RandomFenGenerator {
 
     public static String generateRandomFen(int movesCount) {
+        return generateRandomFen(movesCount, new Random());
+    }
+
+    /** Same as {@link #generateRandomFen(int)} with a given random source (reproducible tests). */
+    public static String generateRandomFen(int movesCount, Random random) {
         Board board = new Board();
-        Random random = new Random();
 
         for (int i = 0; i < movesCount; i++) {
             List<Move> legalMoves = MoveGenerator.generateLegalMoves(board);

@@ -59,7 +59,12 @@ public class PieceClassifier implements AutoCloseable {
     /** Low decode threshold: weak boxes still inform the per-square probabilities. */
     private static final float DECODE_THRESHOLD = 0.20f;
     private static final float NMS_IOU = 0.45f;
-    private static final float BOARD_FIND_THRESHOLD = 0.80f;
+    /**
+     * Minimum "board" score on a full screenshot. A board seen small on a cluttered screen scores ~0.6-0.8, so the
+     * threshold is moderate and false positives are rejected by requiring pieces inside the box (and, in
+     * VisionService, the same box on several consecutive frames).
+     */
+    private static final float BOARD_FIND_THRESHOLD = 0.50f;
 
     static {
         try {
@@ -155,6 +160,13 @@ public class PieceClassifier implements AutoCloseable {
         this.anchorY = anchorY;
     }
 
+    private volatile boolean gridRefinement = true;
+
+    /** Enables the checker-pattern refinement of the grid (tests measure its effect). */
+    public void setGridRefinement(boolean enabled) {
+        this.gridRefinement = enabled;
+    }
+
     /** Disables the contrast normalisation (used by the tests to measure its effect). */
     public void setContrastStretch(boolean enabled) {
         this.contrastStretch = enabled;
@@ -191,6 +203,7 @@ public class PieceClassifier implements AutoCloseable {
             input = preprocess(src, newW, newH, offX, offY);
             List<Detection> detections = detect(input);
             Detection best = null;
+            double bestValue = 0;
             for (Detection d : detections) {
                 if (d.classId != boardClass || d.score < BOARD_FIND_THRESHOLD) {
                     continue;
@@ -199,12 +212,28 @@ public class PieceClassifier implements AutoCloseable {
                 if (ratio < 0.85f || ratio > 1.15f) {
                     continue; // a chessboard is square
                 }
-                if (best == null || d.w * d.h > best.w * best.h) {
+                if (countPiecesInside(detections, d) < 2) {
+                    continue; // every real position has at least the two kings
+                }
+                double value = d.score * Math.sqrt(d.w * d.h); // prefer confident, then large
+                if (value > bestValue) {
+                    bestValue = value;
                     best = d;
                 }
             }
             if (best == null) {
-                return null;
+                best = gridFromPieces(input, detections);
+                if (best == null) {
+                    return null;
+                }
+            } else if (gridRefinement) {
+                // The network's box is approximate (a few % off): snap it to the checker pattern.
+                GridFinder.Grid g = new GridFinder(input).refine(new Rectangle(Math.round(best.x), Math.round(best.y),
+                        Math.round(best.w), Math.round(best.h)), 0.08);
+                if (g.score() >= GridFinder.MIN_SCORE) {
+                    float size = (float) (g.cell() * 8);
+                    best = new Detection(boardClass, best.score, (float) g.x(), (float) g.y(), size, size, best.scores);
+                }
             }
             int x = (int) Math.round((best.x - offX) / scale);
             int y = (int) Math.round((best.y - offY) / scale);
@@ -254,6 +283,18 @@ public class PieceClassifier implements AutoCloseable {
                         gh = Math.min(INPUT - gy, d.h);
                     }
                     break;
+                }
+            }
+            // Sharpen the grid on the checker pattern when the picture is (close to) square.
+            double aspect = (double) src.width() / src.height();
+            if (gridRefinement && aspect > 0.97 && aspect < 1.03) {
+                GridFinder.Grid g = new GridFinder(input).refine(
+                        new Rectangle(Math.round(gx), Math.round(gy), Math.round(gw), Math.round(gh)), 0.06);
+                if (g.score() >= GridFinder.MIN_SCORE) {
+                    gx = (float) g.x();
+                    gy = (float) g.y();
+                    gw = (float) (g.cell() * 8);
+                    gh = gw;
                 }
             }
             float[][][] probs = squareProbabilities(detections, gx, gy, gw, gh, isFlipped);
@@ -481,6 +522,85 @@ public class PieceClassifier implements AutoCloseable {
         return probs;
     }
 
+    /**
+     * Fallback when the network does not recognise the board itself (unusual themes): the pieces it does detect
+     * give the square size and a region, and {@link GridFinder} finds the checker pattern there.
+     */
+    private Detection gridFromPieces(Mat gray640, List<Detection> detections) {
+        List<Detection> pieces = new ArrayList<>();
+        for (Detection d : detections) {
+            if (d.classId != boardClass && d.score >= 0.5f) {
+                pieces.add(d);
+            }
+        }
+        if (pieces.size() < 2) {
+            return null;
+        }
+        // Drop isolated false positives (icons, text) far from the bulk of the pieces.
+        float[] cxs = new float[pieces.size()];
+        float[] cys = new float[pieces.size()];
+        float[] sz = new float[pieces.size()];
+        for (int i = 0; i < pieces.size(); i++) {
+            Detection d = pieces.get(i);
+            cxs[i] = d.x + d.w / 2;
+            cys[i] = d.y + d.h / 2;
+            sz[i] = Math.max(d.w, d.h);
+        }
+        java.util.Arrays.sort(cxs);
+        java.util.Arrays.sort(cys);
+        java.util.Arrays.sort(sz);
+        float medX = cxs[cxs.length / 2];
+        float medY = cys[cys.length / 2];
+        float reach = 7.5f * sz[sz.length / 2] * 1.3f;
+        pieces.removeIf(d -> Math.abs(d.x + d.w / 2 - medX) > reach || Math.abs(d.y + d.h / 2 - medY) > reach);
+        if (pieces.size() < 2) {
+            return null;
+        }
+        float[] sizes = new float[pieces.size()];
+        float minX = Float.MAX_VALUE;
+        float minY = Float.MAX_VALUE;
+        float maxX = 0;
+        float maxY = 0;
+        for (int i = 0; i < pieces.size(); i++) {
+            Detection d = pieces.get(i);
+            sizes[i] = Math.max(d.w, d.h);
+            minX = Math.min(minX, d.x);
+            minY = Math.min(minY, d.y);
+            maxX = Math.max(maxX, d.x + d.w);
+            maxY = Math.max(maxY, d.y + d.h);
+        }
+        java.util.Arrays.sort(sizes);
+        float median = sizes[sizes.length / 2];
+        double cellMin = Math.max(6, median * 0.9);
+        double cellMax = Math.max(cellMin + 1, Math.max(sizes[sizes.length - 1], median * 1.5));
+        GridFinder finder = new GridFinder(gray640);
+        // Piece boxes can stick out of their square by a few pixels: leave half a square of slack.
+        double slack = cellMax / 2;
+        GridFinder.Grid g = finder.search(Math.max(0, maxX - 8 * cellMax - slack), minX + slack,
+                Math.max(0, maxY - 8 * cellMax - slack), minY + slack, cellMin, cellMax);
+        if (g.score() < GridFinder.MIN_SCORE) {
+            return null;
+        }
+        float size = (float) (g.cell() * 8);
+        log.debug("Board found from the checker pattern (score {})", String.format("%.1f", g.score()));
+        return new Detection(boardClass, 0.5f, (float) g.x(), (float) g.y(), size, size, new float[0]);
+    }
+
+    private int countPiecesInside(List<Detection> detections, Detection board) {
+        int n = 0;
+        for (Detection d : detections) {
+            if (d.classId == boardClass || d.score < 0.4f) {
+                continue;
+            }
+            float cx = d.x + d.w / 2;
+            float cy = d.y + d.h / 2;
+            if (cx >= board.x && cx <= board.x + board.w && cy >= board.y && cy <= board.y + board.h) {
+                n++;
+            }
+        }
+        return n;
+    }
+
     private boolean hasPieces(List<Detection> detections) {
         int count = 0;
         for (Detection d : detections) {
@@ -495,7 +615,11 @@ public class PieceClassifier implements AutoCloseable {
 
     static Mat toMat(BufferedImage bi) {
         BufferedImage img = bi;
-        if (img.getType() != BufferedImage.TYPE_3BYTE_BGR) {
+        // Sub-images share the parent's buffer: copy them (and any non-BGR image) into a compact BGR image.
+        boolean compactBgr = img.getType() == BufferedImage.TYPE_3BYTE_BGR && img.getRaster().getParent() == null
+                && ((DataBufferByte) img.getRaster().getDataBuffer()).getData().length
+                == img.getWidth() * img.getHeight() * 3;
+        if (!compactBgr) {
             BufferedImage converted = new BufferedImage(img.getWidth(), img.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
             java.awt.Graphics2D g = converted.createGraphics();
             g.drawImage(img, 0, 0, null);

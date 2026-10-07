@@ -31,7 +31,8 @@ public final class PositionResolver {
     private final int maxMismatches;
 
     public PositionResolver() {
-        this(2.0, 3);
+        // A move changes 2-4 squares; up to 6 misread squares are tolerated when the winner is clearly ahead.
+        this(2.0, 6);
     }
 
     public PositionResolver(double minMargin, int maxMismatches) {
