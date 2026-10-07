@@ -7,6 +7,8 @@ import org.example.javachess.Services.LichessGameManager;
 
 public class OnlineGame extends AbstractGame {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(OnlineGame.class);
+
     private LichessGameManager lichessGameManager;
     private String gameId;
     private boolean isGameSaved = false;
@@ -91,7 +93,7 @@ public class OnlineGame extends AbstractGame {
                                 board.doMove(chessMove);
                             }
                         } catch (Exception e) {
-                            System.err.println("[OnlineGame] Error syncing move: " + e.getMessage());
+                            log.warn("Error syncing move: {}", e.getMessage());
                         }
                     }
 
@@ -186,7 +188,7 @@ public class OnlineGame extends AbstractGame {
                 saveGameToJson("Unknown", "Lichess Online", "Online (Lichess)", "N/A");
                 isGameSaved = true;
             } else {
-                System.out.println("[OnlineGame] Game too short, not saving (" + board.getHistory().size() + " moves)");
+                log.info("Game too short, not saving ({} moves)", board.getHistory().size());
             }
         }
     }

@@ -11,6 +11,8 @@ import org.example.javachess.Utils.ConfigManager;
 
 public class PvcGame extends AbstractGame {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PvcGame.class);
+
     private Label openingPvc;
     private UCIEngine playerStockfish;
     private boolean isPlayerWhite;
@@ -50,12 +52,12 @@ public class PvcGame extends AbstractGame {
                 .getInstance().getBoardStateManager();
 
         manager.setLogicalBoard(board); // Sync initial board state
-        manager.startSetupMode(); // Start setup phase
+        manager.setPhysicalMoveSide(isPlayerWhite ? Side.WHITE : Side.BLACK); // bot moves are only replicated
 
         manager.setListener(new org.example.javachess.Services.BoardStateManager.BoardMoveListener() {
             @Override
             public void onPhysicalMoveDetected(String from, String to) {
-                System.out.println("Physical Move: " + from + to);
+                log.debug("Physical move {}{}", from, to);
                 handleMoveInput(from + to);
             }
 
@@ -77,14 +79,12 @@ public class PvcGame extends AbstractGame {
 
             @Override
             public void onBoardStateUpdated(String fen, String errorSquare) {
-                // Update the visual board to reflect physical state
-                Platform.runLater(() -> {
-                    chessBoardUI.setPosition(fen, null);
-                    if (errorSquare != null) {
-                        chessBoardUI.highlightErrorSquare(errorSquare);
-                        updateStatus("ERRORE: Controlla " + errorSquare);
-                    }
-                });
+                // Called on the FX thread: mirror the physical board
+                chessBoardUI.setPosition(fen, null);
+                if (errorSquare != null) {
+                    chessBoardUI.highlightErrorSquare(errorSquare);
+                    updateStatus("ERRORE: Controlla " + errorSquare);
+                }
             }
 
             @Override
@@ -147,11 +147,11 @@ public class PvcGame extends AbstractGame {
                     handleComputerMove();
                 }
             } else {
-                System.out.println("Mossa illegale o non valida, riprova.");
+                log.info("Illegal or invalid move: {}", moveInput);
             }
 
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (RuntimeException e) {
+            log.error("Move {} failed", moveInput, e);
         }
     }
 
@@ -232,7 +232,7 @@ public class PvcGame extends AbstractGame {
     }
 
     private void endGameWithMessage(String message) {
-        System.out.println(message);
+        log.info(message);
         updateStatus(message);
 
         saveGameToJson(message, openingPvc.getText(), "Player vs Stockfish livello " + skillLevel, "∞");
@@ -246,7 +246,7 @@ public class PvcGame extends AbstractGame {
 
         if (pgn.length() < 10) {
             saveGame = false;
-            System.out.println("Partita non salvata, mossa minima non raggiunta.");
+            log.info("Game too short, not saved");
         }
 
         // Note: stockfish (analysis) is managed by AbstractGame/StockfishService,

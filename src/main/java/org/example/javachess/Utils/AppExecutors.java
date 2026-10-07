@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li>{@link #io()}: one virtual thread per task, for blocking I/O (files, network, waiting on the engine).</li>
  *   <li>{@link #compute()}: two daemon platform threads for short CPU-bound jobs (puzzle search, parsing).</li>
  *   <li>{@link #scheduler()}: one daemon thread for delays and timers; tasks must be short and hand heavy work on.</li>
+ *   <li>{@link #storage()}: one thread writing user data in order (archive, settings); drained on exit.</li>
  * </ul>
  *
  * All threads are daemons, so they never keep the JVM alive; {@link #shutdown()} is called on application exit.
@@ -31,6 +32,7 @@ public final class AppExecutors {
             Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("io-", 0).factory());
     private static final ExecutorService COMPUTE = Executors.newFixedThreadPool(2, daemonFactory("compute"));
     private static final ScheduledExecutorService SCHEDULER = createScheduler();
+    private static final ExecutorService STORAGE = Executors.newSingleThreadExecutor(daemonFactory("storage"));
 
     private AppExecutors() {
     }
@@ -45,6 +47,10 @@ public final class AppExecutors {
 
     public static ScheduledExecutorService scheduler() {
         return SCHEDULER;
+    }
+
+    public static ExecutorService storage() {
+        return STORAGE;
     }
 
     /** Runs the action on the JavaFX thread: immediately when already on it, otherwise via {@code runLater}. */
@@ -67,8 +73,16 @@ public final class AppExecutors {
         };
     }
 
-    /** Stops accepting tasks and interrupts running ones. Safe to call more than once. */
+    /** Lets pending writes finish (up to 2 s), then stops every executor. Safe to call more than once. */
     public static void shutdown() {
+        STORAGE.shutdown();
+        try {
+            if (!STORAGE.awaitTermination(2, TimeUnit.SECONDS)) {
+                log.warn("Pending writes did not finish before exit");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         SCHEDULER.shutdownNow();
         COMPUTE.shutdownNow();
         IO.shutdownNow();

@@ -9,9 +9,14 @@ import javafx.application.Platform;
 import javafx.scene.control.Label;
 import org.example.javachess.Services.PuzzleService;
 
-import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PuzzleGame extends AbstractGame {
+
+    private static final Logger log = LoggerFactory.getLogger(PuzzleGame.class);
+    /** Pause before the opponent's moves, so the player can follow them. */
+    private static final long OPPONENT_MOVE_DELAY_MS = 500;
 
     private Puzzle currentPuzzle;
     private int currentMoveIndex = 0;
@@ -34,6 +39,7 @@ public class PuzzleGame extends AbstractGame {
             return;
 
         gameRunning = false;
+        cancelPendingActions();
         this.currentPuzzle = puzzle;
         this.currentMoveIndex = 0;
         this.isSolving = false;
@@ -63,38 +69,32 @@ public class PuzzleGame extends AbstractGame {
                 String pieceStyle = org.example.javachess.Utils.ConfigManager.getProperty("theme.piece", "Classico");
                 Piece piece = board.getPiece(move.getFrom());
 
-                // Delay execution
-                new Thread(() -> {
-                    try {
-                        Thread.sleep(500); // 500ms delay
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
+                // 3. Animate the move after a short pause
+                runLaterOnFx(OPPONENT_MOVE_DELAY_MS, () -> {
+                    if (currentPuzzle != puzzle) {
+                        return; // another puzzle was started meanwhile
                     }
+                    updateStatus("L'avversario sta muovendo...");
+                    chessBoardUI.animateMove(move.getFrom(), move.getTo(), piece, pieceStyle, () -> {
+                        // 4. On Animation Finish: Apply Move & Show Highlights
+                        board.doMove(move);
+                        currentMoveIndex = 1;
+                        opponentMove = move; // Store for highlight persistence
 
-                    Platform.runLater(() -> {
-                        // 3. Animate the Move
-                        updateStatus("L'avversario sta muovendo...");
-                        chessBoardUI.animateMove(move.getFrom(), move.getTo(), piece, pieceStyle, () -> {
-                            // 4. On Animation Finish: Apply Move & Show Highlights
-                            board.doMove(move);
-                            currentMoveIndex = 1;
-                            opponentMove = move; // Store for highlight persistence
+                        // Update UI with new FEN and Last Move (triggers highlight)
+                        chessBoardUI.setPosition(board.getFen(), move);
 
-                            // Update UI with new FEN and Last Move (triggers highlight)
-                            chessBoardUI.setPosition(board.getFen(), move);
+                        updateStatus("Mossa avversario: " + firstMoveUci + ". Configura questa posizione.");
 
-                            updateStatus("Mossa avversario: " + firstMoveUci + ". Configura questa posizione.");
+                        // Notify Turn Indicator
+                        if (onTurnChange != null) {
+                            onTurnChange.run();
+                        }
 
-                            // Notify Turn Indicator
-                            if (onTurnChange != null) {
-                                onTurnChange.run();
-                            }
-
-                            // 5. Start Physical Setup
-                            startPhysicalSetup();
-                        });
+                        // 5. Start Physical Setup
+                        startPhysicalSetup();
                     });
-                }).start();
+                });
 
             } else {
                 // Fallback for no-move puzzles (rare/invalid)
@@ -208,6 +208,9 @@ public class PuzzleGame extends AbstractGame {
         // Verify against solution
         if (currentMoveIndex < currentPuzzle.getMoves().size()) {
             String expectedUci = currentPuzzle.getMoves().get(currentMoveIndex);
+            if (expectedUci.length() == 5 && move.toString().equals(expectedUci.substring(0, 4))) {
+                move = parseMoveUci(expectedUci); // the board reports from/to only: take the promotion piece
+            }
 
             if (move.toString().equals(expectedUci)) {
                 // Correct Move
@@ -218,46 +221,29 @@ public class PuzzleGame extends AbstractGame {
 
                 currentMoveIndex++;
 
-                // If there's a response move defined
-                // If there's a response move defined
+                // Opponent's reply, after a short pause
                 if (currentMoveIndex < currentPuzzle.getMoves().size()) {
-                    new Thread(() -> {
-                        try {
-                            Thread.sleep(500); // Small pause
-                            Platform.runLater(() -> {
-                                try {
-                                    if (!gameRunning)
-                                        return;
-                                    String responseUci = currentPuzzle.getMoves().get(currentMoveIndex);
-                                    Move response = parseMoveUci(responseUci);
-                                    board.doMove(response);
-                                    chessBoardUI.setPosition(board.getFen(), response);
-                                    org.example.javachess.Controllers.ArduinoController.getInstance()
-                                            .getBoardStateManager()
-                                            .setLogicalBoard(board);
-
-                                    // Replicate
-                                    org.example.javachess.Controllers.ArduinoController.getInstance()
-                                            .getBoardStateManager()
-                                            .startBotMoveReplication(response.getFrom().name(),
-                                                    response.getTo().name());
-
-                                    currentMoveIndex++;
-
-                                    if (currentMoveIndex >= currentPuzzle.getMoves().size()) {
-                                        updateStatus("PUZZLE COMPLETATO!");
-                                        instructionLabel.setText("COMPLIMENTI!");
-                                        chessBoardUI.showVictoryAnimation("OTTIMO!", "Puzzle Risolto");
-                                        org.example.javachess.Controllers.ArduinoController.getInstance()
-                                                .playVictoryAnimation();
-                                    }
-                                } catch (Exception e) {
-                                    e.printStackTrace();
-                                }
-                            });
-                        } catch (InterruptedException e) {
+                    Puzzle puzzle = currentPuzzle;
+                    runLaterOnFx(OPPONENT_MOVE_DELAY_MS, () -> {
+                        if (!gameRunning || currentPuzzle != puzzle) {
+                            return;
                         }
-                    }).start();
+                        Move response = parseMoveUci(puzzle.getMoves().get(currentMoveIndex));
+                        board.doMove(response);
+                        chessBoardUI.setPosition(board.getFen(), response);
+                        org.example.javachess.Services.BoardStateManager manager =
+                                org.example.javachess.Controllers.ArduinoController.getInstance().getBoardStateManager();
+                        manager.setLogicalBoard(board);
+                        manager.startBotMoveReplication(response.getFrom().name(), response.getTo().name());
+                        currentMoveIndex++;
+
+                        if (currentMoveIndex >= puzzle.getMoves().size()) {
+                            updateStatus("PUZZLE COMPLETATO!");
+                            instructionLabel.setText("COMPLIMENTI!");
+                            chessBoardUI.showVictoryAnimation("OTTIMO!", "Puzzle Risolto");
+                            org.example.javachess.Controllers.ArduinoController.getInstance().playVictoryAnimation();
+                        }
+                    });
                 } else {
                     updateStatus("PUZZLE COMPLETATO!");
                     instructionLabel.setText("COMPLIMENTI!");
@@ -268,8 +254,11 @@ public class PuzzleGame extends AbstractGame {
 
             } else {
                 // Incorrect Move
-                System.out.println("Mossa errata: " + move + " vs " + expectedUci);
+                log.info("Wrong puzzle move {} (expected {})", move, expectedUci);
                 updateStatus("Mossa Errata! Riprova.");
+                // the board manager already took the move: tell it the position did not change
+                org.example.javachess.Controllers.ArduinoController.getInstance().getBoardStateManager()
+                        .setLogicalBoard(board);
                 org.example.javachess.Controllers.ArduinoController.getInstance().flashLed(move.getFrom().name(), 255,
                         0, 0, 2);
 
@@ -286,6 +275,12 @@ public class PuzzleGame extends AbstractGame {
     private Move parseMoveUci(String uci) {
         Square from = Square.valueOf(uci.substring(0, 2).toUpperCase());
         Square to = Square.valueOf(uci.substring(2, 4).toUpperCase());
+        if (uci.length() == 5) {
+            Side side = board.getPiece(from).getPieceSide();
+            Piece promotion = Piece.fromFenSymbol(side == Side.WHITE
+                    ? uci.substring(4).toUpperCase() : uci.substring(4).toLowerCase());
+            return new Move(from, to, promotion);
+        }
         return new Move(from, to);
     }
 
@@ -409,6 +404,8 @@ public class PuzzleGame extends AbstractGame {
     @Override
     public void endGame(String msg, boolean save) {
         gameRunning = false;
+        isSolving = false;
+        cancelPendingActions();
         // Cleanup if needed
         org.example.javachess.Controllers.ArduinoController.getInstance().getBoardStateManager().stopGameMode();
     }
