@@ -33,7 +33,7 @@ box() { # box [docker options...] -- command...
   local opts=()
   while [ $# -gt 0 ] && [ "$1" != "--" ]; do opts+=("$1"); shift; done
   shift
-  docker run --rm --platform linux/arm64 --cpus="$CPUS" --memory="$MEM" --memory-swap="$MEM" \
+  docker run --rm --platform linux/arm64 --hostname raspberrypi --cpus="$CPUS" --memory="$MEM" --memory-swap="$MEM" \
     -v "$VOLUME":/home/pi -v "$OUT":/out ${opts[@]+"${opts[@]}"} "$IMAGE" bash -lc "$*"
 }
 

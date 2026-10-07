@@ -33,6 +33,7 @@ import java.util.function.Consumer;
  *   <li>{@code -Djavachess.snapshot=out.png} write a PNG of the scene after {@code javachess.snapshot.delayMs} (default 3000)</li>
  *   <li>{@code -Djavachess.snapshot.exit=true} quit after writing the snapshot</li>
  *   <li>{@code -Djavachess.dev.pvc=...} scripted PvC game, see {@link DevScenario}</li>
+ *   <li>{@code -Djavachess.browserUrl=URL} open the integrated browser (JCEF) on URL</li>
  *   <li>{@code -Djavachess.devgame=pvp} start a player-vs-player game with one-minute clocks</li>
  *   <li>{@code -Djavachess.devgame=pvc} start a game against the bot (player white, lowest level) right away</li>
  *   <li>{@code -Djavachess.board=sim} software chessboard; with {@code -Djavachess.simulator.window=true} its
@@ -76,6 +77,15 @@ public final class DevOptions {
         Platform.runLater(() -> DevScenario.startIfRequested(mainController));
         if ("pvc".equalsIgnoreCase(System.getProperty("javachess.devgame")) && mainController != null) {
             Platform.runLater(() -> startBotGame(mainController));
+        }
+        String browserUrl = System.getProperty("javachess.browserUrl");
+        if (browserUrl != null && mainController != null) {
+            Platform.runLater(() -> {
+                mainController.loadView("BROWSER", "/UI/BrowserView.fxml");
+                if (mainController.getController("BROWSER") instanceof org.example.javachess.Controllers.BrowserController b) {
+                    b.loadPage(browserUrl);
+                }
+            });
         }
         if ("pvp".equalsIgnoreCase(System.getProperty("javachess.devgame")) && mainController != null) {
             Platform.runLater(() -> {

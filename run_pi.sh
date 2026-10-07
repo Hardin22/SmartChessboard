@@ -14,6 +14,8 @@ cd "$(dirname "$0")"
 export DISPLAY=${DISPLAY:-:0}
 # GTK through X11 (XWayland on Bookworm): JavaFX has no native Wayland backend
 export GDK_BACKEND=${GDK_BACKEND:-x11}
+# fewer glibc malloc arenas: less native memory with many threads, no measurable cost
+export MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2}
 
 JAR=${JAVACHESS_JAR:-$(ls -t javaChess*.jar target/javaChess*.jar 2>/dev/null | grep -v original | head -1 || true)}
 if [ -z "$JAR" ] || [ ! -f "$JAR" ]; then
@@ -21,6 +23,14 @@ if [ -z "$JAR" ] || [ ! -f "$JAR" ]; then
   exit 1
 fi
 JAVA=${JAVA_HOME:+$JAVA_HOME/bin/}java
+
+# Integrated browser (JCEF) on arm64 Linux: libcef.so needs more static TLS than glibc reserves for libraries
+# opened later ("cannot allocate memory in static TLS block"), so it must be preloaded. The bundle is downloaded
+# the first time the browser is opened; from the next start it is preloaded here.
+JCEF_LIB="$HOME/.jcef-bundle-v141/libcef.so"
+if [ "$(uname -m)" = aarch64 ] && [ -f "$JCEF_LIB" ]; then
+  export LD_PRELOAD="$JCEF_LIB${LD_PRELOAD:+:$LD_PRELOAD}"
+fi
 
 # Class data sharing archive: created on the first run, then loaded at every start (much faster class
 # loading on the Pi). It is rebuilt automatically when the jar or the JDK change.
@@ -31,6 +41,8 @@ JVM_OPTS=(
   -Xms64m -Xmx"${JAVACHESS_HEAP:-512m}"
   # small heap, 4 cores: the serial collector has the smallest footprint and short young pauses
   -XX:+UseSerialGC
+  # give unused heap back to the OS: committed heap stays close to the ~100 MB in use (Pi with 1-2 GB)
+  -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=30
   -XX:ReservedCodeCacheSize=64m
   -XX:+ExitOnOutOfMemoryError
   -XX:SharedArchiveFile="$CACHE_DIR/app-cds.jsa" -XX:+AutoCreateSharedArchive -Xlog:cds=off -Xlog:cds+dynamic=off
