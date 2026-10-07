@@ -77,6 +77,7 @@ public class App extends Application {
         }
         AppExecutors.shutdown(); // pending archive writes are completed first
         org.example.javachess.Controllers.BrowserController.disposeIfStarted();
+        org.example.javachess.Engine.EngineManager.shutdownIfStarted(); // engines get "quit" before the kill below
         stopChildProcesses();
         logLingeringThreads();
         // Last resort for threads started by libraries that do not use daemon threads.

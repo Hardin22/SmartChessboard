@@ -336,6 +336,14 @@ public final class EngineManager implements EngineSelection {
         reconfigureHooks.forEach(Runnable::run);
     }
 
+    /** Closes the engines if the manager was ever created (application exit); never starts anything. */
+    public static void shutdownIfStarted() {
+        EngineManager m = instance;
+        if (m != null) {
+            m.shutdown();
+        }
+    }
+
     /** Closes every engine process (used at shutdown; safe to call more than once). */
     public void shutdown() {
         List<UciClient> all = new ArrayList<>();
