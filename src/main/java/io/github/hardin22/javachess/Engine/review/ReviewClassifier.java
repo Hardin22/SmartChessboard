@@ -1202,14 +1202,16 @@ public final class ReviewClassifier {
         return (t.greatNoEscortedPush && escortedPush(b0, m, side))
                 || (t.greatNoQueenAttackerTaken && epBefore > t.greatInCheckMaxEp && !b0.isKingAttacked()
                 && takesQueenAttacker(b0, m, side, previous))
-                || (t.greatNoBishopEndingMove && bishopEndingMove(b0, m, side));
+                || (t.greatNoBishopEndingMove && epBefore > t.forcingCheckMinEp && bishopEndingMove(b0, m, side));
     }
 
     /**
      * Bishop against pawns: a quiet move of the mover's only piece, a bishop, when the opponent has no piece. The bishop
      * holds a diagonal from several equivalent squares, so the move is not a find even when our short second line says
      * so (Spassky - Fischer 1972 g1, 44.Bf2 and 46.Bg5: SF16 d22 has Bc1/Bd2/Bg5 = Bf2 + 31 cp and Be1 = Bg5, chess.com
-     * Best). On the 177 games no such move is chess.com Great.
+     * Best). On the 177 games no such move is chess.com Great. Only in a position already won (win chance above
+     * {@link Tuning#forcingCheckMinEp}, the "won attack" level of G+1): a bishop that is the last stopper of two passed
+     * pawns in a balanced ending can have a real only move.
      */
     private static boolean bishopEndingMove(Board b0, Move m, Side side) {
         if (b0.getPiece(m.getFrom()).getPieceType() != PieceType.BISHOP || b0.getPiece(m.getTo()) != Piece.NONE) {

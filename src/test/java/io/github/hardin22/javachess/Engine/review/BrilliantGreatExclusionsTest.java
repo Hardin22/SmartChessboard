@@ -822,6 +822,8 @@ class BrilliantGreatExclusionsTest {
                 Eval.cp(127), "e3g1", Eval.cp(328)), 0, 0);
         assertEquals(MoveClassification.BEST, label(bf2, Tuning.DEFAULT));
         assertEquals(MoveClassification.GREAT, label(bf2, Tuning.DEFAULT.with("greatNoBishopEndingMove", 0)));
+        // ... only in a won position: from a balanced ending the same quiet bishop move can be the only one
+        assertEquals(MoveClassification.GREAT, label(bf2, Tuning.DEFAULT.with("forcingCheckMinEp", 0.95)));
     }
 
     private static ReviewInput rated(ReviewInput in, int white, int black) {
