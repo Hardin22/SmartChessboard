@@ -287,10 +287,38 @@ public final class MoveCoach {
         }
     }
 
+    /**
+     * Guaranteed minimum: a {@link PositionAnalyzer.Priority#VERDICT} search of the new position to the verdict depth
+     * (queued ahead of a bot move that shares the engine), then the live analysis follows the new position and
+     * provides the deeper confirmation.
+     */
     private void startFollowing(Pending p, String fenAfter, EngineManager.Budget b) {
         p.capTask = EngineEvents.EXECUTOR.schedule(() -> onCap(p), b.coachCapMs(), TimeUnit.MILLISECONDS);
         p.deadlineTask = EngineEvents.EXECUTOR.schedule(() -> onDeadline(p), HARD_DEADLINE_MS, TimeUnit.MILLISECONDS);
+        if (p.emitted == null && legalMoveCount(fenAfter) > 0) {
+            analyzer.submit(PositionAnalyzer.Priority.VERDICT, fenAfter,
+                    SearchLimits.depth(b.coachMinDepth()).withTimeout(HARD_DEADLINE_MS), Map.of())
+                    .whenComplete((r, err) -> EngineEvents.EXECUTOR.execute(() -> {
+                        if (err != null || r == null || r.best() == null || pending != p || p.emitted != null) {
+                            return;
+                        }
+                        Score played = r.best().score().negate();
+                        Score best = p.bestBefore != null ? p.bestBefore : played;
+                        emit(p, MoveClassifier.classify(best, played, p.playedIsBest), r.depth(),
+                                r.depth() < b.coachConfirmDepth());
+                    }));
+        }
         analyzer.follow(fenAfter);
+    }
+
+    private static int legalMoveCount(String fen) {
+        try {
+            Board board = new Board();
+            board.loadFromFen(fen);
+            return MoveGenerator.generateLegalMoves(board).size();
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     private void onAnalysis(AnalysisUpdate u) {

@@ -66,7 +66,9 @@ public record ProcessPlan(long ramMb, String tier, boolean botSharesAnalysis, in
             p = new ProcessPlan(ramMb, "8 GB+", false, 128, 32, Math.max(1, Math.min(cores / 2, 4)), 10 * 60_000L);
         }
         int cfgThreads = ConfigManager.getIntProperty("stockfish.threads", p.analysisThreads);
-        int cfgHash = ConfigManager.getIntProperty("stockfish.hash", p.analysisHashMb);
+        // an explicit config value wins, but never more than 1/16 of the RAM (an old "64" on a 1 GB board)
+        int cfgHash = (int) Math.min(ConfigManager.getIntProperty("stockfish.hash", p.analysisHashMb),
+                Math.max(16, ramMb / 16));
         return new ProcessPlan(p.ramMb, p.tier, p.botSharesAnalysis, Math.max(1, cfgHash), p.botHashMb,
                 Math.max(1, cfgThreads), p.idleCloseMs);
     }
