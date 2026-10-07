@@ -616,10 +616,13 @@ public class PvcGame extends AbstractGame {
         }
     }
 
-    /** End of the game: clock stopped, hint removed. */
+    /** End of the game: clock stopped, hint removed, the bot strength back to the plain skill level. */
     private void endFeatures() {
         if (clock != null) {
             clock.stop();
+        }
+        if (level != null) {
+            EngineManager.get().setBotStrength(null);
         }
         if (hintAdvisor != null) {
             hintAdvisor.clear();
