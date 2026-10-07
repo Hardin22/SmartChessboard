@@ -54,6 +54,7 @@ public final class SecondLineSim {
         long liteNodes = 0;
         long extraNodes = 0;
         int candidates = 0;
+        int researched = 0;
         int games = 0;
         for (EvalDump.Game lite : EvalDump.load(dump, liteBudget)) {
             LabelledGame g = labelled.get(lite.id());
@@ -86,6 +87,21 @@ public final class SecondLineSim {
                 if ("full".equals(mode)) {
                     ps.set(i, dp.withSecond());
                     extraNodes += dp.nodes() + (dp.second() == null ? 0 : dp.second().nodes());
+                } else if ("near".equals(mode) && dp.second() != null && ps.get(i).secondBest() != null) {
+                    // re-search only when the Lite gap is just under the Great threshold; keep the worse second
+                    PositionEval p = ps.get(i);
+                    boolean white = p.whiteToMove();
+                    double gap = p.eval().winChance(white) - p.secondBest().eval().winChance(white);
+                    double lo = Double.parseDouble(System.getProperty("sim.nearLo", "0.08"));
+                    double hi = Double.parseDouble(System.getProperty("sim.nearHi", "0.15"));
+                    if (gap >= lo && gap < hi) {
+                        researched++;
+                        extraNodes += dp.second().nodes();
+                        if (dp.second().eval().cpFor(white) < p.secondBest().eval().cpFor(white)) {
+                            ps.set(i, new PositionEval(p.fen(), p.eval(), List.of(p.best(), dp.second().engineLine()),
+                                    p.depth(), p.nodes(), false));
+                        }
+                    }
                 } else if ("second".equals(mode) && dp.second() != null && dp.pv().get(0).equals(
                         ps.get(i).bestMove())) {
                     PositionEval p = ps.get(i);
@@ -118,8 +134,9 @@ public final class SecondLineSim {
             }
         }
         StringBuilder sb = new StringBuilder(String.format(Locale.ROOT,
-                "%s: %d games %d plies exact %.3f far %d | candidates %.1f/game, extra nodes %+.0f%%", mode, games,
-                plies, (double) exact / plies, far, (double) candidates / Math.max(1, games),
+                "%s: %d games %d plies exact %.3f far %d | candidates %.1f/game, re-searched %.1f/game, extra nodes %+.0f%%",
+                mode, games, plies, (double) exact / plies, far, (double) candidates / Math.max(1, games),
+                (double) researched / Math.max(1, games),
                 100.0 * extraNodes / Math.max(1, liteNodes)));
         for (String c : List.of("BRILLIANT", "GREAT", "MISS")) {
             int[] v = pr.get(c);

@@ -151,8 +151,8 @@ public final class ReviewClassifier {
             criticalMinEp = get("criticalMinEp", 0.40);
             brilliantFromGood = get("brilliantFromGood", 1) != 0;
             brilliantRule = (int) get("brilliantRule", 2);
-            brilliantNonTopLoss = get("brilliantNonTopLoss", 0.01);
-            fakeRegain = get("fakeRegain", 2);
+            brilliantNonTopLoss = get("brilliantNonTopLoss", 0.03);
+            fakeRegain = get("fakeRegain", 4);
             greatNoCapture = get("greatNoCapture", 1) != 0;
             greatCaptureRule = (int) get("greatCaptureRule", 0);
             brilliantWinningCp = get("brilliantWinningCp", 700);
@@ -166,9 +166,9 @@ public final class ReviewClassifier {
             brilliantMaxLoss = get("brilliantMaxLoss", 0.03);
             brilliantMinEpAfter = get("brilliantMinEpAfter", 0.48);
             brilliantMaxAlt = get("brilliantMaxAlt", 0.97);
-            greatGap = get("greatGap", 0.25);
+            greatGap = get("greatGap", 0.15);
             greatPunishGap = get("greatPunishGap", 0.15);
-            greatMinEp = get("greatMinEp", 0.45);
+            greatMinEp = get("greatMinEp", 0.40);
             greatMaxEp = get("greatMaxEp", 0.98);
             greatFilters = get("greatFilters", 1) != 0;
             greatInCheck = get("greatInCheck", 0) != 0;
