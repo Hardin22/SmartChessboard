@@ -67,14 +67,13 @@ final class DevDemos {
                 case "pvc-status" -> pvc(main, true, game -> game.devStatus(System.getProperty("javachess.demo.status", "")));
                 case "pvp-status" -> pvp(main, game -> game.devStatus(System.getProperty("javachess.demo.status", "")));
                 case "pvc-menu" -> pvc(main, true, game -> lookupFire(main, "game-menu"));
-                case "pvc-hint" -> pvc(main, true, game -> {
-                    lookupFire(main, "game-hint");
+                case "pvc-hint" -> pvc(main, true, game -> fireWhenEnabled(main, "game-hint", 60, () -> {
                     if (Boolean.getBoolean("javachess.demo.hintMove")) {
-                        later(2.5, () -> lookupFire(main, "game-hint"));
+                        later(0.5, () -> fireWhenEnabled(main, "game-hint", 150, null));
                     }
-                });
-                case "pvc-draw" -> pvc(main, true, game -> lookupFire(main, "game-draw"));
-                case "pvc-undo" -> pvc(main, true, game -> lookupFire(main, "game-undo"));
+                }));
+                case "pvc-draw" -> pvc(main, true, game -> fireWhenEnabled(main, "game-draw", 60, null));
+                case "pvc-undo" -> pvc(main, true, game -> fireWhenEnabled(main, "game-undo", 60, null));
                 case "home-resume" -> {
                     GameSnapshotStore.get().save(demoSnapshot());
                     later(0.8, () -> main.navigateTo("HOME"));
@@ -123,6 +122,22 @@ final class DevDemos {
                     false, false, null));
         } else {
             LOG.warn("No node #{} for the demo", id);
+        }
+    }
+
+    /** Taps a button as soon as it is enabled (the computer may still be thinking), then runs {@code then}. */
+    private static void fireWhenEnabled(MainController main, String id, int tries, Runnable then) {
+        Node node = main.getMainContainer().getScene().lookup("#" + id);
+        if (node instanceof Button b && !b.isDisabled()) {
+            LOG.info("demo: tapping #{}", id);
+            b.fire();
+            if (then != null) {
+                then.run();
+            }
+        } else if (tries > 0) {
+            later(0.3, () -> fireWhenEnabled(main, id, tries - 1, then));
+        } else {
+            LOG.warn("Button #{} never enabled for the demo", id);
         }
     }
 

@@ -324,6 +324,11 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         refreshPvcButtons();
     }
 
+    /** A hint asked for owns the coach line until the player moves. */
+    private boolean hintShown() {
+        return currentGame instanceof PvcGame pvc && pvc.hints().levelProperty().get() != HintAdvisor.Level.NONE;
+    }
+
     private static final javafx.scene.paint.Color HINT_SQUARE = javafx.scene.paint.Color.rgb(79, 157, 255, 0.45);
     private static final javafx.scene.paint.Color HINT_ARROW = javafx.scene.paint.Color.rgb(79, 157, 255, 0.85);
 
@@ -340,7 +345,7 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         solo.undoButton.setDisable(!running || !pvc.canTakeBack());
         HintAdvisor hints = pvc.hints();
         HintAdvisor.Level level = hints.levelProperty().get();
-        solo.hintButton.setText(I18n.t(level == HintAdvisor.Level.PIECE ? "game.hint.more" : "game.hint"));
+        solo.hintButton.setText(I18n.t(level == HintAdvisor.Level.PIECE ? "game.hint.more.short" : "game.hint"));
         solo.hintButton.setDisable(!running || !pvc.isAwaitingHumanMove() || level == HintAdvisor.Level.THINKING
                 || !hints.canAskMoreProperty().get());
         solo.drawButton.setDisable(!running || !pvc.canOfferDraw());
@@ -519,7 +524,7 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
             if (arduinoController != null) {
                 arduinoController.getBoardStateManager().setBestMove(best);
             }
-            if (mode != Mode.PVP) {
+            if (mode != Mode.PVP && !hintShown()) {
                 boolean humanToMove = whiteToMove == humanWhite;
                 boolean blackAhead = eval.startsWith("−") || eval.startsWith("-");
                 String text = showBestMoves && humanToMove ? line : showBestMoves ? I18n.t("game.coach.wait") : "";
