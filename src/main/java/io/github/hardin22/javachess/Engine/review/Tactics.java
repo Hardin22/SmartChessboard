@@ -259,6 +259,41 @@ final class Tactics {
         return false;
     }
 
+    /**
+     * Position after a sacrifice (opponent to move): the opponent takes on {@code sq} with its least valuable legal
+     * capture; returns the most the mover then wins at once (best static exchange on an opponent piece), or -1 when
+     * the piece cannot be taken or taking it mates.
+     */
+    static int regainAfterCapture(Board b1, Square sq) {
+        Move take = leastValuableCapture(b1, sq);
+        if (take == null) {
+            return -1;
+        }
+        Board b2 = b1.clone();
+        b2.doMove(take);
+        if (b2.isMated()) {
+            return -1;
+        }
+        Side opponent = b2.getSideToMove().flip();
+        int best = 0;
+        for (Square s2 : Square.values()) {
+            if (s2 == Square.NONE) {
+                continue;
+            }
+            Piece p = b2.getPiece(s2);
+            if (p != Piece.NONE && p.getPieceSide() == opponent) {
+                best = Math.max(best, see(b2, s2));
+            }
+        }
+        return best;
+    }
+
+    /** True when the move (UCI) captures something, en passant included. */
+    static boolean isCapture(Board b, String uci) {
+        Move m = find(b, uci);
+        return m != null && (b.getPiece(m.getTo()) != Piece.NONE || isEnPassant(b, m));
+    }
+
     static Move find(Board b, String uci) {
         try {
             for (Move m : b.legalMoves()) {
