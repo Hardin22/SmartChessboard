@@ -28,9 +28,8 @@ public class PvpGame extends AbstractGame {
     @Override
     public void startGame() {
         gameRunning = true;
-        isWhiteTurn = true;
+        isWhiteTurn = board.getSideToMove() == Side.WHITE; // a position or a resumed game may start with Black
         chessTimer.initializetimer();
-        pgn.setLength(0);
         evaluatePositionAndMoves();
 
         // Listen for physical moves and setup
@@ -51,7 +50,11 @@ public class PvpGame extends AbstractGame {
             public void onBoardSetupComplete() {
                 updateStatus("SCACCHIERA PRONTA! Partita Iniziata");
                 manager.startGameMode(); // ACTIVATE GAME MODE
-                chessTimer.startWhiteTimer();
+                if (isWhiteTurn) {
+                    chessTimer.startWhiteTimer();
+                } else {
+                    chessTimer.startBlackTimer();
+                }
             }
 
             @Override
@@ -187,5 +190,43 @@ public class PvpGame extends AbstractGame {
         updateStatus(endMessage);
         // Removed label clearing
         openingNameLabel.setText("");
+    }
+
+    // --- resuming ------------------------------------------------------------------------------------------
+
+    private java.time.LocalDateTime startedAt = java.time.LocalDateTime.now();
+
+    @Override
+    protected io.github.hardin22.javachess.Play.GameSnapshot snapshot() {
+        ChessClock clock = chessTimer.clock();
+        return new io.github.hardin22.javachess.Play.GameSnapshot(io.github.hardin22.javachess.Play.GameSnapshot.Mode.PVP,
+                initialFen, movesUci, true, null, null, 0,
+                gameDuration <= 0 ? io.github.hardin22.javachess.Play.TimeControl.UNLIMITED
+                        : new io.github.hardin22.javachess.Play.TimeControl(gameDuration, increment),
+                clock.remainingMillis(ChessClock.Side.WHITE), clock.remainingMillis(ChessClock.Side.BLACK), 0, 0,
+                startedAt, java.time.LocalDateTime.now());
+    }
+
+    /** Puts a saved game back (call before {@link #startGame()}): position, moves and clocks. */
+    public void resume(io.github.hardin22.javachess.Play.GameSnapshot snapshot) {
+        setStartPosition(snapshot.initialFen());
+        replayMoves(snapshot.moves());
+        if (snapshot.startedAt() != null) {
+            startedAt = snapshot.startedAt();
+        }
+        ChessClock clock = chessTimer.clock();
+        clock.setRemainingMillis(ChessClock.Side.WHITE, snapshot.whiteMillis());
+        clock.setRemainingMillis(ChessClock.Side.BLACK, snapshot.blackMillis());
+        io.github.hardin22.javachess.Play.GameResume.forgetArchivedInterruption(snapshot);
+    }
+
+    /** A two-player game rebuilt from a saved one, ready for {@link #startGame()}. */
+    public static PvpGame fromSnapshot(io.github.hardin22.javachess.Play.GameSnapshot s, ChessBoardUI chessBoardUI,
+            EvalBar evalBar, Label openingNameLabel, Label whiteLabel, Label blackLabel) {
+        io.github.hardin22.javachess.Play.TimeControl tc = s.timeControl();
+        PvpGame game = new PvpGame(chessBoardUI, evalBar, openingNameLabel, whiteLabel, blackLabel,
+                tc.isUnlimited() ? 0 : tc.initialSeconds(), tc.incrementSeconds());
+        game.resume(s);
+        return game;
     }
 }
