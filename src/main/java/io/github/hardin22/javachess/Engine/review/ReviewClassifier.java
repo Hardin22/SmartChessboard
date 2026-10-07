@@ -56,6 +56,8 @@ public final class ReviewClassifier {
         final double greatMaxEp;
         /** Not Great: taking a hanging piece, a plain recapture. */
         final boolean greatFilters;
+        /** Great after an opponent's error: the opponent's previous move lost at least this much. */
+        final double greatOpponentLoss;
         /** Miss: the opponent's previous move lost at least this much. */
         final double missOpponentLoss;
         /** Miss: the mover ends no worse than before the opponent's error, within this tolerance. */
@@ -70,6 +72,9 @@ public final class ReviewClassifier {
         final int bookMaxGap;
         /** Book labels stop after this many plies. */
         final int bookMaxPly;
+        /** A move that loses at least {@code lostDrop} cp (0 = off) from {@code lostEval} cp or worse is a Mistake. */
+        final double lostDrop;
+        final double lostEval;
         /** Book also covers this many plies after the last named position when each loses less than ... */
         final int bookExtend;
         /** ... this win chance. */
@@ -92,17 +97,20 @@ public final class ReviewClassifier {
             criticalMinEp = get("criticalMinEp", 0.40);
             brilliantFromGood = get("brilliantFromGood", 1) != 0;
             greatGap = get("greatGap", 0.20);
-            greatPunishGap = get("greatPunishGap", 0.05);
+            greatPunishGap = get("greatPunishGap", 0.10);
             greatMinEp = get("greatMinEp", 0.45);
             greatMaxEp = get("greatMaxEp", 0.95);
             greatFilters = get("greatFilters", 1) != 0;
             missOpponentLoss = get("missOpponentLoss", 0.08);
+            greatOpponentLoss = get("greatOpponentLoss", 0.05);
             missNoWorse = get("missNoWorse", 0.10);
             blunderAnywayLoss = get("blunderAnyway", 0.30);
             blunderMaterial = get("blunderMaterial", 2);
             giveAwayDrawEp = get("giveAwayDrawEp", 0.6);
             bookMaxGap = (int) get("bookMaxGap", 4);
             bookMaxPly = (int) get("bookMaxPly", 20);
+            lostDrop = get("lostDrop", 150);
+            lostEval = get("lostEval", 400);
             bookExtend = (int) get("bookExtend", 2);
             bookExtendLoss = get("bookExtendLoss", 0.02);
             slope = get("slope", 0.0035);
@@ -409,6 +417,13 @@ public final class ReviewClassifier {
                 if (drawn && epBefore[i] >= t.giveAwayDrawEp) {
                     label = MoveClassification.BLUNDER; // stalemate (or dead draw) from a winning position
                 }
+                if (t.lostDrop > 0 && severity(label) < severity(MoveClassification.MISTAKE) && !best.isMate()
+                        && !played[i].isMate() && best.cpFor(me) <= -t.lostEval
+                        && best.cpFor(me) - played[i].cpFor(me) >= t.lostDrop) {
+                    // chess.com calls a Mistake what makes a lost position clearly worse, although the win chance
+                    // hardly changes (43 labelled games: 21 of 29 moves losing 2+ pawns from -5 or worse)
+                    label = MoveClassification.MISTAKE;
+                }
                 if (label == MoveClassification.MISTAKE || label == MoveClassification.BLUNDER) {
                     boolean gives = givesSomethingAway(replay.fens().get(i), uci, p0, pos.get(i + 1), played[i], me,
                             epBefore[i], t);
@@ -541,7 +556,7 @@ public final class ReviewClassifier {
         // SPEC v1.6: a Great mostly punishes the opponent's error (gap >= 0.05 is enough then), otherwise it must be
         // the only good move by a wide margin
         double gap = epBefore - ep(second.eval(), me, k);
-        boolean punishes = oppLoss >= t.missOpponentLoss && gap >= t.greatPunishGap;
+        boolean punishes = oppLoss >= t.greatOpponentLoss && gap >= t.greatPunishGap;
         return punishes || gap >= t.greatGap ? MoveClassification.GREAT : null;
     }
 
