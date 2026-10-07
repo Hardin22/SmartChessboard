@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * <pre>
  * ./mvnw test -DskipE2E=true -Dtest=ChessComAgreementTest -Dreview.harness=true \
  *     -Djavachess.engines.dir=$HOME/Developer/javaChess/engines [-Dreview.depth=12] [-Dreview.limit=50] \
- *     [-Dreview.games=id1,id2] [-Dreview.timeClass=blitz] [-Dreview.out=target/review]
+ *     [-Dreview.games=id1,id2] [-Dreview.timeClass=blitz] [-Dreview.labelledOnly=true] [-Dreview.out=target/review]
  * </pre>
  * Writes {@code report.md}, {@code summary.json} and {@code plies.csv} to {@code review.out}. The only hard assertion
  * is the mate sanity check (a mate given is never an error, an avoidable mate in one is never a good move), gated by
@@ -81,6 +81,10 @@ class ChessComAgreementTest {
                 .collect(Collectors.toSet());
         List<ChessComDataset.Game> out = new ArrayList<>();
         for (ChessComDataset.Game g : all) {
+            boolean complete = g.hasLabels() && g.labels().stream().allMatch(java.util.Objects::nonNull);
+            if (Boolean.getBoolean("review.labelledOnly") && !complete) {
+                continue;
+            }
             if ((wanted.isEmpty() || wanted.contains(g.id())) && (tc.isEmpty() || tc.equals(g.timeClass()))) {
                 out.add(g);
             }

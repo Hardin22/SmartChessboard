@@ -5,7 +5,10 @@ into the compact test fixture src/test/resources/review/chesscom-games.jsonl.
 Usernames, PGN headers, uuids and clocks are dropped: the fixture keeps only what the review harness
 needs (moves, ratings, time class, accuracies, per-move labels when available).
 
-Usage: scripts/review/import_chesscom_fixtures.py <games-dir> [output.jsonl]
+Usage: scripts/review/import_chesscom_fixtures.py <games-dir> [output.jsonl] [--labels <labels_chesscom-dir>]
+
+With --labels, the complete per-move chess.com labels of <labels-dir>/<id>.json ({labels: [{ply, san, label}]})
+replace the partial ones of the game file.
 """
 import glob
 import json
@@ -14,7 +17,8 @@ import re
 import sys
 
 KEEP = ["id", "url", "time_class", "time_control", "rated", "white_rating", "black_rating",
-        "result", "result_white", "result_black", "eco_url", "final_fen", "accuracy", "labels", "tags"]
+        "result", "result_white", "result_black", "eco_url", "final_fen", "accuracy", "labels", "labels_complete",
+        "tags"]
 
 
 def san_from_pgn(pgn):
@@ -43,13 +47,26 @@ def result_of(g):
 
 
 def main():
-    src = sys.argv[1]
-    dst = sys.argv[2] if len(sys.argv) > 2 else os.path.join(
+    args = sys.argv[1:]
+    labels_dir = None
+    if "--labels" in args:
+        i = args.index("--labels")
+        labels_dir = args[i + 1]
+        del args[i:i + 2]
+    src = args[0]
+    dst = args[1] if len(args) > 1 else os.path.join(
         os.path.dirname(__file__), "..", "..", "src", "test", "resources", "review", "chesscom-games.jsonl")
     rows = []
     for path in sorted(glob.glob(os.path.join(src, "*.json"))):
         with open(path, encoding="utf-8") as f:
             g = json.load(f)
+        if labels_dir:
+            lp = os.path.join(labels_dir, os.path.basename(path))
+            if os.path.exists(lp):
+                with open(lp, encoding="utf-8") as f:
+                    full = json.load(f)
+                g["labels"] = [{"ply": l["ply"], "san": l["san"], "label": l["label"]} for l in full["labels"]]
+                g["labels_complete"] = True
         acc = g.get("accuracy") or {}
         if (acc.get("white") is None or acc.get("black") is None) and not g.get("labels"):
             continue  # neither accuracies nor labels: useless as ground truth
