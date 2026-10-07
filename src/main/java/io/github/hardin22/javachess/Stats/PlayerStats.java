@@ -251,8 +251,8 @@ public final class PlayerStats {
     }
 
     /**
-     * Opening family: without the ECO code and the variation ("C50 Italian Game: Giuoco Piano" → "Italian Game");
-     * "Sconosciuta" when the archive has no name.
+     * Opening family in Italian: without the ECO code and the variation ("C50 Italian Game: Giuoco Piano" →
+     * "Partita Italiana", the same for a name already in Italian); "Sconosciuta" when the archive has no name.
      */
     static String openingFamily(String opening) {
         if (opening == null || opening.isBlank() || opening.equalsIgnoreCase("Unknown")
@@ -268,7 +268,7 @@ public final class PlayerStats {
         if (comma > 0) {
             s = s.substring(0, comma);
         }
-        return s.trim();
+        return io.github.hardin22.javachess.Analysis.OpeningNames.italian(s.trim()); // one name per family
     }
 
     private static List<Row> group(List<Entry> entries, java.util.function.Function<Entry, String> key, int max) {

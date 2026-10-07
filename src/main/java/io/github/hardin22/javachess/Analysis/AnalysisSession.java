@@ -166,7 +166,10 @@ public final class AnalysisSession {
         return variationText.getReadOnlyProperty();
     }
 
-    /** Opening of the position from the offline book ("C50 Italian Game"), the last one met on the way; or "". */
+    /**
+     * Opening of the position from the offline book, in Italian ("C50 Partita Italiana"), the last one met on the
+     * way; or "".
+     */
     public ReadOnlyStringProperty openingProperty() {
         return opening.getReadOnlyProperty();
     }
@@ -469,7 +472,7 @@ public final class AnalysisSession {
         for (AnalysisTree.Node n = tree.current(); n != null; n = n.parent()) {
             var name = b.nameAfter(n.fen());
             if (name.isPresent()) {
-                return name.get();
+                return OpeningNames.italian(name.get());
             }
         }
         return "";

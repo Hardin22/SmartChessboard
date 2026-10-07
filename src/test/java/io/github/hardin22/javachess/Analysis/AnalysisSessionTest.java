@@ -52,7 +52,7 @@ class AnalysisSessionTest {
 
         session.goToPly(6);
         assertEquals("3… Cf6", session.titleProperty().get());
-        assertTrue(session.openingProperty().get().contains("Two Knights"), session.openingProperty().get());
+        assertTrue(session.openingProperty().get().contains("Difesa dei due cavalli"), session.openingProperty().get());
         session.last();
         assertFalse(session.canGoForwardProperty().get());
         session.first();
