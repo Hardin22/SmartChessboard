@@ -102,7 +102,7 @@ public final class ThemeManager {
         if (fontsLoaded) {
             return;
         }
-        String[] files = { "Geist-Regular", "Geist-Medium", "Geist-SemiBold", "Geist-Bold",
+        String[] files = { "Geist-Regular", "Geist-Light", "Geist-Medium", "Geist-SemiBold", "Geist-Bold",
                 "GeistMono-Regular", "GeistMono-Medium", "GeistMono-SemiBold" };
         for (String file : files) {
             try (InputStream in = ThemeManager.class.getResourceAsStream("/Font/Geist/" + file + ".ttf")) {
@@ -254,14 +254,14 @@ public final class ThemeManager {
                           Color muted, Color accent, Color success, Color warning, Color danger) {
 
         static final Palette DARK = new Palette(
-                Color.web("#0A0A0A"), Color.web("#111111"), Color.web("#1A1A1A"), Color.web("#262626"),
-                Color.web("#3D3D3D"), Color.web("#EDEDED"), Color.web("#A1A1A1"), Color.web("#52A8FF"),
-                Color.web("#3FB950"), Color.web("#F5A524"), Color.web("#FF6166"));
+                Color.web("#0C0C0E"), Color.web("#151518"), Color.web("#1D1D21"), Color.web("#2C2C32"),
+                Color.web("#3E3E46"), Color.web("#F4F4F5"), Color.web("#ABABB4"), Color.web("#4F9DFF"),
+                Color.web("#3DD68C"), Color.web("#F5B83D"), Color.web("#FF5C5F"));
 
         static final Palette LIGHT = new Palette(
-                Color.web("#FAFAFA"), Color.web("#FFFFFF"), Color.web("#F2F2F2"), Color.web("#E5E5E5"),
-                Color.web("#C9C9C9"), Color.web("#171717"), Color.web("#5E5E5E"), Color.web("#0068D6"),
-                Color.web("#1A7F37"), Color.web("#A35200"), Color.web("#CB2A2F"));
+                Color.web("#F3F2EF"), Color.web("#FFFFFF"), Color.web("#ECEAE6"), Color.web("#DEDBD5"),
+                Color.web("#C4C0B8"), Color.web("#141416"), Color.web("#55555C"), Color.web("#1A6BE0"),
+                Color.web("#1E8E52"), Color.web("#A86500"), Color.web("#C9302C"));
     }
 
     /** Human label of a mode, used by the settings screen. */

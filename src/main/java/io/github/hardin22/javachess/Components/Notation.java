@@ -89,4 +89,45 @@ public final class Notation {
     public static String castling(String san) {
         return san.replace("0-0-0", "O-O-O").replace("0-0", "O-O");
     }
+
+    /**
+     * Italian piece letters, as printed in Italian books and used everywhere in the interface:
+     * N→C (cavallo), B→A (alfiere), R→T (torre), Q→D (donna), K→R (re); files, captures and castling unchanged.
+     */
+    public static String italian(String san) {
+        if (san == null || san.isEmpty()) {
+            return san;
+        }
+        StringBuilder out = new StringBuilder(san.length());
+        for (int i = 0; i < san.length(); i++) {
+            char c = san.charAt(i);
+            boolean pieceLetter = (i == 0 || san.charAt(i - 1) == '=' || san.charAt(i - 1) == ' ')
+                    && "NBRQK".indexOf(c) >= 0;
+            out.append(pieceLetter ? switch (c) {
+                case 'N' -> 'C';
+                case 'B' -> 'A';
+                case 'R' -> 'T';
+                case 'Q' -> 'D';
+                default -> 'R';
+            } : c);
+        }
+        return out.toString();
+    }
+
+    /** SAN of a numbered line converted with {@link #italian(String)}. */
+    public static String italianLine(String fen, List<String> uciMoves, int maxPlies) {
+        return italian(line(fen, uciMoves, maxPlies));
+    }
+
+    /** Italian name of a piece letter (English SAN letter or FEN letter, any case). */
+    public static String pieceName(char letter) {
+        return switch (Character.toUpperCase(letter)) {
+            case 'N' -> "Cavallo";
+            case 'B' -> "Alfiere";
+            case 'R' -> "Torre";
+            case 'Q' -> "Donna";
+            case 'K' -> "Re";
+            default -> "Pedone";
+        };
+    }
 }

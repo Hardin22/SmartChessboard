@@ -33,11 +33,12 @@ public class EnginePicker extends VBox {
 
     public EnginePicker(EngineSelection selection) {
         this.selection = selection;
-        getStyleClass().addAll("option-list", "engine-picker");
+        getStyleClass().add("engine-picker");
+        setSpacing(12);
         for (EngineProfile profile : selection.profiles()) {
             getChildren().add(row(profile));
         }
-        statusLabel.getStyleClass().add("caption");
+        statusLabel.getStyleClass().addAll("t-small", "t-muted");
         statusLabel.setWrapText(true);
         statusLabel.managedProperty().bind(statusLabel.visibleProperty());
         getChildren().add(statusLabel);
@@ -52,9 +53,9 @@ public class EnginePicker extends VBox {
         boolean show = status != null && status.state() != EngineStatus.State.READY && !status.message().isBlank();
         statusLabel.setVisible(show);
         statusLabel.setText(show ? status.message() : "");
-        statusLabel.getStyleClass().remove("danger-text");
+        statusLabel.getStyleClass().remove("t-danger");
         if (show && status.state() == EngineStatus.State.ERROR) {
-            statusLabel.getStyleClass().add("danger-text");
+            statusLabel.getStyleClass().add("t-danger");
         }
     }
 
@@ -64,23 +65,17 @@ public class EnginePicker extends VBox {
     }
 
     private Button row(EngineProfile profile) {
-        Label name = new Label(profile.displayName());
-        name.getStyleClass().add("option-title");
-        Label desc = new Label(profile.available() ? profile.description()
-                : I18n.t("engine.unavailable", profile.description()));
-        desc.getStyleClass().add("option-description");
-        VBox texts = new VBox(2, name, desc);
-        texts.setMinWidth(0);
-        HBox.setHgrow(texts, Priority.ALWAYS);
-        Region radio = new Region();
-        radio.getStyleClass().add("radio-mark");
-        HBox content = new HBox(16, texts, radio);
+        Region dot = new Region();
+        dot.getStyleClass().add("check-dot");
+        HBox content = new HBox(20, Ui.texts(profile.displayName(), profile.available() ? profile.description()
+                : I18n.t("engine.unavailable", profile.description()), "option-title", "option-sub"), dot);
         content.setAlignment(Pos.CENTER_LEFT);
 
         Button button = new Button();
-        button.getStyleClass().add("option-row");
+        button.getStyleClass().setAll("option");
         button.setGraphic(content);
         button.setMaxWidth(Double.MAX_VALUE);
+        content.prefWidthProperty().bind(button.widthProperty().subtract(52));
         button.setUserData(profile.id());
         button.setDisable(!profile.available());
         button.setOnAction(e -> {

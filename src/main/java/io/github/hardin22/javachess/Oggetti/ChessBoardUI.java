@@ -69,6 +69,11 @@ public class ChessBoardUI extends StackPane {
     private Move lastMoveShown;
     private boolean fitToParent;
     private boolean showCoordinates = true;
+    /** Coordinates drawn turned by 180 degrees (the interface is upside down for the viewer). */
+    private boolean coordinatesFlipped;
+    private boolean overlaysEnabled = true;
+    /** Board seen from Black's side (Black's pieces at the bottom). */
+    private boolean flipped;
     private final List<Runnable> arrowOps = new ArrayList<>();
     private final List<Runnable> iconOps = new ArrayList<>();
     private final List<Runnable> highlightOps = new ArrayList<>();
@@ -159,6 +164,56 @@ public class ChessBoardUI extends StackPane {
         drawBoardBackground(boardCanvas.getWidth(), boardCanvas.getHeight());
     }
 
+    /** Draws the coordinates upside down, for a viewer at the other end of the screen. */
+    public void setCoordinatesFlipped(boolean flipped) {
+        if (flipped != coordinatesFlipped) {
+            coordinatesFlipped = flipped;
+            drawBoardBackground(boardCanvas.getWidth(), boardCanvas.getHeight());
+        }
+    }
+
+    /**
+     * Shows the board from Black's side. The public drawing methods keep taking White-at-the-bottom coordinates
+     * (column 0 = file a, row 0 = rank 8): the board converts them.
+     */
+    public void setFlipped(boolean value) {
+        if (value == flipped) {
+            return;
+        }
+        flipped = value;
+        double side = TILE_SIZE * BOARD_SIZE;
+        stopCurrentAnimation();
+        drawBoardBackground(side, side);
+        java.util.Arrays.fill(drawn, null);
+        pieceCanvas.getGraphicsContext2D().clearRect(0, 0, side, side);
+        drawPieces(chessBoard, pieceStyle, null);
+        repaintHighlights();
+        replay(arrowCanvas, arrowOps);
+        replay(iconCanvas, iconOps);
+    }
+
+    public boolean isFlipped() {
+        return flipped;
+    }
+
+    /** Display column of a White-at-the-bottom column. */
+    private int dc(int column) {
+        return flipped ? 7 - column : column;
+    }
+
+    /** Display row of a White-at-the-bottom row. */
+    private int dr(int row) {
+        return flipped ? 7 - row : row;
+    }
+
+    /** When false, end-of-game cards are not drawn over the board (the screen shows the result itself). */
+    public void setOverlaysEnabled(boolean enabled) {
+        this.overlaysEnabled = enabled;
+        if (!enabled) {
+            clearOverlay();
+        }
+    }
+
     /** Called (on the FX thread) whenever a new position is shown; the argument is the last move or null. */
     public void setOnPositionChanged(Consumer<Move> listener) {
         this.onPositionChanged = listener;
@@ -218,20 +273,38 @@ public class ChessBoardUI extends StackPane {
             }
         }
         if (showCoordinates && TILE_SIZE >= 32) {
-            gc.setFont(Font.font(ThemeManager.FONT_MONO, FontWeight.SEMI_BOLD, Math.max(10, TILE_SIZE * 0.16)));
+            gc.setFont(Font.font("Geist Mono SemiBold", Math.max(10, TILE_SIZE * 0.17)));
             double pad = Math.max(2, TILE_SIZE * 0.06);
             for (int i = 0; i < BOARD_SIZE; i++) {
                 // Ranks on the left edge, files on the bottom edge, in the colour of the opposite square.
-                gc.setTextAlign(TextAlignment.LEFT);
-                gc.setTextBaseline(VPos.TOP);
+                String rank = String.valueOf(flipped ? i + 1 : 8 - i);
+                String file = String.valueOf((char) (flipped ? 'h' - i : 'a' + i));
                 gc.setFill(i % 2 == 0 ? colors.dark() : colors.light());
-                gc.fillText(String.valueOf(8 - i), pad, i * TILE_SIZE + pad);
-                gc.setTextAlign(TextAlignment.RIGHT);
-                gc.setTextBaseline(VPos.BOTTOM);
+                coordinate(gc, rank, pad, i * TILE_SIZE + pad, TextAlignment.LEFT, VPos.TOP);
                 gc.setFill(i % 2 == 0 ? colors.dark() : colors.light());
-                gc.fillText(String.valueOf((char) ('a' + i)), (i + 1) * TILE_SIZE - pad, height - pad);
+                coordinate(gc, file, (i + 1) * TILE_SIZE - pad, height - pad, TextAlignment.RIGHT, VPos.BOTTOM);
             }
         }
+    }
+
+    /** One coordinate label; when flipped it is drawn turned by 180 degrees in the same corner of the square. */
+    private void coordinate(GraphicsContext gc, String text, double x, double y, TextAlignment align, VPos baseline) {
+        if (!coordinatesFlipped) {
+            gc.setTextAlign(align);
+            gc.setTextBaseline(baseline);
+            gc.fillText(text, x, y);
+            return;
+        }
+        double size = TILE_SIZE * 0.17;
+        double cx = align == TextAlignment.LEFT ? x + size * 0.3 : x - size * 0.3;
+        double cy = baseline == VPos.TOP ? y + size * 0.5 : y - size * 0.5;
+        gc.save();
+        gc.translate(cx, cy);
+        gc.rotate(180);
+        gc.setTextAlign(TextAlignment.CENTER);
+        gc.setTextBaseline(VPos.CENTER);
+        gc.fillText(text, 0, 0);
+        gc.restore();
     }
 
     /** Light/dark square colours of an image board, read at the centre of a8 and b8 (for the coordinates). */
@@ -339,12 +412,14 @@ public class ChessBoardUI extends StackPane {
         }
     }
 
-    private static int col(Square sq) {
-        return sq.ordinal() % 8;
+    /** Display column of a square. */
+    private int col(Square sq) {
+        return dc(sq.ordinal() % 8);
     }
 
-    private static int row(Square sq) {
-        return 7 - (sq.ordinal() / 8);
+    /** Display row of a square. */
+    private int row(Square sq) {
+        return dr(7 - (sq.ordinal() / 8));
     }
 
     private void stopCurrentAnimation() {
@@ -392,7 +467,7 @@ public class ChessBoardUI extends StackPane {
         Runnable op = () -> {
             GraphicsContext gc = highlightCanvas.getGraphicsContext2D();
             gc.setFill(color);
-            gc.fillRect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            gc.fillRect(dc(col) * TILE_SIZE, dr(row) * TILE_SIZE, TILE_SIZE, TILE_SIZE);
         };
         highlightOps.add(op);
         op.run();
@@ -401,7 +476,7 @@ public class ChessBoardUI extends StackPane {
     public void highlightErrorSquare(String squareName) {
         try {
             Square sq = Square.valueOf(squareName.toUpperCase());
-            highlightSquare(col(sq), row(sq), ERROR);
+            highlightSquare(sq.ordinal() % 8, 7 - sq.ordinal() / 8, ERROR);
         } catch (IllegalArgumentException e) {
             // Unknown square name from the hardware: nothing to highlight.
         }
@@ -454,8 +529,8 @@ public class ChessBoardUI extends StackPane {
             int tc = Integer.parseInt(p[2]);
             int tr = Integer.parseInt(p[3]);
             Color color = Color.web(p[4]);
-            arrowOps.add(() -> drawArrow(arrowCanvas.getGraphicsContext2D(), (fc + 0.5) * TILE_SIZE,
-                    (fr + 0.5) * TILE_SIZE, (tc + 0.5) * TILE_SIZE, (tr + 0.5) * TILE_SIZE, color));
+            arrowOps.add(() -> drawArrow(arrowCanvas.getGraphicsContext2D(), (dc(fc) + 0.5) * TILE_SIZE,
+                    (dr(fr) + 0.5) * TILE_SIZE, (dc(tc) + 0.5) * TILE_SIZE, (dr(tr) + 0.5) * TILE_SIZE, color));
         }
         replay(arrowCanvas, arrowOps);
     }
@@ -473,15 +548,17 @@ public class ChessBoardUI extends StackPane {
         }
     }
 
-    public void drawIconOnSquare(int col, int row, String iconName) {
+    /** Review label tile in the top-right corner of a square (White-at-the-bottom coordinates). */
+    public void drawLabelOnSquare(int col, int row, MoveAnalysis.MoveClassification label) {
         Runnable op = () -> {
-            double iconSize = Math.round(TILE_SIZE * 0.38);
-            Image icon = ImageCache.getInstance().getImage("/images/analysis/" + iconName, iconSize, iconSize);
-            if (icon != null && !icon.isError()) {
-                double inset = Math.max(1, TILE_SIZE * 0.03);
-                iconCanvas.getGraphicsContext2D().drawImage(icon, (col + 1) * TILE_SIZE - iconSize - inset,
-                        row * TILE_SIZE + inset, iconSize, iconSize);
-            }
+            double size = Math.round(TILE_SIZE * 0.42);
+            double inset = Math.max(1, TILE_SIZE * 0.03);
+            double x = (dc(col) + 1) * TILE_SIZE - size * 0.78 - inset;
+            double y = dr(row) * TILE_SIZE - size * 0.22 + inset;
+            x = Math.min(x, BOARD_SIZE * TILE_SIZE - size);
+            y = Math.max(y, 0);
+            io.github.hardin22.javachess.Components.ReviewLabels.draw(iconCanvas.getGraphicsContext2D(), label, x, y,
+                    size);
         };
         iconOps.add(op);
         op.run();
@@ -545,6 +622,9 @@ public class ChessBoardUI extends StackPane {
 
     /** Light-weight end-of-game card over the board (no blur or glow: cheap with software rendering). */
     public void showVictoryAnimation(String title, String subtitle) {
+        if (!overlaysEnabled) {
+            return;
+        }
         overlayPane.getChildren().clear();
         Label titleLabel = new Label(sentenceCase(title));
         titleLabel.getStyleClass().add("board-overlay-title");

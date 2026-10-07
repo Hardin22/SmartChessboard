@@ -129,6 +129,13 @@ public final class DevOptions {
         }
         String snapshot = System.getProperty("javachess.snapshot");
         if (snapshot != null) {
+            // The snapshot window opens on a screen someone may be using: their typing and clicks must not drive it.
+            stage.getScene().addEventFilter(javafx.scene.input.KeyEvent.ANY, javafx.event.Event::consume);
+            stage.getScene().addEventFilter(javafx.scene.input.MouseEvent.ANY, e -> {
+                if (e.getScreenX() != 0 || e.getScreenY() != 0) {
+                    e.consume();
+                }
+            });
             long delay = Long.getLong("javachess.snapshot.delayMs", 3000L);
             PauseTransition pause = new PauseTransition(Duration.millis(delay));
             pause.setOnFinished(e -> writeSnapshot(stage.getScene(), new File(snapshot), ok -> {

@@ -1,8 +1,11 @@
 package io.github.hardin22.javachess.Controllers;
 
+import com.github.bhlangonijr.chesslib.Side;
 import javafx.animation.FadeTransition;
 import javafx.animation.Interpolator;
+import javafx.animation.ParallelTransition;
 import javafx.animation.PauseTransition;
+import javafx.animation.RotateTransition;
 import javafx.animation.SequentialTransition;
 import javafx.animation.TranslateTransition;
 import javafx.application.Platform;
@@ -14,14 +17,18 @@ import javafx.scene.Parent;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.input.KeyCode;
+import javafx.scene.input.RotateEvent;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
 import io.github.hardin22.javachess.Components.I18n;
 import io.github.hardin22.javachess.Components.Icons;
+import io.github.hardin22.javachess.Components.Prefs;
+import io.github.hardin22.javachess.Components.RotateButton;
+import io.github.hardin22.javachess.Components.Ui;
+import io.github.hardin22.javachess.Utils.ErrorReporter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,32 +39,46 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Supplier;
 
 /**
- * Root controller: owns the view container, loads views lazily (and preloads them on a background thread so the
- * FX thread never blocks on FXML parsing), and hosts the global overlays (bottom sheet and toast).
+ * Root controller: owns the view container, creates screens lazily (and preloads them on a background thread so the
+ * FX thread never waits for a screen to be built), the orientation of the whole interface and the global overlays
+ * (bottom sheets and toasts).
  *
- * <p>View names are stable identifiers also used by {@code DevOptions} ({@code -Djavachess.view=NAME}).</p>
+ * <p>View names are stable identifiers also used by {@code DevOptions} ({@code -Djavachess.view=NAME}) and the tests.
+ *
+ * <h2>Orientation</h2>
+ * The screen sits beside the physical board; its "bottom" end faces one player. {@code ui.screen.flipped} records how
+ * the monitor is mounted (bottom end on White's side or not). On top of that the interface can face the other end:
+ * games against the computer and puzzles face the human ({@link #face(Side)}), the rotate button and a two-finger
+ * twist turn it at any time ({@link #rotateScreen()}).
  */
 public class MainController {
 
     private static final Logger LOG = LoggerFactory.getLogger(MainController.class);
+    public static final String FLIPPED_KEY = "ui.screen.flipped";
+    public static final String AUTOROTATE_KEY = "ui.autorotate";
 
-    /** View name -> FXML path. Names are public API (DevOptions, other controllers). */
-    private static final Map<String, String> VIEWS = new LinkedHashMap<>();
+    /** How a view is built: an FXML file, or a {@link Screen} created in code. */
+    private record ViewSpec(String fxml, Supplier<? extends Screen> factory) {
+    }
+
+    /** View name -> how to build it. Names are public API (DevOptions, other controllers, tests). */
+    private static final Map<String, ViewSpec> VIEWS = new LinkedHashMap<>();
     static {
-        VIEWS.put("HOME", "/UI/HomeView.fxml");
-        VIEWS.put("PVC_SETUP", "/UI/PvCSetupView.fxml");
-        VIEWS.put("PVP_SETUP", "/UI/PvPSetupView.fxml");
-        VIEWS.put("LICHESS_SETUP", "/UI/LichessSetupView.fxml");
-        VIEWS.put("GAME", "/UI/GameView.fxml");
-        VIEWS.put("ARCHIVE", "/UI/ArchiveView.fxml");
-        VIEWS.put("REVIEW", "/UI/ReviewView.fxml");
-        VIEWS.put("PUZZLE_DASHBOARD", "/UI/PuzzleDashboardView.fxml");
-        VIEWS.put("PUZZLE_GAME", "/UI/PuzzleView.fxml");
-        VIEWS.put("THEME", "/UI/ThemeView.fxml");
-        VIEWS.put("SETTINGS", "/UI/SettingsView.fxml");
-        VIEWS.put("BROWSER", "/UI/BrowserView.fxml");
+        VIEWS.put("HOME", new ViewSpec(null, HomeController::new));
+        VIEWS.put("PVC_SETUP", new ViewSpec(null, PvcSetupController::new));
+        VIEWS.put("PVP_SETUP", new ViewSpec(null, PvpSetupController::new));
+        VIEWS.put("LICHESS_SETUP", new ViewSpec(null, LichessSetupController::new));
+        VIEWS.put("GAME", new ViewSpec(null, ActiveGameController::new));
+        VIEWS.put("ARCHIVE", new ViewSpec(null, ArchiveController::new));
+        VIEWS.put("REVIEW", new ViewSpec(null, ReviewController::new));
+        VIEWS.put("PUZZLE_DASHBOARD", new ViewSpec(null, PuzzleDashboardController::new));
+        VIEWS.put("PUZZLE_GAME", new ViewSpec(null, PuzzleController::new));
+        VIEWS.put("THEME", new ViewSpec(null, ThemeController::new));
+        VIEWS.put("SETTINGS", new ViewSpec(null, SettingsController::new));
+        VIEWS.put("BROWSER", new ViewSpec("/UI/BrowserView.fxml", null));
     }
 
     /** Views that must be created on the FX thread (JCEF/Swing bridge), never preloaded. */
@@ -85,6 +106,18 @@ public class MainController {
     });
     private String currentViewName;
     private Runnable onSheetClosed;
+    private boolean sheetModal;
+
+    /** Monitor mounted with its bottom end on Black's side (persistent). */
+    private boolean mountedFlipped;
+    /**
+     * The interface currently faces the far end of a normally mounted monitor (manual rotation, or a game facing
+     * Black). Boards on screen are drawn from Black's side while this is true, so they match the physical board.
+     */
+    private final javafx.beans.property.ReadOnlyBooleanWrapper facingFar =
+            new javafx.beans.property.ReadOnlyBooleanWrapper(false);
+    private RotateTransition rotation;
+    private double twist;
 
     public StackPane getMainContainer() {
         return mainContainer;
@@ -94,20 +127,35 @@ public class MainController {
     public void initialize() {
         sheetLayer.setVisible(false);
         sheetLayer.setOnMouseClicked(e -> {
-            if (e.getTarget() == sheetLayer) {
+            if (e.getTarget() == sheetLayer && !sheetModal) {
                 closeSheet();
             }
         });
         rootPane.setOnKeyPressed(e -> {
             if (e.getCode() == KeyCode.ESCAPE && sheetLayer.isVisible()) {
                 closeSheet();
+            } else if (e.getCode() == KeyCode.R && e.isShortcutDown()) {
+                rotateScreen();
             }
         });
+        // Two-finger twist on the touch screen turns the interface by 180 degrees.
+        rootPane.addEventFilter(RotateEvent.ROTATION_STARTED, e -> twist = 0);
+        rootPane.addEventFilter(RotateEvent.ROTATE, e -> twist = e.getTotalAngle());
+        rootPane.addEventFilter(RotateEvent.ROTATION_FINISHED, e -> {
+            if (Math.abs(twist) >= 70) {
+                rotateScreen();
+            }
+            twist = 0;
+        });
+        RotateButton.setAction(this::rotateScreen);
+        ErrorReporter.setPresenter(this::showError);
+        mountedFlipped = Prefs.bool(FLIPPED_KEY, false) ^ Boolean.getBoolean("javachess.rotated");
+        applyRotation(false);
         navigateTo("HOME");
     }
 
     /**
-     * Builds the other views off the FX thread, one at a time, so the first tap on any tile is instant.
+     * Builds the other screens off the FX thread, one at a time, so the first tap on any tile is instant.
      * Called by App after the first frame; disabled with {@code -Djavachess.preload=false}.
      */
     public void startIdlePreload() {
@@ -154,9 +202,28 @@ public class MainController {
             }
         }
         closeSheet();
+        boolean animate = currentViewName != null && Ui.animations();
         mainContainer.getChildren().setAll(loaded.view());
         currentViewName = viewName;
         notifyNavigatedTo(loaded.controller());
+        if (animate) {
+            enter(loaded.view());
+        } else {
+            loaded.view().setOpacity(1);
+            loaded.view().setTranslateY(0);
+        }
+    }
+
+    /** New screen: 160 ms fade and a 24 px rise. */
+    private static void enter(Node view) {
+        FadeTransition fade = new FadeTransition(Duration.millis(160), view);
+        fade.setFromValue(0);
+        fade.setToValue(1);
+        TranslateTransition rise = new TranslateTransition(Duration.millis(160), view);
+        rise.setFromY(24);
+        rise.setToY(0);
+        rise.setInterpolator(Interpolator.EASE_OUT);
+        new ParallelTransition(fade, rise).play();
     }
 
     private static void notifyNavigatedTo(Object controller) {
@@ -184,8 +251,11 @@ public class MainController {
 
     /** Loads the view once; concurrent callers (FX thread and preloader) share the same result. */
     private Loaded ensureLoaded(String name) {
-        String path = VIEWS.getOrDefault(name, extraPaths.get(name));
-        if (path == null) {
+        ViewSpec spec = VIEWS.get(name);
+        if (spec == null && extraPaths.containsKey(name)) {
+            spec = new ViewSpec(extraPaths.get(name), null);
+        }
+        if (spec == null) {
             return null;
         }
         CompletableFuture<Loaded> future = loads.get(name);
@@ -195,7 +265,7 @@ public class MainController {
             if (future == null) {
                 future = mine;
                 try {
-                    mine.complete(load(name, path));
+                    mine.complete(load(name, spec));
                 } catch (RuntimeException e) {
                     loads.remove(name);
                     mine.completeExceptionally(e);
@@ -206,23 +276,43 @@ public class MainController {
         return future.join();
     }
 
-    private Loaded load(String name, String fxmlPath) {
+    private Loaded load(String name, ViewSpec spec) {
         long start = System.nanoTime();
-        try {
-            FXMLLoader loader = new FXMLLoader(getClass().getResource(fxmlPath), I18n.bundle());
-            Parent view = loader.load();
-            Object controller = loader.getController();
-            if (controller instanceof NavigationAware aware) {
-                aware.setMainController(this);
+        Loaded loaded;
+        if (spec.factory() != null) {
+            Screen screen = spec.factory().get();
+            screen.setMainController(this);
+            Parent root = screen.getRoot();
+            root.getStyleClass().add("screen");
+            loaded = new Loaded(root, screen);
+        } else {
+            try {
+                FXMLLoader loader = new FXMLLoader(getClass().getResource(spec.fxml()), I18n.bundle());
+                Parent view = loader.load();
+                Object controller = loader.getController();
+                if (controller instanceof NavigationAware aware) {
+                    aware.setMainController(this);
+                }
+                loaded = new Loaded(view, controller);
+            } catch (IOException e) {
+                throw new IllegalStateException("Failed to load view " + name + " from " + spec.fxml(), e);
             }
-            LOG.debug("Loaded view {} in {} ms on {}", name, (System.nanoTime() - start) / 1_000_000,
-                    Thread.currentThread().getName());
-            return new Loaded(view, controller);
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to load view " + name + " from " + fxmlPath, e);
         }
+        LOG.debug("Loaded view {} in {} ms on {}", name, (System.nanoTime() - start) / 1_000_000,
+                Thread.currentThread().getName());
+        return loaded;
     }
 
+    /** Lichess and Chess.com are played in the integrated browser (the API flow stays available in LICHESS_SETUP). */
+    public void openBrowser(String url) {
+        Object controller = getController("BROWSER");
+        if (controller instanceof BrowserController browser) {
+            browser.loadPage(url);
+        }
+        navigateTo("BROWSER");
+    }
+
+    /** Kept for callers of the Lichess Board API flow: resumes a running game or opens its setup screen. */
     public void openLichess() {
         io.github.hardin22.javachess.Utils.AppExecutors.io().execute(() -> {
             String gameId = io.github.hardin22.javachess.Utils.LichessAPIHelper.getGameId();
@@ -238,56 +328,142 @@ public class MainController {
         });
     }
 
-    /** Rotates the whole UI by 180 degrees (monitor mounted upside down / facing the other player). */
+    // ------------------------------------------------------------------ orientation
+
+    /** Turns the whole interface by 180 degrees (the person at the other end of the screen wants to read it). */
     public void rotateScreen() {
-        rootPane.setRotate(rootPane.getRotate() == 0 ? 180 : 0);
+        facingFar.set(!facingFar.get());
+        applyRotation(true);
     }
 
+    /**
+     * Makes the interface face the player of {@code side} (White sits at the bottom end of a monitor mounted the
+     * normal way). Does nothing when automatic orientation is off in the settings.
+     */
+    public void face(Side side) {
+        if (!Prefs.bool(AUTOROTATE_KEY, true)) {
+            return;
+        }
+        boolean far = side == Side.BLACK;
+        if (far != facingFar.get()) {
+            facingFar.set(far);
+            applyRotation(true);
+        }
+    }
+
+    /** True when the interface is shown upside down with respect to the monitor. */
     public boolean isRotated() {
-        return rootPane.getRotate() != 0;
+        return mountedFlipped ^ facingFar.get();
+    }
+
+    /** True while the interface faces Black's end: boards are drawn from Black's side. */
+    public boolean isFacingBlack() {
+        return facingFar.get();
+    }
+
+    public javafx.beans.property.ReadOnlyBooleanProperty facingBlackProperty() {
+        return facingFar.getReadOnlyProperty();
+    }
+
+    public boolean isMountedFlipped() {
+        return mountedFlipped;
+    }
+
+    /** "Monitor capovolto": how the monitor is mounted. Persistent. */
+    public void setMountedFlipped(boolean flipped) {
+        if (flipped != mountedFlipped) {
+            mountedFlipped = flipped;
+            Prefs.set(FLIPPED_KEY, flipped);
+            applyRotation(true);
+        }
+    }
+
+    private void applyRotation(boolean animate) {
+        double target = isRotated() ? 180 : 0;
+        Ui.ROTATED.set(isRotated());
+        if (rotation != null) {
+            rotation.stop();
+        }
+        double current = ((rootPane.getRotate() % 360) + 360) % 360;
+        if (!animate || !Ui.animations() || rootPane.getScene() == null || Math.abs(current - target) < 0.5) {
+            rootPane.setRotate(target);
+            return;
+        }
+        rotation = new RotateTransition(Duration.millis(240), rootPane);
+        rotation.setFromAngle(current);
+        rotation.setToAngle(target == 0 && current > 90 ? 360 : target);
+        rotation.setInterpolator(Interpolator.EASE_BOTH);
+        rotation.setOnFinished(e -> rootPane.setRotate(target));
+        rotation.play();
     }
 
     // ------------------------------------------------------------------ overlays
 
-    /**
-     * Shows a bottom sheet (centred dialog on wide screens) with a title, the given content and a close button.
-     * Tapping outside or pressing Esc closes it.
-     */
+    /** Bottom sheet with a title, the given content, rotate and close buttons. Tapping outside closes it. */
     public void showSheet(String title, Node content) {
         showSheet(title, content, null);
     }
 
     public void showSheet(String title, Node content, Runnable onClosed) {
-        Label titleLabel = new Label(title);
-        titleLabel.getStyleClass().add("sheet-title");
-        Button close = new Button();
-        close.getStyleClass().addAll("btn", "btn-ghost", "icon-btn");
-        close.setGraphic(Icons.of("fth-x", 22));
-        close.setAccessibleText(I18n.t("common.close"));
-        close.setOnAction(e -> closeSheet());
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox head = new HBox(12, titleLabel, spacer, close);
+        openSheet(title, content, onClosed, false, false);
+    }
+
+    /**
+     * Sheet for the player at the far end of the screen (two-player games): it opens from the top edge, turned
+     * towards them.
+     */
+    public void showSheetFor(boolean farEnd, String title, Node content) {
+        openSheet(title, content, null, farEnd, false);
+    }
+
+    /** Sheet that only its own buttons can close (confirmations that must be answered). */
+    public void showModalSheet(String title, Node content) {
+        openSheet(title, content, null, false, true);
+    }
+
+    private void openSheet(String title, Node content, Runnable onClosed, boolean farEnd, boolean modal) {
+        Region grip = new Region();
+        grip.getStyleClass().add("sheet-grip");
+        HBox gripRow = new HBox(grip);
+        gripRow.setAlignment(Pos.CENTER);
+
+        Label titleLabel = Ui.wrap(title, "sheet-title");
+        HBox head = new HBox(16, titleLabel, Ui.hgrow());
         head.setAlignment(Pos.CENTER_LEFT);
-
-        VBox sheet = new VBox(16, head, content);
-        sheet.getStyleClass().add("sheet");
-        boolean wide = rootPane.getWidth() > rootPane.getHeight();
-        sheet.setMaxWidth(wide ? 640 : Double.MAX_VALUE);
-        sheet.setMaxHeight(Region.USE_PREF_SIZE);
-        StackPane.setAlignment(sheet, wide ? Pos.CENTER : Pos.BOTTOM_CENTER);
-        if (!wide) {
-            sheet.getStyleClass().add("sheet-bottom");
+        if (!farEnd) {
+            head.getChildren().add(RotateButton.create());
         }
+        if (!modal) {
+            Button close = Ui.iconButton("fth-x", I18n.t("common.close"), this::closeSheet);
+            head.getChildren().add(close);
+        }
+        VBox sheet = new VBox(20, gripRow, head, content);
+        sheet.getStyleClass().add("sheet");
+        sheet.setMaxHeight(Region.USE_PREF_SIZE);
+        boolean wide = rootPane.getWidth() > rootPane.getHeight();
+        sheet.setMaxWidth(wide ? 760 : Double.MAX_VALUE);
+        StackPane.setAlignment(sheet, wide ? Pos.CENTER : Pos.BOTTOM_CENTER);
+        if (wide) {
+            sheet.getStyleClass().add("sheet-center");
+        }
+        sheet.setOnMouseClicked(javafx.event.Event::consume);
 
+        sheetModal = modal;
         onSheetClosed = onClosed;
+        sheetLayer.setRotate(farEnd ? 180 : 0);
         sheetLayer.getChildren().setAll(sheet);
         sheetLayer.setVisible(true);
-        TranslateTransition slide = new TranslateTransition(Duration.millis(180), sheet);
-        slide.setFromY(wide ? 16 : 120);
-        slide.setToY(0);
-        slide.setInterpolator(Interpolator.EASE_OUT);
-        slide.play();
+        if (Ui.animations()) {
+            TranslateTransition slide = new TranslateTransition(Duration.millis(180), sheet);
+            slide.setFromY(wide ? 24 : 160);
+            slide.setToY(0);
+            slide.setInterpolator(Interpolator.EASE_OUT);
+            slide.play();
+        }
+    }
+
+    public boolean isSheetOpen() {
+        return sheetLayer != null && sheetLayer.isVisible();
     }
 
     public void closeSheet() {
@@ -296,6 +472,7 @@ public class MainController {
         }
         sheetLayer.setVisible(false);
         sheetLayer.getChildren().clear();
+        sheetModal = false;
         Runnable callback = onSheetClosed;
         onSheetClosed = null;
         if (callback != null) {
@@ -303,7 +480,15 @@ public class MainController {
         }
     }
 
-    /** Short message at the bottom of the screen for ~2.5 s. Safe to call from any thread. */
+    /** Errors reported through ErrorReporter: a sheet inside the app instead of a separate OS window. */
+    private void showError(String title, String message) {
+        Label text = Ui.wrap(message, "t-body", "t-muted");
+        Button ok = Ui.wide(I18n.t("common.ok"), null, "btn-inverse", "btn-lg");
+        ok.setOnAction(e -> closeSheet());
+        showSheet(title, new VBox(28, text, ok));
+    }
+
+    /** Short message near the bottom of the screen for ~2.5 s. Safe to call from any thread. */
     public void showToast(String message) {
         if (!Platform.isFxApplicationThread()) {
             Platform.runLater(() -> showToast(message));
@@ -312,17 +497,16 @@ public class MainController {
         if (toastLayer == null) {
             return;
         }
-        Label toast = new Label(message);
-        toast.getStyleClass().add("toast");
-        toast.setWrapText(true);
-        toast.setMaxWidth(560);
+        Label toast = Ui.wrap(message, "toast");
+        toast.setMaxWidth(640);
+        toast.setMaxHeight(Region.USE_PREF_SIZE);
         toastLayer.getChildren().setAll(toast);
         FadeTransition in = new FadeTransition(Duration.millis(150), toast);
         in.setFromValue(0);
         in.setToValue(1);
         FadeTransition out = new FadeTransition(Duration.millis(200), toast);
         out.setToValue(0);
-        SequentialTransition seq = new SequentialTransition(in, new PauseTransition(Duration.seconds(2.5)), out);
+        SequentialTransition seq = new SequentialTransition(in, new PauseTransition(Duration.seconds(2.6)), out);
         seq.setOnFinished(e -> toastLayer.getChildren().remove(toast));
         seq.play();
     }
