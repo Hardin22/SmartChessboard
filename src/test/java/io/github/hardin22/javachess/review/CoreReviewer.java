@@ -1,6 +1,5 @@
 package io.github.hardin22.javachess.review;
 
-import io.github.hardin22.javachess.Engine.ProcessPlan;
 import io.github.hardin22.javachess.Engine.review.CachingEvaluator;
 import io.github.hardin22.javachess.Engine.review.EvalCache;
 import io.github.hardin22.javachess.Engine.review.GameReview;
@@ -29,11 +28,10 @@ public final class CoreReviewer implements Reviewer {
     private final String name;
 
     public CoreReviewer(Path stockfish) {
-        int cores = Runtime.getRuntime().availableProcessors();
-        ReviewSettings base = ReviewSettings.lite(ProcessPlan.forRam(8_192, 4), cores);
+        ReviewSettings base = ReviewSettings.lite();
         long nodes = Long.getLong("review.nodes", base.nodes());
         settings = new ReviewSettings(nodes, Long.getLong("review.secondLineNodes",
-                nodes * base.secondLineNodes() / base.nodes()),
+                base.withNodes(nodes).secondLineNodes()),
                 Integer.getInteger("review.processes", base.processes()), Integer.getInteger("review.hash",
                 base.hashMb()));
         PositionEvaluator pool = new StockfishPool(stockfish, settings.processes(), settings.hashMb());
