@@ -414,10 +414,50 @@ public class ChessBoardUI extends StackPane {
         gc.clearRect(0, 0, highlightCanvas.getWidth(), highlightCanvas.getHeight());
     }
 
+    /**
+     * Arrows are staged and painted once per frame, and only when they differ from what is on screen: the engine
+     * redraws the same best-move arrow many times per second, and every canvas change repaints the whole board
+     * area with the software pipeline.
+     */
     public void clearArrows() {
+        if (!javafx.application.Platform.isFxApplicationThread()) {
+            javafx.application.Platform.runLater(this::clearArrows);
+            return;
+        }
+        stagedArrows.clear();
+        scheduleArrowFlush();
+    }
+
+    private final List<String> stagedArrows = new ArrayList<>();
+    private final List<String> shownArrows = new ArrayList<>();
+    private boolean arrowFlushPending;
+
+    private void scheduleArrowFlush() {
+        if (!arrowFlushPending) {
+            arrowFlushPending = true;
+            javafx.application.Platform.runLater(this::flushArrows);
+        }
+    }
+
+    private void flushArrows() {
+        arrowFlushPending = false;
+        if (stagedArrows.equals(shownArrows)) {
+            return;
+        }
+        shownArrows.clear();
+        shownArrows.addAll(stagedArrows);
         arrowOps.clear();
-        GraphicsContext gc = arrowCanvas.getGraphicsContext2D();
-        gc.clearRect(0, 0, arrowCanvas.getWidth(), arrowCanvas.getHeight());
+        for (String spec : shownArrows) {
+            String[] p = spec.split(",");
+            int fc = Integer.parseInt(p[0]);
+            int fr = Integer.parseInt(p[1]);
+            int tc = Integer.parseInt(p[2]);
+            int tr = Integer.parseInt(p[3]);
+            Color color = Color.web(p[4]);
+            arrowOps.add(() -> drawArrow(arrowCanvas.getGraphicsContext2D(), (fc + 0.5) * TILE_SIZE,
+                    (fr + 0.5) * TILE_SIZE, (tc + 0.5) * TILE_SIZE, (tr + 0.5) * TILE_SIZE, color));
+        }
+        replay(arrowCanvas, arrowOps);
     }
 
     public void clearIcons() {
@@ -448,10 +488,15 @@ public class ChessBoardUI extends StackPane {
     }
 
     public void drawArrowOnBoard(int fromCol, int fromRow, int toCol, int toRow, Color color) {
-        Runnable op = () -> drawArrow(arrowCanvas.getGraphicsContext2D(), (fromCol + 0.5) * TILE_SIZE,
-                (fromRow + 0.5) * TILE_SIZE, (toCol + 0.5) * TILE_SIZE, (toRow + 0.5) * TILE_SIZE, color);
-        arrowOps.add(op);
-        op.run();
+        if (!javafx.application.Platform.isFxApplicationThread()) {
+            javafx.application.Platform.runLater(() -> drawArrowOnBoard(fromCol, fromRow, toCol, toRow, color));
+            return;
+        }
+        String spec = fromCol + "," + fromRow + "," + toCol + "," + toRow + "," + color.toString();
+        if (!stagedArrows.contains(spec)) {
+            stagedArrows.add(spec);
+        }
+        scheduleArrowFlush();
     }
 
     private void drawArrow(GraphicsContext gc, double startX, double startY, double endX, double endY, Color color) {
