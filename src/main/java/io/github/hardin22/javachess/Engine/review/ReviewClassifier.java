@@ -85,6 +85,12 @@ public final class ReviewClassifier {
         final double greatFreeMaterialRating;
         /** v2.1: a piece or the exchange given for pawns counts as a sacrifice of 2 (Brilliant). */
         final boolean pieceSacrifice;
+        /** v2.3: the 'winning anyway' tests of Brilliant only for a move that is not the engine's choice. */
+        final boolean brilliantAltNonTopOnly;
+        /** v2.3: a move out of check can be Great with at least this gap ... */
+        final double greatInCheckGap;
+        /** ... from at most this win chance. */
+        final double greatInCheckMaxEp;
         /** v1.9: no capture is Great (G-E1). */
         final boolean greatNoCapture;
         /**
@@ -157,7 +163,10 @@ public final class ReviewClassifier {
         final double slope;
         /** ... multiplied by exp(slopeRating * (rating - 1500) / 1000) ... */
         final double slopeRating;
-        /** ... with this rating for a player whose rating is unknown (a local human, an untagged import). */
+        /**
+         * ... with this rating for a player whose rating is unknown (a local human, an untagged import): chess.com judges
+         * a PGN without Elo as strong players (35 famous games: agreement best at 2500, 67.1% exact vs 65.3% at 1500).
+         */
         final double defaultRating;
 
         private Tuning(Map<String, Double> overrides) {
@@ -174,6 +183,9 @@ public final class ReviewClassifier {
             fakeRegain = get("fakeRegain", 4);
             greatNoCapture = get("greatNoCapture", 1) != 0;
             greatRule = (int) get("greatRule", 2);
+            brilliantAltNonTopOnly = get("brilliantAltNonTopOnly", 0) != 0;
+            greatInCheckGap = get("greatInCheckGap", 0.20);
+            greatInCheckMaxEp = get("greatInCheckMaxEp", 0.90);
             pieceSacrifice = get("pieceSacrifice", 1) != 0;
             outcomeLow = get("outcomeLow", 0.40);
             outcomeHigh = get("outcomeHigh", 0.60);
@@ -220,7 +232,7 @@ public final class ReviewClassifier {
             bookExtendLoss = get("bookExtendLoss", 0.02);
             slope = get("slope", 0.0035);
             slopeRating = get("slopeRating", 0.5);
-            defaultRating = get("defaultRating", 1500);
+            defaultRating = get("defaultRating", 2500);
         }
 
         private double get(String name, double def) {
@@ -734,10 +746,18 @@ public final class ReviewClassifier {
      */
     private static boolean greatV21(Board b0, String uci, int i, GameReplay replay, EngineLine second, double epBefore,
                                     boolean me, double oppLoss, Tuning t, double k, int rating) {
-        if (second == null || b0.isKingAttacked() || epBefore < t.greatMinEp) {
+        if (second == null || epBefore < t.greatMinEp) {
             return false;
         }
         double gap = epBefore - ep(second.eval(), me, k);
+        if (b0.isKingAttacked()) {
+            // out of check: Great only when it is not taking back the checking piece, with a clear gap, in a position
+            // not already won
+            if (!t.greatInCheck || (i > 0 && isRecapture(replay, i)) || gap < t.greatInCheckGap
+                    || epBefore > t.greatInCheckMaxEp) {
+                return false;
+            }
+        }
         if (Tactics.isCapture(b0, uci)) {
             if ((i > 0 && isRecapture(replay, i)) || gap < t.greatCaptureGap) {
                 return false;
@@ -838,12 +858,13 @@ public final class ReviewClassifier {
                 || (!isTop && loss > t.brilliantNonTopLoss)) {
             return false; // B-E3
         }
-        if (alternative != null && ep(alternative, me, k) > t.brilliantMaxAlt) {
+        boolean altTest = alternative != null && !(t.brilliantAltNonTopOnly && isTop);
+        if (altTest && ep(alternative, me, k) > t.brilliantMaxAlt) {
             return false; // B-E2: winning anyway, also when the move mates
         }
         // the same two tests in centipawns, whatever the players' rating (a decided position is decided for anyone):
         // B-E8 the alternative already wins by this much, or mates; B-E7 the mover stands worse after the move
-        if (alternative != null && (alternative.isMateFor(me)
+        if (altTest && (alternative.isMateFor(me)
                 || (!alternative.isMate() && alternative.cpFor(me) >= t.brilliantWinningCp))) {
             return false;
         }

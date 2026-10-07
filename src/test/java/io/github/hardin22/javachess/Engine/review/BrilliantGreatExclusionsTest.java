@@ -248,6 +248,9 @@ class BrilliantGreatExclusionsTest {
 
     // ------------------------------------------------------------------ helpers
 
+    /** Players' rating of the positions without one (the cases were measured at this rating). */
+    private static final int RATING = 1500;
+
     private static void assertFake(String fen, String uci, boolean white) {
         ReviewClassifier.Sacrifice s = ReviewClassifier.Sacrifice.of(board(fen), uci, white);
         assertTrue(s.offered() >= 2, uci + " offers " + s.offered());
@@ -265,7 +268,7 @@ class BrilliantGreatExclusionsTest {
         List<PositionEval> ps = new ArrayList<>();
         ps.add(withLines(fen, best, bestMove, second, secondMove));
         ps.add(after(fen, uci, after));
-        return new ReviewInput(fen, List.of(uci), ps, OpeningBook.NONE);
+        return new ReviewInput(fen, List.of(uci), ps, OpeningBook.NONE, RATING, RATING);
     }
 
     /** The opponent's move {@code prev} (evaluated {@code e0}, engine's move {@code best0}) then {@code uci}. */
@@ -276,7 +279,7 @@ class BrilliantGreatExclusionsTest {
         ps.add(new PositionEval(fen0, e0, List.of(new EngineLine(best0, e0, List.of(best0), 20)), 20, 0, false));
         ps.add(withLines(fen1, best, bestMove, second, secondMove));
         ps.add(after(fen1, uci, after));
-        return new ReviewInput(fen0, List.of(prev, uci), ps, OpeningBook.NONE);
+        return new ReviewInput(fen0, List.of(prev, uci), ps, OpeningBook.NONE, RATING, RATING);
     }
 
     private static PositionEval withLines(String fen, Eval best, String bestMove, Eval second, String secondMove) {
