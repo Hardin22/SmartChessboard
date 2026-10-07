@@ -48,6 +48,8 @@ class MoveClassifierTest {
         assertEquals(GOOD, q(Score.mate(-3), Score.mate(-2)));         // lost anyway, mated sooner
         assertEquals(INACCURACY, q(Score.mate(-7), Score.mate(-2)));   // mated much sooner (review v1.9)
         assertEquals(GOOD, q(Score.mate(-7), Score.mate(-4)));
+        assertEquals(INACCURACY, q(Score.mate(-3), Score.mate(-1)));   // mated next move instead (review final)
+        assertEquals(GOOD, q(Score.mate(2), Score.mate(3)));           // slower mate: Good on the LEDs too
     }
 
     @Test
