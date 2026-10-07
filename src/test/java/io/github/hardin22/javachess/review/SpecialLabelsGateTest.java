@@ -147,6 +147,8 @@ class SpecialLabelsGateTest {
         // after-capture searches of the "threat ignored" candidates (Phase 4)
         Map<String, Map<Integer, io.github.hardin22.javachess.Engine.review.EngineLine>> captures =
                 CaptureEvals.load(CaptureEvals.FILE);
+        List<String> captureProblems = new ArrayList<>();
+        List<String> captureExtra = new ArrayList<>();
         List<Error> errors = new ArrayList<>();
         Map<String, Tally> tallies = new TreeMap<>();
         Tally labelled142 = new Tally();
@@ -164,6 +166,22 @@ class SpecialLabelsGateTest {
             // real ratings where known; unrated (famous PGNs) get the product's default rating
             ReviewInput in = new ReviewInput(base.initialFen(), base.uciMoves(), base.positions(), base.book(),
                     DEFAULT_RATING_ALL ? 0 : x.game.whiteRating(), DEFAULT_RATING_ALL ? 0 : x.game.blackRating());
+            // the fixture must hold exactly the product's after-capture searches (same positions, same captures)
+            Map<Integer, String> requested = ReviewClassifier.afterCaptureRequests(in);
+            Map<Integer, io.github.hardin22.javachess.Engine.review.EngineLine> stored =
+                    captures.getOrDefault(x.game.id(), Map.of());
+            requested.forEach((i, capture) -> {
+                var line = stored.get(i);
+                if (line == null) {
+                    captureProblems.add(x.game.id() + " ply " + (i + 1) + ": requested capture " + capture
+                            + " missing from capture-evals.tsv");
+                } else if (!line.move().equals(capture)) {
+                    captureProblems.add(x.game.id() + " ply " + (i + 1) + ": fixture has capture " + line.move()
+                            + ", the product requests " + capture);
+                }
+            });
+            stored.keySet().stream().filter(i -> !requested.containsKey(i))
+                    .forEach(i -> captureExtra.add(x.game.id() + " ply " + (i + 1)));
             in = CaptureEvals.attach(in, x.game.id(), captures);
             GameReview r = ReviewClassifier.classifyGame(in);
             Tally t = tallies.computeIfAbsent(x.set, k -> new Tally());
@@ -198,6 +216,12 @@ class SpecialLabelsGateTest {
         Baseline baseline = Baseline.read(BASELINE);
         Map<String, Entry> allow = allowlist(ALLOWLIST);
         Map<String, Entry> definition = allowlist(DEFINITIONS);
+        List<String> badRows = new ArrayList<>();
+        allow.forEach((k, en) -> {
+            if (en.violation() != null) {
+                badRows.add("special-allowlist.tsv " + k.replace('\t', ' ') + ": " + en.violation());
+            }
+        });
         List<Error> fresh = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
         for (Error e : errors) {
@@ -234,6 +258,13 @@ class SpecialLabelsGateTest {
         System.out.printf(Locale.ROOT, "special gate: %d errors (%d new, %d fixed vs baseline), exact on 142 %.4f "
                 + "(baseline %.4f) -> %s%n", errors.size(), fresh.size(), fixed.size(), exact, baseline.exact,
                 OUT.resolve("report.md").toAbsolutePath());
+        if (!captureExtra.isEmpty()) {
+            System.out.println("capture-evals.tsv rows the product does not request (ignored): " + captureExtra);
+        }
+        assertTrue(captureProblems.isEmpty(), "capture-evals.tsv does not match ReviewClassifier.afterCaptureRequests "
+                + "(regenerate it with scripts/review/capture_evals.py from the oracle):\n"
+                + String.join("\n", captureProblems));
+        assertTrue(badRows.isEmpty(), "allowlist rows breaking the verification rules:\n" + String.join("\n", badRows));
         assertTrue(fresh.isEmpty(), fresh.size() + " NEW Brilliant/Great errors (not in the baseline nor in the "
                 + "allowlist), see target/special/report.md:\n" + fresh.stream()
                 .map(e -> "  " + e.set + " " + e.id + " ply " + e.ply + " " + e.san + ": " + e.kind + " (ours " + e.ours
@@ -269,6 +300,25 @@ class SpecialLabelsGateTest {
     record Entry(String why, String category, String proposedBy, String verifiedBy, String verdict) {
         boolean ok() {
             return "OK".equalsIgnoreCase(verdict);
+        }
+
+        /**
+         * Why this row breaks the verification rules (CLAIMS 21:55; category {@code user}: a case the user approved
+         * explicitly), or null: an OK needs a verifier, nobody verifies their own proposal, and
+         * {@code verified_by=user} goes with category {@code user} and only with it.
+         */
+        String violation() {
+            String by = verifiedBy.trim();
+            if (ok() && by.isEmpty()) {
+                return "verdict OK without verified_by";
+            }
+            if (!by.isEmpty() && proposedBy.trim().split("\\s+")[0].equals(by.split("\\s+")[0])) {
+                return "verified by its own proposer (" + by + ")";
+            }
+            if ("user".equals(by) != "user".equals(category.trim())) {
+                return "verified_by=user is only for category user (category " + category + ", verified_by " + by + ")";
+            }
+            return null;
         }
     }
 
@@ -442,7 +492,8 @@ class SpecialLabelsGateTest {
                     // only an independently verified OK counts as correct; pending and REJECTED stay errors
                     Entry ae = allow.get(x.key());
                     Entry de = definition.get(x.key());
-                    int col = ae != null && ae.ok() ? 1 : de != null && de.ok() ? 2 : 0;
+                    int col = ae != null && ae.ok() && ae.violation() == null ? 1
+                            : de != null && de.ok() && de.violation() == null ? 2 : 0;
                     if (col > 0 && x.kind.startsWith("fp")) {
                         fpx[col]++;
                     } else if (col > 0) {
@@ -487,27 +538,36 @@ class SpecialLabelsGateTest {
         for (Map<String, Entry> m : List.of(allow, definition)) {
             m.forEach((k, en) -> {
                 if (errors.stream().anyMatch(x -> x.key().equals(k))) {
-                    int[] v = byCat.computeIfAbsent(en.category.isEmpty() ? "?" : en.category, c -> new int[3]);
-                    v[en.ok() ? 0 : "REJECTED".equalsIgnoreCase(en.verdict) ? 1 : 2]++;
+                    int[] v = byCat.computeIfAbsent(en.category.isEmpty() ? "?" : en.category, c -> new int[4]);
+                    // out-of-scope: rows of players under 1000, outside the main metrics (CLAIMS 23:00)
+                    v[en.ok() ? 0 : "REJECTED".equalsIgnoreCase(en.verdict) ? 1
+                            : "out-of-scope".equalsIgnoreCase(en.verdict) ? 2 : 3]++;
                 }
             });
         }
-        sb.append("\n| category | OK (verified) | REJECTED | pending |\n|---|---:|---:|---:|\n");
-        int[] tot = new int[3];
+        sb.append("\n| category | OK (verified) | REJECTED | out-of-scope | pending |\n|---|---:|---:|---:|---:|\n");
+        int[] tot = new int[4];
         byCat.forEach((c, v) -> {
-            sb.append(String.format(Locale.ROOT, "| %s | %d | %d | %d |%n", c, v[0], v[1], v[2]));
-            for (int i = 0; i < 3; i++) {
+            sb.append(String.format(Locale.ROOT, "| %s | %d | %d | %d | %d |%n", c, v[0], v[1], v[2], v[3]));
+            for (int i = 0; i < 4; i++) {
                 tot[i] += v[i];
             }
         });
-        sb.append(String.format(Locale.ROOT, "| **all** | %d | %d | %d |%n", tot[0], tot[1], tot[2]))
-                .append(String.format(Locale.ROOT, "VERIFICATION ok %d rejected %d pending %d%n", tot[0], tot[1], tot[2]));
+        sb.append(String.format(Locale.ROOT, "| **all** | %d | %d | %d | %d |%n", tot[0], tot[1], tot[2], tot[3]))
+                .append(String.format(Locale.ROOT, "VERIFICATION ok %d rejected %d out-of-scope %d pending %d%n",
+                        tot[0], tot[1], tot[2], tot[3]));
         sb.append("\n## Column 3: remaining errors = true bugs (").append(bugs.size()).append(")\n");
         bugs.forEach(x -> {
             Entry en = allow.containsKey(x.key()) ? allow.get(x.key()) : definition.get(x.key());
             sb.append(line(x, shard).replace("\n", "")).append(" — shard ").append(shard.getOrDefault(x.id, 0))
                     .append(en == null ? "" : " — proposed (" + en.category + ", " + en.proposedBy + "): " + en.verdict
                             + (en.verifiedBy.isEmpty() ? "" : " by " + en.verifiedBy)).append('\n');
+        });
+        definition.forEach((k, en) -> {
+            if (en.violation() != null) {
+                sb.append("- DEFINITION_DECISIONS.tsv ").append(k.replace('\t', ' ')).append(": ")
+                        .append(en.violation()).append(" (not counted as OK until fixed)\n");
+            }
         });
         sb.append("\n## Definition decisions (").append(definition.size()).append(")\n");
         definition.forEach((k, en) -> sb.append("- ").append(k.replace('\t', ' ')).append(" [").append(en.verdict)
