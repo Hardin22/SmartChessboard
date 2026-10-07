@@ -1,5 +1,6 @@
 package io.github.hardin22.javachess.Engine.review;
 
+import com.github.bhlangonijr.chesslib.Board;
 import io.github.hardin22.javachess.Engine.EngineException;
 import io.github.hardin22.javachess.Engine.EngineLocator;
 import io.github.hardin22.javachess.Engine.EngineManager;
@@ -87,23 +88,28 @@ public final class GameReviewer implements AutoCloseable {
             AtomicInteger done = new AtomicInteger();
             List<Future<?>> jobs = new ArrayList<>();
             evaluator.newGame();
-            // contiguous blocks: each engine walks consecutive positions and reuses its hash
-            int chunk = (n + 1 + threads - 1) / threads;
-            for (int from = 0; from <= n; from += chunk) {
-                final int start = from;
-                final int end = Math.min(n + 1, from + chunk);
+            // small blocks of consecutive positions handed out in game order: each engine reuses its hash inside a
+            // block, and the evaluated prefix of the game grows steadily (progressive labels)
+            AtomicInteger nextBlock = new AtomicInteger();
+            Progressive progressive = new Progressive(replay, positions, l);
+            for (int t = 0; t < threads; t++) {
                 jobs.add(pool.submit(() -> {
-                    for (int idx = start; idx < end; idx++) {
-                        if (Thread.currentThread().isInterrupted()) {
-                            throw new InterruptedException();
+                    int start;
+                    while ((start = nextBlock.getAndAdd(BLOCK)) <= n) {
+                        for (int idx = start; idx < Math.min(n + 1, start + BLOCK); idx++) {
+                            if (Thread.currentThread().isInterrupted()) {
+                                throw new InterruptedException();
+                            }
+                            PositionEval p = terminal(replay, idx);
+                            if (p == null) {
+                                p = evaluator.evaluate(replay.fens().get(idx), 1, settings.nodes());
+                            }
+                            positions[idx] = p;
+                            nodes.addAndGet(p.nodes());
+                            l.onPosition(idx, p);
+                            l.onProgress(0.9 * done.incrementAndGet() / (n + 1));
+                            progressive.evaluated();
                         }
-                        PositionEval p = replay.drawn().get(idx) && !mated(replay.fens().get(idx))
-                                ? PositionEval.terminal(replay.fens().get(idx), Eval.DRAW)
-                                : evaluator.evaluate(replay.fens().get(idx), 1, settings.nodes());
-                        positions[idx] = p;
-                        nodes.addAndGet(p.nodes());
-                        l.onPosition(idx, p);
-                        l.onProgress(0.9 * done.incrementAndGet() / (n + 1));
                     }
                     return null;
                 }));
@@ -145,8 +151,60 @@ public final class GameReviewer implements AutoCloseable {
         }
     }
 
-    private static boolean mated(String fen) {
-        return Eval.terminal(fen).map(Eval::isCheckmate).orElse(false);
+    /** Positions per block handed to one engine. */
+    private static final int BLOCK = 4;
+
+    /**
+     * Publishes provisional labels of the evaluated prefix of the game (without Great/Brilliant, which need the
+     * second pass), at most every {@value #PARTIAL_INTERVAL_MS} ms.
+     */
+    private final class Progressive {
+        private static final long PARTIAL_INTERVAL_MS = 300;
+        private final GameReplay replay;
+        private final PositionEval[] positions;
+        private final ReviewListener listener;
+        private int published;
+        private long lastMs;
+
+        Progressive(GameReplay replay, PositionEval[] positions, ReviewListener listener) {
+            this.replay = replay;
+            this.positions = positions;
+            this.listener = listener;
+        }
+
+        synchronized void evaluated() {
+            int prefix = 0;
+            while (prefix < positions.length && positions[prefix] != null) {
+                prefix++;
+            }
+            int moves = Math.max(0, prefix - 1);
+            long now = System.currentTimeMillis();
+            if (moves <= published || (moves < replay.uci().size() && now - lastMs < PARTIAL_INTERVAL_MS)) {
+                return;
+            }
+            published = moves;
+            lastMs = now;
+            try {
+                listener.onPartial(ReviewClassifier.classifyGame(new ReviewInput(replay.initialFen(),
+                        replay.uci().subList(0, moves), Arrays.asList(positions).subList(0, moves + 1), book)));
+            } catch (RuntimeException e) {
+                log.debug("provisional labels not published: {}", e.toString());
+            }
+        }
+    }
+
+    /**
+     * Exact result of position {@code idx} when no search is needed: checkmate or stalemate (no legal move), or a
+     * draw by repetition / 50-move rule; null otherwise.
+     */
+    private static PositionEval terminal(GameReplay replay, int idx) {
+        String fen = replay.fens().get(idx);
+        Board b = new Board();
+        b.loadFromFen(fen);
+        if (b.legalMoves().isEmpty()) {
+            return PositionEval.terminal(fen, Eval.terminal(b).orElse(Eval.DRAW));
+        }
+        return replay.drawn().get(idx) ? PositionEval.terminal(fen, Eval.DRAW) : null;
     }
 
     private static void await(List<Future<?>> jobs) throws InterruptedException, ExecutionException {

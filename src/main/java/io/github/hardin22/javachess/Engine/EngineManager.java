@@ -604,7 +604,8 @@ public final class EngineManager implements EngineSelection {
     }
 
     /**
-     * Engines of the game review (the review's own pool of single-thread processes, {@code Engine.review}).
+     * Engines of the game review (the review's own pool of single-thread processes, {@code Engine.review}). The node
+     * budget per position is not here: it is {@code Engine.review.ReviewSettings} (Lite / full), the only place.
      *
      * @param workers parallel Stockfish processes
      * @param threads threads of each process

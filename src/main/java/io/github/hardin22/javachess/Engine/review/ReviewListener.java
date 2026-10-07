@@ -10,10 +10,14 @@ public interface ReviewListener {
     default void onProgress(double fraction) {
     }
 
-    /**
-     * Evaluation of position {@code index} became available (moves are labelled at the end, once the whole game
-     * is known: labels such as Miss and Book depend on the previous moves).
-     */
+    /** Evaluation of position {@code index} became available. */
     default void onPosition(int index, PositionEval eval) {
+    }
+
+    /**
+     * Provisional review of the first moves of the game, whose positions are all evaluated (several times during the
+     * review, growing). Great and Brilliant come only with the final result; Book can still extend.
+     */
+    default void onPartial(GameReview partial) {
     }
 }

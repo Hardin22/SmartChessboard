@@ -38,7 +38,7 @@ class ReviewCalibrationTest {
         Path sf = StockfishTestSupport.requireStockfish();
         Path out = Path.of(System.getProperty("review.out", "target/review-calibration.jsonl"));
         Path cache = Path.of(System.getProperty("review.cache", "target/review-cache"));
-        long nodes = Long.getLong("review.nodes", 300_000);
+        long nodes = Long.getLong("review.nodes", ReviewSettings.lite().nodes());
         int processes = Integer.getInteger("review.processes", 4);
         int limit = Integer.getInteger("review.limit", Integer.MAX_VALUE);
 
@@ -46,7 +46,7 @@ class ReviewCalibrationTest {
         try (Stream<Path> s = Files.list(Path.of(dataset))) {
             files = s.filter(p -> p.toString().endsWith(".json")).sorted().toList();
         }
-        ReviewSettings settings = new ReviewSettings(nodes, Long.getLong("review.secondNodes", 100_000), processes, 64);
+        ReviewSettings settings = new ReviewSettings(nodes, Long.getLong("review.secondNodes", ReviewSettings.lite().secondLineNodes()), processes, 64);
         StockfishPool pool = new StockfishPool(sf, processes, 64);
         List<String> lines = new ArrayList<>();
         Files.createDirectories(out.toAbsolutePath().getParent());

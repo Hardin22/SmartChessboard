@@ -61,6 +61,15 @@ public class GameAnalyzer {
 
     /** Runs the review and returns the full result (null when there is no move or the engine failed). Blocking. */
     public GameReview review(String movetext, String initialFen, Consumer<Double> progressCallback) {
+        return review(movetext, initialFen, progressCallback, null);
+    }
+
+    /**
+     * Like {@link #review(String, String, Consumer)}, also publishing provisional rows (the first moves of the game,
+     * without Great/Brilliant) while the review runs. Callbacks run on review threads.
+     */
+    public GameReview review(String movetext, String initialFen, Consumer<Double> progressCallback,
+                             Consumer<List<MoveAnalysis>> partialCallback) {
         GameReplay replay = GameReplay.of(initialFen, movetext);
         lastReview = null;
         lastAnalysis = List.of();
@@ -72,6 +81,13 @@ public class GameAnalyzer {
             public void onProgress(double fraction) {
                 if (progressCallback != null) {
                     progressCallback.accept(fraction);
+                }
+            }
+
+            @Override
+            public void onPartial(GameReview partial) {
+                if (partialCallback != null) {
+                    partialCallback.accept(toMoveAnalysis(partial));
                 }
             }
         };
@@ -94,6 +110,11 @@ public class GameAnalyzer {
             }
         }
         return null;
+    }
+
+    /** Rows of the last completed review (empty when it failed). */
+    public List<MoveAnalysis> lastAnalysis() {
+        return lastAnalysis;
     }
 
     /** The last completed review of this analyzer, or null. */
