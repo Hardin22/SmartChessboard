@@ -145,7 +145,7 @@ class UciClientTest {
 
     @Test
     void missingReadyOkTimesOut() {
-        EngineSpec spec = fake("no-readyok").withReadyTimeout(500);
+        EngineSpec spec = fake("no-readyok").withReadyTimeout(5_000); // long enough for a slow JVM start (uciok)
         try (UciClient c = new UciClient(spec)) {
             ExecutionException e = assertThrows(ExecutionException.class, () -> c.start().get(30, TimeUnit.SECONDS));
             assertTrue(e.getCause().getMessage().contains("readyok"), e.getCause().getMessage());
