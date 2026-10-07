@@ -98,4 +98,17 @@ class ChessClockTest {
         assertEquals("00:00.0", ChessClock.format(0));
         assertEquals("90:00", ChessClock.format(5_400_000 * MS));
     }
+
+    @Test
+    void flagIsADrawWhenTheOpponentCannotMate() {
+        com.github.bhlangonijr.chesslib.Board board = new com.github.bhlangonijr.chesslib.Board();
+        assertEquals("Il Nero vince per tempo", ChessTimer.flagMessage(board, ChessClock.Side.WHITE));
+        board.loadFromFen("4k3/8/8/8/8/8/3P4/4K3 w - - 0 1"); // black has only the king
+        assertEquals("Patta: tempo scaduto e materiale insufficiente", ChessTimer.flagMessage(board, ChessClock.Side.WHITE));
+        board.loadFromFen("4k3/8/8/8/8/8/3n4/4K3 w - - 0 1"); // K+N vs bare K
+        assertEquals("Patta: tempo scaduto e materiale insufficiente", ChessTimer.flagMessage(board, ChessClock.Side.WHITE));
+        board.loadFromFen("4k3/8/8/8/8/8/3nP3/4K3 w - - 0 1"); // K+N vs K+P: mate is possible
+        assertEquals("Il Nero vince per tempo", ChessTimer.flagMessage(board, ChessClock.Side.WHITE));
+        assertEquals("Il Bianco vince per tempo", ChessTimer.flagMessage(board, ChessClock.Side.BLACK));
+    }
 }

@@ -115,14 +115,50 @@ public class ChessTimer {
                 clock.stop(null);
                 cancelTick();
             }
-            String message = running == ChessClock.Side.WHITE ? "Il Nero vince per tempo" : "Il Bianco vince per tempo";
             Platform.runLater(() -> {
                 setActive(null);
-                pvpGame.endGame(message, true);
+                pvpGame.endGame(flagMessage(pvpGame.getBoard(), running), true);
             });
             return;
         }
         scheduleTick();
+    }
+
+    /** Result when {@code flagged} runs out of time: a draw if the opponent cannot possibly mate (FIDE 6.9). */
+    static String flagMessage(com.github.bhlangonijr.chesslib.Board board, ChessClock.Side flagged) {
+        com.github.bhlangonijr.chesslib.Side winner = flagged == ChessClock.Side.WHITE
+                ? com.github.bhlangonijr.chesslib.Side.BLACK : com.github.bhlangonijr.chesslib.Side.WHITE;
+        if (!canMate(board, winner)) {
+            return "Patta: tempo scaduto e materiale insufficiente";
+        }
+        return winner == com.github.bhlangonijr.chesslib.Side.BLACK ? "Il Nero vince per tempo" : "Il Bianco vince per tempo";
+    }
+
+    private static boolean canMate(com.github.bhlangonijr.chesslib.Board board, com.github.bhlangonijr.chesslib.Side side) {
+        int minors = 0;
+        boolean opponentHasOnlyKing = true;
+        for (com.github.bhlangonijr.chesslib.Square square : com.github.bhlangonijr.chesslib.Square.values()) {
+            if (square == com.github.bhlangonijr.chesslib.Square.NONE) {
+                continue;
+            }
+            com.github.bhlangonijr.chesslib.Piece piece = board.getPiece(square);
+            if (piece == com.github.bhlangonijr.chesslib.Piece.NONE
+                    || piece.getPieceType() == com.github.bhlangonijr.chesslib.PieceType.KING) {
+                continue;
+            }
+            if (piece.getPieceSide() != side) {
+                opponentHasOnlyKing = false;
+                continue;
+            }
+            switch (piece.getPieceType()) {
+                case PAWN, ROOK, QUEEN -> {
+                    return true;
+                }
+                default -> minors++;
+            }
+        }
+        // K+minor can still mate if the opponent has material that can block its own king
+        return minors >= 2 || (minors == 1 && !opponentHasOnlyKing);
     }
 
     private void refreshLabels() {

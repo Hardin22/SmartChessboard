@@ -149,6 +149,9 @@ public class PvpGame extends AbstractGame {
 
     @Override
     public void endGame(String endMessage, boolean saveGame) {
+        if (!gameRunning) {
+            return; // already ended (mate, flag): do not save twice
+        }
         gameRunning = false;
         chessTimer.stopWhiteTimer();
         chessTimer.stopBlackTimer();

@@ -109,6 +109,10 @@ public class PvcGame extends AbstractGame {
     public void handleMoveInput(String moveInput) {
         if (!gameRunning)
             return;
+        if (board.getSideToMove() != (isPlayerWhite ? Side.WHITE : Side.BLACK)) {
+            log.info("Ignoring {}: it is the bot's turn", moveInput);
+            return;
+        }
 
         try {
             Move move = parseMoveInput(moveInput);
