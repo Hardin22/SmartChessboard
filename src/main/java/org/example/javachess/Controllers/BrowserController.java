@@ -413,11 +413,12 @@ public class BrowserController implements NavigationAware {
      * Disposes JCEF only if this session actually started it. Never call {@code CefApp.getInstance()} for this:
      * it would initialise the native library just to shut it down ({@code UnsatisfiedLinkError N_PreInitialize}).
      */
-    public static void disposeIfStarted() {
+    public static synchronized void disposeIfStarted() {
         CefApp app = cefApp;
         if (app == null) {
             return;
         }
+        cefApp = null; // idempotent: App.stop() and the shutdown hook both call this
         try {
             app.dispose();
             log.info("JCEF disposed");

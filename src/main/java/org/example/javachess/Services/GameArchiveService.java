@@ -106,10 +106,11 @@ public class GameArchiveService {
 
     // =================================================================== read
 
-    /** All games, newest first. */
+    /** All games, most recently played first (games without a date last, then by id). */
     public synchronized List<ArchivedGame> list() {
         List<ArchivedGame> copy = new ArrayList<>(games);
-        copy.sort(Comparator.comparingInt(ArchivedGame::id).reversed());
+        copy.sort(Comparator.comparing(ArchivedGame::playedAt, Comparator.nullsFirst(Comparator.naturalOrder()))
+                .thenComparingInt(ArchivedGame::id).reversed());
         return copy;
     }
 

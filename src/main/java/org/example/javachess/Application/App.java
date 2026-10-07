@@ -49,12 +49,9 @@ public class App extends Application {
     public void stop() throws Exception {
         System.out.println("[App] Stopping application...");
         // Clean shutdown of JCEF to release cache locks
-        try {
-            org.cef.CefApp.getInstance().dispose();
-            System.out.println("[App] JCEF disposed successfully.");
-        } catch (Throwable t) {
-            // Ignore if JCEF wasn't initialized
-        }
+        // Only if the browser was opened: CefApp.getInstance() would initialise JCEF just to dispose it
+        // (UnsatisfiedLinkError N_PreInitialize).
+        org.example.javachess.Controllers.BrowserController.disposeIfStarted();
         super.stop();
         System.exit(0); // Force kill to ensure no lingering processes
     }
@@ -85,13 +82,7 @@ public class App extends Application {
         // SAFETY NET: Shutdown Hook for Ctrl+C or kill signals
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("[App] Shutdown Hook Triggered!");
-            try {
-                // Check if CefApp is initialized and dispose
-                org.cef.CefApp.getInstance().dispose();
-                System.out.println("[App] JCEF disposed via Shutdown Hook.");
-            } catch (Throwable t) {
-                // Already disposed or not initialized
-            }
+            org.example.javachess.Controllers.BrowserController.disposeIfStarted();
         }));
 
         launch(args);
