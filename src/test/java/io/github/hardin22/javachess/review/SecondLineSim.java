@@ -112,8 +112,32 @@ public final class SecondLineSim {
             }
             GameReview r = ReviewClassifier.classifyGame(new ReviewInput(base.initialFen(), base.uciMoves(), ps, book,
                     g.whiteRating(), g.blackRating()), t);
+            List<io.github.hardin22.javachess.Oggetti.MoveAnalysis.MoveClassification> ourLabels = new ArrayList<>();
+            for (var mv : r.moves()) {
+                ourLabels.add(mv.label());
+            }
+            if ("greatRecheck".equals(mode)) {
+                // a Lite Great must stay Great when its position and the next are evaluated by the deep search
+                for (int i = 0; i < ourLabels.size(); i++) {
+                    if (ourLabels.get(i) != io.github.hardin22.javachess.Oggetti.MoveAnalysis.MoveClassification.GREAT) {
+                        continue;
+                    }
+                    researched++;
+                    List<PositionEval> deepPs = new ArrayList<>(ps);
+                    EvalDump.Position d0 = d.positions().get(i);
+                    EvalDump.Position d1 = d.positions().get(i + 1);
+                    deepPs.set(i, d0.withSecond());
+                    deepPs.set(i + 1, d1.main());
+                    extraNodes += d0.nodes() + (d0.second() == null ? 0 : d0.second().nodes()) + d1.nodes();
+                    GameReview rd = ReviewClassifier.classifyGame(new ReviewInput(base.initialFen(), base.uciMoves(),
+                            deepPs, book, g.whiteRating(), g.blackRating()), t);
+                    if (rd.moves().get(i).label() != io.github.hardin22.javachess.Oggetti.MoveAnalysis.MoveClassification.GREAT) {
+                        ourLabels.set(i, io.github.hardin22.javachess.Oggetti.MoveAnalysis.MoveClassification.BEST);
+                    }
+                }
+            }
             for (int i = 0; i < r.moves().size(); i++) {
-                ReviewLabel ours = ReviewLabel.of(r.moves().get(i).label());
+                ReviewLabel ours = ReviewLabel.of(ourLabels.get(i));
                 ReviewLabel theirs = g.labels().get(i);
                 plies++;
                 exact += ours == theirs ? 1 : 0;
