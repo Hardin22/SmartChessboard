@@ -52,6 +52,8 @@ public final class ReviewClassifier {
         final double fakeRegain;
         /** v1.9: no Brilliant or Great right after a book position (G-E4). */
         final boolean noSpecialInTheory;
+        /** Phase 4: G-E4 only when the opponent's move into that position was a Book move itself (not an error). */
+        final boolean theoryNeedsBookMove;
         /** v1.9 G+1: a quiet forcing check in a won attack is Great ... */
         final boolean greatForcingCheck;
         /** ... from at least this win chance ... */
@@ -233,6 +235,7 @@ public final class ReviewClassifier {
             forcingCheckGap = get("forcingCheckGap", 0.25);
             ratingFloor = get("ratingFloor", 800);
             noSpecialInTheory = get("noSpecialInTheory", 1) != 0;
+            theoryNeedsBookMove = get("theoryNeedsBookMove", 1) != 0;
             sacMin = get("sacMin", 2);
             brilliantMaxLoss = get("brilliantMaxLoss", 0.03);
             brilliantMinEpAfter = get("brilliantMinEpAfter", 0.48);
@@ -631,7 +634,10 @@ public final class ReviewClassifier {
                 boolean nearBest = label == MoveClassification.BEST || label == MoveClassification.EXCELLENT
                         || (t.brilliantFromGood && label == MoveClassification.GOOD);
                 // G-E4: a move played from an opening book position is known theory, never Brilliant or Great
-                boolean fromTheory = t.noSpecialInTheory && i > 0 && i - 1 <= theoryEnd;
+                // (Phase 4) ... unless the opponent left the book with an error: punishing it is not theory
+                // (daily_1017137676 3...e6? 4.d5: chess.com Great)
+                boolean fromTheory = t.noSpecialInTheory && i > 0 && i - 1 <= theoryEnd
+                        && (!t.theoryNeedsBookMove || out.get(i - 1).label() == MoveClassification.BOOK_MOVE);
                 int rating = me ? in.whiteRating() : in.blackRating();
                 if (mates && label == MoveClassification.BEST && !fromTheory && t.greatMatePunish > 0 && i > 0
                         && (rating > 0 ? rating : t.defaultRating) < t.greatFreeMaterialRating

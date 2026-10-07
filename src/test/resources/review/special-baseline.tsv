@@ -1,6 +1,6 @@
 # Brilliant/Great errors accepted today by SpecialLabelsGateTest (Phase 4). It only shrinks: regenerate
 # (-Dreview.special.regen=true) after fixing errors. Allowlisted exceptions are not repeated here.
-# exact 0.6782 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
+# exact 0.6783 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
 id	ply	kind	set	san	ours	chesscom
 daily_1008989784	49	fp-brilliant	ex-holdout49	Bf8	brilliant	excellent
 daily_1009092152	30	fn-great	cv93	Bxb5	best	great
@@ -11,7 +11,6 @@ daily_1011205894	55	fn-great	cv93	Re8	best	great
 daily_1012805338	36	fn-great	cv93	Bg4	best	great
 daily_1012805338	40	fn-great	cv93	Bxd4	best	great
 daily_1014523396	19	fn-great	cv93	Nf5	best	great
-daily_1017137676	7	fn-great	cv93	d5	best	great
 daily_1017137676	11	fn-great	cv93	a3	best	great
 daily_1017235912	22	fn-great	ex-holdout49	Nxg4	best	great
 daily_1017236144	23	fp-great	cv93	fxg6	great	best

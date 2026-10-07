@@ -331,6 +331,29 @@ class BrilliantGreatExclusionsTest {
         assertEquals(MoveClassification.BEST, label(rated(qxf7, 1500, 1500), Tuning.DEFAULT));
     }
 
+    @Test
+    void punishingAnOutOfBookErrorRightAfterTheBookCanBeGreat() {
+        // daily_1017137676: 1.e4 c5 2.Nf3 Nc6 3.d4 e6? (chess.com Mistake) 4.d5: the only move keeping the advantage
+        // (+2.21, second best 5.Nc3 +0.37) is chess.com Great although 3...e6 was played from a book position
+        List<String> moves = List.of("e2e4", "c7c5", "g1f3", "b8c6", "d2d4", "e7e6", "d4d5");
+        String[] best = {"e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "d4d5", "c6a5"};
+        int[] cp = {29, 23, 36, 24, 30, 31, 221, 247};
+        List<PositionEval> ps = new ArrayList<>();
+        String fen = new Board().getFen();
+        for (int i = 0; i <= moves.size(); i++) {
+            Eval e = Eval.cp(cp[i]);
+            ps.add(i == 6 ? withLines(fen, e, best[i], Eval.cp(37), "b1c3")
+                    : new PositionEval(fen, e, List.of(new EngineLine(best[i], e, List.of(best[i]), 20)), 20, 0, false));
+            if (i < moves.size()) {
+                fen = play(fen, moves.get(i));
+            }
+        }
+        ReviewInput in = new ReviewInput(new Board().getFen(), moves, ps, OpeningBook.standard(), 1298, 1151);
+        assertEquals(MoveClassification.MISTAKE, ReviewClassifier.classifyGame(in).moves().get(5).label());
+        assertEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT.with("theoryNeedsBookMove", 0)));
+    }
+
     private static ReviewInput rated(ReviewInput in, int white, int black) {
         return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
     }
