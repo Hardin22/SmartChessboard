@@ -60,6 +60,20 @@ public final class AnalysisSession {
             new ReadOnlyObjectWrapper<>(this, "insight");
     private final ReadOnlyIntegerWrapper revision = new ReadOnlyIntegerWrapper(this, "revision");
     private final ReadOnlyBooleanWrapper hasVariations = new ReadOnlyBooleanWrapper(this, "hasVariations");
+    private final ReadOnlyObjectWrapper<Position> position = new ReadOnlyObjectWrapper<>(this, "position");
+
+    /**
+     * The position shown, as one value: a view that redraws the board listens to {@link #positionProperty()} only
+     * and gets exactly one notification per move.
+     *
+     * @param fen      position
+     * @param lastMove move that led there (UCI), null at the start
+     * @param ply      half-moves from the start (variations included)
+     * @param mainPly  game ply the position belongs to (see {@link #mainPlyProperty()})
+     * @param inVariation true in a variation
+     */
+    public record Position(String fen, String lastMove, int ply, int mainPly, boolean inVariation) {
+    }
 
     /** A game from {@code initialFen} (null = standard start) on the app's engine and board. */
     public AnalysisSession(String initialFen, List<String> gameUci) {
@@ -101,6 +115,14 @@ public final class AnalysisSession {
     /** Position shown. */
     public ReadOnlyStringProperty fenProperty() {
         return fen.getReadOnlyProperty();
+    }
+
+    /**
+     * Position shown, last move and plies in a single value, set once per move after every other property: the one
+     * to listen to for redrawing the board.
+     */
+    public ReadOnlyObjectProperty<Position> positionProperty() {
+        return position.getReadOnlyProperty();
     }
 
     /** Move that led to the position (UCI) for the highlight, null at the start. */
@@ -427,6 +449,10 @@ public final class AnalysisSession {
         opening.set(b == null ? "" : openingName(b));
         bookMove.set(b != null && !n.isRoot() && b.isTheory(n.fen()));
         insight.set(n.isMainLine() && !n.isRoot() ? ReviewInsights.move(review, n.ply() - 1) : null);
+        Position p = new Position(n.fen(), n.uci(), n.ply(), tree.branchPoint().ply(), !n.isMainLine());
+        if (!p.equals(position.get())) {
+            position.set(p);
+        }
         lines.show(n.fen());
     }
 

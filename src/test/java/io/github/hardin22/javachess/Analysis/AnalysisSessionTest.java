@@ -143,6 +143,22 @@ class AnalysisSessionTest {
     }
 
     @Test
+    void oneNotificationPerMove() {
+        List<AnalysisSession.Position> seen = new ArrayList<>();
+        session.positionProperty().addListener((obs, o, n) -> seen.add(n));
+        session.next();
+        session.next();
+        session.attachReview(null); // no position change: no notification
+        session.play("d2d4");
+        assertEquals(3, seen.size());
+        assertEquals("e2e4", seen.get(0).lastMove());
+        assertEquals(2, seen.get(1).mainPly());
+        assertTrue(seen.get(2).inVariation());
+        assertEquals(3, seen.get(2).ply());
+        assertEquals(session.fenProperty().get(), seen.get(2).fen());
+    }
+
+    @Test
     void freeAnalysisFromAPosition() {
         String fen = "8/8/8/4k3/8/8/4P3/4K3 w - - 0 1";
         AnalysisSession free = new AnalysisSession(fen, List.of(), lines, null, null);
