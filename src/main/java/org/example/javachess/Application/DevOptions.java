@@ -26,6 +26,7 @@ import java.util.function.Consumer;
  *   <li>{@code -Djavachess.view=NAME} navigate to a view after start-up (MainController view name, e.g. SETTINGS)</li>
  *   <li>{@code -Djavachess.snapshot=out.png} write a PNG of the scene after {@code javachess.snapshot.delayMs} (default 3000)</li>
  *   <li>{@code -Djavachess.snapshot.exit=true} quit after writing the snapshot</li>
+ *   <li>{@code -Djavachess.reviewGame=latest|ID} open an archived game in the review screen</li>
  * </ul>
  */
 public final class DevOptions {
@@ -62,6 +63,10 @@ public final class DevOptions {
         if (view != null && mainController != null) {
             Platform.runLater(() -> navigate(mainController, view));
         }
+        String review = System.getProperty("javachess.reviewGame");
+        if (review != null && mainController != null) {
+            Platform.runLater(() -> openReview(mainController, review));
+        }
         String snapshot = System.getProperty("javachess.snapshot");
         if (snapshot != null) {
             long delay = Long.getLong("javachess.snapshot.delayMs", 3000L);
@@ -80,6 +85,22 @@ public final class DevOptions {
             mainController.navigateTo(view);
         } catch (RuntimeException e) {
             System.err.println("[DevOptions] Cannot navigate to " + view + ": " + e.getMessage());
+        }
+    }
+
+    private static void openReview(MainController mainController, String which) {
+        var archive = org.example.javachess.Services.GameArchiveService.getInstance();
+        var game = "latest".equalsIgnoreCase(which) ? archive.list().stream().findFirst()
+                : archive.get(Integer.parseInt(which.trim()));
+        if (game.isEmpty()) {
+            System.err.println("[DevOptions] No archived game " + which);
+            return;
+        }
+        mainController.loadView("REVIEW", "/UI/ReviewView.fxml");
+        Object controller = mainController.getController("REVIEW");
+        if (controller instanceof org.example.javachess.Controllers.ReviewController review) {
+            review.loadGame(game.get().movesAsUciString(), game.get().initialFen());
+            mainController.navigateTo("REVIEW");
         }
     }
 
