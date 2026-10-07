@@ -267,8 +267,10 @@ public class GameArchiveService {
      * Imports every game of a PGN text. Games without any legal move are skipped; a game with an illegal move is
      * imported up to that move and reported in the warnings.
      */
-    public synchronized ImportReport importPgn(String pgnText) {
-        List<ArchivedGame> imported = new ArrayList<>();
+    public ImportReport importPgn(String pgnText) {
+        // Parsing and checking the moves is the slow part (seconds for a few thousand games on a Raspberry Pi):
+        // done without the archive lock, so the game being played can still be saved meanwhile.
+        List<ArchivedGame> drafts = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         int skipped = 0;
         int index = 0;
@@ -290,12 +292,18 @@ public class GameArchiveService {
                     t.get("White"), t.get("Black"), pg.result(), t.getOrDefault("Termination", ""),
                     t.getOrDefault("Opening", ""), t.getOrDefault("TimeControl", ""), when, pg.initialFen(), "",
                     pg.uciMoves());
-            ArchivedGame stored = sanitize(g).withId(nextId++);
-            games.add(stored);
-            imported.add(stored);
+            drafts.add(sanitize(g));
         }
-        if (!imported.isEmpty()) {
-            persist();
+        List<ArchivedGame> imported = new ArrayList<>();
+        synchronized (this) {
+            for (ArchivedGame draft : drafts) {
+                ArchivedGame stored = draft.withId(nextId++);
+                games.add(stored);
+                imported.add(stored);
+            }
+            if (!imported.isEmpty()) {
+                persist();
+            }
         }
         log.info("PGN import: {} games imported, {} skipped", imported.size(), skipped);
         return new ImportReport(imported, skipped, warnings);

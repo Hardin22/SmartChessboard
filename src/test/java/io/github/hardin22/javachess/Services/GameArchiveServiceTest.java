@@ -349,4 +349,35 @@ class GameArchiveServiceTest {
         return games.stream().filter(g -> g.label().equals(label)).findFirst()
                 .orElseThrow(() -> new AssertionError("no game " + label));
     }
+
+    @Test
+    void aGameIsSavedWhileABigPgnIsBeingImported() throws Exception {
+        GameArchiveService s = service();
+        StringBuilder pgn = new StringBuilder();
+        java.util.Random random = new java.util.Random(3);
+        for (int g = 0; g < 400; g++) {
+            com.github.bhlangonijr.chesslib.Board b = new com.github.bhlangonijr.chesslib.Board();
+            List<String> moves = new java.util.ArrayList<>();
+            for (int p = 0; p < 60 && !b.legalMoves().isEmpty(); p++) {
+                var legal = b.legalMoves();
+                var m = legal.get(random.nextInt(legal.size()));
+                b.doMove(m);
+                moves.add(m.toString());
+            }
+            pgn.append(GameArchiveService.toPgn(new ArchivedGame(0, ArchivedGame.GameMode.PVP, "", "A", "B", "*", "",
+                    "", "", null, PgnCodec.START_FEN, "", moves))).append('\n');
+        }
+        Thread importer = Thread.ofPlatform().start(() -> s.importPgn(pgn.toString()));
+        Thread.sleep(50); // the import is parsing (most of its time)
+        boolean importRunning = importer.isAlive();
+        long t0 = System.nanoTime();
+        ArchivedGame saved = s.add(scholarsMate()); // the game that just ended on the board
+        long savedAfterMs = (System.nanoTime() - t0) / 1_000_000;
+        importer.join();
+        assertEquals(401, s.size());
+        assertTrue(s.get(saved.id()).isPresent());
+        if (importRunning) { // the parsing took the archive lock: the save waited for the whole import
+            assertTrue(savedAfterMs < 400, "the save waited " + savedAfterMs + " ms for the import");
+        }
+    }
 }
