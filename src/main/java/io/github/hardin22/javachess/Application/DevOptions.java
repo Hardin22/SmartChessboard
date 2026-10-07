@@ -32,6 +32,7 @@ import java.util.function.Consumer;
  *   <li>{@code -Djavachess.view=NAME} navigate to a view after start-up (MainController view name, e.g. SETTINGS)</li>
  *   <li>{@code -Djavachess.snapshot=out.png} write a PNG of the scene after {@code javachess.snapshot.delayMs} (default 3000)</li>
  *   <li>{@code -Djavachess.snapshot.exit=true} quit after writing the snapshot</li>
+ *   <li>{@code -Djavachess.exitAfterMs=N} quit normally (as with Cmd+Q: a game in progress is archived) after N ms</li>
  *   <li>{@code -Djavachess.theme=dark|light|system} start with that theme (not persisted)</li>
  *   <li>{@code -Djavachess.demo=game|review|puzzle} open a screen in a realistic state for screenshots:
  *       a two-player game with {@code javachess.demo.moves} (UCI, space separated) played; the review of an archived
@@ -126,6 +127,12 @@ public final class DevOptions {
         String review = System.getProperty("javachess.reviewGame");
         if (review != null && mainController != null) {
             Platform.runLater(() -> openReview(mainController, review));
+        }
+        long exitAfter = Long.getLong("javachess.exitAfterMs", 0L);
+        if (exitAfter > 0) {
+            PauseTransition quit = new PauseTransition(Duration.millis(exitAfter));
+            quit.setOnFinished(e -> Platform.exit());
+            quit.play();
         }
         String snapshot = System.getProperty("javachess.snapshot");
         if (snapshot != null) {
