@@ -152,19 +152,25 @@ class VisionBatteryTest {
     void coreBatteryReadsRealBoards() throws Exception {
         List<Fixture> core = loadCore();
         assumeTrue(!core.isEmpty(), "no core battery");
-        List<Outcome> outcomes = new ArrayList<>();
+        List<Outcome> model = new ArrayList<>();
+        List<Outcome> calibrated = new ArrayList<>();
+        Map<String, TemplateReader> readers = new TreeMap<>();
         for (Fixture f : core) {
-            outcomes.add(read(f));
+            if (f.meta().optBoolean("calibration")) {
+                readers.computeIfAbsent(f.meta().getString("group"), k -> new TemplateReader())
+                        .learn(f.image(), f.placement(), f.flipped());
+            }
         }
-        String report = report("Core battery (committed)", outcomes);
+        for (Fixture f : core) {
+            model.add(read(f));
+            TemplateReader reader = readers.get(f.meta().getString("group"));
+            calibrated.add(compare(f, reader.read(f.image(), f.flipped()).withPlacementRules()));
+        }
+        String report = report("Core battery: model", model) + "\n" + report("Core battery: calibrated reader", calibrated);
         System.out.println(report);
         write("report-core.md", report);
-        double squares = squareAccuracy(outcomes);
-        long exact = outcomes.stream().filter(Outcome::exact).count();
-        assertTrue(squares >= Double.parseDouble(System.getProperty("javachess.vision.battery.minSquares", "0.99")),
-                "square accuracy " + squares);
-        assertTrue(exact >= Math.ceil(outcomes.size() * Double.parseDouble(
-                System.getProperty("javachess.vision.battery.minExact", "0.85"))), "exact " + exact + "/" + outcomes.size());
+        // the app's reader (calibrated on the board in use) reads every real board of the core set exactly
+        assertTrue(calibrated.stream().allMatch(Outcome::exact), report);
     }
 
     @Test

@@ -118,7 +118,7 @@ public final class TemplateReader {
                     continue;
                 }
                 int s = BoardReading.SYMBOLS.indexOf(symbol);
-                boolean[] mask = pieceMask(rgb, threshold(parity(file, rank)));
+                boolean[] mask = keepBlobs(pieceMask(rgb, threshold(parity(file, rank))));
                 int area = count(mask);
                 if (area < N * N / 25) {
                     continue; // nothing visible there (covered, or a bad crop): not a useful example
@@ -161,8 +161,8 @@ public final class TemplateReader {
                 int rank = flipped ? row : 7 - row;
                 int[] rgb = cell(board, col, row);
                 int[] empty = emptyLook[row * 8 + col];
-                boolean[] mask = empty != null ? differenceMask(rgb, empty)
-                        : pieceMask(rgb, threshold(parity(file, rank)));
+                boolean[] mask = keepBlobs(empty != null ? differenceMask(rgb, empty)
+                        : pieceMask(rgb, threshold(parity(file, rank))));
                 int area = count(mask);
                 double[] score = new double[n];
                 double best = Double.MAX_VALUE;
@@ -298,7 +298,47 @@ public final class TemplateReader {
     }
 
     private int threshold(Parity p) {
-        return (int) Math.max(PIECE_THRESHOLD, Math.round(texture[p.ordinal()] * 1.15));
+        // a bit below the texture's own level: the specks of texture it lets through are removed by connectivity
+        return (int) Math.max(PIECE_THRESHOLD, Math.round(texture[p.ordinal()] * 0.9));
+    }
+
+    /** Keeps the large connected regions of a mask (a piece is one blob; textures leave small specks). */
+    static boolean[] keepBlobs(boolean[] mask) {
+        int[] label = new int[mask.length];
+        int[] stack = new int[mask.length];
+        boolean[] out = new boolean[mask.length];
+        int minArea = N * N / 50;
+        int next = 0;
+        for (int start = 0; start < mask.length; start++) {
+            if (!mask[start] || label[start] != 0) {
+                continue;
+            }
+            next++;
+            int top = 0;
+            int area = 0;
+            stack[top++] = start;
+            label[start] = next;
+            int[] members = new int[mask.length];
+            while (top > 0) {
+                int i = stack[--top];
+                members[area++] = i;
+                int x = i % N;
+                int y = i / N;
+                int[] nb = {x > 0 ? i - 1 : -1, x < N - 1 ? i + 1 : -1, y > 0 ? i - N : -1, y < N - 1 ? i + N : -1};
+                for (int j : nb) {
+                    if (j >= 0 && mask[j] && label[j] == 0) {
+                        label[j] = next;
+                        stack[top++] = j;
+                    }
+                }
+            }
+            if (area >= minArea) {
+                for (int k = 0; k < area; k++) {
+                    out[members[k]] = true;
+                }
+            }
+        }
+        return out;
     }
 
     /** 95th percentile of the colour distance from the square's border colour: how textured an empty square is. */

@@ -259,6 +259,10 @@ public final class BotGameTrial {
             }
             if (known.getSideToMove() == bottom && !animating) {
                 String uci = Boolean.getBoolean("trial.special") ? special(known) : null;
+                String scripted = System.getProperty("trial.firstMove");
+                if (scripted != null && ownMoves == 0) {
+                    uci = scripted; // a forcing first move (e.g. a check that leaves the bot a single reply)
+                }
                 if (uci == null) {
                     uci = engine.bestMove(known.getFen());
                 }
@@ -707,6 +711,10 @@ public final class BotGameTrial {
             + " if (start) { start.click(); return 'intro closed'; }"
             + " const fresh = byText(/^(new game|nuova partita|rematch|rivincita)$/i);"
             + " if (fresh && /game over|checkmate|wins|vince|draw|patta/i.test(document.body.innerText || '')) { fresh.click(); return 'new game'; }"
+            + " const side = [...document.querySelectorAll('.play-side-selector-option')]"
+            + "   .find(e => (e.getAttribute('style') || '').includes('/COLOUR'));"
+            + " if (side && visible(side) && side.getAttribute('data-playing-as-selected') !== 'true') {"
+            + "   side.click(); return 'side chosen'; }"
             + " const play = document.querySelector('.bot-selection-cta-button-button') || byText(/^(play|gioca)$/i);"
             + " if (play && visible(play)) { play.click(); return 'pressed play'; }"
             + " const ingame = [...document.querySelectorAll('button')].filter(visible).some(b => /resign|abbandon/i.test((b.getAttribute('aria-label') || '') + (b.title || '')))"
