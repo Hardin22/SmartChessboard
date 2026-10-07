@@ -13,6 +13,7 @@ public class App extends Application {
 
     @Override
     public void start(Stage primaryStage) {
+        long startAt = StartupMetrics.uptimeMs();
         try {
             // Carica il file FXML
             // Carica il file FXML
@@ -39,6 +40,7 @@ public class App extends Application {
             // Posiziona la finestra sullo schermo selezionato
 
             primaryStage.show();
+            StartupMetrics.onStageShown(startAt);
             DevOptions.afterShow(primaryStage, fxmlLoader.getController());
         } catch (IOException e) {
             e.printStackTrace();

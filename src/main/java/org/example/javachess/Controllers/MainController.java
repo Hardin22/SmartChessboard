@@ -38,6 +38,8 @@ public class MainController {
                 loadView("THEME", "/UI/ThemeView.fxml");
                 // Review view might be dynamic, so maybe load on demand or preload generic
                 loadView("REVIEW", "/UI/ReviewView.fxml");
+                org.slf4j.LoggerFactory.getLogger(MainController.class).info("Views preloaded at {} ms",
+                        org.example.javachess.Application.StartupMetrics.uptimeMs());
             });
         }).start();
     }

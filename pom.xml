@@ -76,11 +76,6 @@
             <version>127.3.1</version>
         </dependency>
         <dependency>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-shade-plugin</artifactId>
-            <version>3.6.0</version>
-        </dependency>
-        <dependency>
             <groupId>com.konghq</groupId>
             <artifactId>unirest-java</artifactId>
             <version>3.13.6</version> <!-- Puoi aggiornare alla versione più recente se necessario -->
@@ -118,27 +113,11 @@
         
         <!-- JOGL Removed: Incompatible with macOS ARM64 and not needed for Windowed Mode -->
 
-        <dependency>
-            <groupId>com.github.kurbatov</groupId>
-            <artifactId>firmata4j</artifactId>
-            <version>2.3.7</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.scream3r</groupId>
-                    <artifactId>jssc</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
         <!-- Dipendenza per jSerialComm -->
         <dependency>
             <groupId>com.fazecast</groupId>
             <artifactId>jSerialComm</artifactId>
             <version>2.9.3</version>
-        </dependency>
-        <dependency>
-            <groupId>io.github.java-native</groupId>
-            <artifactId>jssc</artifactId>
-            <version>2.9.6</version>
         </dependency>
 
 
