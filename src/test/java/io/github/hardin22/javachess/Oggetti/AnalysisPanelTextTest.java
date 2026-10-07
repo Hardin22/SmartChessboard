@@ -26,5 +26,7 @@ class AnalysisPanelTextTest {
         assertEquals("M3", AnalysisPanel.formatScore("M3"));
         assertEquals("−M2", AnalysisPanel.formatScore("-M2"));
         assertEquals("–", AnalysisPanel.formatScore("-..."));
+        assertEquals("1-0", AnalysisPanel.formatScore("1-0"));
+        assertEquals("½-½", AnalysisPanel.formatScore("½-½"));
     }
 }

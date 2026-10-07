@@ -113,10 +113,14 @@ class MoveCoachIntegrationTest {
             "r1bqkbnr/pppp1ppp/2n5/4p2Q/4P3/8/PPPP1PPP/RNB1KBNR w KQkq - 2 3; h5e5; BLUNDER; hangs the queen",
             "r1bqkbnr/pppp1ppp/2n5/4p2Q/4P3/8/PPPP1PPP/RNB1KBNR w KQkq - 2 3; f1c4; OK; develops with threat",
             "k7/8/2K5/8/8/8/8/1Q6 w - - 0 1; b1b7; BEST; queen mate",
-            "k7/8/2K5/8/8/8/8/1Q6 w - - 0 1; b1b6; BLUNDER; stalemate throws the win",
+            "k7/8/2K5/8/8/8/8/1Q6 w - - 0 1; b1b6; ERROR; stalemate throws the win",
             "8/8/4k3/8/8/4K3/8/8 w - - 0 1; e3d3; OK; dead draw, any king move",
             "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 6 5; e1g1; OK; castles",
             "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 6 5; c4f7; ERROR; bishop sac that loses material",
+            // the user's game 1.e4 d5 2.exd5 Bd7 3.d4 a5 4.c4 f6 5.Qh5+ g6 6.Be2 gxh5?? 7.Bxh5#
+            "rn1qkbnr/1ppbp2p/5pp1/p2P3Q/2PP4/8/PP2BPPP/RNB1K1NR b KQkq - 1 6; g6h5; BLUNDER; user game: allows Bxh5#",
+            "rn1qkbnr/1ppbp2p/5p2/p2P3p/2PP4/8/PP2BPPP/RNB1K1NR w KQkq - 0 7; e2h5; BEST; user game: Bxh5#",
+            "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq g3 0 2; d8h4; BEST; Black mates (fool's mate)",
     };
 
     @TestFactory

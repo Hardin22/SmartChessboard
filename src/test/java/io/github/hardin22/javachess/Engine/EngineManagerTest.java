@@ -30,6 +30,16 @@ class EngineManagerTest {
         return board.getFen();
     }
 
+    /** Our own move: {@code uci} when legal, else the first legal move (the bot replies are not deterministic). */
+    static String playOwn(Board board, String uci) {
+        Move m = new Move(uci, board.getSideToMove());
+        if (!board.legalMoves().contains(m)) {
+            m = board.legalMoves().get(0);
+        }
+        board.doMove(m);
+        return board.getFen();
+    }
+
     @Test
     void profilesReflectInstalledBinaries() {
         StockfishTestSupport.requireStockfish();
@@ -61,14 +71,14 @@ class EngineManagerTest {
         play(board, "e2e4");
         String reply = manager.botMove(board.getFen(), 20).get(15, TimeUnit.SECONDS);
         play(board, reply);
-        play(board, "g1f3");
+        playOwn(board, "g1f3");
 
         // switch while the bot is thinking: the request completes (old or new engine), the game goes on
         CompletableFuture<String> inFlight = manager.botMove(board.getFen(), 3);
         manager.select(EngineManager.STOCKFISH_LITE);
         play(board, inFlight.get(15, TimeUnit.SECONDS));
         assertEquals(EngineManager.STOCKFISH_LITE, manager.activeProfile().id());
-        play(board, "d2d4");
+        playOwn(board, "d2d4");
         long t0 = System.nanoTime();
         play(board, manager.botMove(board.getFen(), 10).get(15, TimeUnit.SECONDS));
         long liteMs = (System.nanoTime() - t0) / 1_000_000;
@@ -78,7 +88,7 @@ class EngineManagerTest {
         boolean maia = manager.profiles().stream().anyMatch(p -> p.id().equals(EngineManager.MAIA_1500) && p.available());
         if (maia) {
             manager.select(EngineManager.MAIA_1500);
-            play(board, "b1c3");
+            playOwn(board, "b1c3");
             t0 = System.nanoTime();
             String maiaMove = manager.botMove(board.getFen(), 0).get(40, TimeUnit.SECONDS);
             long firstMs = (System.nanoTime() - t0) / 1_000_000;
@@ -88,7 +98,7 @@ class EngineManagerTest {
         }
         // back to Stockfish
         manager.select(EngineManager.STOCKFISH);
-        play(board, "c1g5");
+        playOwn(board, "c1g5");
         play(board, manager.botMove(board.getFen(), 20).get(15, TimeUnit.SECONDS));
     }
 

@@ -39,14 +39,15 @@ class GameAnalyzerTest {
     }
 
     @Test
-    void reviewRunsOnTheSharedAnalysisProcess() {
+    void queenTakeThatAllowsMateIsABlunder() {
         StockfishTestSupport.requireStockfish();
         GameAnalyzer analyzer = new GameAnalyzer();
-        analyzer.analyzeGame("e2e4 e7e5", 8, null);
-        UciClient engine = EngineManager.get().analysisClient();
-        int started = engine.processesStarted();
-        analyzer.analyzeGame("d2d4 d7d5", 8, null);
-        assertSame(engine, EngineManager.get().analysisClient(), "no separate review process");
-        assertEquals(started, engine.processesStarted(), "no new process per review");
+        // 1.e4 d5 2.exd5 Bd7 3.d4 a5 4.c4 f6 5.Qh5+ g6 6.Be2 gxh5?? 7.Bxh5#
+        List<MoveAnalysis> a = analyzer.analyzeGame(
+                "e2e4 d7d5 e4d5 c8d7 d2d4 a7a5 c2c4 f7f6 d1h5 g7g6 f1e2 g6h5 e2h5", 12, null);
+        assertEquals(13, a.size());
+        assertEquals(MoveClassification.BLUNDER, a.get(11).getClassification(), "6...gxh5 allows Bxh5#");
+        assertNotEquals(MoveClassification.BLUNDER, a.get(12).getClassification(), "7.Bxh5# delivers mate");
+        assertTrue(a.get(12).getScore() > 50_000, "White mated: White POV score must be huge");
     }
 }

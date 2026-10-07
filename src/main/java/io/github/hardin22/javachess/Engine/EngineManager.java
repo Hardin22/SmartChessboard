@@ -180,7 +180,7 @@ public final class EngineManager implements EngineSelection {
         List<EngineProfile> list = new ArrayList<>();
         list.add(new EngineProfile(STOCKFISH, "Stockfish", "Massima forza · analisi profonda", sf));
         list.add(new EngineProfile(STOCKFISH_LITE, "Stockfish Lite",
-                "Leggero · 1 thread, ideale su Raspberry Pi 4", sf));
+                "Leggero · pensato per Raspberry Pi 5", sf));
         for (String elo : new String[] { "1100", "1500", "1900" }) {
             boolean weights = Files.isRegularFile(maiaWeights(elo));
             list.add(new EngineProfile("maia-" + elo, "Maia " + elo,
@@ -352,8 +352,8 @@ public final class EngineManager implements EngineSelection {
     }
 
     /**
-     * Stockfish Lite on a Raspberry Pi 4 or older (Cortex-A72: ~1/9 of an M-series core) or with less than ~1.4 GB of
-     * RAM, Stockfish elsewhere.
+     * Stockfish Lite on any Raspberry Pi (it is sized for the Pi 5; a Pi 4 core is ~1/9 of an M-series core) or with
+     * less than ~1.4 GB of RAM, Stockfish elsewhere.
      */
     static String defaultProfileForThisMachine() {
         if (ProcessPlan.detect().ramMb() < 1_400) {
@@ -364,8 +364,7 @@ public final class EngineManager implements EngineSelection {
             Path model = Path.of("/proc/device-tree/model");
             if (Files.isReadable(model)) {
                 String m = Files.readString(model).replace("\0", "");
-                java.util.regex.Matcher v = java.util.regex.Pattern.compile("Raspberry Pi (\\d+)").matcher(m);
-                if (v.find() && Integer.parseInt(v.group(1)) <= 4) {
+                if (m.contains("Raspberry Pi")) {
                     log.info("{}: defaulting to Stockfish Lite", m.trim());
                     return STOCKFISH_LITE;
                 }
@@ -521,28 +520,23 @@ public final class EngineManager implements EngineSelection {
     }
 
     /**
-     * Search budgets for one resource tier. Numbers come from {@code EngineBenchmarkTest} (Stockfish 19, 240 moves
-     * of weak self-play, reference depth 20). Official SF 19 binary: 1.24 M nodes/s on one Apple M4 core (1.08 M in the
-     * linux/arm64 container), so ~310 k on a Pi 5 core (1/3.5-1/4) and ~120-135 k on a Pi 4 core (1/9):
-     * <ul>
-     *   <li>depth 12 is the shallowest depth with no missed and no invented blunder vs the reference (depth 10
-     *       missed 3/240, depth 8 missed 2); cold-hash cost after a move: p50 10 k / p95 33 k nodes, i.e.
-     *       ~30 / 110 ms on one Pi 5 core and ~75 / 245 ms on one Pi 4 core (much less with the warm hash of
-     *       the live analysis);</li>
-     *   <li>depth 16 raises the ok/error agreement to 96% (when the position before was searched deeper) but costs
-     *       p50 134 k / p95 330 k nodes (~0.4 / 1.1 s on one Pi 5 core): used only as a capped confirmation.</li>
-     * </ul>
-     * Latency targets (verdict after the piece is put down; {@code CoachLatencyTest} asserts them with a
-     * machine-speed-normalised estimate, one analysis thread):
+     * Search budgets for one resource tier. LED numbers from {@code LedDepthStudyTest} (Stockfish 19, 613 moves of
+     * real chess.com games of all levels plus their mating / mate-allowing moves, reference = both positions at depth
+     * 20, LED classification = the review's fast verdict). The position before is searched by the live analysis
+     * while the player thinks, the position after the move with that warm hash:
      * <table>
-     *   <caption>Targets and estimates</caption>
-     *   <tr><th>board</th><th>profile</th><th>target p50 / p95</th><th>estimate p50 / p95</th><th>CFS-quota worst case</th></tr>
-     *   <tr><td>Pi 5</td><td>Stockfish</td><td>0.5 s / 1.5 s</td><td>~25-70 ms / ~170 ms</td><td>0.12 s / 0.7 s</td></tr>
-     *   <tr><td>Pi 4</td><td>Stockfish Lite</td><td>1 s / 3 s</td><td>~60-160 ms / ~390 ms</td><td>1.1 s / 2.0 s</td></tr>
+     *   <caption>LED verdict at depth d of the position after the move, position before at depth 16</caption>
+     *   <tr><th>d</th><th>same class</th><th>same ok/error</th><th>real mistakes shown ok</th><th>nodes p50 / p95 / max</th><th>Pi 5, 1 thread p50 / p95</th></tr>
+     *   <tr><td>10</td><td>78.5%</td><td>94.1%</td><td>5</td><td>2 k / 14 k / 77 k</td><td>7 / 47 ms</td></tr>
+     *   <tr><td>12</td><td>78.5%</td><td>93.6%</td><td>2</td><td>6 k / 44 k / 273 k</td><td>21 / 146 ms</td></tr>
+     *   <tr><td>14</td><td>80.8%</td><td>94.9%</td><td>3</td><td>27 k / 109 k / 568 k</td><td>89 / 362 ms</td></tr>
+     *   <tr><td>16</td><td>81.9%</td><td>96.4%</td><td>2</td><td>115 k / 300 k / 911 k</td><td>385 ms / 1.0 s</td></tr>
      * </table>
-     * The CFS-quota column comes from a linux/arm64 container on the Mac limited with {@code --cpus 0.25 / 0.11}
-     * (one Pi 5 / Pi 4 core): the 100 ms throttling makes it very pessimistic. Lift hints: 13 moves at depth 10 in
-     * 81 ms on one M4 core, i.e. ~0.3 s on a Pi 5 and capped at 0.6 s / 0.5 s (full / lite).
+     * Depth 12 is the verdict depth (shallower loses agreement, deeper costs 4x per two plies); 16 the confirmation,
+     * which only changes the LEDs if the class changes. A shallow position before costs more than a shallow position
+     * after (before at depth 12 instead of 16: -5 points of agreement). The engine's top move (at depth &ge; 10) is
+     * BEST at once: 1 mistake in ~250 such moves. Pi 5 = 300 k nodes/s per core (1/4 of an M4 core; 2 threads ~1.7x).
+     * The Raspberry Pi 4 (1 thread at ~120 k nodes/s) keeps the depth 14 confirmation.
      *
      * @param threads            analysis engine threads
      * @param hashMb             analysis engine hash
@@ -560,18 +554,40 @@ public final class EngineManager implements EngineSelection {
      */
     public record Budget(int threads, int hashMb, int liveMaxDepth, int coachMinDepth, int coachConfirmDepth,
                          long coachCapMs, long candidateNodes, long candidateCapMs, int botThreads, int botHashMb,
-                         int botMaxMovetimeMs, long botMaxNodes, int reviewMovetimeCapMs) {
+                         int botMaxMovetimeMs, long botMaxNodes, int reviewMovetimeCapMs, ReviewPlan review) {
 
-        /** Pi 5 / desktop: threads and hash from the {@link ProcessPlan}, deep live analysis. */
-        public static Budget full(ProcessPlan plan) {
-            return new Budget(plan.analysisThreads(), plan.analysisHashMb(), 30, 12, 16, 2_500, 150_000, 600, 1,
-                    plan.botHashMb(), 10_000, 0, 1_500);
+        public Budget(int threads, int hashMb, int liveMaxDepth, int coachMinDepth, int coachConfirmDepth,
+                      long coachCapMs, long candidateNodes, long candidateCapMs, int botThreads, int botHashMb,
+                      int botMaxMovetimeMs, long botMaxNodes, int reviewMovetimeCapMs) {
+            this(threads, hashMb, liveMaxDepth, coachMinDepth, coachConfirmDepth, coachCapMs, candidateNodes,
+                    candidateCapMs, botThreads, botHashMb, botMaxMovetimeMs, botMaxNodes, reviewMovetimeCapMs,
+                    new ReviewPlan(1, 1, 16));
         }
 
-        /** Pi 4 / weak hardware: 1 thread everywhere, same verdict depth (12), cheaper confirmation and hints. */
+        /** Stockfish: threads and hash from the {@link ProcessPlan}, deep live analysis, all spare cores for reviews. */
+        public static Budget full(ProcessPlan plan) {
+            int reviewWorkers = plan.ramMb() >= 6_000 ? clamp(plan.cores() - 2, 1, 6)
+                    : plan.ramMb() >= 2_800 ? clamp(plan.cores() - 1, 1, 3) : 1;
+            int reviewHash = plan.ramMb() >= 6_000 ? 128 : plan.ramMb() >= 2_800 ? 32 : 16;
+            return new Budget(plan.analysisThreads(), plan.analysisHashMb(), 30, 12, 16, 2_500, 150_000, 600, 1,
+                    plan.botHashMb(), 10_000, 0, 1_500, new ReviewPlan(reviewWorkers, 1, reviewHash));
+        }
+
+        /**
+         * Stockfish Lite, the default on a Raspberry Pi (designed for a Pi 5 8 GB: 4 Cortex-A76 cores, ~300-450 k
+         * nodes/s each). In a game: 2 analysis threads (eval bar, LED verdicts and hints), the bot on a third core,
+         * the fourth for the UI and the camera. In a review nobody plays: 3 single-thread processes in parallel.
+         * Smaller boards (Pi 4, 1-4 GB) get 1 thread and small hashes.
+         */
         public static Budget lite(ProcessPlan plan) {
-            return new Budget(1, Math.min(16, plan.analysisHashMb()), 16, 12, 14, 1_500, 40_000, 500, 1,
-                    Math.min(16, plan.botHashMb()), 1_000, 300_000, 1_000);
+            boolean big = plan.ramMb() >= 6_000;
+            boolean mid = plan.ramMb() >= 2_800;
+            int threads = mid && plan.cores() >= 4 ? 2 : 1;
+            int hash = big ? 64 : mid ? 32 : Math.min(16, plan.analysisHashMb());
+            int reviewWorkers = mid ? clamp(plan.cores() - 1, 1, 3) : 1;
+            return new Budget(threads, hash, 18, 12, mid ? 16 : 14, 1_500, 60_000, 500, 1,
+                    big ? 32 : Math.min(16, plan.botHashMb()), 1_000, 300_000, 1_000,
+                    new ReviewPlan(reviewWorkers, 1, hash));
         }
 
         public static Budget full() {
@@ -581,5 +597,19 @@ public final class EngineManager implements EngineSelection {
         public static Budget lite() {
             return lite(ProcessPlan.detect());
         }
+
+        private static int clamp(int v, int lo, int hi) {
+            return Math.max(lo, Math.min(hi, v));
+        }
+    }
+
+    /**
+     * Engines of the game review (the review's own pool of single-thread processes, {@code Engine.review}).
+     *
+     * @param workers parallel Stockfish processes
+     * @param threads threads of each process
+     * @param hashMb  hash of each process
+     */
+    public record ReviewPlan(int workers, int threads, int hashMb) {
     }
 }
