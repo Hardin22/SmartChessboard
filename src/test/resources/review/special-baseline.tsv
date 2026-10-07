@@ -46,7 +46,6 @@ live_127051221683	47	fn-great	cv93	c6	best	great
 live_138986716238	41	fn-brilliant	ex-holdout49	Bb4	excellent	brilliant
 live_138986716238	70	fn-great	ex-holdout49	Rxh5	best	great
 live_140835657241	51	fn-brilliant	ex-holdout49	Bxd4	best	brilliant
-live_140943746238	23	fn-brilliant	ex-holdout49	Bxb5	inaccuracy	brilliant
 live_140943746238	64	fp-great	ex-holdout49	Nxe4	great	best
 live_140943746238	69	fn-great	ex-holdout49	Rxd1	best	great
 live_141789599574	35	fn-great	cv93	Rxc5	best	great
@@ -61,7 +60,6 @@ live_166861688890	51	fn-great	cv93	Nd6+	best	great
 live_168110883796	19	fn-great	cv93	Rd1	best	great
 live_169307682848	22	fn-great	cv93	Ne3	excellent	great
 live_170651071526	39	fn-brilliant	ex-holdout49	Nxf7	best	brilliant
-live_170725680910	49	fn-brilliant	ex-holdout49	Rd5	good	brilliant
 live_170725680910	74	fn-great	ex-holdout49	Rfxd7	best	great
 live_170725680910	122	fn-great	ex-holdout49	Kh6	best	great
 live_170725680910	144	fn-great	ex-holdout49	Rg6+	excellent	great
@@ -187,7 +185,6 @@ byrne_fischer_1956	34	fn-brilliant	famous-brilliant	Be6	great	brilliant
 byrne_fischer_1956	34	fp-great	famous-brilliant	Be6	great	brilliant
 capablanca_marshall_1918	71	fn-brilliant	famous-control	Bxf7+	best	brilliant
 deepblue_kasparov_1997_g6	15	fp-brilliant	famous-control	Nxe6	brilliant	book
-deepblue_kasparov_1997_g6	33	fp-brilliant	famous-control	Bf5	brilliant	excellent
 fischer_petrosian_1971_g7	59	fn-great	famous-control	Kd2	best	great
 fischer_spassky_1972_g6	41	fn-great	famous-control	f4	best	great
 fischer_spassky_1972_g6	75	fn-brilliant	famous-control	Rxf6	excellent	brilliant
