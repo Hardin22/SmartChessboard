@@ -14,6 +14,10 @@ import java.util.*;
 
 public class PieceClassifier {
 
+    static {
+        org.example.javachess.Application.NativeLibraries.loadOpenCv(); // no longer loaded at app start-up
+    }
+
     private OrtEnvironment env;
     private OrtSession session;
 

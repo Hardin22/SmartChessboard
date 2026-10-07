@@ -7,9 +7,12 @@ import org.example.javachess.Services.LichessGameManager;
 
 public class OnlineGame extends AbstractGame {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(OnlineGame.class);
+
     private LichessGameManager lichessGameManager;
     private String gameId;
     private boolean isGameSaved = false;
+    private String finalResult;
 
     public OnlineGame(ChessBoardUI chessBoardUI, EvalBar evalBar, String gameId) {
         super(chessBoardUI, evalBar);
@@ -63,12 +66,7 @@ public class OnlineGame extends AbstractGame {
             public void onBoardUpdated(String fen, String lastMove, String errorSquare) {
                 Platform.runLater(() -> {
                     // Update Board UI
-                    Move move = null;
-                    if (lastMove != null) {
-                        move = new Move(
-                                com.github.bhlangonijr.chesslib.Square.valueOf(lastMove.substring(0, 2).toUpperCase()),
-                                com.github.bhlangonijr.chesslib.Square.valueOf(lastMove.substring(2, 4).toUpperCase()));
-                    }
+                    Move move = lastMove != null ? uciToMove(lastMove) : null;
                     chessBoardUI.setPosition(fen, move);
 
                     if (errorSquare != null) {
@@ -80,18 +78,13 @@ public class OnlineGame extends AbstractGame {
                     if (lastMove != null) {
                         // SYNC LOCAL BOARD AND PGN
                         try {
-                            com.github.bhlangonijr.chesslib.move.Move chessMove = new com.github.bhlangonijr.chesslib.move.Move(
-                                    com.github.bhlangonijr.chesslib.Square
-                                            .valueOf(lastMove.substring(0, 2).toUpperCase()),
-                                    com.github.bhlangonijr.chesslib.Square
-                                            .valueOf(lastMove.substring(2, 4).toUpperCase()));
-
+                            Move chessMove = uciToMove(lastMove);
                             if (board.isMoveLegal(chessMove, true)) {
-                                updatePgn(chessMove);
                                 board.doMove(chessMove);
+                                updatePgn(chessMove); // after doMove: it numbers moves from the side to move
                             }
                         } catch (Exception e) {
-                            System.err.println("[OnlineGame] Error syncing move: " + e.getMessage());
+                            log.warn("Error syncing move: {}", e.getMessage());
                         }
                     }
 
@@ -144,6 +137,7 @@ public class OnlineGame extends AbstractGame {
 
             @Override
             public void onGameEnd(String result) {
+                finalResult = result;
                 endGame("Partita terminata: " + result, true);
             }
 
@@ -155,6 +149,19 @@ public class OnlineGame extends AbstractGame {
 
         // Start the Lichess Stream
         lichessGameManager.startGame();
+    }
+
+    /** "e7e8q" -> promotion included (the side comes from the piece on the from-square). */
+    private Move uciToMove(String uci) {
+        com.github.bhlangonijr.chesslib.Square from = com.github.bhlangonijr.chesslib.Square.valueOf(uci.substring(0, 2).toUpperCase());
+        com.github.bhlangonijr.chesslib.Square to = com.github.bhlangonijr.chesslib.Square.valueOf(uci.substring(2, 4).toUpperCase());
+        if (uci.length() >= 5) {
+            boolean white = board.getPiece(from).getPieceSide() == com.github.bhlangonijr.chesslib.Side.WHITE;
+            String symbol = uci.substring(4, 5);
+            return new Move(from, to, com.github.bhlangonijr.chesslib.Piece.fromFenSymbol(
+                    white ? symbol.toUpperCase() : symbol.toLowerCase()));
+        }
+        return new Move(from, to);
     }
 
     @Override
@@ -183,10 +190,10 @@ public class OnlineGame extends AbstractGame {
         if (saveGame && !isGameSaved) {
             // Only save if at least 3 moves were made
             if (board.getHistory().size() >= 3) {
-                saveGameToJson("Unknown", "Lichess Online", "Online (Lichess)", "N/A");
+                saveGameToJson(finalResult != null ? finalResult : "*", "Lichess Online", "Online (Lichess)", "N/A");
                 isGameSaved = true;
             } else {
-                System.out.println("[OnlineGame] Game too short, not saving (" + board.getHistory().size() + " moves)");
+                log.info("Game too short, not saving ({} moves)", board.getHistory().size());
             }
         }
     }

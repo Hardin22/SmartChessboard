@@ -57,17 +57,16 @@ public class PuzzleDashboardController implements NavigationAware {
         int targetRating = (int) ratingSlider.getValue();
         List<String> selectedThemes = getSelectedThemes();
 
-        PuzzleService service = PuzzleService.getInstance();
-        Puzzle puzzle;
-
-        List<Puzzle> candidates = service.getPuzzlesByThemeAndRating(selectedThemes, targetRating, 200);
-        puzzle = service.getRandomPuzzle(candidates);
-
-        if (puzzle != null) {
-            navigateToPuzzleGame(puzzle, targetRating, selectedThemes);
-        } else {
-            System.out.println("No puzzle found matching criteria.");
-        }
+        // the search reads the puzzle database: off the FX thread
+        PuzzleService.getInstance().findPuzzleAsync(targetRating, 200, selectedThemes)
+                .thenAccept(puzzle -> javafx.application.Platform.runLater(() -> {
+                    if (puzzle != null) {
+                        navigateToPuzzleGame(puzzle, targetRating, selectedThemes);
+                    } else {
+                        org.slf4j.LoggerFactory.getLogger(PuzzleDashboardController.class)
+                                .info("No puzzle found for rating {} and themes {}", targetRating, selectedThemes);
+                    }
+                }));
     }
 
     private List<String> getSelectedThemes() {

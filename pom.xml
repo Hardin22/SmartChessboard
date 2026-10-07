@@ -76,11 +76,6 @@
             <version>127.3.1</version>
         </dependency>
         <dependency>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-shade-plugin</artifactId>
-            <version>3.6.0</version>
-        </dependency>
-        <dependency>
             <groupId>com.konghq</groupId>
             <artifactId>unirest-java</artifactId>
             <version>3.13.6</version> <!-- Puoi aggiornare alla versione più recente se necessario -->
@@ -118,27 +113,11 @@
         
         <!-- JOGL Removed: Incompatible with macOS ARM64 and not needed for Windowed Mode -->
 
-        <dependency>
-            <groupId>com.github.kurbatov</groupId>
-            <artifactId>firmata4j</artifactId>
-            <version>2.3.7</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.scream3r</groupId>
-                    <artifactId>jssc</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
         <!-- Dipendenza per jSerialComm -->
         <dependency>
             <groupId>com.fazecast</groupId>
             <artifactId>jSerialComm</artifactId>
             <version>2.9.3</version>
-        </dependency>
-        <dependency>
-            <groupId>io.github.java-native</groupId>
-            <artifactId>jssc</artifactId>
-            <version>2.9.6</version>
         </dependency>
 
 
@@ -163,6 +142,15 @@
     </dependencies>
 
     <build>
+        <resources>
+            <!-- Datasets (puzzles.csv is ~1 GB) never go to the classpath or the jar: see docs/raspberry-pi.md -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <excludes>
+                    <exclude>data/**</exclude>
+                </excludes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -221,6 +209,17 @@
                         </goals>
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <filters>
+                                <filter>
+                                    <!-- signatures of the original jars are invalid in the merged jar -->
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>org.example.javachess.Application.Main</mainClass>
@@ -233,4 +232,42 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- Raspberry Pi (Linux arm64) jar without the native libraries of other platforms (~250 MB less):
+             ./mvnw -Ppi -Djavafx.platform=linux-aarch64 -DskipTests package   (see docs/raspberry-pi.md) -->
+        <profile>
+            <id>pi</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-shade-plugin</artifactId>
+                        <configuration>
+                            <filters combine.children="append">
+                                <filter>
+                                    <artifact>org.openpnp:opencv</artifact>
+                                    <excludes>
+                                        <exclude>nu/pattern/opencv/osx/**</exclude>
+                                        <exclude>nu/pattern/opencv/windows/**</exclude>
+                                        <exclude>nu/pattern/opencv/linux/x86_32/**</exclude>
+                                        <exclude>nu/pattern/opencv/linux/x86_64/**</exclude>
+                                        <exclude>nu/pattern/opencv/linux/ARMv7/**</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <artifact>com.microsoft.onnxruntime:onnxruntime</artifact>
+                                    <excludes>
+                                        <exclude>ai/onnxruntime/native/osx-*/**</exclude>
+                                        <exclude>ai/onnxruntime/native/win-*/**</exclude>
+                                        <exclude>ai/onnxruntime/native/linux-x64/**</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

@@ -1,23 +1,34 @@
 package org.example.javachess.Application;
 
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
-import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.text.Font;
 import javafx.stage.Stage;
+import org.example.javachess.Controllers.MainController;
+import org.example.javachess.Hardware.Hardware;
+import org.example.javachess.Utils.AppExecutors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 
+/**
+ * JavaFX application. Start-up does only what the first screen needs (main layout and HOME); the board
+ * hardware connects on a background thread and the other views are built while the UI is idle.
+ */
 public class App extends Application {
+
+    private static final Logger log = LoggerFactory.getLogger(App.class);
 
     @Override
     public void start(Stage primaryStage) {
+        long startAt = StartupMetrics.uptimeMs();
         try {
-            // Carica il file FXML
-            // Carica il file FXML
             var resource = App.class.getResource("/UI/MainLayout.fxml");
-            System.out.println("Resource URL: " + resource);
             if (resource == null) {
                 throw new IllegalStateException("Cannot find /UI/MainLayout.fxml");
             }
@@ -32,66 +43,107 @@ public class App extends Application {
             scene.getStylesheets().add(App.class.getResource("/Styles/Style.css").toExternalForm());
             primaryStage.setTitle("Chess Application");
             boolean fullScreen = DevOptions.placeStage(primaryStage);
+            primaryStage.setFullScreenExitHint("");
+            if (Boolean.getBoolean("javachess.kiosk")) {
+                // kiosk (run_pi.sh): Esc must not leave full screen on the board's monitor
+                primaryStage.setFullScreenExitKeyCombination(javafx.scene.input.KeyCombination.NO_MATCH);
+            }
             primaryStage.setFullScreen(fullScreen);
 
-            // Seleziona lo schermo desiderato (ad esempio, il secondo schermo)
-
-            // Posiziona la finestra sullo schermo selezionato
-
+            long beforeShow = StartupMetrics.uptimeMs();
             primaryStage.show();
-            DevOptions.afterShow(primaryStage, fxmlLoader.getController());
+            log.info("Start-up: UI built in {} ms, window shown in {} ms",
+                    beforeShow - startAt, StartupMetrics.uptimeMs() - beforeShow);
+            StartupMetrics.onStageShown(startAt);
+
+            MainController mainController = fxmlLoader.getController();
+            // after the first frame: connect the board and build the other views in idle time
+            Platform.runLater(() -> {
+                AppExecutors.io().execute(Hardware::get);
+                mainController.startIdlePreload();
+            });
+            DevOptions.afterShow(primaryStage, mainController);
         } catch (IOException e) {
-            e.printStackTrace();
+            log.error("Cannot start the user interface", e);
+            Platform.exit();
         }
     }
 
     @Override
-    public void stop() throws Exception {
-        System.out.println("[App] Stopping application...");
-        // Clean shutdown of JCEF to release cache locks
-        try {
-            org.cef.CefApp.getInstance().dispose();
-            System.out.println("[App] JCEF disposed successfully.");
-        } catch (Throwable t) {
-            // Ignore if JCEF wasn't initialized
+    public void stop() {
+        log.info("Stopping application...");
+        if (Hardware.isInitialized()) {
+            Hardware.shutdown(); // LEDs off, serial port closed
         }
-        super.stop();
-        System.exit(0); // Force kill to ensure no lingering processes
+        AppExecutors.shutdown(); // pending archive writes are completed first
+        disposeBrowser();
+        stopChildProcesses();
+        logLingeringThreads();
+        // Last resort for threads started by libraries that do not use daemon threads.
+        System.exit(0);
+    }
+
+    /** Disposes JCEF only if the browser was actually opened (getInstance() would start it). */
+    private static void disposeBrowser() {
+        try {
+            org.cef.CefApp.CefAppState state = org.cef.CefApp.getState();
+            if (state != org.cef.CefApp.CefAppState.NONE && state != org.cef.CefApp.CefAppState.TERMINATED) {
+                org.cef.CefApp.getInstance().dispose();
+                log.info("JCEF disposed");
+            }
+        } catch (Throwable t) {
+            log.debug("JCEF not disposed: {}", t.toString());
+        }
+    }
+
+    /** Engines (Stockfish, Lc0) and browser helpers must not outlive the app. */
+    private static void stopChildProcesses() {
+        List<ProcessHandle> children = ProcessHandle.current().descendants().toList();
+        if (children.isEmpty()) {
+            return;
+        }
+        children.forEach(ProcessHandle::destroy);
+        for (ProcessHandle child : children) {
+            try {
+                child.onExit().get(500, TimeUnit.MILLISECONDS);
+            } catch (Exception e) {
+                child.destroyForcibly();
+            }
+        }
+        log.info("Stopped {} child process(es)", children.size());
+    }
+
+    private static void logLingeringThreads() {
+        List<String> names = Thread.getAllStackTraces().keySet().stream()
+                .filter(t -> t.isAlive() && !t.isDaemon() && t != Thread.currentThread())
+                .map(Thread::getName)
+                .filter(n -> !n.equals("DestroyJavaVM") && !n.startsWith("JavaFX") && !n.startsWith("QuantumRenderer")
+                        && !n.startsWith("InvokeLaterDispatcher") && !n.startsWith("AWT-"))
+                .sorted()
+                .toList();
+        if (!names.isEmpty()) {
+            log.info("Non-daemon threads still alive at exit: {}", names);
+        }
     }
 
     public static void main(String[] args) {
+        // Persistent cookies for the HTTP clients (Lichess); cheap, keeps sessions across restarts
         try {
-            nu.pattern.OpenCV.loadLocally();
-            System.out.println("[App] OpenCV loaded successfully.");
-        } catch (Throwable t) {
-            System.err.println("[App] Failed to load OpenCV: " + t.getMessage());
-            t.printStackTrace();
-        }
-
-        // Initialize Persistent Cookie Store Globally
-        try {
-            System.out.println("[App] Initializing Global CookieManager...");
             java.net.CookieManager cookieManager = new java.net.CookieManager(
                     new org.example.javachess.Utils.PersistentCookieStore(),
                     java.net.CookiePolicy.ACCEPT_ALL);
             java.net.CookieHandler.setDefault(cookieManager);
-            System.out.println("[App] Global CookieManager set.");
         } catch (Exception e) {
-            System.err.println("[App] Failed to set global CookieManager: " + e.getMessage());
-            e.printStackTrace();
+            log.warn("Persistent cookies unavailable: {}", e.getMessage());
         }
 
-        // SAFETY NET: Shutdown Hook for Ctrl+C or kill signals
+        // Ctrl+C / kill: turn the LEDs off and release JCEF
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            System.out.println("[App] Shutdown Hook Triggered!");
-            try {
-                // Check if CefApp is initialized and dispose
-                org.cef.CefApp.getInstance().dispose();
-                System.out.println("[App] JCEF disposed via Shutdown Hook.");
-            } catch (Throwable t) {
-                // Already disposed or not initialized
+            if (Hardware.isInitialized()) {
+                Hardware.shutdown();
             }
-        }));
+            disposeBrowser();
+        }, "shutdown-hook"));
 
         launch(args);
     }
