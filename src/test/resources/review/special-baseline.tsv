@@ -2,7 +2,6 @@
 # (-Dreview.special.regen=true) after fixing errors. Allowlisted exceptions are not repeated here.
 # exact 0.6847 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
 id	ply	kind	set	san	ours	chesscom
-daily_1008989784	49	fp-brilliant	ex-holdout49	Bf8	brilliant	excellent
 daily_1009092152	36	fn-great	cv93	Qxe1	best	great
 daily_1009092152	48	fp-great	cv93	g6	great	best
 daily_1011205894	10	fn-great	cv93	Qxd1+	best	great
@@ -17,7 +16,6 @@ daily_1023306212	94	fn-great	cv93	Rf2+	best	great
 daily_1024819088	43	fp-great	cv93	Nd4	great	best
 daily_1027855652	9	fn-great	ex-holdout49	e5	best	great
 daily_1027855652	49	fn-great	ex-holdout49	h4	best	great
-daily_1027855652	59	fn-brilliant	ex-holdout49	Rxg6	excellent	brilliant
 daily_1033021160	51	fn-great	cv93	Rxd8	best	great
 daily_990231844	43	fn-great	cv93	bxa6	best	great
 daily_998267522	41	fn-great	ex-holdout49	Bxd4	best	great
@@ -32,11 +30,8 @@ live_118493959209	68	fp-great	ex-holdout49	Nc4+	great	best
 live_118493959209	84	fn-great	ex-holdout49	Nxf1	best	great
 live_122947746214	21	fn-great	ex-holdout49	Nxb5	inaccuracy	great
 live_122947746214	29	fn-great	ex-holdout49	Nxd4	best	great
-live_123175159334	27	fn-brilliant	cv93	Nd5	good	brilliant
 live_123602894080	49	fn-great	ex-holdout49	cxb4	best	great
-live_123602894080	73	fn-great	ex-holdout49	gxf4	good	great
 live_123602894080	93	fn-brilliant	ex-holdout49	Kd4	best	brilliant
-live_123602894080	108	fn-great	ex-holdout49	Kc6	excellent	great
 live_127051221683	47	fn-great	cv93	c6	best	great
 live_138986716238	41	fn-brilliant	ex-holdout49	Bb4	excellent	brilliant
 live_138986716238	70	fn-great	ex-holdout49	Rxh5	best	great
