@@ -116,9 +116,10 @@ public final class GameReviewer implements AutoCloseable {
                 final int idx = i;
                 String fen = replay.fens().get(i);
                 second.add(pool.submit(() -> {
-                    PositionEval p = evaluator.evaluate(fen, 2, settings.secondLineNodes());
+                    PositionEval first = positions[idx];
+                    PositionEval p = evaluator.addSecondLine(first, settings.nodes(), settings.secondLineNodes());
                     positions[idx] = p;
-                    nodes.addAndGet(p.nodes());
+                    nodes.addAndGet(Math.max(0, p.nodes() - first.nodes()));
                     l.onProgress(0.9 + 0.1 * done2.incrementAndGet() / total2);
                     return null;
                 }));

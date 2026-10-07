@@ -71,15 +71,46 @@ public final class StockfishPool implements PositionEvaluator {
         if (terminal.isPresent() && board.legalMoves().isEmpty()) {
             return PositionEval.terminal(fen, terminal.get());
         }
+        SearchResult r = search(fen, SearchLimits.nodes(nodes).withMultiPv(multiPv), nodes);
+        return toPositionEval(fen, board.getSideToMove() == com.github.bhlangonijr.chesslib.Side.WHITE, r);
+    }
+
+    /** Searches every move but the best one: its top line is the second best move. */
+    @Override
+    public PositionEval addSecondLine(PositionEval p, long mainNodes, long secondNodes) throws Exception {
+        if (p.terminal() || p.best() == null || p.secondBest() != null) {
+            return p;
+        }
+        Board board = new Board();
+        board.loadFromFen(p.fen());
+        List<String> others = new ArrayList<>();
+        for (var m : board.legalMoves()) {
+            if (!m.toString().equals(p.bestMove())) {
+                others.add(m.toString());
+            }
+        }
+        if (others.isEmpty()) {
+            return p;
+        }
+        boolean white = board.getSideToMove() == com.github.bhlangonijr.chesslib.Side.WHITE;
+        SearchResult r = search(p.fen(), SearchLimits.nodes(secondNodes).withSearchMoves(others), secondNodes);
+        if (r.lines().isEmpty()) {
+            return p;
+        }
+        InfoLine l = r.lines().get(0);
+        List<EngineLine> lines = new ArrayList<>(p.lines());
+        lines.add(new EngineLine(l.move(), Eval.fromUci(l.score(), white), l.pv(), l.depth()));
+        return new PositionEval(p.fen(), p.eval(), lines, p.depth(), p.nodes() + r.nodes(), false);
+    }
+
+    private SearchResult search(String fen, SearchLimits limits, long nodes) throws Exception {
         UciClient preferred = affinity.get();
         UciClient c = preferred != null && idle.remove(preferred) ? preferred : idle.take();
         affinity.set(c);
         try {
             // generous client-side cap: a node budget normally ends long before (protects against a hung engine)
             long capMs = Math.max(10_000, nodes / 20);
-            SearchResult r = c.search(fen, SearchLimits.nodes(nodes).withMultiPv(multiPv).withTimeout(capMs))
-                    .result().get(capMs + 10_000, TimeUnit.MILLISECONDS);
-            return toPositionEval(fen, board.getSideToMove() == com.github.bhlangonijr.chesslib.Side.WHITE, r);
+            return c.search(fen, limits.withTimeout(capMs)).result().get(capMs + 10_000, TimeUnit.MILLISECONDS);
         } finally {
             idle.add(c);
         }

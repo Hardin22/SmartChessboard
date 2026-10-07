@@ -6,7 +6,8 @@ import io.github.hardin22.javachess.Engine.ProcessPlan;
  * Engine budget of a game review.
  *
  * @param nodes           nodes per position (main pass, MultiPV 1)
- * @param secondLineNodes nodes of the MultiPV 2 re-search of the positions that need it (Great/Brilliant/Miss)
+ * @param secondLineNodes nodes of the second best line (search of all moves but the best) where Great/Brilliant
+ *                        need it
  * @param processes       Stockfish processes searching in parallel (1 thread each)
  * @param hashMb          Hash of each process
  */
@@ -24,16 +25,16 @@ public record ReviewSettings(long nodes, long secondLineNodes, int processes, in
      * (up to 4) while nobody plays. SPEC §9; calibrated by the validation harness.
      */
     public static ReviewSettings lite(ProcessPlan plan, int cores) {
-        return new ReviewSettings(300_000, 450_000, Math.max(1, Math.min(4, cores)), 64);
+        return new ReviewSettings(300_000, 100_000, Math.max(1, Math.min(4, cores)), 64);
     }
 
     /** Full Stockfish: 1M nodes per position, like Lichess user analysis. */
     public static ReviewSettings full(ProcessPlan plan, int cores) {
-        return new ReviewSettings(1_000_000, 1_500_000, Math.max(1, Math.min(8, cores)), 64);
+        return new ReviewSettings(1_000_000, 300_000, Math.max(1, Math.min(8, cores)), 64);
     }
 
     public ReviewSettings withNodes(long n) {
-        return new ReviewSettings(n, n * 3 / 2, processes, hashMb);
+        return new ReviewSettings(n, Math.max(50_000, n / 3), processes, hashMb);
     }
 
     public ReviewSettings withProcesses(int p) {
