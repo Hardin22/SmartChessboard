@@ -11,16 +11,35 @@ sudo apt install -y stockfish zstd unclutter     # engine, puzzle unpacking, hid
 sudo usermod -aG dialout "$USER"                  # access to /dev/ttyACM0 (log out and in again)
 ```
 
-Java 21 (Bookworm ships 17): download the Temurin 21 JDK or JRE for *aarch64 Linux* from
-adoptium.net, unpack it in `/opt/jdk-21` and either put `/opt/jdk-21/bin` on the `PATH` or set
-`JAVA_HOME=/opt/jdk-21` (the scripts honour it). JavaFX is inside the app jar, no separate install.
+Java 21 (Bookworm ships 17): install Temurin 21 from the Adoptium apt repository (this is what the
+Pi box below uses, see `docker/pi-sim/Dockerfile`):
+
+```bash
+sudo apt install -y wget gpg
+wget -qO- https://packages.adoptium.net/artifactory/api/gpg/key/public | sudo gpg --dearmor -o /usr/share/keyrings/adoptium.gpg
+echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb bookworm main" \
+  | sudo tee /etc/apt/sources.list.d/adoptium.list
+sudo apt update && sudo apt install -y temurin-21-jdk
+```
+
+or unpack the aarch64 tarball from adoptium.net and set `JAVA_HOME` (the scripts honour it). JavaFX is
+inside the app jar, no separate install. Engines: `scripts/install-engines.sh` (official Stockfish arm64
+build, checked) instead of the older apt package.
+
+Integrated browser (chess.com / Lichess pages): on the first use it downloads its Chromium bundle
+(~150 MB download, 440 MB in `~/.jcef-bundle-v141`); restart the app once afterwards, because on arm64
+`run_pi.sh` must preload `libcef.so`. Raspberry Pi OS *desktop* already has the libraries it needs; on
+*Lite* install `libnss3 libatk-bridge2.0-0 libcups2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1`.
 
 Display: set the monitor orientation in *Screen Configuration* (or `wlr-randr --output HDMI-A-1 --transform 90`).
 The app uses the whole screen and also works on a landscape 1920x720 or a desktop window.
 
 ## 2. Build and install
 
-On the Pi (or on a Mac/PC for the Pi, `-Djavafx.platform` selects the JavaFX natives):
+On the Pi, or in the Pi box (section 8), Maven picks the Linux arm64 JavaFX natives by itself. On a
+Mac/PC the dependencies without classifier would bring the *build machine's* JavaFX natives (a jar built
+on a Mac contains `libglass.dylib` and does not start on the Pi): `-Djavafx.platform=linux-aarch64` is
+required there.
 
 ```bash
 ./mvnw -Ppi -Djavafx.platform=linux-aarch64 -DskipTests package
@@ -108,3 +127,42 @@ while the app runs, and the app works without it. Firmware, wiring constants and
 | Worst frame during the first 5 s | 18-33 ms | 33-40 ms (idle preloading) |
 | Exit (Stopping → JVM gone) | engines and timers left running, `System.exit` | ~10 ms, engines quit over UCI, no non-daemon thread left |
 | LED event → serial frame (simulator) | 10 ms sleeps per LED, 70 ms per animation step | 0.13 ms average, 0.17 ms worst |
+
+## 8. Pi box: testing without a Pi
+
+`scripts/pi-sim.sh` runs the app in Docker as close to Raspberry Pi OS 64-bit as a Mac allows:
+`linux/arm64` Debian bookworm (the base of Raspberry Pi OS), Temurin 21, Xvfb as the 720x1920 monitor,
+software rendering, `--cpus=4 --memory=1g` (a small Pi 4 is the realistic worst case), the app started by
+`run_pi.sh` with the jar built inside the box. Needs Docker with arm64 (Apple Silicon + OrbStack/Docker
+Desktop, or an arm64 Linux host).
+
+```bash
+scripts/pi-sim.sh image          # once (~3 min)
+scripts/pi-sim.sh sync           # copy the working tree into the box (no datasets, no config.properties)
+scripts/pi-sim.sh package        # Pi jar built inside the box (~2 min the first time)
+scripts/pi-sim.sh engines        # install-engines.sh + Stockfish nodes/s with 1-4 threads
+scripts/pi-sim.sh test           # the whole test suite on linux/arm64
+scripts/pi-sim.sh run -Djavachess.board=sim -Djavachess.devgame=pvc -Djavachess.sim.autoplay=10 \
+    -Djavachess.snapshot=/out/game.png -Djavachess.snapshot.delayMs=30000 -Djavachess.snapshot.exit=true
+scripts/pi-sim.sh all            # image + sync + package + HOME screenshot in $PI_SIM_OUT (/tmp/pi-sim)
+```
+
+What it is not: no GPU (V3D), no USB serial, and the CPU cores are the host's (several times faster than
+a Cortex-A72/A76), so times are lower bounds; memory and Linux behaviour are realistic.
+
+Verified in the box (7 Oct 2026):
+
+| Check | Result |
+|---|---|
+| Natives in the Pi jar | JavaFX gtk3/prism_sw/es2 for Linux arm64, OpenCV `linux/ARMv8` (loads in 109 ms), ONNX Runtime `linux-aarch64` (77 ms), jSerialComm `Linux/armv8_64` |
+| JCEF browser | `jcef-natives-linux-arm64` exists for 127.3.1; works (Lichess loads) with Chromium's libraries and `libcef.so` preloaded |
+| First frame (run_pi.sh, AppCDS warm) | 0.59-0.95 s; window sized to the full 720x1920 screen even without a window manager |
+| Bot game on the simulated board, 10 moves | moves detected, bot replies replicated, clean exit (no thread or process left) |
+| Frames, new UI | HOME and game: ~46 fps, 21 ms average (mostly Xvfb copying 720x1920), worst 39-45 ms; old UI worst 53-213 ms |
+| Memory during a bot game | container 630-740 MB of 1 GB: JVM ~400 MB RSS (heap in use 40-100 MB), each Stockfish process 290-380 MB (NNUE nets), Xvfb 85 MB; with the browser open ~930 MB |
+| Stockfish (sf_19 arm64, host cores) | 1.08 M nps 1 thread, 1.90 M 2, 2.39 M 3, 3.33 M 4 |
+| Tests (linux/arm64) | 225 run, 0 failures, 1 skipped (benchmark, only with `-Dbench=true`) |
+
+Bugs this found and fixed: piece images referenced with the wrong case (`wK.png` vs `wk.png`, invisible on
+macOS), window 720x1280 on a 720x1920 screen without a window manager, JCEF static-TLS failure on arm64,
+two engine tests that failed when run with the whole suite.
