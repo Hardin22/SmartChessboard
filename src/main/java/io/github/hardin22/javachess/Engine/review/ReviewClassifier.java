@@ -640,49 +640,57 @@ public final class ReviewClassifier {
     }
 
     /**
-     * The after-capture searches the reviewer runs for the TI rules ({@link ReviewInput#afterCapture}): for every move i
-     * that is the engine's best move, not an answer to check, and leaves en prise (2+ by static exchange) a piece that
-     * was already en prise before it, the opponent's cheapest capture of the most valuable such piece. Key = move index,
-     * value = the capture (UCI); the reviewer searches the position after move i and that capture.
+     * The after-capture searches the reviewer runs for the TI rules ({@link ReviewInput#afterCapture}), one per move
+     * index: {@link #afterCaptureRequest} for every move of the game. Key = move index, value = the capture (UCI); the
+     * reviewer searches the position after move i and that capture.
      */
     public static Map<Integer, String> afterCaptureRequests(ReviewInput in) {
         GameReplay replay = GameReplay.of(in.initialFen(), in.uciMoves());
         Map<Integer, String> out = new TreeMap<>();
         for (int i = 0; i < replay.uci().size(); i++) {
-            PositionEval before = in.positions().get(i);
-            String uci = replay.uci().get(i);
-            if (before.terminal() || !uci.equals(before.bestMove()) || before.eval().isMateAgainst(before.whiteToMove())) {
-                continue;
-            }
-            boolean me = before.whiteToMove();
-            Board b0 = board(replay.fens().get(i));
-            Move m = Tactics.find(b0, uci);
-            if (m == null || b0.isKingAttacked()) {
-                continue;
-            }
-            Side side = me ? Side.WHITE : Side.BLACK;
-            Map<Square, Integer> was = Tactics.hanging(b0, side);
-            Board b1 = b0.clone();
-            b1.doMove(m);
-            if (b1.isMated()) {
-                continue;
-            }
-            Square target = null;
-            int best = 0;
-            for (Map.Entry<Square, Integer> e : Tactics.hanging(b1, side).entrySet()) {
-                Square sq = e.getKey();
-                if (sq != m.getTo() && was.containsKey(sq) && e.getValue() >= 2
-                        && Tactics.value(b1.getPiece(sq)) > best) {
-                    best = Tactics.value(b1.getPiece(sq));
-                    target = sq;
-                }
-            }
-            Move take = target == null ? null : Tactics.leastValuableCapture(b1, target);
-            if (take != null) {
-                out.put(i, take.toString());
+            String capture = afterCaptureRequest(replay.fens().get(i), replay.uci().get(i), in.positions().get(i));
+            if (capture != null) {
+                out.put(i, capture);
             }
         }
         return out;
+    }
+
+    /**
+     * The capture (UCI) to search after move {@code uci} from {@code fenBefore}, or null: when the move is our engine's
+     * best move ({@code before} = our MultiPV-1 evaluation of {@code fenBefore}), is not an answer to check, the mover
+     * is not being mated, and the move leaves en prise (2+ by static exchange) a piece that was already en prise
+     * before it (not the moved piece), the opponent's cheapest capture of the most valuable such piece.
+     */
+    public static String afterCaptureRequest(String fenBefore, String uci, PositionEval before) {
+        if (before == null || before.terminal() || !uci.equals(before.bestMove())
+                || before.eval().isMateAgainst(before.whiteToMove())) {
+            return null;
+        }
+        boolean me = before.whiteToMove();
+        Board b0 = board(fenBefore);
+        Move m = Tactics.find(b0, uci);
+        if (m == null || b0.isKingAttacked()) {
+            return null;
+        }
+        Side side = me ? Side.WHITE : Side.BLACK;
+        Map<Square, Integer> was = Tactics.hanging(b0, side);
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        if (b1.isMated()) {
+            return null;
+        }
+        Square target = null;
+        int best = 0;
+        for (Map.Entry<Square, Integer> e : Tactics.hanging(b1, side).entrySet()) {
+            Square sq = e.getKey();
+            if (sq != m.getTo() && was.containsKey(sq) && e.getValue() >= 2 && Tactics.value(b1.getPiece(sq)) > best) {
+                best = Tactics.value(b1.getPiece(sq));
+                target = sq;
+            }
+        }
+        Move take = target == null ? null : Tactics.leastValuableCapture(b1, target);
+        return take == null ? null : take.toString();
     }
 
     /** Classifies every move of the game and computes the accuracy of both players. */
