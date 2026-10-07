@@ -16,7 +16,9 @@
  * <h2>Full review</h2>
  * Pure: {@code ReviewClassifier.classifyGame(ReviewInput)} labels every move (Book, Forced, Brilliant, Great, Miss
  * and the standard labels) from stored {@link io.github.hardin22.javachess.Engine.review.PositionEval}s and computes
- * the accuracy ({@link io.github.hardin22.javachess.Engine.review.Accuracy}). With an engine:
+ * the accuracy ({@link io.github.hardin22.javachess.Engine.review.Accuracy}); the players' ratings, when known, make
+ * the labels closer to chess.com (its expected points depend on the rating). The calibrated numbers live in
+ * {@code ReviewClassifier.Tuning}. With an engine:
  * {@link io.github.hardin22.javachess.Engine.review.GameReviewer} evaluates every position once (node budget, in
  * parallel on a {@link io.github.hardin22.javachess.Engine.review.StockfishPool}), re-searches with MultiPV 2 only
  * the positions returned by {@code ReviewClassifier.needsSecondLine}, and caches evaluations on disk
