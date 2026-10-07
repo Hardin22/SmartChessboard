@@ -90,14 +90,28 @@ def main():
     for name, skip in skips.items():
         m, b, n = mae(games, truth, lambda mv, w: lichess_game(mv, w, skip))
         print(f"E1 lichess, {name}: MAE {m:.2f} bias {b:+.2f} (n={n})")
-    for name, skip in skips.items():
+    grid_a = [round(0.03 + 0.01 * i, 2) for i in range(16)]
+    grid_p = [round(-1 + 0.25 * i, 2) for i in range(13)]
+
+    def fit(subset, skip):
         best = None
-        for a in [0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.10, 0.12, 0.15, 0.20]:
-            for p in [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1, 1.5, 2]:
-                m, b, n = mae(games, truth, lambda mv, w: power_game(mv, w, skip, a, p))
+        for a in grid_a:
+            for p in grid_p:
+                m, b, n = mae(subset, truth, lambda mv, w: power_game(mv, w, skip, a, p))
                 if best is None or m < best[0]:
                     best = (m, b, a, p)
-        print(f"E2 power mean, {name}: best MAE {best[0]:.2f} bias {best[1]:+.2f} at a={best[2]} p={best[3]}")
+        return best
+
+    for name, skip in skips.items():
+        m, b, a, p = fit(games, skip)
+        print(f"E2 power mean, {name}: best MAE {m:.2f} bias {b:+.2f} at a={a} p={p}")
+        # 2-fold cross-validation (split by game id): fit on one half, measure on the other
+        ids = sorted(games)
+        halves = [{k: games[k] for k in ids[0::2]}, {k: games[k] for k in ids[1::2]}]
+        for i in (0, 1):
+            _, _, a2, p2 = fit(halves[i], skip)
+            m2, b2, n2 = mae(halves[1 - i], truth, lambda mv, w: power_game(mv, w, skip, a2, p2))
+            print(f"   CV fold {i}: fit a={a2} p={p2} -> held-out MAE {m2:.2f} bias {b2:+.2f} (n={n2})")
 
 
 if __name__ == "__main__":
