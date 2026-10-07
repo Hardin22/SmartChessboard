@@ -64,6 +64,8 @@ public final class ReviewClassifier {
         final double brilliantWinningCp;
         /** B-E7: no Brilliant when the mover stands below this many centipawns after the move (any rating). */
         final double brilliantMinCpAfter;
+        /** G-E1 refinement: 0 = no capture is Great, 1 = only a pawn taking a pawn is never Great. */
+        final int greatCaptureRule;
         /** v1.9: no capture is Great (G-E1). */
         final boolean greatNoCapture;
         /**
@@ -152,6 +154,7 @@ public final class ReviewClassifier {
             brilliantNonTopLoss = get("brilliantNonTopLoss", 0.01);
             fakeRegain = get("fakeRegain", 2);
             greatNoCapture = get("greatNoCapture", 1) != 0;
+            greatCaptureRule = (int) get("greatCaptureRule", 0);
             brilliantWinningCp = get("brilliantWinningCp", 700);
             brilliantMinCpAfter = get("brilliantMinCpAfter", -15);
             greatForcingCheck = get("greatForcingCheck", 1) != 0;
@@ -668,7 +671,8 @@ public final class ReviewClassifier {
         if (epBefore < t.greatMinEp || epBefore > t.greatMaxEp) {
             return null;
         }
-        if (t.greatNoCapture && Tactics.isCapture(b0, uci)) {
+        if (t.greatNoCapture && Tactics.isCapture(b0, uci)
+                && (t.greatCaptureRule == 0 || Tactics.isPawnTakesPawn(b0, uci))) {
             return null; // G-E1: a capture is the natural recapture or keeps the material, not a find
         }
         if (t.greatFilters) {
