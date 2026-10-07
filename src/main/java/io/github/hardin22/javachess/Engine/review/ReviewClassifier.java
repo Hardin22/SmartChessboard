@@ -1282,10 +1282,13 @@ public final class ReviewClassifier {
                 played, me))) {
             return false; // B-E1: nothing new is offered
         }
-        if (t.brilliantNoEmptyOffer && sac.regain() >= sac.offered() && !acceptedInLine(b0, m, line)
+        if (t.brilliantNoEmptyOffer && isTop && alternative != null && epBefore - ep(alternative, me, k) >= t.greatGap
+                && sac.regain() >= sac.offered() && !acceptedInLine(b0, m, line)
                 && lineGain(b0, line, me ? Side.WHITE : Side.BLACK, 8) <= 0) {
-            // B-E12: an offer the opponent declines, that would be won back at once if taken, and after which the
-            // line wins nothing: no material is really given (Topalov - Shirov 1998, 26...Nb4: chess.com Great)
+            // B-E12: the only good move (second line at least greatGap worse) offers a piece the opponent declines,
+            // that would be won back at once if taken, and the line wins nothing: its merit is being the only move,
+            // not a sacrifice (Topalov - Shirov 1998, 26...Nb4: chess.com Great). Offers that are not only moves keep
+            // the Brilliant (4 chess.com-certified Brilliants of the Chessigma benchmark, e.g. live_123248465216 15...Ne4)
             return false;
         }
         if (t.brilliantNoShamSacrifice && !played.isMate() && shamSacrifice(b0, m, line)) {
