@@ -136,6 +136,25 @@ public class PuzzleController implements Screen {
         chessBoardUI.setFlipped(mainController != null && mainController.isFacingBlack());
         boardFrame.setBoard(chessBoardUI);
         puzzleGame = new PuzzleGame(chessBoardUI, evalBar, instructionLabel);
+        PuzzleGame game = puzzleGame;
+        chessBoardUI.setMoveInput(new ChessBoardUI.MoveInput() {
+            @Override
+            public com.github.bhlangonijr.chesslib.Board position() {
+                return game.getBoard();
+            }
+
+            @Override
+            public boolean enabled() {
+                // without a physical board the puzzle is solved on the screen
+                return !finished && !io.github.hardin22.javachess.Controllers.ArduinoController.getInstance()
+                        .getBoardStateManager().isHardwareConnected();
+            }
+
+            @Override
+            public void play(String uci) {
+                game.handleMoveInput(uci);
+            }
+        });
         puzzleGame.setStatusCallback(this::showStatus); // setup progress, wrong move, hint, solution
     }
 

@@ -60,6 +60,8 @@ public class ChessBoardUI extends StackPane {
     private final Canvas pieceCanvas;
     private final Canvas arrowCanvas;
     private final Canvas iconCanvas;
+    /** Selected piece and its legal destinations (moves made on the screen). */
+    private final Canvas selectCanvas;
     private final Pane animationPane;
     private final StackPane overlayPane;
     private javafx.animation.Animation currentAnimation;
@@ -92,7 +94,8 @@ public class ChessBoardUI extends StackPane {
         pieceCanvas = new Canvas(side, side);
         arrowCanvas = new Canvas(side, side);
         iconCanvas = new Canvas(side, side);
-        for (Canvas c : new Canvas[] { highlightCanvas, pieceCanvas, arrowCanvas, iconCanvas }) {
+        selectCanvas = new Canvas(side, side);
+        for (Canvas c : new Canvas[] { highlightCanvas, selectCanvas, pieceCanvas, arrowCanvas, iconCanvas }) {
             c.setMouseTransparent(true);
         }
         animationPane = new Pane();
@@ -106,7 +109,8 @@ public class ChessBoardUI extends StackPane {
         overlayPane.getStyleClass().add("board-overlay");
         overlayPane.setMaxSize(side, side);
 
-        getChildren().addAll(boardCanvas, highlightCanvas, pieceCanvas, arrowCanvas, iconCanvas, animationPane,
+        getChildren().addAll(boardCanvas, highlightCanvas, selectCanvas, pieceCanvas, arrowCanvas, iconCanvas,
+                animationPane,
                 overlayPane);
         applyFixedSize();
         drawBoardBackground(side, side);
@@ -136,7 +140,8 @@ public class ChessBoardUI extends StackPane {
         }
         TILE_SIZE = tile;
         double side = TILE_SIZE * BOARD_SIZE;
-        for (Canvas c : new Canvas[] { boardCanvas, highlightCanvas, pieceCanvas, arrowCanvas, iconCanvas }) {
+        for (Canvas c : new Canvas[] { boardCanvas, highlightCanvas, selectCanvas, pieceCanvas, arrowCanvas,
+                iconCanvas }) {
             c.setWidth(side);
             c.setHeight(side);
         }
@@ -146,6 +151,7 @@ public class ChessBoardUI extends StackPane {
             applyFixedSize();
         }
         stopCurrentAnimation();
+        clearSelection();
         drawBoardBackground(side, side);
         java.util.Arrays.fill(drawn, null);
         pieceCanvas.getGraphicsContext2D().clearRect(0, 0, side, side);
@@ -183,6 +189,7 @@ public class ChessBoardUI extends StackPane {
         flipped = value;
         double side = TILE_SIZE * BOARD_SIZE;
         stopCurrentAnimation();
+        clearSelection();
         drawBoardBackground(side, side);
         java.util.Arrays.fill(drawn, null);
         pieceCanvas.getGraphicsContext2D().clearRect(0, 0, side, side);
@@ -326,6 +333,7 @@ public class ChessBoardUI extends StackPane {
     }
 
     public void updateBoard(Board board, Move lastMove, String pieceStyle, Square skipSquare) {
+        clearSelection();
         if (board != this.chessBoard) {
             // Never keep (and later mutate through setPosition) a board owned by the caller.
             Board copy = new Board();
@@ -823,5 +831,114 @@ public class ChessBoardUI extends StackPane {
 
     public boolean hasPreviousMove() {
         return currentMoveIndex > 0;
+    }
+
+    // ------------------------------------------------------------------ moves made on the screen
+
+    /** Where moves made by tapping the screen go. The board only proposes legal moves of the side to move. */
+    public interface MoveInput {
+        /** The game's position (side to move, castling rights...). */
+        Board position();
+
+        /** False while moves on the screen must not be accepted (physical board connected, not the human's turn). */
+        boolean enabled();
+
+        /** A legal move in UCI ("e2e4"; promotions as "e7e8q"). */
+        void play(String uci);
+    }
+
+    private MoveInput moveInput;
+    private Square selected;
+    private final List<Move> selectedMoves = new ArrayList<>();
+
+    /** Enables tap-to-move: a tap on a piece of the side to move shows its moves, a tap on a destination plays it. */
+    public void setMoveInput(MoveInput input) {
+        this.moveInput = input;
+        clearSelection();
+        if (input != null && getOnMouseClicked() == null) {
+            setOnMouseClicked(e -> onTap(e.getX(), e.getY()));
+        }
+    }
+
+    private void onTap(double x, double y) {
+        if (moveInput == null || !moveInput.enabled() || TILE_SIZE <= 0) {
+            clearSelection();
+            return;
+        }
+        int dcol = (int) (x / TILE_SIZE);
+        int drow = (int) (y / TILE_SIZE);
+        if (dcol < 0 || dcol > 7 || drow < 0 || drow > 7) {
+            return;
+        }
+        int file = flipped ? 7 - dcol : dcol;
+        int rank = flipped ? drow : 7 - drow;
+        Square square = Square.squareAt(rank * 8 + file);
+        Board position = moveInput.position();
+        if (selected != null) {
+            for (Move move : selectedMoves) {
+                if (move.getTo() == square) {
+                    String uci = move.getFrom().name().toLowerCase() + move.getTo().name().toLowerCase();
+                    clearSelection();
+                    moveInput.play(uci); // promotions: the game promotes to a queen
+                    return;
+                }
+            }
+        }
+        Piece piece = position.getPiece(square);
+        if (piece != Piece.NONE && piece.getPieceSide() == position.getSideToMove() && square != selected) {
+            select(position, square);
+        } else {
+            clearSelection();
+        }
+    }
+
+    private void select(Board position, Square square) {
+        selected = square;
+        selectedMoves.clear();
+        try {
+            for (Move move : position.legalMoves()) {
+                if (move.getFrom() == square && selectedMoves.stream().noneMatch(m -> m.getTo() == move.getTo())) {
+                    selectedMoves.add(move);
+                }
+            }
+        } catch (RuntimeException e) {
+            selectedMoves.clear();
+        }
+        paintSelection(position);
+    }
+
+    private void paintSelection(Board position) {
+        GraphicsContext gc = selectCanvas.getGraphicsContext2D();
+        gc.clearRect(0, 0, selectCanvas.getWidth(), selectCanvas.getHeight());
+        if (selected == null) {
+            return;
+        }
+        Color accent = ThemeManager.get().palette().accent();
+        gc.setFill(Color.color(accent.getRed(), accent.getGreen(), accent.getBlue(), 0.42));
+        gc.fillRect(col(selected) * TILE_SIZE, row(selected) * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        Color mark = Color.rgb(20, 20, 24, 0.32);
+        for (Move move : selectedMoves) {
+            double cx = (col(move.getTo()) + 0.5) * TILE_SIZE;
+            double cy = (row(move.getTo()) + 0.5) * TILE_SIZE;
+            if (position.getPiece(move.getTo()) != Piece.NONE) {
+                gc.setStroke(mark);
+                gc.setLineWidth(TILE_SIZE * 0.09);
+                double r = TILE_SIZE * 0.44;
+                gc.strokeOval(cx - r, cy - r, r * 2, r * 2);
+            } else {
+                gc.setFill(mark);
+                double r = TILE_SIZE * 0.16;
+                gc.fillOval(cx - r, cy - r, r * 2, r * 2);
+            }
+        }
+    }
+
+    private void clearSelection() {
+        if (selected == null && selectedMoves.isEmpty()) {
+            return;
+        }
+        selected = null;
+        selectedMoves.clear();
+        selectCanvas.getGraphicsContext2D().clearRect(0, 0, selectCanvas.getWidth(), selectCanvas.getHeight());
     }
 }

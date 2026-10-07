@@ -256,6 +256,7 @@ public final class Ui {
     public static VBox texts(String title, String subtitle, String titleClass, String subtitleClass) {
         Label t = wrap(title, titleClass);
         VBox box = new VBox(4, t);
+        box.setAlignment(Pos.CENTER_LEFT);
         if (subtitle != null && !subtitle.isBlank()) {
             box.getChildren().add(wrap(subtitle, subtitleClass));
         }

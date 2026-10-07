@@ -257,6 +257,24 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         chessBoard.setFitToParent(true);
         chessBoard.setOverlaysEnabled(false); // the status card / the halves show the result
         chessBoard.setOnPositionChanged(this::onPositionChanged);
+        chessBoard.setMoveInput(new ChessBoardUI.MoveInput() {
+            @Override
+            public Board position() {
+                return currentGame.getBoard();
+            }
+
+            @Override
+            public boolean enabled() {
+                return screenMovesAllowed();
+            }
+
+            @Override
+            public void play(String uci) {
+                if (currentGame != null) {
+                    currentGame.handleMoveInput(uci);
+                }
+            }
+        });
         chessBoard.resetBoard();
         soloEvalBar.updateEvaluation(0);
         duelEvalBar.updateEvaluation(0);
@@ -285,6 +303,23 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         currentGame.setStatusCallback(message -> runFx(() -> onStatus(message)));
         AbstractGame game = currentGame;
         game.setAnalysisParams(analysisDepth, 1);
+    }
+
+    /**
+     * Moves can be made by tapping the screen when no physical board is connected (otherwise a move on the screen
+     * would put the sensors out of step): in a two-player game always, against the computer on the human's turn.
+     */
+    private boolean screenMovesAllowed() {
+        if (currentGame == null || !currentGame.isRunning() || ended || mode == Mode.ONLINE) {
+            return false;
+        }
+        if (arduinoController != null && arduinoController.getBoardStateManager().isHardwareConnected()) {
+            return false;
+        }
+        if (currentGame instanceof PvpGame pvp && pvp.isClockPaused()) {
+            return false;
+        }
+        return mode == Mode.PVP || currentGame.getBoard().getSideToMove() == (humanWhite ? Side.WHITE : Side.BLACK);
     }
 
     /** Boards on screen match the physical board as seen by whoever the interface faces. */
@@ -445,7 +480,10 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
 
     private StatusCard.Content turnCard(boolean humanTurn, String lastMove) {
         if (humanTurn) {
-            String detail = lastMove == null ? I18n.t("game.status.first")
+            boolean boardConnected = arduinoController != null
+                    && arduinoController.getBoardStateManager().isHardwareConnected();
+            String detail = lastMove == null
+                    ? I18n.t(boardConnected ? "game.status.first" : "game.status.first.screen")
                     : I18n.t("game.status.lastmove", opponentName, lastMove);
             return StatusCard.Content.of(Tone.TURN, I18n.t("game.status.turn.kicker"), I18n.t("game.status.turn"),
                     detail);
@@ -644,9 +682,14 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
                     duel.setBoardVisible(on);
                     Prefs.set(DUEL_BOARD_KEY, on);
                 }));
+        Button rotate = Ui.wide(I18n.t("settings.rotate.now"), "fth-rotate-cw", "btn-outline", "btn-lg");
+        rotate.setOnAction(e -> {
+            mainController.closeSheet();
+            mainController.rotateScreen();
+        });
         Button leave = Ui.wide(I18n.t("game.leave"), "fth-log-out", "btn-danger", "btn-lg");
         leave.setOnAction(e -> confirmLeave(far));
-        content.getChildren().addAll(Ui.gap(8), leave);
+        content.getChildren().addAll(Ui.gap(8), Ui.equalRow(12, rotate, leave));
         mainController.showSheetFor(far, I18n.t("game.menu"), content);
     }
 

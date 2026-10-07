@@ -61,6 +61,7 @@ final class DevDemos {
                 case "pvc-setup" -> pvc(main, true, game -> game.devStatus("Posiziona i pezzi: mancano 6"));
                 case "pvc-error" -> pvc(main, true, game -> game.devStatus("ERRORE: Controlla E4"));
                 case "pvc-menu" -> pvc(main, true, game -> lookupFire(main, "game-menu"));
+                case "pvc-select" -> pvc(main, true, game -> tapSquare(main, System.getProperty("javachess.demo.square", "f1")));
                 case "review" -> review(main);
                 case "puzzle" -> puzzle(main);
                 case "online" -> {
@@ -105,6 +106,24 @@ final class DevDemos {
         } else {
             LOG.warn("No node #{} for the demo", id);
         }
+    }
+
+    /** Simulates a finger on a square of the board shown on the screen (scene coordinates, flip-aware). */
+    private static void tapSquare(MainController main, String square) {
+        if (!(main.getMainContainer().lookup(".chess-board")
+                instanceof io.github.hardin22.javachess.Oggetti.ChessBoardUI board)) {
+            LOG.warn("No board on screen for the demo");
+            return;
+        }
+        int file = square.charAt(0) - 'a';
+        int rank = square.charAt(1) - '1';
+        double tile = board.getTileSize();
+        int col = board.isFlipped() ? 7 - file : file;
+        int row = board.isFlipped() ? rank : 7 - rank;
+        javafx.geometry.Point2D p = board.localToScene((col + 0.5) * tile, (row + 0.5) * tile);
+        board.fireEvent(new javafx.scene.input.MouseEvent(javafx.scene.input.MouseEvent.MOUSE_CLICKED, p.getX(),
+                p.getY(), 0, 0, javafx.scene.input.MouseButton.PRIMARY, 1, false, false, false, false, true, false,
+                false, true, false, false, null));
     }
 
     private static List<String> demoMoves() {
