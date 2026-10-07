@@ -1,0 +1,6 @@
+[
+ {"name": "v1.9 defaults", "knobs": {}},
+ {"name": "Great gap 0.15", "knobs": {"greatGap": 0.15}},
+ {"name": "Brilliant fakeRegain 4 + nonTopLoss 0.03", "knobs": {"fakeRegain": 4, "brilliantNonTopLoss": 0.03}},
+ {"name": "both", "knobs": {"greatGap": 0.15, "fakeRegain": 4, "brilliantNonTopLoss": 0.03}}
+]

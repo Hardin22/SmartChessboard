@@ -1,0 +1,5 @@
+[
+ {"name": "v2.1 447c054 Lite", "knobs": {}},
+ {"name": "v2.1 + deep 2nd line for candidates", "knobs": {}, "recheck": "second"},
+ {"name": "v2.1 + deep eval for candidates", "knobs": {}, "recheck": "full"}
+]

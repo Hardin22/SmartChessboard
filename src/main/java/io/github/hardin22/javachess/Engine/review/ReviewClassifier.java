@@ -85,6 +85,27 @@ public final class ReviewClassifier {
         final double greatFreeMaterialRating;
         /** v2.1: a piece or the exchange given for pawns counts as a sacrifice of 2 (Brilliant). */
         final boolean pieceSacrifice;
+        /**
+         * v2.3: the engine's move escapes the 'winning anyway' tests of Brilliant when, not in check, it gives up the
+         * moved piece and the played line wins back at most {@link #brilliantTopRegain} pawns within 6 plies.
+         */
+        final boolean brilliantTopException;
+        final double brilliantTopRegain;
+        /** v2.3: the 'winning anyway' tests of Brilliant only for a move that is not the engine's choice. */
+        final boolean brilliantAltNonTopOnly;
+        /** v2.3: players under this rating get Great for a capture from {@link #greatCaptureGapLow}. */
+        final double greatLowRating;
+        final double greatCaptureGapLow;
+        /** v2.3: an outcome class change needs the second line at least this many cp worse. */
+        final double greatClassCp;
+        /** v2.3 quiet branch (0 = off): second line at most this many cp, gap and cp gap at least ... */
+        final double greatQuietCp;
+        final double greatQuietGap;
+        final double greatQuietCpFloor;
+        /** v2.3: a move out of check can be Great with at least this gap ... */
+        final double greatInCheckGap;
+        /** ... from at most this win chance. */
+        final double greatInCheckMaxEp;
         /** v1.9: no capture is Great (G-E1). */
         final boolean greatNoCapture;
         /**
@@ -157,7 +178,10 @@ public final class ReviewClassifier {
         final double slope;
         /** ... multiplied by exp(slopeRating * (rating - 1500) / 1000) ... */
         final double slopeRating;
-        /** ... with this rating for a player whose rating is unknown (a local human, an untagged import). */
+        /**
+         * ... with this rating for a player whose rating is unknown (a local human, an untagged import): chess.com judges
+         * a PGN without Elo as strong players (35 famous games: agreement best at 2500, 67.1% exact vs 65.3% at 1500).
+         */
         final double defaultRating;
 
         private Tuning(Map<String, Double> overrides) {
@@ -170,10 +194,21 @@ public final class ReviewClassifier {
             criticalMinEp = get("criticalMinEp", 0.40);
             brilliantFromGood = get("brilliantFromGood", 1) != 0;
             brilliantRule = (int) get("brilliantRule", 2);
-            brilliantNonTopLoss = get("brilliantNonTopLoss", 0.01);
-            fakeRegain = get("fakeRegain", 4);
+            brilliantNonTopLoss = get("brilliantNonTopLoss", 0.03);
+            fakeRegain = get("fakeRegain", 5);
             greatNoCapture = get("greatNoCapture", 1) != 0;
             greatRule = (int) get("greatRule", 2);
+            brilliantAltNonTopOnly = get("brilliantAltNonTopOnly", 0) != 0;
+            brilliantTopException = get("brilliantTopException", 1) != 0;
+            brilliantTopRegain = get("brilliantTopRegain", 1);
+            greatInCheckGap = get("greatInCheckGap", 0.10);
+            greatLowRating = get("greatLowRating", 1500);
+            greatCaptureGapLow = get("greatCaptureGapLow", 0.15);
+            greatClassCp = get("greatClassCp", 100);
+            greatQuietCp = get("greatQuietCp", 200);
+            greatQuietGap = get("greatQuietGap", 0.10);
+            greatQuietCpFloor = get("greatQuietCpFloor", 150);
+            greatInCheckMaxEp = get("greatInCheckMaxEp", 0.90);
             pieceSacrifice = get("pieceSacrifice", 1) != 0;
             outcomeLow = get("outcomeLow", 0.40);
             outcomeHigh = get("outcomeHigh", 0.60);
@@ -198,7 +233,7 @@ public final class ReviewClassifier {
             greatMinEp = get("greatMinEp", 0.40);
             greatMaxEp = get("greatMaxEp", 0.98);
             greatFilters = get("greatFilters", 1) != 0;
-            greatInCheck = get("greatInCheck", 0) != 0;
+            greatInCheck = get("greatInCheck", 1) != 0;
             greatTakesBlunder = get("greatTakesBlunder", 0.10);
             missOpponentLoss = get("missOpponentLoss", 0.08);
             greatOpponentLoss = get("greatOpponentLoss", 0.05);
@@ -220,7 +255,7 @@ public final class ReviewClassifier {
             bookExtendLoss = get("bookExtendLoss", 0.02);
             slope = get("slope", 0.0035);
             slopeRating = get("slopeRating", 0.5);
-            defaultRating = get("defaultRating", 1500);
+            defaultRating = get("defaultRating", 2500);
         }
 
         private double get(String name, double def) {
@@ -260,6 +295,9 @@ public final class ReviewClassifier {
     public static final double INACCURACY_MAX = Tuning.DEFAULT.inaccuracyMax;
     public static final double MISTAKE_MAX = Tuning.DEFAULT.mistakeMax;
 
+    /** Rating of the win chance curve of the board LEDs ({@link #fast}): a club player. */
+    static final int LED_RATING = 1500;
+
     /** MultiPV 2 is only worth it in this win chance range (outside, no Great/Brilliant is possible). */
     static final double SECOND_LINE_MIN_EP = 0.20;
     static final double SECOND_LINE_MAX_EP = 0.97;
@@ -281,7 +319,8 @@ public final class ReviewClassifier {
      * @param playedIsBest true when the played move is the engine's best move
      */
     public static FastVerdict fast(Eval best, Eval played, boolean whiteMoved, boolean playedIsBest) {
-        double k = Tuning.DEFAULT.slope(0); // the review's curve for unknown ratings
+        // the LEDs keep the curve of a 1500 player (the review's default for unknown ratings follows chess.com instead)
+        double k = Tuning.DEFAULT.slope(LED_RATING);
         double wb = ep(best, whiteMoved, k);
         double wa = ep(played, whiteMoved, k);
         return new FastVerdict(baseLabel(best, played, whiteMoved, playedIsBest, false, Tuning.DEFAULT, k), wb, wa,
@@ -304,7 +343,7 @@ public final class ReviewClassifier {
      * full classification.
      */
     static MoveClassification baseLabel(Eval best, Eval played, boolean me, boolean isTop) {
-        return baseLabel(best, played, me, isTop, false, Tuning.DEFAULT, Tuning.DEFAULT.slope(0));
+        return baseLabel(best, played, me, isTop, false, Tuning.DEFAULT, Tuning.DEFAULT.slope(LED_RATING));
     }
 
     /**
@@ -675,7 +714,8 @@ public final class ReviewClassifier {
         Eval alternative = isTop ? (second == null ? null : second.eval()) : p0.eval();
         Board b0 = board(replay.fens().get(i));
         String uci = replay.uci().get(i);
-        if (t.brilliantRule == 2 && brilliantV19(b0, uci, me, isTop, alternative, played, epBefore, epAfter, t, k)) {
+        if (t.brilliantRule == 2 && brilliantV19(b0, uci, me, isTop, alternative, played, epBefore, epAfter, t, k,
+                playedLine(uci, p0, p1))) {
             return MoveClassification.BRILLIANT;
         }
         if (t.brilliantRule == 1 && brilliantBySee(b0, uci, me, alternative, played, epBefore, epAfter, t, k)) {
@@ -697,7 +737,7 @@ public final class ReviewClassifier {
             return MoveClassification.GREAT; // G+1
         }
         if (t.greatRule == 2) {
-            return greatV21(b0, uci, i, replay, second, epBefore, me, oppLoss, t, k, rating)
+            return greatV21(b0, uci, i, replay, p0.eval(), second, epBefore, me, oppLoss, t, k, rating)
                     ? MoveClassification.GREAT : null;
         }
         if (epBefore < t.greatMinEp || epBefore > t.greatMaxEp) {
@@ -732,21 +772,34 @@ public final class ReviewClassifier {
      * {@link Tuning#greatCaptureOppLoss}, second best at least {@link Tuning#greatCaptureGap} worse): taking back or
      * keeping the material is routine.
      */
-    private static boolean greatV21(Board b0, String uci, int i, GameReplay replay, EngineLine second, double epBefore,
-                                    boolean me, double oppLoss, Tuning t, double k, int rating) {
-        if (second == null || b0.isKingAttacked() || epBefore < t.greatMinEp) {
+    private static boolean greatV21(Board b0, String uci, int i, GameReplay replay, Eval best, EngineLine second,
+                                    double epBefore, boolean me, double oppLoss, Tuning t, double k, int rating) {
+        if (second == null || epBefore < t.greatMinEp) {
             return false;
         }
         double gap = epBefore - ep(second.eval(), me, k);
-        if (Tactics.isCapture(b0, uci)) {
-            if ((i > 0 && isRecapture(replay, i)) || gap < t.greatCaptureGap) {
+        // a difference under a pawn does not change the outcome, however steep the curve (SPEC v2.3)
+        double cpGap = best.isMate() || second.eval().isMate() ? 10_000 : best.cpFor(me) - second.eval().cpFor(me);
+        double r = rating > 0 ? rating : t.defaultRating;
+        boolean recapture = i > 0 && isRecapture(replay, i);
+        if (b0.isKingAttacked()) {
+            // v2.3: an answer to check that does not move the king (interposition, taking the checker) can be Great;
+            // king escapes are Great and Best alike for chess.com
+            Move m = Tactics.find(b0, uci);
+            return t.greatInCheck && m != null && b0.getPiece(m.getFrom()).getPieceType() != PieceType.KING
+                    && !recapture && gap >= t.greatInCheckGap && epBefore <= t.greatInCheckMaxEp;
+        }
+        boolean capture = Tactics.isCapture(b0, uci);
+        if (capture) {
+            // v2.3: players under 1500 get Great for a capture from a smaller gap
+            double capGap = r < t.greatLowRating ? t.greatCaptureGapLow : t.greatCaptureGap;
+            if (recapture || gap < capGap) {
                 return false;
             }
             if (t.greatCaptureRule == 2) {
                 // v2.2: an exchange that has to be made now can be Great; taking free material is routine (Best),
                 // except for players under 1000
                 Move m = Tactics.find(b0, uci);
-                double r = rating > 0 ? rating : t.defaultRating;
                 if (m != null && Tactics.see(b0, m.getTo()) > 0 && r >= t.greatFreeMaterialRating) {
                     return false;
                 }
@@ -754,8 +807,12 @@ public final class ReviewClassifier {
                 return false;
             }
         }
-        boolean changesOutcome = outcomeClass(epBefore, t) > outcomeClass(epBefore - gap, t) && gap >= t.greatClassGap;
-        return changesOutcome || gap >= t.greatGap;
+        boolean changesOutcome = outcomeClass(epBefore, t) > outcomeClass(epBefore - gap, t) && gap >= t.greatClassGap
+                && cpGap >= t.greatClassCp;
+        // v2.3: a quiet move whose alternative only keeps about equality (second line at most greatQuietCp)
+        boolean quiet = t.greatQuietCp > 0 && !capture && !second.eval().isMate()
+                && second.eval().cpFor(me) <= t.greatQuietCp && gap >= t.greatQuietGap && cpGap >= t.greatQuietCpFloor;
+        return changesOutcome || quiet || gap >= t.greatGap;
     }
 
     /** 0 losing, 1 about equal, 2 winning (SPEC v2.1). */
@@ -828,7 +885,8 @@ public final class ReviewClassifier {
      * {@link Tuning#brilliantNonTopLoss}, B-E4 no Brilliant when accepting the sacrifice loses more than it wins.
      */
     private static boolean brilliantV19(Board b0, String uci, boolean me, boolean isTop, Eval alternative,
-                                        Eval played, double epBefore, double epAfter, Tuning t, double k) {
+                                        Eval played, double epBefore, double epAfter, Tuning t, double k,
+                                        List<String> line) {
         Move m = Tactics.find(b0, uci);
         if (m == null || m.getPromotion() != Piece.NONE || b0.getPiece(m.getFrom()).getPieceType() == PieceType.KING) {
             return false;
@@ -838,19 +896,29 @@ public final class ReviewClassifier {
                 || (!isTop && loss > t.brilliantNonTopLoss)) {
             return false; // B-E3
         }
-        if (alternative != null && ep(alternative, me, k) > t.brilliantMaxAlt) {
+        Sacrifice sac = Sacrifice.of(b0, uci, me);
+        boolean altTest = alternative != null && !(t.brilliantAltNonTopOnly && isTop);
+        if (altTest && t.brilliantTopException && isTop && !b0.isKingAttacked() && sac.movedNet() >= 2) {
+            // v2.3: the engine's move may be Brilliant although the position was won anyway when it gives up the
+            // moved piece for good: the line does not win the material back (not technique in a won position)
+            Side side = me ? Side.WHITE : Side.BLACK;
+            int gained = Tactics.materialAfter(b0.getFen(), line, side, 6) - Tactics.material(b0, side);
+            if (gained <= t.brilliantTopRegain) {
+                altTest = false;
+            }
+        }
+        if (altTest && ep(alternative, me, k) > t.brilliantMaxAlt) {
             return false; // B-E2: winning anyway, also when the move mates
         }
         // the same two tests in centipawns, whatever the players' rating (a decided position is decided for anyone):
         // B-E8 the alternative already wins by this much, or mates; B-E7 the mover stands worse after the move
-        if (alternative != null && (alternative.isMateFor(me)
+        if (altTest && (alternative.isMateFor(me)
                 || (!alternative.isMate() && alternative.cpFor(me) >= t.brilliantWinningCp))) {
             return false;
         }
         if (!played.isMate() && played.cpFor(me) < t.brilliantMinCpAfter) {
             return false;
         }
-        Sacrifice sac = Sacrifice.of(b0, uci, me);
         if (sac.value() < t.sacMin) {
             return false; // B-E1: nothing new is offered
         }
@@ -863,12 +931,12 @@ public final class ReviewClassifier {
      * the opponent accepts with its least valuable capturer, the most the mover then wins back at once (-1 when the
      * piece cannot be taken or taking it mates).
      */
-    record Sacrifice(int value, int regain, int offered) {
+    record Sacrifice(int value, int regain, int offered, int movedNet) {
 
         static Sacrifice of(Board b0, String uci, boolean me) {
             Move m = Tactics.find(b0, uci);
             if (m == null) {
-                return new Sacrifice(0, -1, 0);
+                return new Sacrifice(0, -1, 0, 0);
             }
             Side side = me ? Side.WHITE : Side.BLACK;
             java.util.Set<Square> before = Tactics.hanging(b0, side).keySet();
@@ -877,7 +945,7 @@ public final class ReviewClassifier {
             Board b1 = b0.clone();
             b1.doMove(m);
             if (b1.isMated()) {
-                return new Sacrifice(0, -1, 0);
+                return new Sacrifice(0, -1, 0, 0);
             }
             int movedNet = Tactics.see(b1, m.getTo()) - captured;
             Square newSq = null;
@@ -908,7 +976,7 @@ public final class ReviewClassifier {
                     value = Math.max(value, 2);
                 }
             }
-            return new Sacrifice(value, regain, offered);
+            return new Sacrifice(value, regain, offered, movedNet);
         }
     }
 

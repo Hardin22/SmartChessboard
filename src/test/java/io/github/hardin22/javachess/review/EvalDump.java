@@ -106,6 +106,37 @@ public final class EvalDump {
         }
 
         /** Engine nodes the product review spends on this game (main pass + second lines where needed). */
+        /**
+         * Product input where the Great/Brilliant candidates ({@link ReviewClassifier#needsSecondLine} on the plain
+         * main lines) are re-searched deeper, simulated with another dump of the same game: {@code "second"} takes the
+         * deep second line when the deep best move is ours, {@code "full"} the deep evaluation and second line.
+         *
+         * @param extraNodes receives the engine work the re-search adds (index 0)
+         */
+        public ReviewInput recheckedInput(Game deep, String how, OpeningBook book, long[] extraNodes) {
+            ReviewInput base = input(Mode.PRODUCT, book);
+            List<PositionEval> ps = new ArrayList<>(base.positions());
+            List<PositionEval> plain = positions.stream().map(Position::main).toList();
+            BitSet cand = ReviewClassifier.needsSecondLine(new ReviewInput(initialFen, uci, plain, book));
+            for (int i = cand.nextSetBit(0); i >= 0; i = cand.nextSetBit(i + 1)) {
+                Position dp = deep.positions().get(i);
+                if (dp.terminal()) {
+                    continue;
+                }
+                if ("full".equals(how)) {
+                    ps.set(i, dp.withSecond());
+                    extraNodes[0] += dp.nodes() + (dp.second() == null ? 0 : dp.second().nodes());
+                } else if ("second".equals(how) && dp.second() != null
+                        && dp.pv().get(0).equals(ps.get(i).bestMove())) {
+                    PositionEval p = ps.get(i);
+                    ps.set(i, new PositionEval(p.fen(), p.eval(), List.of(p.best(), dp.second().engineLine()),
+                            p.depth(), p.nodes(), false));
+                    extraNodes[0] += dp.second().nodes();
+                }
+            }
+            return new ReviewInput(initialFen, uci, ps, book);
+        }
+
         public long productNodes(OpeningBook book) {
             long n = 0;
             for (PositionEval p : input(Mode.PRODUCT, book).positions()) {
