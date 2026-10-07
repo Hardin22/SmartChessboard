@@ -590,12 +590,19 @@ public class PvcGame extends AbstractGame {
         super.notifyOpponentMove(from, to);
         if (clock != null) {
             clock.moveMade(humanSide().flip());
-            if (!io.github.hardin22.javachess.Controllers.ArduinoController.getInstance().getBoardStateManager()
-                    .isHardwareConnected()) {
-                startTurnClock(); // no board: nothing to reproduce
+            boolean board = io.github.hardin22.javachess.Controllers.ArduinoController.getInstance()
+                    .getBoardStateManager().isHardwareConnected();
+            // With a board the player's time starts once the bot's move is reproduced on it (setting
+            // game.clock.replicationFree=false makes it start at once, as in an online game)
+            if (!board || !io.github.hardin22.javachess.Utils.ConfigManager.getBooleanProperty(
+                    REPLICATION_FREE_KEY, true)) {
+                startTurnClock();
             }
         }
     }
+
+    /** Setting: the time spent reproducing the bot's move on the board is not counted (default true). */
+    public static final String REPLICATION_FREE_KEY = "game.clock.replicationFree";
 
     /** Starts the clock of the side to move (game start, board in step again, bot move reproduced). */
     private void startTurnClock() {

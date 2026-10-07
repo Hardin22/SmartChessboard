@@ -51,7 +51,7 @@ che sta consumando, null = fermo), `whiteLowProperty()` / `blackLowProperty()` (
 ## 3. Annulla mossa — `game.canTakeBack()` / `game.takeBack()`
 
 - Pulsante **Annulla** nella barra strumenti (icona ↶), abilitato se `canTakeBack()` (rileggilo dopo ogni mossa e
-  dopo ogni status). Nessuna conferma: è reversibile rigiocando.
+  dopo ogni status; è falso finché i pezzi non sono disposti all'inizio). Nessuna conferma: è reversibile rigiocando.
 - Toglie la tua ultima mossa e la risposta del computer (o solo la tua se il computer sta ancora pensando). La
   scacchiera a schermo torna indietro, i **LED** mostrano quali pezzi rimettere (case da riempire / da liberare),
   lo status dice "Mossa annullata: rimetti i pezzi come sullo schermo", poi (scacchiera collegata) "Rimetti i pezzi
@@ -80,7 +80,8 @@ che sta consumando, null = fermo), `whiteLowProperty()` / `blackLowProperty()` (
 - `offerDraw()` → `CompletableFuture<Decision>` completato sul thread FX: `accepted()` + `message()` pronto:
   "Stockfish (1350) accetta la patta" (la partita finisce: risultato ½-½, "Patta d'accordo" in archivio) /
   "… rifiuta: è presto per una patta" / "… rifiuta: pensa di stare meglio" / "Hai appena proposto la patta:
-  riprova tra qualche mossa". Mostra il messaggio in un toast/carta di stato per 3 s.
+  riprova tra qualche mossa" / "La posizione è cambiata: riproponi la patta" (una mossa è arrivata mentre il
+  computer valutava). Mostra il messaggio in un toast/carta di stato per 3 s.
 - Abbandono: resta quello che hai già (messaggio "Il Bianco abbandona: vince il Nero").
 
 ## 6. Ripresa della partita interrotta (riavvio, crash, mancanza di corrente)
@@ -94,14 +95,17 @@ Optional<GameSnapshot> s = GameResume.available();   // leggere fuori dal thread
 - Se presente (e non c'è una partita in memoria), carta **"Partita interrotta"**: miniatura di `s.currentFen()`,
   titolo (contro il computer: nome del livello da `BotLevels.byId(s.botLevelId())`; a due: "Due giocatori ·
   " + `s.timeControl().label()`), dettaglio "Mossa " + `s.moveNumber()` + data `s.savedAt()`; azioni
-  **Riprendi** (primaria) e **Ignora** (`GameResume.discard()`, senza conferma o con conferma leggera).
+  **Riprendi** (primaria) e **Ignora** (`GameResume.discard()`: la partita finisce in archivio come interrotta se
+  non c'è già, quindi niente conferma).
 - Riprendi:
   - `s.mode() == PVC`: `PvcGame game = PvcGame.fromSnapshot(s, chessBoardUI, evalBar, openingLabel);`
     lato umano `s.humanWhite()`, poi come un avvio normale (`game.startGame()`): i LED guidano a disporre i pezzi
     nella posizione raggiunta, poi tocca a chi deve muovere (se tocca al computer, muove lui).
   - `s.mode() == PVP`: `PvpGame.fromSnapshot(s, board, evalBar, openingLabel, whiteClockLabel, blackClockLabel)`.
   - Orologi, mosse annullate e suggerimenti usati sono ripristinati. Se la partita era già in archivio come
-    "interrotta", quella copia viene tolta (la partita finita sarà archiviata una sola volta).
+    "interrotta", quella copia viene sostituita quando la partita ripresa viene archiviata di nuovo (finita o di
+    nuovo interrotta): una sola copia, e mai nessuna partita persa (anche iniziando una partita nuova al posto di
+    riprenderla, quella salvata va in archivio come interrotta).
 - Una partita finita con un risultato non viene mai proposta. Uscire con "Esci" la lascia riprendibile (la carta
   la propone finché non si gioca un'altra partita o si tocca Ignora).
 
@@ -111,7 +115,7 @@ Optional<GameSnapshot> s = GameResume.available();   // leggere fuori dal thread
 
 - `PositionSetup.check(fenText)` → `Result`: `ok()`, `fen()` normalizzato, `errors()` (frasi italiane: "Manca il re
   per il Nero", "Pedone su a8: …", "Il re nero è sotto scacco ma non tocca a lui muovere", "I due re non possono
-  stare su case vicine", "La traversa 3 ha 9 case invece di 8"…), `notes()` (correzioni innocue: "Arrocco tolto
+  stare su case vicine", "La traversa 3 ha 9 case invece di 8", "La partita è già finita: scacco matto"…), `notes()` (correzioni innocue: "Arrocco tolto
   (Kq): re o torre non sono sulla casa iniziale").
 - Editor a schermo: `PositionSetup.fromEditor(Piece[64], Side toMove)` (A1 = 0 … H8 = 63); diritti d'arrocco
   dedotti da re e torri sulle case iniziali.
