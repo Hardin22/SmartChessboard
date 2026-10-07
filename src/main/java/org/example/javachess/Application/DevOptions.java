@@ -26,6 +26,12 @@ import java.util.function.Consumer;
  *   <li>{@code -Djavachess.view=NAME} navigate to a view after start-up (MainController view name, e.g. SETTINGS)</li>
  *   <li>{@code -Djavachess.snapshot=out.png} write a PNG of the scene after {@code javachess.snapshot.delayMs} (default 3000)</li>
  *   <li>{@code -Djavachess.snapshot.exit=true} quit after writing the snapshot</li>
+ *   <li>{@code -Djavachess.theme=dark|light|system} start with that theme (not persisted)</li>
+ *   <li>{@code -Djavachess.demo=game|review|puzzle} open a screen in a realistic state for screenshots:
+ *       a two-player game with {@code javachess.demo.moves} (UCI, space separated) played; the review of an archived
+ *       game ({@code javachess.demo.game=id}, {@code javachess.demo.ply=N}, {@code javachess.demo.analyze=true});
+ *       a random puzzle around 1500</li>
+ *   <li>{@code -Djavachess.demo.sheet=engine|analysis|end} also open that bottom sheet on the game screen</li>
  * </ul>
  */
 public final class DevOptions {
@@ -59,7 +65,10 @@ public final class DevOptions {
     /** Applies the optional start-up view and snapshot once the stage is showing. */
     public static void afterShow(Stage stage, MainController mainController) {
         String view = System.getProperty("javachess.view");
-        if (view != null && mainController != null) {
+        String demo = System.getProperty("javachess.demo");
+        if (demo != null && mainController != null) {
+            Platform.runLater(() -> DevDemos.run(mainController, demo));
+        } else if (view != null && mainController != null) {
             Platform.runLater(() -> navigate(mainController, view));
         }
         String snapshot = System.getProperty("javachess.snapshot");

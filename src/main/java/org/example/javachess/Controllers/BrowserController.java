@@ -656,5 +656,6 @@ public class BrowserController implements NavigationAware {
 
     @FXML
     private void onBack() {
+        closeBrowser();
     }
 }

@@ -11,10 +11,11 @@ import java.util.List;
 /** Placeholder implementation backed by the existing {@link EngineService}; to be replaced by the engine layer. */
 final class DefaultEngineSelection implements EngineSelection {
 
-    static final DefaultEngineSelection INSTANCE = new DefaultEngineSelection();
-
     private static final List<EngineProfile> PROFILES = List.of(
             new EngineProfile("stockfish", "Stockfish", "Full strength", true));
+
+    // Declared after PROFILES: the constructor reads it.
+    static final DefaultEngineSelection INSTANCE = new DefaultEngineSelection();
 
     private final ReadOnlyObjectWrapper<EngineProfile> active = new ReadOnlyObjectWrapper<>(PROFILES.get(0));
 

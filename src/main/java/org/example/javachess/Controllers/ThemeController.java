@@ -1,34 +1,41 @@
 package org.example.javachess.Controllers;
 
 import javafx.fxml.FXML;
-import javafx.geometry.Pos;
-import javafx.scene.control.Button;
-import javafx.scene.control.Label;
+import javafx.scene.Node;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.control.ToggleGroup;
 import javafx.scene.image.ImageView;
-import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
-import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Rectangle;
+import org.example.javachess.Components.BoardThemes;
+import org.example.javachess.Oggetti.ChessBoardUI;
 import org.example.javachess.Utils.ConfigManager;
 import org.example.javachess.Utils.ImageCache;
 
+/** Board and piece style picker with a live preview. Choices are saved immediately. */
 public class ThemeController implements NavigationAware {
+
+    private static final String PREVIEW_FEN = "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4";
+    private static final double SWATCH = 104;
 
     private MainController mainController;
 
     @FXML
-    private BorderPane themeView;
+    private StackPane previewHolder;
     @FXML
-    private ImageView boardPreview;
+    private FlowPane flatBoards;
     @FXML
-    private ImageView piecePreview;
+    private FlowPane imageBoards;
+    @FXML
+    private FlowPane pieceSets;
 
-    @FXML
-    private StackPane selectionOverlay;
-    @FXML
-    private Label selectionTitle;
-    @FXML
-    private FlowPane selectionContainer;
+    private final ToggleGroup boardGroup = new ToggleGroup();
+    private final ToggleGroup pieceGroup = new ToggleGroup();
 
     @Override
     public void setMainController(MainController mainController) {
@@ -37,103 +44,92 @@ public class ThemeController implements NavigationAware {
 
     @FXML
     public void initialize() {
-        updatePreviews();
+        for (String id : BoardThemes.flatBoards()) {
+            flatBoards.getChildren().add(card(flatSwatch(BoardThemes.colors(id)), BoardThemes.label(id), id, boardGroup));
+        }
+        for (String id : BoardThemes.IMAGE_BOARDS) {
+            ImageView iv = new ImageView(ImageCache.getInstance().getImage("/images/Scacchiere/" + id, SWATCH, SWATCH));
+            iv.setFitWidth(SWATCH);
+            iv.setFitHeight(SWATCH);
+            imageBoards.getChildren().add(card(iv, BoardThemes.label(id), id, boardGroup));
+        }
+        for (String set : BoardThemes.PIECE_SETS) {
+            ImageView king = new ImageView(ImageCache.getInstance().getImage("/images/Pieces/" + set + "/wk.png", 52, 52));
+            ImageView queen = new ImageView(ImageCache.getInstance().getImage("/images/Pieces/" + set + "/bq.png", 52, 52));
+            HBox pair = new HBox(0, king, queen);
+            pair.setPrefSize(SWATCH, SWATCH);
+            pair.setAlignment(javafx.geometry.Pos.CENTER);
+            pieceSets.getChildren().add(card(pair, set, set, pieceGroup));
+        }
+        keepOneSelected(boardGroup);
+        keepOneSelected(pieceGroup);
+        boardGroup.selectedToggleProperty().addListener((obs, o, n) -> {
+            if (n != null && !n.getUserData().equals(BoardThemes.currentBoard())) {
+                ConfigManager.setProperty("theme.board", (String) n.getUserData());
+                updatePreview();
+            }
+        });
+        pieceGroup.selectedToggleProperty().addListener((obs, o, n) -> {
+            if (n != null && !n.getUserData().equals(BoardThemes.currentPieces())) {
+                ConfigManager.setProperty("theme.piece", (String) n.getUserData());
+                updatePreview();
+            }
+        });
     }
 
-    private void updatePreviews() {
-        String currentBoard = ConfigManager.getProperty("theme.board", "Marghiacciato.png");
-        String currentPiece = ConfigManager.getProperty("theme.piece", "Classico");
+    @Override
+    public void onNavigatedTo() {
+        select(boardGroup, BoardThemes.currentBoard());
+        select(pieceGroup, BoardThemes.currentPieces());
+        updatePreview();
+    }
 
-        try {
-            ImageCache cache = ImageCache.getInstance();
-            boardPreview.setImage(cache.getImage("/images/Scacchiere/" + currentBoard));
-            // Preview a piece (e.g., White King)
-            piecePreview.setImage(cache.getImage("/images/Pieces/" + currentPiece + "/wK.png"));
-        } catch (Exception e) {
-            System.err.println("Error loading previews: " + e.getMessage());
+    private static void keepOneSelected(ToggleGroup group) {
+        group.selectedToggleProperty().addListener((obs, o, n) -> {
+            if (n == null && o != null) {
+                o.setSelected(true);
+            }
+        });
+    }
+
+    private static void select(ToggleGroup group, String id) {
+        group.getToggles().stream().filter(t -> id.equals(t.getUserData())).findFirst()
+                .ifPresent(t -> {
+                    if (!t.isSelected()) {
+                        t.setSelected(true);
+                    }
+                });
+    }
+
+    private void updatePreview() {
+        ChessBoardUI preview = new ChessBoardUI(BoardThemes.currentBoard(), BoardThemes.currentPieces(), 44);
+        preview.setPosition(PREVIEW_FEN, null);
+        previewHolder.getChildren().setAll(preview);
+    }
+
+    private static Node flatSwatch(BoardThemes.Colors colors) {
+        GridPane grid = new GridPane();
+        double s = SWATCH / 4;
+        for (int r = 0; r < 4; r++) {
+            for (int c = 0; c < 4; c++) {
+                Color fill = (r + c) % 2 == 0 ? colors.light() : colors.dark();
+                grid.add(new Rectangle(s, s, fill), c, r);
+            }
         }
+        return grid;
+    }
+
+    private static ToggleButton card(Node graphic, String text, String id, ToggleGroup group) {
+        ToggleButton button = new ToggleButton(text, graphic);
+        button.getStyleClass().setAll("preview-card");
+        button.setUserData(id);
+        button.setToggleGroup(group);
+        button.setMinWidth(Region.USE_PREF_SIZE);
+        return button;
     }
 
     @FXML
     private void backToHome() {
         mainController.navigateTo("HOME");
-    }
-
-    @FXML
-    private void closeSelection() {
-        selectionOverlay.setVisible(false);
-    }
-
-    @FXML
-    private void showBoardSelection() {
-        selectionTitle.setText("Seleziona Scacchiera");
-        selectionContainer.getChildren().clear();
-
-        String[] boards = { "Bubblegum.png", "Checkers.png", "Legno.png", "Marghiacciato.png", "Marrone.png",
-                "Neon.png" };
-
-        for (String board : boards) {
-            Button btn = createSelectionButton("/images/Scacchiere/" + board, board, true);
-            selectionContainer.getChildren().add(btn);
-        }
-
-        selectionOverlay.setVisible(true);
-    }
-
-    @FXML
-    private void showPieceSelection() {
-        selectionTitle.setText("Seleziona Pezzi");
-        selectionContainer.getChildren().clear();
-
-        String[] pieces = { "Bubblegum", "Classico", "Legno", "Neon", "Spray", "Vetro" };
-
-        for (String piece : pieces) {
-            // Show White King as preview
-            Button btn = createSelectionButton("/images/Pieces/" + piece + "/wK.png", piece, false);
-            selectionContainer.getChildren().add(btn);
-        }
-
-        selectionOverlay.setVisible(true);
-    }
-
-    private Button createSelectionButton(String imagePath, String value, boolean isBoard) {
-        Button btn = new Button();
-        VBox content = new VBox(10);
-        content.setAlignment(Pos.CENTER);
-
-        ImageView iv = new ImageView();
-        iv.setFitWidth(150);
-        iv.setFitHeight(150);
-        iv.setPreserveRatio(true);
-        try {
-            iv.setImage(ImageCache.getInstance().getImage(imagePath));
-        } catch (Exception e) {
-            System.err.println("Error loading image: " + imagePath);
-        }
-
-        Label lbl = new Label(value.replace(".png", ""));
-        lbl.setStyle("-fx-text-fill: white; -fx-font-size: 14px;");
-
-        content.getChildren().addAll(iv, lbl);
-        btn.setGraphic(content);
-        btn.setStyle("-fx-background-color: transparent; -fx-background-radius: 10; -fx-cursor: hand;");
-
-        // Hover effect
-        btn.setOnMouseEntered(e -> btn.setStyle(
-                "-fx-background-color: rgba(255, 255, 255, 0.1); -fx-background-radius: 10; -fx-cursor: hand;"));
-        btn.setOnMouseExited(
-                e -> btn.setStyle("-fx-background-color: transparent; -fx-background-radius: 10; -fx-cursor: hand;"));
-
-        btn.setOnAction(e -> {
-            if (isBoard) {
-                ConfigManager.setProperty("theme.board", value);
-            } else {
-                ConfigManager.setProperty("theme.piece", value);
-            }
-            updatePreviews();
-            closeSelection();
-        });
-
-        return btn;
     }
 }

@@ -4,177 +4,228 @@ import com.github.bhlangonijr.chesslib.Board;
 import com.github.bhlangonijr.chesslib.Piece;
 import com.github.bhlangonijr.chesslib.Square;
 import com.github.bhlangonijr.chesslib.move.Move;
+import javafx.animation.FadeTransition;
+import javafx.animation.Interpolator;
+import javafx.animation.TranslateTransition;
+import javafx.geometry.Pos;
+import javafx.geometry.VPos;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.control.Label;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.scene.layout.Pane;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.StrokeLineCap;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
+import javafx.scene.text.TextAlignment;
+import javafx.util.Duration;
+import org.example.javachess.Components.BoardThemes;
+import org.example.javachess.Components.ThemeManager;
 import org.example.javachess.Utils.ImageCache;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Consumer;
 
+/**
+ * Chess board drawn on stacked canvases (board, highlights, pieces, arrows, icons) plus an animation layer and
+ * an overlay for end-of-game messages.
+ *
+ * <p>Rendering is incremental: only squares whose piece changed are repainted, the background is painted once per
+ * size, and nothing is cached as a bitmap twice (important with the software pipeline on the Raspberry Pi).
+ * With {@link #setFitToParent(boolean)} the board follows the size given by its parent (square, multiple of 8 px).</p>
+ */
 public class ChessBoardUI extends StackPane {
 
-    private int TILE_SIZE;
     private static final int BOARD_SIZE = 8;
+    private static final String START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    private static final Color LAST_MOVE = Color.rgb(82, 168, 255, 0.34);
+    private static final Color ERROR = Color.rgb(255, 72, 72, 0.6);
+
+    private int TILE_SIZE;
     private final String chessboardStyle;
     private final String pieceStyle;
     private Board chessBoard;
     private List<String> moveList;
     private int currentMoveIndex;
 
-    private Canvas boardCanvas;
-    private Canvas pieceCanvas;
-    private Canvas highlightCanvas; // For square highlights (moves, legal)
-    private Canvas arrowCanvas; // For arrows (analysis)
-    private Canvas iconCanvas; // For analysis icons (Best, Blunder, etc.)
-    private javafx.scene.layout.Pane animationPane; // For piece animations
-    private StackPane overlayPane; // For game over screens
+    private final Canvas boardCanvas;
+    private final Canvas highlightCanvas;
+    private final Canvas pieceCanvas;
+    private final Canvas arrowCanvas;
+    private final Canvas iconCanvas;
+    private final Pane animationPane;
+    private final StackPane overlayPane;
     private javafx.animation.Animation currentAnimation;
+
+    /** What is currently painted on the piece canvas, used to repaint only the squares that changed. */
+    private final Piece[] drawn = new Piece[64];
+    private Move lastMoveShown;
+    private boolean fitToParent;
+    private boolean showCoordinates = true;
+    private final List<Runnable> arrowOps = new ArrayList<>();
+    private final List<Runnable> iconOps = new ArrayList<>();
+    private final List<Runnable> highlightOps = new ArrayList<>();
+    private Consumer<Move> onPositionChanged;
 
     public ChessBoardUI(String chessboardStyle, String piecesStyle, int TileSize) {
         this.chessBoard = new Board();
         this.chessboardStyle = chessboardStyle;
         this.pieceStyle = piecesStyle;
-        this.TILE_SIZE = TileSize;
+        this.TILE_SIZE = Math.max(4, TileSize);
+        getStyleClass().add("chess-board");
 
-        int width = TILE_SIZE * BOARD_SIZE;
-        int height = TILE_SIZE * BOARD_SIZE;
-
-        this.setPrefSize(width, height);
-        this.setMaxSize(width, height);
-        this.setMinSize(width, height);
-
-        boardCanvas = new Canvas(width, height);
-        highlightCanvas = new Canvas(width, height);
-        pieceCanvas = new Canvas(width, height);
-        arrowCanvas = new Canvas(width, height);
-        iconCanvas = new Canvas(width, height);
-        animationPane = new javafx.scene.layout.Pane();
-        animationPane.setPrefSize(width, height);
-        animationPane.setMouseTransparent(true); // Let clicks pass through
-
-        animationPane.setMouseTransparent(true); // Let clicks pass through
+        double side = TILE_SIZE * BOARD_SIZE;
+        boardCanvas = new Canvas(side, side);
+        highlightCanvas = new Canvas(side, side);
+        pieceCanvas = new Canvas(side, side);
+        arrowCanvas = new Canvas(side, side);
+        iconCanvas = new Canvas(side, side);
+        for (Canvas c : new Canvas[] { highlightCanvas, pieceCanvas, arrowCanvas, iconCanvas }) {
+            c.setMouseTransparent(true);
+        }
+        animationPane = new Pane();
+        animationPane.setMouseTransparent(true);
+        animationPane.setMaxSize(side, side);
 
         overlayPane = new StackPane();
-        overlayPane.setPickOnBounds(false); // Let clicks pass through if empty
+        overlayPane.setPickOnBounds(false);
         overlayPane.setMouseTransparent(true);
+        overlayPane.setVisible(false);
+        overlayPane.getStyleClass().add("board-overlay");
+        overlayPane.setMaxSize(side, side);
 
-        // Layer order: Board -> Highlights -> Pieces -> Arrows -> Icons -> Animation ->
-        // Overlay
-        this.getChildren().addAll(boardCanvas, highlightCanvas, pieceCanvas, arrowCanvas, iconCanvas, animationPane,
+        getChildren().addAll(boardCanvas, highlightCanvas, pieceCanvas, arrowCanvas, iconCanvas, animationPane,
                 overlayPane);
-
-        // Optimization: Cache the static board background
-        boardCanvas.setCache(true);
-        boardCanvas.setCacheHint(javafx.scene.CacheHint.QUALITY); // Background needs to look good
-
-        // Cache other layers for performance
-        pieceCanvas.setCache(true);
-        pieceCanvas.setCacheHint(javafx.scene.CacheHint.SPEED);
-
-        highlightCanvas.setCache(true);
-        highlightCanvas.setCacheHint(javafx.scene.CacheHint.SPEED);
-
-        arrowCanvas.setCache(true);
-        arrowCanvas.setCacheHint(javafx.scene.CacheHint.SPEED);
-
-        iconCanvas.setCache(true);
-        iconCanvas.setCacheHint(javafx.scene.CacheHint.SPEED);
-
-        // Animation pane benefits from caching during transitions
-        animationPane.setCache(true);
-        animationPane.setCacheHint(javafx.scene.CacheHint.SPEED);
-
-        drawBoardBackground(width, height);
+        applyFixedSize();
+        drawBoardBackground(side, side);
         updateBoard(chessBoard, null, pieceStyle);
         currentMoveIndex = 0;
     }
 
-    // ... (drawBoardBackground, updateBoard, drawPieces remain same)
+    // ------------------------------------------------------------------ sizing
 
-    private void stopCurrentAnimation() {
-        if (currentAnimation != null) {
-            if (currentAnimation.getStatus() == javafx.animation.Animation.Status.RUNNING) {
-                currentAnimation.stop();
-            }
-            animationPane.getChildren().clear();
-            currentAnimation = null;
+    /** When true the board grows/shrinks with the space its parent gives it (always square). */
+    public void setFitToParent(boolean fit) {
+        this.fitToParent = fit;
+        if (fit) {
+            setMinSize(BOARD_SIZE * 8, BOARD_SIZE * 8);
+            setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+        } else {
+            applyFixedSize();
         }
+        requestLayout();
     }
 
-    public void animateMove(Square from, Square to, Piece piece, String pieceStyle, Runnable onFinished) {
-        stopCurrentAnimation(); // Ensure no conflict
-
-        int fromCol = from.ordinal() % 8;
-        int fromRow = 7 - (from.ordinal() / 8);
-        int toCol = to.ordinal() % 8;
-        int toRow = 7 - (to.ordinal() / 8);
-
-        String pieceFileName = getPieceFileName(piece);
-        if (pieceFileName == null) {
-            if (onFinished != null)
-                onFinished.run();
+    /** Sets the square size in pixels and repaints everything. */
+    public void setTileSize(int tile) {
+        tile = Math.max(4, tile);
+        if (tile == TILE_SIZE) {
             return;
         }
-
-        Image pieceImage = ImageCache.getInstance().getImage("/images/Pieces/" + pieceStyle + "/" + pieceFileName,
-                TILE_SIZE, TILE_SIZE);
-        ImageView animatedPiece = new ImageView(pieceImage);
-        animatedPiece.setFitWidth(TILE_SIZE);
-        animatedPiece.setFitHeight(TILE_SIZE);
-
-        // Use TranslateTransition for GPU acceleration
-        // We set the initial position using layoutX/Y (or just place it at 0,0 and
-        // translate)
-        // Better: Place at 'from' position, then translate to 'to' position relative to
-        // 'from'.
-
-        animatedPiece.setLayoutX(fromCol * TILE_SIZE);
-        animatedPiece.setLayoutY(fromRow * TILE_SIZE);
-
-        animationPane.getChildren().add(animatedPiece);
-
-        javafx.animation.TranslateTransition transition = new javafx.animation.TranslateTransition(
-                javafx.util.Duration.millis(100), animatedPiece);
-        transition.setFromX(0);
-        transition.setFromY(0);
-        transition.setToX((toCol - fromCol) * TILE_SIZE);
-        transition.setToY((toRow - fromRow) * TILE_SIZE);
-
-        transition.setOnFinished(e -> {
-            animationPane.getChildren().remove(animatedPiece);
-            currentAnimation = null;
-            if (onFinished != null)
-                onFinished.run();
-        });
-
-        currentAnimation = transition;
-        transition.play();
+        TILE_SIZE = tile;
+        double side = TILE_SIZE * BOARD_SIZE;
+        for (Canvas c : new Canvas[] { boardCanvas, highlightCanvas, pieceCanvas, arrowCanvas, iconCanvas }) {
+            c.setWidth(side);
+            c.setHeight(side);
+        }
+        animationPane.setMaxSize(side, side);
+        overlayPane.setMaxSize(side, side);
+        if (!fitToParent) {
+            applyFixedSize();
+        }
+        stopCurrentAnimation();
+        drawBoardBackground(side, side);
+        java.util.Arrays.fill(drawn, null);
+        pieceCanvas.getGraphicsContext2D().clearRect(0, 0, side, side);
+        drawPieces(chessBoard, pieceStyle, null);
+        repaintHighlights();
+        replay(arrowCanvas, arrowOps);
+        replay(iconCanvas, iconOps);
     }
+
+    public int getTileSize() {
+        return TILE_SIZE;
+    }
+
+    public void setShowCoordinates(boolean show) {
+        this.showCoordinates = show;
+        drawBoardBackground(boardCanvas.getWidth(), boardCanvas.getHeight());
+    }
+
+    /** Called (on the FX thread) whenever a new position is shown; the argument is the last move or null. */
+    public void setOnPositionChanged(Consumer<Move> listener) {
+        this.onPositionChanged = listener;
+    }
+
+    private void applyFixedSize() {
+        double side = TILE_SIZE * BOARD_SIZE;
+        setMinSize(side, side);
+        setPrefSize(side, side);
+        setMaxSize(side, side);
+    }
+
+    @Override
+    protected double computePrefWidth(double height) {
+        return TILE_SIZE * BOARD_SIZE;
+    }
+
+    @Override
+    protected double computePrefHeight(double width) {
+        return TILE_SIZE * BOARD_SIZE;
+    }
+
+    @Override
+    protected void layoutChildren() {
+        if (fitToParent && getWidth() > 0 && getHeight() > 0) {
+            int tile = (int) Math.floor(Math.min(getWidth(), getHeight()) / BOARD_SIZE);
+            if (tile != TILE_SIZE && tile >= 4) {
+                setTileSize(tile);
+            }
+        }
+        super.layoutChildren();
+    }
+
+    // ------------------------------------------------------------------ painting
 
     private void drawBoardBackground(double width, double height) {
         GraphicsContext gc = boardCanvas.getGraphicsContext2D();
-        try {
-            Image boardImage = ImageCache.getInstance().getImage("/images/Scacchiere/" + chessboardStyle, width,
-                    height);
-            if (boardImage != null) {
+        gc.clearRect(0, 0, width, height);
+        BoardThemes.Colors colors = BoardThemes.colors(chessboardStyle);
+        if (colors == null) {
+            Image boardImage = ImageCache.getInstance().getImage("/images/Scacchiere/" + chessboardStyle, width, height);
+            if (boardImage != null && !boardImage.isError()) {
                 gc.drawImage(boardImage, 0, 0, width, height);
-            } else {
-                for (int row = 0; row < 8; row++) {
-                    for (int col = 0; col < 8; col++) {
-                        if ((row + col) % 2 == 0)
-                            gc.setFill(Color.BEIGE);
-                        else
-                            gc.setFill(Color.BROWN);
-                        gc.fillRect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-                    }
-                }
+                return;
             }
-        } catch (Exception e) {
-            e.printStackTrace();
+            colors = BoardThemes.colors(BoardThemes.DEFAULT);
+        }
+        for (int row = 0; row < BOARD_SIZE; row++) {
+            for (int col = 0; col < BOARD_SIZE; col++) {
+                gc.setFill((row + col) % 2 == 0 ? colors.light() : colors.dark());
+                gc.fillRect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            }
+        }
+        if (showCoordinates && TILE_SIZE >= 32) {
+            gc.setFont(Font.font(ThemeManager.FONT_MONO, FontWeight.SEMI_BOLD, Math.max(10, TILE_SIZE * 0.16)));
+            double pad = Math.max(2, TILE_SIZE * 0.06);
+            for (int i = 0; i < BOARD_SIZE; i++) {
+                // Ranks on the left edge, files on the bottom edge, in the colour of the opposite square.
+                gc.setTextAlign(TextAlignment.LEFT);
+                gc.setTextBaseline(VPos.TOP);
+                gc.setFill(i % 2 == 0 ? colors.dark() : colors.light());
+                gc.fillText(String.valueOf(8 - i), pad, i * TILE_SIZE + pad);
+                gc.setTextAlign(TextAlignment.RIGHT);
+                gc.setTextBaseline(VPos.BOTTOM);
+                gc.setFill(i % 2 == 0 ? colors.dark() : colors.light());
+                gc.fillText(String.valueOf((char) ('a' + i)), (i + 1) * TILE_SIZE - pad, height - pad);
+            }
         }
     }
 
@@ -183,198 +234,247 @@ public class ChessBoardUI extends StackPane {
     }
 
     public void updateBoard(Board board, Move lastMove, String pieceStyle, Square skipSquare) {
-        this.chessBoard = board;
-        clearHighlights();
-        drawPieces(board, pieceStyle, skipSquare);
-
-        if (lastMove != null) {
-            Square from = lastMove.getFrom();
-            Square to = lastMove.getTo();
-            highlightSquare(from.ordinal() % 8, 7 - (from.ordinal() / 8), Color.rgb(255, 255, 0, 0.5));
-            highlightSquare(to.ordinal() % 8, 7 - (to.ordinal() / 8), Color.rgb(255, 255, 0, 0.5));
+        if (board != this.chessBoard) {
+            // Never keep (and later mutate through setPosition) a board owned by the caller.
+            Board copy = new Board();
+            copy.loadFromFen(board.getFen());
+            board = copy;
         }
+        this.chessBoard = board;
+        this.lastMoveShown = lastMove;
+        highlightOps.clear();
+        drawPieces(board, pieceStyle, skipSquare);
+        repaintHighlights();
+        if (onPositionChanged != null) {
+            onPositionChanged.accept(lastMove);
+        }
+    }
+
+    private void repaintHighlights() {
+        GraphicsContext gc = highlightCanvas.getGraphicsContext2D();
+        gc.clearRect(0, 0, highlightCanvas.getWidth(), highlightCanvas.getHeight());
+        if (lastMoveShown != null) {
+            fillSquare(gc, lastMoveShown.getFrom(), LAST_MOVE);
+            fillSquare(gc, lastMoveShown.getTo(), LAST_MOVE);
+        }
+        for (Runnable op : highlightOps) {
+            op.run();
+        }
+    }
+
+    private void fillSquare(GraphicsContext gc, Square sq, Color color) {
+        if (sq == null || sq == Square.NONE) {
+            return;
+        }
+        gc.setFill(color);
+        gc.fillRect(col(sq) * TILE_SIZE, row(sq) * TILE_SIZE, TILE_SIZE, TILE_SIZE);
     }
 
     private void drawPieces(Board board, String pieceStyle, Square skipSquare) {
         GraphicsContext gc = pieceCanvas.getGraphicsContext2D();
-        gc.clearRect(0, 0, pieceCanvas.getWidth(), pieceCanvas.getHeight());
-
         ImageCache cache = ImageCache.getInstance();
-
         for (Square square : Square.values()) {
-            if (square == skipSquare)
+            if (square == Square.NONE) {
                 continue;
-
-            Piece piece = board.getPiece(square);
-            if (piece != Piece.NONE) {
-                String pieceFileName = getPieceFileName(piece);
-                if (pieceFileName != null) {
-                    Image pieceImage = cache.getImage("/images/Pieces/" + pieceStyle + "/" + pieceFileName, TILE_SIZE,
-                            TILE_SIZE);
-                    if (pieceImage != null) {
-                        int col = square.ordinal() % 8;
-                        int row = 7 - (square.ordinal() / 8);
-                        gc.drawImage(pieceImage, col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-                    }
+            }
+            Piece piece = square == skipSquare ? Piece.NONE : board.getPiece(square);
+            int idx = square.ordinal();
+            if (drawn[idx] == piece) {
+                continue;
+            }
+            double x = col(square) * TILE_SIZE;
+            double y = row(square) * TILE_SIZE;
+            gc.clearRect(x, y, TILE_SIZE, TILE_SIZE);
+            drawn[idx] = piece;
+            String fileName = getPieceFileName(piece);
+            if (fileName != null) {
+                Image img = cache.getImage("/images/Pieces/" + pieceStyle + "/" + fileName, TILE_SIZE, TILE_SIZE);
+                if (img != null) {
+                    gc.drawImage(img, x, y, TILE_SIZE, TILE_SIZE);
                 }
             }
         }
     }
 
+    private static int col(Square sq) {
+        return sq.ordinal() % 8;
+    }
+
+    private static int row(Square sq) {
+        return 7 - (sq.ordinal() / 8);
+    }
+
+    private void stopCurrentAnimation() {
+        if (currentAnimation != null) {
+            currentAnimation.stop();
+            animationPane.getChildren().clear();
+            currentAnimation = null;
+        }
+    }
+
+    public void animateMove(Square from, Square to, Piece piece, String pieceStyle, Runnable onFinished) {
+        stopCurrentAnimation();
+        String pieceFileName = getPieceFileName(piece);
+        if (pieceFileName == null) {
+            if (onFinished != null) {
+                onFinished.run();
+            }
+            return;
+        }
+        Image pieceImage = ImageCache.getInstance().getImage("/images/Pieces/" + pieceStyle + "/" + pieceFileName,
+                TILE_SIZE, TILE_SIZE);
+        ImageView animatedPiece = new ImageView(pieceImage);
+        animatedPiece.setFitWidth(TILE_SIZE);
+        animatedPiece.setFitHeight(TILE_SIZE);
+        animatedPiece.setLayoutX(col(from) * TILE_SIZE);
+        animatedPiece.setLayoutY(row(from) * TILE_SIZE);
+        animationPane.getChildren().add(animatedPiece);
+
+        TranslateTransition transition = new TranslateTransition(Duration.millis(140), animatedPiece);
+        transition.setToX((col(to) - col(from)) * TILE_SIZE);
+        transition.setToY((row(to) - row(from)) * TILE_SIZE);
+        transition.setInterpolator(Interpolator.EASE_OUT);
+        transition.setOnFinished(e -> {
+            animationPane.getChildren().remove(animatedPiece);
+            currentAnimation = null;
+            if (onFinished != null) {
+                onFinished.run();
+            }
+        });
+        currentAnimation = transition;
+        transition.play();
+    }
+
     public void highlightSquare(int col, int row, Color color) {
-        GraphicsContext gc = highlightCanvas.getGraphicsContext2D();
-        gc.setFill(color);
-        gc.fillRect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        Runnable op = () -> {
+            GraphicsContext gc = highlightCanvas.getGraphicsContext2D();
+            gc.setFill(color);
+            gc.fillRect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        };
+        highlightOps.add(op);
+        op.run();
     }
 
     public void highlightErrorSquare(String squareName) {
         try {
             Square sq = Square.valueOf(squareName.toUpperCase());
-            int col = sq.ordinal() % 8;
-            int row = 7 - (sq.ordinal() / 8);
-            highlightSquare(col, row, Color.rgb(255, 0, 0, 0.7)); // Red highlight
-        } catch (Exception e) {
-            e.printStackTrace();
+            highlightSquare(col(sq), row(sq), ERROR);
+        } catch (IllegalArgumentException e) {
+            // Unknown square name from the hardware: nothing to highlight.
         }
     }
 
     public void clearHighlights() {
+        highlightOps.clear();
+        lastMoveShown = null;
         GraphicsContext gc = highlightCanvas.getGraphicsContext2D();
         gc.clearRect(0, 0, highlightCanvas.getWidth(), highlightCanvas.getHeight());
     }
 
     public void clearArrows() {
+        arrowOps.clear();
         GraphicsContext gc = arrowCanvas.getGraphicsContext2D();
         gc.clearRect(0, 0, arrowCanvas.getWidth(), arrowCanvas.getHeight());
     }
 
     public void clearIcons() {
+        iconOps.clear();
         GraphicsContext gc = iconCanvas.getGraphicsContext2D();
         gc.clearRect(0, 0, iconCanvas.getWidth(), iconCanvas.getHeight());
     }
 
-    public void drawIconOnSquare(int col, int row, String iconName) {
-        GraphicsContext gc = iconCanvas.getGraphicsContext2D();
-        double x = col * TILE_SIZE;
-        double y = row * TILE_SIZE;
-        double iconSize = TILE_SIZE / 2.5; // Small icon at top-left
-
-        try {
-            // Load icon (assuming standard path /images/analysis/...)
-            // If user provides them elsewhere, we might need to adjust.
-            // For now, let's assume they are in /images/analysis/
-            Image icon = ImageCache.getInstance().getImage("/images/analysis/" + iconName, iconSize, iconSize);
-            if (icon != null) {
-                // Draw at top-left corner of the square
-                gc.drawImage(icon, x, y, iconSize, iconSize);
-            }
-        } catch (Exception e) {
-            // Ignore missing icons to prevent crash
+    private static void replay(Canvas canvas, List<Runnable> ops) {
+        canvas.getGraphicsContext2D().clearRect(0, 0, canvas.getWidth(), canvas.getHeight());
+        for (Runnable op : ops) {
+            op.run();
         }
     }
 
-    public void drawArrowOnBoard(int fromCol, int fromRow, int toCol, int toRow, Color color) {
-        GraphicsContext gc = arrowCanvas.getGraphicsContext2D();
-        double startX = (fromCol + 0.5) * TILE_SIZE;
-        double startY = (fromRow + 0.5) * TILE_SIZE;
-        double endX = (toCol + 0.5) * TILE_SIZE;
-        double endY = (toRow + 0.5) * TILE_SIZE;
+    public void drawIconOnSquare(int col, int row, String iconName) {
+        Runnable op = () -> {
+            double iconSize = Math.round(TILE_SIZE * 0.38);
+            Image icon = ImageCache.getInstance().getImage("/images/analysis/" + iconName, iconSize, iconSize);
+            if (icon != null && !icon.isError()) {
+                double inset = Math.max(1, TILE_SIZE * 0.03);
+                iconCanvas.getGraphicsContext2D().drawImage(icon, (col + 1) * TILE_SIZE - iconSize - inset,
+                        row * TILE_SIZE + inset, iconSize, iconSize);
+            }
+        };
+        iconOps.add(op);
+        op.run();
+    }
 
-        drawArrow(gc, startX, startY, endX, endY, color);
+    public void drawArrowOnBoard(int fromCol, int fromRow, int toCol, int toRow, Color color) {
+        Runnable op = () -> drawArrow(arrowCanvas.getGraphicsContext2D(), (fromCol + 0.5) * TILE_SIZE,
+                (fromRow + 0.5) * TILE_SIZE, (toCol + 0.5) * TILE_SIZE, (toRow + 0.5) * TILE_SIZE, color);
+        arrowOps.add(op);
+        op.run();
     }
 
     private void drawArrow(GraphicsContext gc, double startX, double startY, double endX, double endY, Color color) {
-        // Use a transparent color for the arrow
-        Color transparentColor = Color.rgb((int) (color.getRed() * 255), (int) (color.getGreen() * 255),
-                (int) (color.getBlue() * 255), 0.7);
-
-        gc.setStroke(transparentColor);
-        gc.setLineWidth(15); // Thicker line
-
+        Color fill = Color.color(color.getRed(), color.getGreen(), color.getBlue(), 0.78);
+        double width = TILE_SIZE * 0.17;
+        double head = TILE_SIZE * 0.42;
         double angle = Math.atan2(endY - startY, endX - startX);
-        double arrowLength = 25;
+        double shaftEndX = endX - head * 0.8 * Math.cos(angle);
+        double shaftEndY = endY - head * 0.8 * Math.sin(angle);
 
-        double newEndX = endX - arrowLength * Math.cos(angle);
-        double newEndY = endY - arrowLength * Math.sin(angle);
+        gc.setStroke(fill);
+        gc.setLineWidth(width);
+        gc.setLineCap(StrokeLineCap.BUTT);
+        gc.strokeLine(startX, startY, shaftEndX, shaftEndY);
 
-        gc.strokeLine(startX, startY, newEndX, newEndY);
-
-        double x1 = endX;
-        double y1 = endY;
-        double x2 = endX - arrowLength * Math.cos(angle - Math.PI / 5); // Wider angle
-        double y2 = endY - arrowLength * Math.sin(angle - Math.PI / 5);
-        double x3 = endX - arrowLength * Math.cos(angle + Math.PI / 5);
-        double y3 = endY - arrowLength * Math.sin(angle + Math.PI / 5);
-
-        gc.setFill(transparentColor);
-        gc.fillPolygon(new double[] { x1, x2, x3 }, new double[] { y1, y2, y3 }, 3);
+        double spread = Math.PI / 6;
+        gc.setFill(fill);
+        gc.fillPolygon(
+                new double[] { endX, endX - head * Math.cos(angle - spread), endX - head * Math.cos(angle + spread) },
+                new double[] { endY, endY - head * Math.sin(angle - spread), endY - head * Math.sin(angle + spread) },
+                3);
     }
 
+    // ------------------------------------------------------------------ positions
+
     public void resetBoard() {
-        resetBoard("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+        resetBoard(START_FEN);
     }
 
     public void resetBoard(String fen) {
         chessBoard = new Board();
         chessBoard.loadFromFen(fen);
-        updateBoard(chessBoard, null, pieceStyle);
         currentMoveIndex = 0;
         clearHighlights();
+        clearArrows();
+        clearIcons();
+        updateBoard(chessBoard, null, pieceStyle);
         clearOverlay();
     }
 
     public void clearOverlay() {
         overlayPane.getChildren().clear();
         overlayPane.setVisible(false);
+        overlayPane.setMouseTransparent(true);
     }
 
+    /** Light-weight end-of-game card over the board (no blur or glow: cheap with software rendering). */
     public void showVictoryAnimation(String title, String subtitle) {
         overlayPane.getChildren().clear();
+        Label titleLabel = new Label(title);
+        titleLabel.getStyleClass().add("board-overlay-title");
+        Label subLabel = new Label(subtitle);
+        subLabel.getStyleClass().add("board-overlay-subtitle");
+        VBox card = new VBox(6, titleLabel, subLabel);
+        card.setAlignment(Pos.CENTER);
+        card.getStyleClass().add("board-overlay-card");
+        card.setMaxSize(USE_PREF_SIZE, USE_PREF_SIZE);
+        overlayPane.getChildren().add(card);
         overlayPane.setVisible(true);
         overlayPane.setMouseTransparent(false);
+        overlayPane.setOnMouseClicked(e -> clearOverlay());
 
-        // 1. Blurry Dark Background
-        javafx.scene.shape.Rectangle background = new javafx.scene.shape.Rectangle(getWidth(), getHeight());
-        background.setFill(Color.rgb(0, 0, 0, 0.75));
-        background.setEffect(new javafx.scene.effect.GaussianBlur(10));
-
-        // 2. Text Container
-        javafx.scene.layout.VBox textContainer = new javafx.scene.layout.VBox(10);
-        textContainer.setAlignment(javafx.geometry.Pos.CENTER);
-
-        // 3. Title Text (SCACCO MATTO)
-        javafx.scene.text.Text titleText = new javafx.scene.text.Text(title);
-        titleText.setFont(javafx.scene.text.Font.font("Segoe UI", javafx.scene.text.FontWeight.BOLD, 48));
-        titleText.setFill(Color.WHITE);
-        titleText.setEffect(new javafx.scene.effect.DropShadow(0, 0, 20, Color.GOLD));
-
-        // 4. Subtitle Text (Winner)
-        javafx.scene.text.Text subText = new javafx.scene.text.Text(subtitle);
-        subText.setFont(javafx.scene.text.Font.font("Segoe UI", javafx.scene.text.FontWeight.SEMI_BOLD, 24));
-        subText.setFill(Color.LIGHTGRAY);
-
-        textContainer.getChildren().addAll(titleText, subText);
-
-        overlayPane.getChildren().addAll(background, textContainer);
-
-        // 5. Animations
-        // Fade In Background
-        javafx.animation.FadeTransition fade = new javafx.animation.FadeTransition(javafx.util.Duration.millis(500),
-                background);
+        FadeTransition fade = new FadeTransition(Duration.millis(180), overlayPane);
         fade.setFromValue(0);
         fade.setToValue(1);
-
-        // Scale Up Text with Bounce
-        javafx.animation.ScaleTransition scale = new javafx.animation.ScaleTransition(javafx.util.Duration.millis(800),
-                textContainer);
-        scale.setFromX(0.0);
-        scale.setFromY(0.0);
-        scale.setToX(1.0);
-        scale.setToY(1.0);
-        scale.setInterpolator(javafx.animation.Interpolator.EASE_OUT);
-
-        javafx.animation.ParallelTransition pt = new javafx.animation.ParallelTransition(fade, scale);
-        pt.play();
+        fade.play();
     }
 
     public Board getBoard() {
@@ -391,7 +491,7 @@ public class ChessBoardUI extends StackPane {
     }
 
     public void loadPgn(String pgn) {
-        loadPgn(pgn, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+        loadPgn(pgn, START_FEN);
     }
 
     public void loadPgn(String pgn, String initialFen) {
@@ -401,37 +501,34 @@ public class ChessBoardUI extends StackPane {
 
     private List<String> parsePgnMoves(String pgn) {
         List<String> moves = new ArrayList<>();
-        String[] tokens = pgn.split("\\s+");
-        for (String token : tokens) {
-            if (!token.matches("\\d+\\.") && !token.matches("1-0|0-1|1/2-1/2")) {
+        for (String token : pgn.trim().split("\\s+")) {
+            if (!token.isEmpty() && !token.matches("\\d+\\.") && !token.matches("1-0|0-1|1/2-1/2|\\*")) {
                 moves.add(token);
             }
         }
         return moves;
     }
 
+    /** Moves of the loaded PGN (UCI strings), for move lists. */
+    public List<String> getMoveList() {
+        return moveList == null ? List.of() : java.util.Collections.unmodifiableList(moveList);
+    }
+
     public void nextMove() {
         if (moveList != null && currentMoveIndex < moveList.size()) {
-            boolean wasAnimating = (currentAnimation != null
-                    && currentAnimation.getStatus() == javafx.animation.Animation.Status.RUNNING);
+            boolean wasAnimating = currentAnimation != null
+                    && currentAnimation.getStatus() == javafx.animation.Animation.Status.RUNNING;
             stopCurrentAnimation();
-
-            String moveStr = moveList.get(currentMoveIndex);
-            Move move = parseMoveFromString(moveStr, chessBoard.getFen());
-
+            Move move = parseMoveFromString(moveList.get(currentMoveIndex), chessBoard.getFen());
             if (move != null) {
                 chessBoard.doMove(move);
                 currentMoveIndex++;
-
                 if (wasAnimating) {
-                    // Skip animation if we were already animating (fast scroll)
                     updateBoard(chessBoard, move, pieceStyle, null);
                 } else {
-                    // Normal animation
-                    updateBoard(chessBoard, move, pieceStyle, move.getTo()); // Hide dest
-                    animateMove(move.getFrom(), move.getTo(), chessBoard.getPiece(move.getTo()), pieceStyle, () -> {
-                        updateBoard(chessBoard, move, pieceStyle, null);
-                    });
+                    updateBoard(chessBoard, move, pieceStyle, move.getTo());
+                    animateMove(move.getFrom(), move.getTo(), chessBoard.getPiece(move.getTo()), pieceStyle,
+                            () -> updateBoard(chessBoard, move, pieceStyle, null));
                 }
             }
         }
@@ -439,67 +536,63 @@ public class ChessBoardUI extends StackPane {
 
     public void previousMove() {
         if (moveList != null && currentMoveIndex > 0) {
-            boolean wasAnimating = (currentAnimation != null
-                    && currentAnimation.getStatus() == javafx.animation.Animation.Status.RUNNING);
+            boolean wasAnimating = currentAnimation != null
+                    && currentAnimation.getStatus() == javafx.animation.Animation.Status.RUNNING;
             stopCurrentAnimation();
-
-            // Get the move we are undoing
             String moveStr = moveList.get(currentMoveIndex - 1);
-            // We need to parse it BEFORE undoing to know from/to
-            // But wait, parseMoveFromString needs FEN *before* the move was made?
-            // No, it needs FEN to determine color/promotion.
-            // The current FEN is AFTER the move.
-            // Undo first to get back to state BEFORE move.
-
             chessBoard.undoMove();
             currentMoveIndex--;
-
-            // Re-parse move to get coordinates (now we are at state BEFORE move)
             Move move = parseMoveFromString(moveStr, chessBoard.getFen());
-
-            if (move != null) {
-                if (wasAnimating) {
-                    updateBoard(chessBoard, null, pieceStyle, null);
-                } else {
-                    // Backward animation: Piece moves from TO back to FROM
-                    // We hide the piece at FROM (where it ends up)
-                    // Captured pieces (at TO) will just appear (handled by updateBoard drawing
-                    // them, except we don't hide TO)
-                    // Wait, if we captured a piece, it is now back at TO.
-                    // The moving piece is back at FROM.
-                    // We want to animate moving piece from TO -> FROM.
-                    // So we hide FROM.
-                    // What about the captured piece at TO?
-                    // updateBoard draws everything.
-                    // If we hide FROM, the moving piece is hidden.
-                    // The captured piece at TO is drawn.
-                    // The animated piece moves TO -> FROM.
-                    // This looks correct: captured piece reappears, moving piece slides back.
-
-                    updateBoard(chessBoard, null, pieceStyle, move.getFrom());
-                    animateMove(move.getTo(), move.getFrom(), chessBoard.getPiece(move.getFrom()), pieceStyle, () -> {
-                        updateBoard(chessBoard, null, pieceStyle, null);
-                    });
-                }
+            Move previous = currentMoveIndex > 0
+                    ? parseMoveFromString(moveList.get(currentMoveIndex - 1), null) : null;
+            if (move != null && !wasAnimating) {
+                // Slide the piece back from TO to FROM; the captured piece (if any) reappears at once.
+                updateBoard(chessBoard, previous, pieceStyle, move.getFrom());
+                animateMove(move.getTo(), move.getFrom(), chessBoard.getPiece(move.getFrom()), pieceStyle,
+                        () -> updateBoard(chessBoard, previous, pieceStyle, null));
             } else {
-                updateBoard(chessBoard, null, pieceStyle);
+                updateBoard(chessBoard, previous, pieceStyle, null);
             }
         }
+    }
+
+    /** Jumps to the position after {@code index} moves of the loaded PGN (0 = start), without animation. */
+    public void goToMove(int index) {
+        if (moveList == null) {
+            return;
+        }
+        index = Math.max(0, Math.min(index, moveList.size()));
+        stopCurrentAnimation();
+        while (currentMoveIndex > index) {
+            chessBoard.undoMove();
+            currentMoveIndex--;
+        }
+        Move last = null;
+        while (currentMoveIndex < index) {
+            Move move = parseMoveFromString(moveList.get(currentMoveIndex), chessBoard.getFen());
+            if (move == null) {
+                break;
+            }
+            chessBoard.doMove(move);
+            currentMoveIndex++;
+            last = move;
+        }
+        if (last == null && currentMoveIndex > 0) {
+            last = parseMoveFromString(moveList.get(currentMoveIndex - 1), null);
+        }
+        updateBoard(chessBoard, last, pieceStyle, null);
     }
 
     private Move parseMoveFromString(String moveStr, String fen) {
         try {
             Square from = Square.valueOf(moveStr.substring(0, 2).toUpperCase());
             Square to = Square.valueOf(moveStr.substring(2, 4).toUpperCase());
-            boolean isWhiteToMove = fen.split(" ")[1].equals("w");
-
-            if (moveStr.length() == 5) {
-                char promotionChar = moveStr.charAt(4);
-                Piece promotionPiece = getPromotionPiece(promotionChar, isWhiteToMove);
-                return new Move(from, to, promotionPiece);
+            if (moveStr.length() == 5 && fen != null) {
+                boolean isWhiteToMove = fen.split(" ")[1].equals("w");
+                return new Move(from, to, getPromotionPiece(moveStr.charAt(4), isWhiteToMove));
             }
             return new Move(from, to);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             return null;
         }
     }
@@ -519,7 +612,7 @@ public class ChessBoardUI extends StackPane {
         }
     }
 
-    private static final java.util.Map<Piece, String> PIECE_FILE_NAMES = new java.util.HashMap<>();
+    private static final Map<Piece, String> PIECE_FILE_NAMES = new EnumMap<>(Piece.class);
     static {
         PIECE_FILE_NAMES.put(Piece.WHITE_PAWN, "wp.png");
         PIECE_FILE_NAMES.put(Piece.WHITE_ROOK, "wr.png");
@@ -536,7 +629,7 @@ public class ChessBoardUI extends StackPane {
     }
 
     private String getPieceFileName(Piece piece) {
-        return PIECE_FILE_NAMES.get(piece);
+        return piece == null ? null : PIECE_FILE_NAMES.get(piece);
     }
 
     public int getMoveCount() {

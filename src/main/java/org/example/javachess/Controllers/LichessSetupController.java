@@ -5,10 +5,12 @@ import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-
+import javafx.scene.control.Toggle;
 import javafx.scene.control.ToggleGroup;
+import org.example.javachess.Components.I18n;
 import org.example.javachess.Utils.LichessAPIHelper;
 
+/** Lichess seek setup: time control, rated/casual, colour. The seek runs off the FX thread. */
 public class LichessSetupController implements NavigationAware {
 
     private MainController mainController;
@@ -20,7 +22,11 @@ public class LichessSetupController implements NavigationAware {
     @FXML
     private ToggleGroup colorGroup;
     @FXML
+    private ToggleGroup timeGroup;
+    @FXML
     private Label statusLabel;
+    @FXML
+    private Button seekButton;
 
     private int selectedTime = 10;
     private int selectedIncrement = 0;
@@ -31,46 +37,58 @@ public class LichessSetupController implements NavigationAware {
     }
 
     @FXML
+    public void initialize() {
+        for (ToggleGroup group : new ToggleGroup[] { ratedGroup, colorGroup, timeGroup }) {
+            group.selectedToggleProperty().addListener((obs, o, n) -> {
+                if (n == null && o != null) {
+                    o.setSelected(true);
+                }
+            });
+        }
+    }
+
+    @FXML
     public void setTimeControl(ActionEvent event) {
-        Button btn = (Button) event.getSource();
-        String data = (String) btn.getUserData();
-        String[] parts = data.split("\\|");
+        Toggle source = (Toggle) event.getSource();
+        String[] parts = ((String) source.getUserData()).split("\\|");
         selectedTime = Integer.parseInt(parts[0]);
         selectedIncrement = Integer.parseInt(parts[1]);
-
-        selectedTimeLabel.setText("Selezionato: " + selectedTime + " + " + selectedIncrement);
+        selectedTimeLabel.setText(selectedTime + " + " + selectedIncrement);
     }
 
     @FXML
     public void startSeek() {
         boolean rated = Boolean.parseBoolean(ratedGroup.getSelectedToggle().getUserData().toString());
         String color = colorGroup.getSelectedToggle().getUserData().toString();
-
-        statusLabel.setText("Cercando avversario...");
-
-        new Thread(() -> {
-            String gameId = LichessAPIHelper.createSeek(selectedTime, selectedIncrement, rated, color);
-
+        statusLabel.setText(I18n.t("lichess.searching"));
+        seekButton.setDisable(true);
+        int time = selectedTime;
+        int increment = selectedIncrement;
+        Thread.ofVirtual().name("lichess-seek").start(() -> {
+            String gameId = LichessAPIHelper.createSeek(time, increment, rated, color);
             Platform.runLater(() -> {
+                seekButton.setDisable(false);
                 if (gameId != null && !gameId.startsWith("ERROR:")) {
-                    statusLabel.setText("Partita trovata! ID: " + gameId);
-                    // Navigate to Game
-                    mainController.loadView("GAME", "/UI/GameView.fxml");
-                    mainController.navigateTo("GAME");
+                    statusLabel.setText(I18n.t("lichess.found"));
                     ActiveGameController controller = (ActiveGameController) mainController.getController("GAME");
-                    if (controller != null) {
-                        controller.startOnlineGame(gameId);
-                    }
+                    mainController.navigateTo("GAME");
+                    controller.startOnlineGame(gameId);
                 } else {
-                    String msg = (gameId != null) ? gameId.replace("ERROR:", "") : "Nessuna partita trovata o timeout.";
-                    statusLabel.setText("Errore: " + msg);
-                    // Parse specific errors for user friendliness
-                    if (msg.contains("Invalid time control")) {
-                        statusLabel.setText("Errore: Tempo non valido per partita Classificata.");
-                    }
+                    String msg = gameId != null ? gameId.replace("ERROR:", "").trim() : I18n.t("lichess.error.timeout");
+                    statusLabel.setText(msg.contains("Invalid time control") ? I18n.t("lichess.error.rated")
+                            : I18n.t("lichess.error", msg));
                 }
             });
-        }).start();
+        });
+    }
+
+    @FXML
+    private void openInBrowser() {
+        Object controller = mainController.getController("BROWSER");
+        if (controller instanceof BrowserController browser) {
+            browser.loadPage("https://lichess.org");
+        }
+        mainController.navigateTo("BROWSER");
     }
 
     @FXML

@@ -1,181 +1,135 @@
 package org.example.javachess.Oggetti;
 
-import java.util.Locale;
-
+import javafx.animation.Interpolator;
 import javafx.animation.KeyFrame;
 import javafx.animation.KeyValue;
 import javafx.animation.Timeline;
 import javafx.application.Platform;
-import javafx.geometry.Insets;
-import javafx.geometry.Pos;
+import javafx.beans.property.DoubleProperty;
+import javafx.beans.property.ReadOnlyStringProperty;
+import javafx.beans.property.ReadOnlyStringWrapper;
+import javafx.beans.property.SimpleDoubleProperty;
+import javafx.geometry.Orientation;
 import javafx.scene.control.Label;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
-import javafx.scene.layout.Background;
-import javafx.scene.layout.BackgroundFill;
-import javafx.scene.layout.CornerRadii;
-import javafx.scene.layout.Pane;
 import javafx.scene.layout.Region;
-import javafx.scene.layout.StackPane;
-import javafx.scene.layout.VBox;
-import javafx.scene.paint.Color;
-import javafx.scene.paint.CycleMethod;
-import javafx.scene.paint.LinearGradient;
-import javafx.scene.paint.Stop;
-import javafx.scene.shape.Line;
 import javafx.scene.shape.Rectangle;
 import javafx.util.Duration;
 
-public class EvalBar extends StackPane {
-    private final Region blackRegion;
-    private final Region whiteRegion;
-    private final VBox barsContainer;
-    private final Pane tickContainer;
-    private final Region borderRegion;
-    private final Rectangle clipRect;
-    private final Label scoreLabel;
+import java.util.Locale;
+
+/**
+ * Thin evaluation bar: white share grows from the bottom (vertical) or from the left (horizontal).
+ * Only two rectangles are moved by layout, the score label is shown when the bar is at least 20 px thick.
+ * Colours come from CSS ({@code .eval-bar}, {@code .eval-white}, {@code .eval-black}).
+ */
+public class EvalBar extends Region {
+
+    private final Region whiteRegion = new Region();
+    private final Region blackRegion = new Region();
+    private final Label scoreLabel = new Label();
+    private final Rectangle clip = new Rectangle();
+    /** Share of the bar owned by white, 0..1. */
+    private final DoubleProperty whiteShare = new SimpleDoubleProperty(0.5);
+    private final ReadOnlyStringWrapper scoreText = new ReadOnlyStringWrapper("0.0");
+    private Orientation orientation = Orientation.VERTICAL;
+    private Timeline timeline;
 
     public EvalBar(double width, double height) {
-        setPrefSize(width, height);
-        // Remove CSS border to avoid layout shifts and rendering issues
-        setStyle("-fx-background-color: #121212; -fx-background-radius: 10;");
-
-        // Clip for rounded corners
-        clipRect = new Rectangle(width, height);
-        clipRect.setArcWidth(10);
-        clipRect.setArcHeight(10);
-        clipRect.widthProperty().bind(widthProperty());
-        clipRect.heightProperty().bind(heightProperty());
-        setClip(clipRect);
-
-        // Gradient for Black (Top)
-        Stop[] blackStops = new Stop[] { new Stop(0, Color.web("#2c2c2c")), new Stop(1, Color.web("#1a1a1a")) };
-        LinearGradient blackGradient = new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE, blackStops);
-        blackRegion = new Region();
-        blackRegion.setBackground(new Background(new BackgroundFill(blackGradient, CornerRadii.EMPTY, Insets.EMPTY)));
-        // Allow width to fill, height will be animated
-        blackRegion.setMaxWidth(Double.MAX_VALUE);
-
-        // Gradient for White (Bottom)
-        Stop[] whiteStops = new Stop[] { new Stop(0, Color.web("#f0f0f0")), new Stop(1, Color.web("#e0e0e0")) };
-        LinearGradient whiteGradient = new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE, whiteStops);
-        whiteRegion = new Region();
-        whiteRegion.setBackground(new Background(new BackgroundFill(whiteGradient, CornerRadii.EMPTY, Insets.EMPTY)));
-        // Allow width to fill, height will be animated
-        whiteRegion.setMaxWidth(Double.MAX_VALUE);
-
-        // Container for bars (VBox ensures they stack vertically)
-        barsContainer = new VBox(0); // 0 spacing
-        barsContainer.getChildren().addAll(blackRegion, whiteRegion);
-        barsContainer.setFillWidth(true);
-        // Initial heights (50/50)
-        blackRegion.setPrefHeight(height / 2);
-        whiteRegion.setPrefHeight(height / 2);
-
-        // Container for tick marks
-        tickContainer = new Pane();
-        tickContainer.setMouseTransparent(true);
-        tickContainer.setPrefSize(0, 0); // Prevent layout loop
-
-        // Manual Border on top
-        borderRegion = new Region();
-        borderRegion.setBackground(Background.EMPTY);
-        borderRegion.setStyle("-fx-border-color: #333333; -fx-border-width: 2; -fx-border-radius: 5;"); // Radius
-                                                                                                        // matches clip
-                                                                                                        // roughly
-        borderRegion.setMouseTransparent(true);
-        borderRegion.setPrefSize(0, 0); // Prevent layout loop
-
-        // Score Label
-        scoreLabel = new Label("");
-        scoreLabel.setFont(Font.font("System", FontWeight.SEMI_BOLD, 10));
+        getStyleClass().add("eval-bar");
+        whiteRegion.getStyleClass().add("eval-white");
+        blackRegion.getStyleClass().add("eval-black");
+        scoreLabel.getStyleClass().add("eval-score");
+        scoreLabel.setManaged(false);
         scoreLabel.setMouseTransparent(true);
-
-        getChildren().addAll(barsContainer, tickContainer, borderRegion, scoreLabel);
-        StackPane.setAlignment(scoreLabel, Pos.CENTER);
-
-        // Initial draw
-        drawTicks(width, height);
-
-        // Redraw ticks on resize
-        widthProperty().addListener((obs, oldVal, newVal) -> drawTicks(newVal.doubleValue(), getHeight()));
-        heightProperty().addListener((obs, oldVal, newVal) -> drawTicks(getWidth(), newVal.doubleValue()));
+        getChildren().addAll(blackRegion, whiteRegion, scoreLabel);
+        setPrefSize(width, height);
+        clip.widthProperty().bind(widthProperty());
+        clip.heightProperty().bind(heightProperty());
+        clip.setArcWidth(4);
+        clip.setArcHeight(4);
+        setClip(clip);
+        whiteShare.addListener((obs, o, n) -> requestLayout());
     }
 
-    private void drawTicks(double width, double height) {
-        tickContainer.getChildren().clear();
-        double centerY = height / 2;
+    public void setOrientation(Orientation value) {
+        if (value != orientation) {
+            orientation = value;
+            requestLayout();
+        }
+    }
 
-        // Center Line (0.0)
-        Line centerLine = new Line(0, centerY, width, centerY);
-        centerLine.setStroke(Color.web("#D4AF37")); // Gold center
-        centerLine.setStrokeWidth(2);
-        tickContainer.getChildren().add(centerLine);
+    public Orientation getOrientation() {
+        return orientation;
+    }
 
-        // Ticks
-        double[] tickValues = { 1.0, 3.0, 5.0 };
-        for (double val : tickValues) {
-            double yPosWhite = centerY + (val / 6.0) * (height / 2);
-            if (yPosWhite < height) {
-                Line tick = new Line(width * 0.25, yPosWhite, width * 0.75, yPosWhite);
-                tick.setStroke(Color.web("#888888", 0.5));
-                tick.setStrokeWidth(1);
-                tickContainer.getChildren().add(tick);
-            }
+    /** Last score as shown to the user ("+0.4", "M3", "1-0"...). */
+    public ReadOnlyStringProperty scoreTextProperty() {
+        return scoreText.getReadOnlyProperty();
+    }
 
-            double yPosBlack = centerY - (val / 6.0) * (height / 2);
-            if (yPosBlack > 0) {
-                Line tick = new Line(width * 0.25, yPosBlack, width * 0.75, yPosBlack);
-                tick.setStroke(Color.web("#888888", 0.5));
-                tick.setStrokeWidth(1);
-                tickContainer.getChildren().add(tick);
+    @Override
+    protected void layoutChildren() {
+        double w = getWidth();
+        double h = getHeight();
+        double share = whiteShare.get();
+        if (orientation == Orientation.VERTICAL) {
+            double whiteH = Math.round(h * share);
+            blackRegion.resizeRelocate(0, 0, w, h - whiteH);
+            whiteRegion.resizeRelocate(0, h - whiteH, w, whiteH);
+        } else {
+            double whiteW = Math.round(w * share);
+            whiteRegion.resizeRelocate(0, 0, whiteW, h);
+            blackRegion.resizeRelocate(whiteW, 0, w - whiteW, h);
+        }
+        boolean showLabel = Math.min(w, h) >= 20;
+        scoreLabel.setVisible(showLabel);
+        if (showLabel) {
+            scoreLabel.autosize();
+            double lw = scoreLabel.getWidth();
+            double lh = scoreLabel.getHeight();
+            boolean whiteAhead = share >= 0.5;
+            scoreLabel.pseudoClassStateChanged(javafx.css.PseudoClass.getPseudoClass("on-white"), whiteAhead);
+            if (orientation == Orientation.VERTICAL) {
+                scoreLabel.relocate((w - lw) / 2, whiteAhead ? h - lh - 4 : 4);
+            } else {
+                scoreLabel.relocate(whiteAhead ? 6 : w - lw - 6, (h - lh) / 2);
             }
         }
     }
 
+    /** Score in pawns from white's point of view; values beyond +-900 encode mate (1000 - n = mate in n). */
     public void updateEvaluation(double score) {
-        Platform.runLater(() -> {
-            String scoreText;
-            boolean isBlackWinning;
-
-            if (score == Double.POSITIVE_INFINITY || score > 900) {
-                animateBars(getHeight(), 0, 400);
-                int mateIn = (score == Double.POSITIVE_INFINITY) ? 0 : (int) (1000 - score);
-                scoreText = mateIn == 0 ? "1-0" : "M" + mateIn;
-                isBlackWinning = false;
-            } else if (score == Double.NEGATIVE_INFINITY || score < -900) {
-                animateBars(0, getHeight(), 400);
-                int mateIn = (score == Double.NEGATIVE_INFINITY) ? 0 : (int) (1000 + score);
-                scoreText = mateIn == 0 ? "0-1" : "M" + mateIn;
-                isBlackWinning = true;
-            } else {
-                double normalizedScore = Math.max(-1.0, Math.min(1.0, score / 6.0));
-                double newWhiteHeight = (1.0 + normalizedScore) / 2.0 * getHeight();
-                double newBlackHeight = getHeight() - newWhiteHeight;
-                animateBars(newWhiteHeight, newBlackHeight, 400);
-                scoreText = String.format(Locale.US, "%.1f", Math.abs(score));
-                isBlackWinning = score < 0;
-            }
-
-            scoreLabel.setText(scoreText);
-            if (isBlackWinning) {
-                scoreLabel.setTextFill(Color.WHITE);
-                StackPane.setAlignment(scoreLabel, Pos.TOP_CENTER);
-                StackPane.setMargin(scoreLabel, new Insets(5, 0, 0, 0));
-            } else {
-                scoreLabel.setTextFill(Color.BLACK);
-                StackPane.setAlignment(scoreLabel, Pos.BOTTOM_CENTER);
-                StackPane.setMargin(scoreLabel, new Insets(0, 0, 5, 0));
-            }
-        });
+        if (!Platform.isFxApplicationThread()) {
+            Platform.runLater(() -> updateEvaluation(score));
+            return;
+        }
+        double target;
+        String text;
+        if (score == Double.POSITIVE_INFINITY || score > 900) {
+            int mateIn = score == Double.POSITIVE_INFINITY ? 0 : (int) (1000 - score);
+            target = 1;
+            text = mateIn == 0 ? "1-0" : "M" + mateIn;
+        } else if (score == Double.NEGATIVE_INFINITY || score < -900) {
+            int mateIn = score == Double.NEGATIVE_INFINITY ? 0 : (int) (1000 + score);
+            target = 0;
+            text = mateIn == 0 ? "0-1" : "-M" + mateIn;
+        } else {
+            // Soft clamp: +-1 pawn already moves the bar noticeably, +-6 is almost full.
+            double normalized = Math.tanh(score / 3.5);
+            target = (1 + normalized) / 2;
+            text = String.format(Locale.US, "%+.1f", score).replace("+0.0", "0.0").replace("-0.0", "0.0");
+        }
+        scoreText.set(text);
+        scoreLabel.setText(text.startsWith("+") ? text.substring(1) : text.replace("-", ""));
+        animateTo(target);
     }
 
-    private void animateBars(double newWhiteHeight, double newBlackHeight, int durationMillis) {
-        Timeline timeline = new Timeline();
-        KeyValue whiteHeightValue = new KeyValue(whiteRegion.prefHeightProperty(), newWhiteHeight);
-        KeyValue blackHeightValue = new KeyValue(blackRegion.prefHeightProperty(), newBlackHeight);
-        KeyFrame keyFrame = new KeyFrame(Duration.millis(durationMillis), whiteHeightValue, blackHeightValue);
-        timeline.getKeyFrames().add(keyFrame);
+    private void animateTo(double target) {
+        if (timeline != null) {
+            timeline.stop();
+        }
+        timeline = new Timeline(new KeyFrame(Duration.millis(200),
+                new KeyValue(whiteShare, target, Interpolator.EASE_BOTH)));
         timeline.play();
     }
 }

@@ -1,86 +1,116 @@
 package org.example.javachess.Controllers;
 
+import com.github.bhlangonijr.chesslib.Side;
+import com.github.bhlangonijr.chesslib.move.Move;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
+import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ProgressBar;
+import javafx.scene.image.ImageView;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
-import org.example.javachess.Oggetti.UCIEngine;
-import org.example.javachess.Oggetti.AnalysisResult;
+import org.example.javachess.Components.BoardThemes;
+import org.example.javachess.Components.I18n;
+import org.example.javachess.Components.MoveListView;
+import org.example.javachess.Components.PageHeader;
+import org.example.javachess.Oggetti.AnalysisPanel;
 import org.example.javachess.Oggetti.ChessBoardUI;
 import org.example.javachess.Oggetti.EvalBar;
 import org.example.javachess.Oggetti.EvaluationGraph;
 import org.example.javachess.Oggetti.MoveAnalysis;
-import org.example.javachess.Oggetti.AnalysisPanel;
-import org.example.javachess.Services.GameAnalyzer;
+import org.example.javachess.Oggetti.UCIEngine;
 import org.example.javachess.Services.EngineService;
+import org.example.javachess.Services.GameAnalyzer;
 import org.example.javachess.Utils.ConfigManager;
+import org.example.javachess.Utils.ImageCache;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.Executors;
-
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
+/** Review screen: replays an archived game with live engine lines, full-game analysis, accuracy and graph. */
 public class ReviewController implements NavigationAware, GameNavigationListener {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ReviewController.class);
+    private static final String START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    private static final int DEBOUNCE_DELAY = 150;
 
     private MainController mainController;
     @FXML
-    private javafx.scene.layout.VBox stockfishControls;
+    private VBox stockfishControls;
     @FXML
     private StockfishControlsController stockfishControlsController;
-
-    private int analysisDepth = 18;
-    private int analysisMultiPV = 1;
-    private boolean analysisEnabled = true;
-
-    private ChessBoardUI reviewChessBoard;
-    private EvalBar reviewEvalBar;
-    private UCIEngine stockfish;
-    private ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-    private ScheduledFuture<?> debounceHandle = null;
-    private final int DEBOUNCE_DELAY = 150;
-    private AtomicBoolean isCalculating = new AtomicBoolean(false);
-    private ArduinoController arduinoController;
-
     @FXML
-    private HBox reviewHbox;
+    private PageHeader header;
     @FXML
-    private Label openingReview;
+    private org.example.javachess.Components.GameLayout reviewView;
+    @FXML
+    private StackPane reviewHbox;
+    @FXML
+    private Label plyLabel;
     @FXML
     private VBox analysisContainer;
-    private AnalysisPanel evaluationPanel;
-
-    @Override
-    public void setMainController(MainController mainController) {
-        this.mainController = mainController;
-        this.arduinoController = ArduinoController.getInstance();
-        // arduinoController.setNavigationListener(this);
-    }
-
+    @FXML
+    private MoveListView moveList;
     @FXML
     private Button analyzeButton;
     @FXML
-    private VBox graphContainer;
+    private Label analyzeHint;
+    @FXML
+    private HBox analyzeRow;
+    @FXML
+    private StackPane graphContainer;
     @FXML
     private VBox progressContainer;
     @FXML
-    private javafx.scene.control.ProgressIndicator analysisProgressIndicator;
+    private ProgressBar analysisProgressIndicator;
+    @FXML
+    private Label percentLabel;
+    @FXML
+    private VBox accuracyWrapper;
     @FXML
     private HBox accuracyContainer;
     @FXML
     private Label whiteAccuracyLabel;
     @FXML
     private Label blackAccuracyLabel;
-    @FXML
-    private Label percentLabel;
 
+    private int analysisDepth = 18;
+    private int analysisMultiPV = 1;
+    private final boolean analysisEnabled = true;
+
+    private ChessBoardUI reviewChessBoard;
+    private final EvalBar reviewEvalBar = new EvalBar(8, 400);
+    private UCIEngine stockfish;
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "review-debounce");
+        t.setDaemon(true);
+        return t;
+    });
+    private ScheduledFuture<?> debounceHandle;
+    private ArduinoController arduinoController;
+    private AnalysisPanel evaluationPanel;
     private EvaluationGraph evaluationGraph;
     private List<MoveAnalysis> currentAnalysis;
     private String currentPgn;
+    private String currentInitialFen = START_FEN;
+    private int[] whiteCounts = new int[0];
+    private int[] blackCounts = new int[0];
+
+    @Override
+    public void setMainController(MainController mainController) {
+        this.mainController = mainController;
+    }
 
     @FXML
     public void initialize() {
@@ -90,205 +120,185 @@ public class ReviewController implements NavigationAware, GameNavigationListener
                 this.analysisMultiPV = multiPv;
                 triggerAnalysisDebounced();
             });
-
-            stockfishControlsController.setOnClose(() -> stockfishControls.setVisible(false));
         }
-
-        // Initialize Graph
-        evaluationGraph = new EvaluationGraph(600, 150);
+        evaluationGraph = new EvaluationGraph(600, 132);
+        evaluationGraph.setOnMoveSelected(index -> goTo(index + 1));
         graphContainer.getChildren().add(evaluationGraph);
 
-        // Instantiate and add AnalysisPanel
         evaluationPanel = new AnalysisPanel();
         analysisContainer.getChildren().add(evaluationPanel);
-        analysisContainer.setVisible(true);
-        analysisContainer.setManaged(true);
-
-        // Set initial text programmatically to avoid FXML resource key issues with %
-        if (whiteAccuracyLabel != null)
-            whiteAccuracyLabel.setText("0%");
-        if (blackAccuracyLabel != null)
-            blackAccuracyLabel.setText("0%");
-        if (percentLabel != null)
-            percentLabel.setText("%");
-
-        // Load analysis depth from config
-        this.analysisDepth = ConfigManager.getIntProperty("analysis.depth", 12);
+        reviewView.setEvalBar(reviewEvalBar);
+        moveList.setOnPlySelected(this::goTo);
     }
 
     @FXML
     private void toggleSettings() {
-        stockfishControls.setVisible(!stockfishControls.isVisible());
+        mainController.showSheet(I18n.t("analysis.title"), stockfishControlsController.getRoot());
     }
 
     public void loadGame(String pgn) {
-        loadGame(pgn, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+        loadGame(pgn, START_FEN);
     }
 
     public void loadGame(String pgn, String initialFen) {
         this.currentPgn = pgn;
+        this.currentInitialFen = initialFen == null ? START_FEN : initialFen;
         stockfish = EngineService.getInstance().getEngine();
+        if (arduinoController == null) {
+            Thread.ofVirtual().start(() -> arduinoController = ArduinoController.getInstance());
+        }
 
-        String boardStyle = ConfigManager.getProperty("theme.board", "Marghiacciato.png");
-        String pieceStyle = ConfigManager.getProperty("theme.piece", "Classico");
+        reviewChessBoard = new ChessBoardUI(BoardThemes.currentBoard(), BoardThemes.currentPieces(), 80);
+        reviewChessBoard.setFitToParent(true);
+        reviewHbox.getChildren().setAll(reviewChessBoard);
+        reviewChessBoard.loadPgn(pgn, this.currentInitialFen);
+        reviewEvalBar.updateEvaluation(0);
 
-        reviewChessBoard = new ChessBoardUI(boardStyle, pieceStyle, 85);
-        reviewEvalBar = new EvalBar(20, 400);
-        reviewEvalBar.setMinWidth(20);
-        reviewEvalBar.setMaxWidth(20);
-        HBox.setMargin(reviewEvalBar, new javafx.geometry.Insets(0, 0, 0, 5));
-
-        reviewHbox.getChildren().clear();
-        reviewHbox.getChildren().addAll(reviewChessBoard, reviewEvalBar);
-
-        reviewChessBoard.loadPgn(pgn, initialFen);
+        moveList.setMoves(this.currentInitialFen, toMoves(reviewChessBoard.getMoveList(), this.currentInitialFen));
+        header.setSubtitle(I18n.t("review.subtitle"));
 
         // Reset analysis state
-        graphContainer.setVisible(false);
-        graphContainer.setManaged(false);
         progressContainer.setVisible(false);
         progressContainer.setManaged(false);
+        analyzeRow.setVisible(true);
+        analyzeRow.setManaged(true);
         analyzeButton.setDisable(false);
+        accuracyWrapper.setVisible(false);
+        accuracyWrapper.setManaged(false);
         currentAnalysis = null;
-        accuracyContainer.setVisible(false);
-        accuracyContainer.setManaged(false);
+        evaluationGraph.setData(null);
+        evaluationPanel.clear();
         whiteAccuracyLabel.setText("0%");
         blackAccuracyLabel.setText("0%");
-        // currentMoveIndex is managed by reviewChessBoard now
 
         handleMoveUpdate();
     }
 
+    /** UCI strings of a PGN to chesslib moves (for SAN conversion); stops at the first unparsable token. */
+    private static List<Move> toMoves(List<String> uci, String initialFen) {
+        List<Move> result = new ArrayList<>();
+        Side side = initialFen.split(" ").length > 1 && initialFen.split(" ")[1].equals("b") ? Side.BLACK : Side.WHITE;
+        for (String token : uci) {
+            try {
+                result.add(new Move(token, side));
+            } catch (RuntimeException e) {
+                break;
+            }
+            side = side.flip();
+        }
+        return result;
+    }
+
     @FXML
     private void startFullAnalysis() {
+        if (currentPgn == null) {
+            return;
+        }
         analyzeButton.setDisable(true);
+        analyzeRow.setVisible(false);
+        analyzeRow.setManaged(false);
         progressContainer.setVisible(true);
         progressContainer.setManaged(true);
+        analysisProgressIndicator.setProgress(0);
+        percentLabel.setText(I18n.t("review.analyzing", 0));
 
         GameAnalyzer analyzer = new GameAnalyzer();
-
-        new Thread(() -> {
-            List<MoveAnalysis> analysis = analyzer.analyzeGame(currentPgn, analysisDepth, progress -> {
-                Platform.runLater(() -> analysisProgressIndicator.setProgress(progress));
-            });
-
+        String pgn = currentPgn;
+        // Full-game analysis depth comes from Settings; the sheet only tunes the live lines.
+        int depth = ConfigManager.getIntProperty("analysis.depth", 12);
+        Thread.ofPlatform().daemon().name("game-analysis").start(() -> {
+            List<MoveAnalysis> analysis = analyzer.analyzeGame(pgn, depth, progress -> Platform.runLater(() -> {
+                analysisProgressIndicator.setProgress(progress);
+                percentLabel.setText(I18n.t("review.analyzing", Math.round(progress * 100)));
+            }));
             double whiteAccuracy = analyzer.calculateAccuracy(analysis, true);
             double blackAccuracy = analyzer.calculateAccuracy(analysis, false);
-
-            Platform.runLater(() -> {
-                this.currentAnalysis = analysis;
-                progressContainer.setVisible(false);
-                progressContainer.setManaged(false);
-                graphContainer.setVisible(true);
-                graphContainer.setManaged(true);
-                accuracyWrapper.setVisible(true);
-                accuracyWrapper.setManaged(true);
-                accuracyContainer.setVisible(true);
-                accuracyContainer.setManaged(true);
-
-                whiteAccuracyLabel.setText(String.format("%.1f", whiteAccuracy));
-                blackAccuracyLabel.setText(String.format("%.1f", blackAccuracy));
-
-                updateBreakdownStats(analysis);
-
-                evaluationGraph.setData(analysis);
-                analyzeButton.setDisable(false);
-            });
-        }).start();
+            Platform.runLater(() -> showAnalysis(analysis, whiteAccuracy, blackAccuracy));
+        });
     }
 
-    @FXML
-    private VBox accuracyWrapper;
-    @FXML
-    private Button toggleBreakdownButton;
-    @FXML
-    private org.kordamp.ikonli.javafx.FontIcon breakdownIcon;
-    @FXML
-    private VBox breakdownStatsContainer;
-
-    // Breakdown Labels
-    @FXML
-    private Label wBrilliant, bBrilliant;
-    @FXML
-    private Label wGreat, bGreat;
-    @FXML
-    private Label wBook, bBook;
-    @FXML
-    private Label wBest, bBest;
-    @FXML
-    private Label wExcellent, bExcellent;
-    @FXML
-    private Label wGood, bGood;
-    @FXML
-    private Label wInaccuracy, bInaccuracy;
-    @FXML
-    private Label wMistake, bMistake;
-    @FXML
-    private Label wMiss, bMiss;
-    @FXML
-    private Label wBlunder, bBlunder;
-
-    @FXML
-    private void toggleBreakdown() {
-        boolean isVisible = breakdownStatsContainer.isVisible();
-        breakdownStatsContainer.setVisible(!isVisible);
-        breakdownStatsContainer.setManaged(!isVisible);
-
-        if (!isVisible) {
-            breakdownIcon.setIconLiteral("mdal-keyboard_arrow_up");
-        } else {
-            breakdownIcon.setIconLiteral("mdal-keyboard_arrow_down");
-        }
+    private void showAnalysis(List<MoveAnalysis> analysis, double whiteAccuracy, double blackAccuracy) {
+        this.currentAnalysis = analysis;
+        progressContainer.setVisible(false);
+        progressContainer.setManaged(false);
+        accuracyWrapper.setVisible(true);
+        accuracyWrapper.setManaged(true);
+        whiteAccuracyLabel.setText(String.format(Locale.ITALIAN, "%.1f", whiteAccuracy));
+        blackAccuracyLabel.setText(String.format(Locale.ITALIAN, "%.1f", blackAccuracy));
+        countClassifications(analysis);
+        evaluationGraph.setData(analysis);
+        analyzeButton.setDisable(false);
+        updateAnalysisUI();
     }
 
-    private void updateBreakdownStats(List<MoveAnalysis> analysis) {
-        int[] whiteCounts = new int[MoveAnalysis.MoveClassification.values().length];
-        int[] blackCounts = new int[MoveAnalysis.MoveClassification.values().length];
-
+    private void countClassifications(List<MoveAnalysis> analysis) {
+        whiteCounts = new int[MoveAnalysis.MoveClassification.values().length];
+        blackCounts = new int[MoveAnalysis.MoveClassification.values().length];
         for (MoveAnalysis move : analysis) {
-            if (move.getClassification() == null)
+            if (move.getClassification() == null) {
                 continue;
-
+            }
             boolean isWhite = (move.getMoveNumber() % 2) != 0;
             int ordinal = move.getClassification().ordinal();
-
             if (isWhite) {
                 whiteCounts[ordinal]++;
             } else {
                 blackCounts[ordinal]++;
             }
         }
+    }
 
-        // Update Labels
-        wBrilliant.setText(String.valueOf(whiteCounts[MoveAnalysis.MoveClassification.BRILLIANT.ordinal()]));
-        bBrilliant.setText(String.valueOf(blackCounts[MoveAnalysis.MoveClassification.BRILLIANT.ordinal()]));
-
-        wGreat.setText(String.valueOf(whiteCounts[MoveAnalysis.MoveClassification.GREAT.ordinal()]));
-        bGreat.setText(String.valueOf(blackCounts[MoveAnalysis.MoveClassification.GREAT.ordinal()]));
-
-        wBook.setText(String.valueOf(whiteCounts[MoveAnalysis.MoveClassification.BOOK_MOVE.ordinal()]));
-        bBook.setText(String.valueOf(blackCounts[MoveAnalysis.MoveClassification.BOOK_MOVE.ordinal()]));
-
-        wBest.setText(String.valueOf(whiteCounts[MoveAnalysis.MoveClassification.BEST.ordinal()]));
-        bBest.setText(String.valueOf(blackCounts[MoveAnalysis.MoveClassification.BEST.ordinal()]));
-
-        wExcellent.setText(String.valueOf(whiteCounts[MoveAnalysis.MoveClassification.EXCELLENT.ordinal()]));
-        bExcellent.setText(String.valueOf(blackCounts[MoveAnalysis.MoveClassification.EXCELLENT.ordinal()]));
-
-        wGood.setText(String.valueOf(whiteCounts[MoveAnalysis.MoveClassification.GOOD.ordinal()]));
-        bGood.setText(String.valueOf(blackCounts[MoveAnalysis.MoveClassification.GOOD.ordinal()]));
-
-        wInaccuracy.setText(String.valueOf(whiteCounts[MoveAnalysis.MoveClassification.INACCURACY.ordinal()]));
-        bInaccuracy.setText(String.valueOf(blackCounts[MoveAnalysis.MoveClassification.INACCURACY.ordinal()]));
-
-        wMistake.setText(String.valueOf(whiteCounts[MoveAnalysis.MoveClassification.MISTAKE.ordinal()]));
-        bMistake.setText(String.valueOf(blackCounts[MoveAnalysis.MoveClassification.MISTAKE.ordinal()]));
-
-        wMiss.setText(String.valueOf(whiteCounts[MoveAnalysis.MoveClassification.MISS.ordinal()]));
-        bMiss.setText(String.valueOf(blackCounts[MoveAnalysis.MoveClassification.MISS.ordinal()]));
-
-        wBlunder.setText(String.valueOf(whiteCounts[MoveAnalysis.MoveClassification.BLUNDER.ordinal()]));
-        bBlunder.setText(String.valueOf(blackCounts[MoveAnalysis.MoveClassification.BLUNDER.ordinal()]));
+    /** Breakdown of the move classifications (white | icon + name | black) in a sheet. */
+    @FXML
+    private void toggleBreakdown() {
+        if (currentAnalysis == null) {
+            return;
+        }
+        GridPane grid = new GridPane();
+        grid.setHgap(16);
+        grid.setVgap(6);
+        Label whiteHead = new Label(I18n.t("review.accuracy.white"));
+        Label blackHead = new Label(I18n.t("review.accuracy.black"));
+        whiteHead.getStyleClass().add("stat-label");
+        blackHead.getStyleClass().add("stat-label");
+        grid.add(whiteHead, 0, 0);
+        grid.add(blackHead, 2, 0);
+        Object[][] rows = {
+                { MoveAnalysis.MoveClassification.BRILLIANT, "brilliant.png", "review.brilliant" },
+                { MoveAnalysis.MoveClassification.GREAT, "great.png", "review.great" },
+                { MoveAnalysis.MoveClassification.BOOK_MOVE, "book.png", "review.book" },
+                { MoveAnalysis.MoveClassification.BEST, "best.png", "review.best" },
+                { MoveAnalysis.MoveClassification.EXCELLENT, "excellent.png", "review.excellent" },
+                { MoveAnalysis.MoveClassification.GOOD, "good.png", "review.good" },
+                { MoveAnalysis.MoveClassification.INACCURACY, "inaccuracy.png", "review.inaccuracy" },
+                { MoveAnalysis.MoveClassification.MISTAKE, "mistake.png", "review.mistake" },
+                { MoveAnalysis.MoveClassification.MISS, "missed_win.png", "review.miss" },
+                { MoveAnalysis.MoveClassification.BLUNDER, "blunder.png", "review.blunder" } };
+        int r = 1;
+        for (Object[] row : rows) {
+            int ordinal = ((MoveAnalysis.MoveClassification) row[0]).ordinal();
+            Label w = new Label(String.valueOf(whiteCounts[ordinal]));
+            Label b = new Label(String.valueOf(blackCounts[ordinal]));
+            w.getStyleClass().add("breakdown-count");
+            b.getStyleClass().add("breakdown-count");
+            ImageView icon = new ImageView(ImageCache.getInstance().getImage("/images/analysis/" + row[1], 22, 22));
+            Label name = new Label(I18n.t((String) row[2]), icon);
+            name.setGraphicTextGap(10);
+            name.getStyleClass().add("breakdown-name");
+            HBox middle = new HBox(name);
+            middle.setAlignment(Pos.CENTER_LEFT);
+            middle.getStyleClass().add("breakdown-row");
+            grid.add(w, 0, r);
+            grid.add(middle, 1, r);
+            grid.add(b, 2, r);
+            r++;
+        }
+        javafx.scene.layout.ColumnConstraints side = new javafx.scene.layout.ColumnConstraints(64);
+        javafx.scene.layout.ColumnConstraints mid = new javafx.scene.layout.ColumnConstraints();
+        mid.setHgrow(javafx.scene.layout.Priority.ALWAYS);
+        javafx.scene.layout.ColumnConstraints side2 = new javafx.scene.layout.ColumnConstraints(64);
+        grid.getColumnConstraints().addAll(side, mid, side2);
+        mainController.showSheet(I18n.t("review.breakdown"), grid);
     }
 
     @FXML
@@ -298,7 +308,6 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         }
         if (arduinoController != null) {
             arduinoController.getBoardStateManager().stopGameMode();
-            // arduinoController.setNavigationListener(null);
         }
         mainController.navigateTo("ARCHIVE");
     }
@@ -313,14 +322,11 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         Platform.runLater(this::nextMove);
     }
 
-    // private int currentMoveIndex = 0; // REMOVED: Use
-    // reviewChessBoard.getCurrentMoveIndex()
-
     @FXML
     private void previousMove() {
         if (reviewChessBoard != null && reviewChessBoard.hasPreviousMove()) {
             reviewChessBoard.clearArrows();
-            reviewChessBoard.clearIcons(); // Clear previous icons
+            reviewChessBoard.clearIcons();
             reviewChessBoard.previousMove();
             handleMoveUpdate();
         }
@@ -330,156 +336,130 @@ public class ReviewController implements NavigationAware, GameNavigationListener
     private void nextMove() {
         if (reviewChessBoard != null && reviewChessBoard.hasNextMove()) {
             reviewChessBoard.clearArrows();
-            reviewChessBoard.clearIcons(); // Clear previous icons
+            reviewChessBoard.clearIcons();
             reviewChessBoard.nextMove();
             handleMoveUpdate();
         }
     }
 
+    @FXML
+    private void firstMove() {
+        goTo(0);
+    }
+
+    @FXML
+    private void lastMove() {
+        if (reviewChessBoard != null) {
+            goTo(reviewChessBoard.getMoveCount());
+        }
+    }
+
+    /** Jumps to the position after {@code ply} half-moves. Public for DevOptions. */
+    public void goTo(int ply) {
+        if (reviewChessBoard == null) {
+            return;
+        }
+        reviewChessBoard.clearArrows();
+        reviewChessBoard.clearIcons();
+        reviewChessBoard.goToMove(ply);
+        handleMoveUpdate();
+    }
+
+    /** Runs the full-game analysis as if the button were tapped. Public for DevOptions. */
+    public void analyze() {
+        startFullAnalysis();
+    }
+
     private void handleMoveUpdate() {
+        int index = reviewChessBoard.getCurrentMoveIndex();
+        int total = reviewChessBoard.getMoveCount();
+        plyLabel.setText(index == 0 ? I18n.t("review.start") : I18n.t("review.ply", index, total));
+        moveList.setCurrentPly(index);
         triggerAnalysisDebounced();
         updateAnalysisUI();
     }
 
     private void updateAnalysisUI() {
-        if (currentAnalysis != null && reviewChessBoard != null) {
-            int currentMoveIndex = reviewChessBoard.getCurrentMoveIndex();
-
-            // Update Graph Cursor
-            // Analysis list is 0-indexed, corresponding to move 1, 2, 3...
-            // currentMoveIndex 0 = Start position (no move made yet) -> No analysis to
-            // show?
-            // Actually, move 1 is index 0 in analysis list.
-            // If currentMoveIndex is 0 (start), we highlight nothing or start.
-
-            int analysisIndex = currentMoveIndex - 1;
-
-            // Bounds check for graph cursor
-            if (analysisIndex >= -1 && analysisIndex < currentAnalysis.size()) {
-                evaluationGraph.setHighlightMove(analysisIndex);
-            } else {
-                // If out of bounds (shouldn't happen with strict nav), clear or clamp
-                evaluationGraph.setHighlightMove(-1);
-            }
-
-            if (analysisIndex >= 0 && analysisIndex < currentAnalysis.size()) {
-                MoveAnalysis analysis = currentAnalysis.get(analysisIndex);
-
-                // Draw Icon based on classification
-                String iconName = getIconForClassification(analysis.getClassification());
-                if (iconName != null) {
-                    int squareIndex = analysis.getToSquareIndex();
-                    int col = squareIndex % 8;
-                    int row = 7 - (squareIndex / 8);
-                    reviewChessBoard.drawIconOnSquare(col, row, iconName);
-                }
-
-                // Show Best Move Arrow if Mistake/Blunder
-                if (analysis.getClassification() == MoveAnalysis.MoveClassification.BLUNDER ||
-                        analysis.getClassification() == MoveAnalysis.MoveClassification.MISTAKE ||
-                        analysis.getClassification() == MoveAnalysis.MoveClassification.MISTAKE) {
-
-                    String bestMoveUci = analysis.getBestMove();
-                    if (bestMoveUci != null && !bestMoveUci.isEmpty()) {
-                        // Draw arrow for best move (Green)
-                        // We need to parse UCI string (e.g. "e2e4")
-                        int fromCol = bestMoveUci.charAt(0) - 'a';
-                        int fromRow = '8' - bestMoveUci.charAt(1);
-                        int toCol = bestMoveUci.charAt(2) - 'a';
-                        int toRow = '8' - bestMoveUci.charAt(3);
-
-                        reviewChessBoard.drawArrowOnBoard(fromCol, fromRow, toCol, toRow,
-                                javafx.scene.paint.Color.web("#ccff00")); // Neon Yellow for best move suggestion
-                    }
-                }
+        if (currentAnalysis == null || reviewChessBoard == null) {
+            return;
+        }
+        int analysisIndex = reviewChessBoard.getCurrentMoveIndex() - 1;
+        evaluationGraph.setHighlightMove(analysisIndex >= -1 && analysisIndex < currentAnalysis.size()
+                ? analysisIndex : -1);
+        if (analysisIndex < 0 || analysisIndex >= currentAnalysis.size()) {
+            return;
+        }
+        MoveAnalysis analysis = currentAnalysis.get(analysisIndex);
+        String iconName = getIconForClassification(analysis.getClassification());
+        if (iconName != null) {
+            int squareIndex = analysis.getToSquareIndex();
+            reviewChessBoard.drawIconOnSquare(squareIndex % 8, 7 - (squareIndex / 8), iconName);
+        }
+        if (analysis.getClassification() == MoveAnalysis.MoveClassification.BLUNDER
+                || analysis.getClassification() == MoveAnalysis.MoveClassification.MISTAKE) {
+            String best = analysis.getBestMove();
+            if (best != null && best.length() >= 4) {
+                reviewChessBoard.drawArrowOnBoard(best.charAt(0) - 'a', '8' - best.charAt(1), best.charAt(2) - 'a',
+                        '8' - best.charAt(3), javafx.scene.paint.Color.web("#3FB950"));
             }
         }
     }
 
     private String getIconForClassification(MoveAnalysis.MoveClassification classification) {
-        switch (classification) {
-            case BRILLIANT:
-                return "brilliant.png";
-            case BEST:
-                return "best.png";
-            case GREAT:
-                return "great.png";
-            case EXCELLENT:
-                return "excellent.png";
-            case BOOK_MOVE:
-                return "book.png";
-            case GOOD:
-                return "good.png";
-            case INACCURACY:
-                return "inaccuracy.png";
-            case MISS:
-                return "missed_win.png";
-            case MISTAKE:
-                return "mistake.png";
-            case BLUNDER:
-                return "blunder.png";
-            case FORCED:
-                return "forced.png";
-            default:
-                return null;
+        if (classification == null) {
+            return null;
         }
+        return switch (classification) {
+            case BRILLIANT -> "brilliant.png";
+            case BEST -> "best.png";
+            case GREAT -> "great.png";
+            case EXCELLENT -> "excellent.png";
+            case BOOK_MOVE -> "book.png";
+            case GOOD -> "good.png";
+            case INACCURACY -> "inaccuracy.png";
+            case MISS -> "missed_win.png";
+            case MISTAKE -> "mistake.png";
+            case BLUNDER -> "blunder.png";
+            case FORCED -> "forced.png";
+            default -> null;
+        };
     }
 
     private void triggerAnalysisDebounced() {
         if (debounceHandle != null && !debounceHandle.isDone()) {
             debounceHandle.cancel(false);
         }
-
         debounceHandle = scheduler.schedule(() -> {
-            if (reviewChessBoard != null && reviewEvalBar != null && stockfish != null) {
-                String currentFen = reviewChessBoard.getFen();
-
-                // Fetch Opening Name (Async)
-                String openingName = stockfish.getOpeningName(currentFen);
-                Platform.runLater(() -> {
-                    if (openingName != null && !openingName.equals("Unknown Opening")
-                            && !openingName.equals("Error in API Call")) {
-                        openingReview.setText(openingName);
-                    } else {
-                        if (reviewChessBoard.getCurrentMoveIndex() <= 1) {
-                            openingReview.setText("Analisi Partita");
-                        }
-                    }
-
-                    // Immediate checkmate detection for UI
-                    if (reviewChessBoard.getBoard().isMated()) {
-                        String result = reviewChessBoard.getBoard()
-                                .getSideToMove() == com.github.bhlangonijr.chesslib.Side.WHITE ? "0-1" : "1-0";
-                        evaluationPanel.showResult(result);
-                    }
-                });
-
-                if (analysisEnabled) {
-                    Platform.runLater(() -> {
-                        stockfish.startAnalysis(currentFen, analysisDepth, analysisMultiPV,
-                                new UCIEngine.AnalysisUpdateCallback() {
-                                    @Override
-                                    public void onUpdate(int pv, String bestMove, String fullLine, double score,
-                                            String[] moveEvaluations) {
-                                        Platform.runLater(() -> {
-                                            if (reviewChessBoard.getBoard().isMated()) {
-                                                String result = reviewChessBoard.getBoard()
-                                                        .getSideToMove() == com.github.bhlangonijr.chesslib.Side.WHITE
-                                                                ? "0-1"
-                                                                : "1-0";
-                                                evaluationPanel.showResult(result);
-                                            } else {
-                                                String evalText = (moveEvaluations != null
-                                                        && moveEvaluations.length > 0)
-                                                                ? moveEvaluations[0]
-                                                                : "0.0";
-                                                evaluationPanel.updateAnalysis(pv, fullLine, evalText);
-                                            }
-                                        });
-                                    }
-                                }, reviewChessBoard, reviewEvalBar, true);
-                    });
+            if (reviewChessBoard == null || stockfish == null) {
+                return;
+            }
+            String currentFen = reviewChessBoard.getFen();
+            String openingName = stockfish.getOpeningName(currentFen);
+            Platform.runLater(() -> {
+                if (openingName != null && !openingName.equals("Unknown Opening")
+                        && !openingName.equals("Error in API Call")) {
+                    header.setSubtitle(openingName);
+                } else if (reviewChessBoard.getCurrentMoveIndex() <= 1) {
+                    header.setSubtitle(I18n.t("review.subtitle"));
                 }
+                if (reviewChessBoard.getBoard().isMated()) {
+                    evaluationPanel.showResult(
+                            reviewChessBoard.getBoard().getSideToMove() == Side.WHITE ? "0-1" : "1-0");
+                }
+            });
+            if (analysisEnabled) {
+                // Off the FX thread, like the games do (AbstractGame#evaluatePositionAndMoves).
+                stockfish.startAnalysis(currentFen, analysisDepth, analysisMultiPV,
+                        (pv, bestMove, fullLine, score, moveEvaluations) -> Platform.runLater(() -> {
+                            if (reviewChessBoard.getBoard().isMated()) {
+                                evaluationPanel.showResult(
+                                        reviewChessBoard.getBoard().getSideToMove() == Side.WHITE ? "0-1" : "1-0");
+                            } else {
+                                String evalText = moveEvaluations != null && moveEvaluations.length > 0
+                                        ? moveEvaluations[0] : "0.0";
+                                evaluationPanel.updateAnalysis(pv, fullLine, evalText);
+                            }
+                        }), reviewChessBoard, reviewEvalBar, true);
             }
         }, DEBOUNCE_DELAY, TimeUnit.MILLISECONDS);
     }

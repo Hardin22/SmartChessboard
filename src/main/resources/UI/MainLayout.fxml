@@ -1,24 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import javafx.geometry.Insets?>
-<?import javafx.scene.control.Button?>
 <?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
 
-<StackPane fx:id="rootPane" style="-fx-background-color: #121212;" stylesheets="@../Styles/Style.css" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.MainController">
-    
-    <!-- View Container -->
-    <StackPane fx:id="mainContainer" maxHeight="Infinity" maxWidth="Infinity" StackPane.alignment="TOP_CENTER"/>
+<!-- Root of the scene. ThemeManager adds the stylesheet and the theme-dark / theme-light class. -->
+<StackPane fx:id="rootPane" styleClass="app-root" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
+           fx:controller="org.example.javachess.Controllers.MainController">
 
-    <!-- Global Rotation Button (Floating) -->
-    <StackPane pickOnBounds="false">
-        <Button onAction="#rotateScreen" styleClass="icon-button" style="-fx-background-color: rgba(255,255,255,0.1); -fx-background-radius: 50%; -fx-min-width: 50px; -fx-min-height: 50px;" StackPane.alignment="TOP_RIGHT">
-            <graphic>
-                <org.kordamp.ikonli.javafx.FontIcon iconLiteral="fas-sync" iconSize="24" iconColor="#D4AF37"/>
-            </graphic>
-            <StackPane.margin>
-                <Insets top="30" right="30"/>
-            </StackPane.margin>
-        </Button>
-    </StackPane>
+    <!-- Current view -->
+    <StackPane fx:id="mainContainer" styleClass="view-container" maxHeight="Infinity" maxWidth="Infinity"/>
 
+    <!-- Bottom sheet / dialog layer -->
+    <StackPane fx:id="sheetLayer" styleClass="sheet-layer" visible="false"/>
+
+    <!-- Toasts -->
+    <VBox fx:id="toastLayer" styleClass="toast-layer" alignment="BOTTOM_CENTER" mouseTransparent="true" pickOnBounds="false"/>
 </StackPane>

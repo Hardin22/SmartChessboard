@@ -3,131 +3,57 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ScrollPane?>
 <?import javafx.scene.control.Slider?>
 <?import javafx.scene.control.ToggleButton?>
-<?import javafx.scene.control.ScrollPane?>
 <?import javafx.scene.layout.BorderPane?>
-<?import javafx.scene.layout.FlowPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
+<?import org.example.javachess.Components.*?>
 <?import org.kordamp.ikonli.javafx.FontIcon?>
 
-<BorderPane xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.javachess.Controllers.PuzzleDashboardController" style="-fx-background-color: transparent;">
-    
+<BorderPane styleClass="page" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="org.example.javachess.Controllers.PuzzleDashboardController">
     <top>
-        <Button onAction="#handleBack" styleClass="icon-button" prefHeight="50" prefWidth="50" BorderPane.alignment="TOP_LEFT">
-            <graphic>
-                <FontIcon iconLiteral="fas-arrow-left" iconSize="28" iconColor="#E0E0E0"/>
-            </graphic>
-            <BorderPane.margin>
-                <Insets top="30" left="30"/>
-            </BorderPane.margin>
-        </Button>
+        <PageHeader title="%puzzle.title" subtitle="%puzzle.subtitle" onBack="#handleBack">
+            <padding><Insets top="16" right="16" bottom="8" left="16"/></padding>
+        </PageHeader>
     </top>
-
     <center>
-        <VBox alignment="CENTER" spacing="30" maxWidth="550">
-            <padding>
-                <Insets bottom="50"/>
-            </padding>
-            
-            <!-- Title -->
-            <Label styleClass="header-label" text="Problemi" style="-fx-font-size: 42px;"/>
-            <Label styleClass="sub-header-label" text="Affina la tua tattica" style="-fx-font-size: 18px; -fx-text-fill: #A0A0A0;"/>
+        <ScrollPane fitToWidth="true" hbarPolicy="NEVER">
+            <ResponsiveColumns breakpoint="1100" maxColumnWidth="600" spacing="32">
+                <padding><Insets top="16" right="16" bottom="32" left="16"/></padding>
 
-            <!-- Card 1: Difficulty Settings -->
-            <VBox styleClass="glass-card" spacing="20">
-                <HBox alignment="CENTER_LEFT" spacing="10">
-                    <FontIcon iconLiteral="fas-tachometer-alt" iconSize="20" iconColor="#D4AF37"/>
-                    <Label text="Livello &amp; Modalità" styleClass="sub-header-label" style="-fx-font-weight: bold; -fx-text-fill: white;"/>
-                </HBox>
-                
-                <HBox alignment="CENTER" spacing="20">
-                    <VBox HBox.hgrow="ALWAYS" spacing="5">
-                        <Label text="Rating Target" style="-fx-font-size: 12px; -fx-text-fill: #808080; -fx-font-weight: bold;"/>
-                        <Label fx:id="ratingValueLabel" text="1500" style="-fx-font-size: 28px; -fx-font-weight: bold; -fx-text-fill: #D4AF37;"/>
+                <VBox spacing="12">
+                    <Label text="%puzzle.rating" styleClass="section-label"/>
+                    <VBox styleClass="card" spacing="8">
+                        <HBox alignment="BASELINE_LEFT" spacing="12">
+                            <Label fx:id="ratingValueLabel" text="1500" styleClass="display, mono"/>
+                            <Label text="%puzzle.rating.description" styleClass="card-description"/>
+                        </HBox>
+                        <Slider fx:id="ratingSlider" min="600" max="2500" value="1500" blockIncrement="50" majorTickUnit="50" minorTickCount="0" snapToTicks="true"/>
+                        <HBox>
+                            <Label text="600" styleClass="caption, mono" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                            <Label text="2500" styleClass="caption, mono"/>
+                        </HBox>
                     </VBox>
-                    <Slider fx:id="ratingSlider" min="600" max="2500" value="1500" showTickLabels="false" showTickMarks="false" HBox.hgrow="ALWAYS" maxWidth="300" styleClass="slider"/>
-                </HBox>
-                
-                <HBox alignment="CENTER" spacing="15">
-                    <ToggleButton fx:id="modeRated" text="RATED" selected="true" styleClass="elegant-button-secondary" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
-                    <ToggleButton fx:id="modeCasual" text="CASUAL" styleClass="elegant-button-secondary" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
-                </HBox>
-            </VBox>
+                </VBox>
 
-            <!-- Card 2: Themes Selection -->
-            <VBox styleClass="card-pane" VBox.vgrow="ALWAYS" spacing="15" style="-fx-padding: 20;">
-                <Label styleClass="section-header" text="Temi Tattici"/>
-                <Label styleClass="text-small" text="Seleziona uno o più temi. Lascia vuoto per casuale." style="-fx-text-fill: #A0A0A0;"/>
-
-                <ScrollPane fitToWidth="true" style="-fx-background-color: transparent; -fx-background: transparent;" VBox.vgrow="ALWAYS">
-                    <content>
-                        <VBox spacing="25" style="-fx-padding: 0 10 0 0;">
-                            
-                            <!-- Section: Tattica -->
-                            <VBox spacing="10">
-                                <Label text="TATTICA" style="-fx-font-weight: bold; -fx-text-fill: #FFFFFF; -fx-font-size: 14px;"/>
-                                <FlowPane fx:id="tacticsContainer" hgap="10" vgap="10">
-                                    <ToggleButton text="Forchetta" styleClass="theme-toggle"/>
-                                    <ToggleButton text="Inchiodatura" styleClass="theme-toggle"/>
-                                    <ToggleButton text="Infilata" styleClass="theme-toggle"/>
-                                    <ToggleButton text="Attacco alla Scoperta" styleClass="theme-toggle"/>
-                                    <ToggleButton text="Sacrificio" styleClass="theme-toggle"/>
-                                    <ToggleButton text="Deviazione" styleClass="theme-toggle"/>
-                                    <ToggleButton text="Interferenza" styleClass="theme-toggle"/>
-                                    <ToggleButton text="Pezzo in Presa" styleClass="theme-toggle"/>
-                                    <ToggleButton text="Zugzwang" styleClass="theme-toggle"/>
-                                    <ToggleButton text="Mossa Tranquilla" styleClass="theme-toggle"/>
-                                </FlowPane>
-                            </VBox>
-
-                            <!-- Section: Fase di Gioco -->
-                            <VBox spacing="10">
-                                <Label text="FASE DI GIOCO" style="-fx-font-weight: bold; -fx-text-fill: #FFFFFF; -fx-font-size: 14px;"/>
-                                <FlowPane fx:id="phaseContainer" hgap="10" vgap="10">
-                                    <ToggleButton text="Apertura" styleClass="theme-toggle"/>
-                                    <ToggleButton text="Medio Gioco" styleClass="theme-toggle"/>
-                                    <ToggleButton text="Finale" styleClass="theme-toggle"/>
-                                    <ToggleButton text="Vantaggio" styleClass="theme-toggle"/>
-                                </FlowPane>
-                            </VBox>
-
-                            <!-- Section: Mosse Speciali -->
-                            <VBox spacing="10">
-                                <Label text="MOSSE SPECIALI" style="-fx-font-weight: bold; -fx-text-fill: #FFFFFF; -fx-font-size: 14px;"/>
-                                <FlowPane fx:id="specialContainer" hgap="10" vgap="10">
-                                    <ToggleButton text="Promozione" styleClass="theme-toggle"/>
-                                    <ToggleButton text="Sottopromozione" styleClass="theme-toggle"/>
-                                    <ToggleButton text="Arrocco" styleClass="theme-toggle"/>
-                                    <ToggleButton text="En Passant" styleClass="theme-toggle"/>
-                                </FlowPane>
-                            </VBox>
-
-                            <!-- Section: Scacco Matto -->
-                            <VBox spacing="10">
-                                <Label text="SCACCO MATTO" style="-fx-font-weight: bold; -fx-text-fill: #FFFFFF; -fx-font-size: 14px;"/>
-                                <FlowPane fx:id="mateContainer" hgap="10" vgap="10">
-                                    <ToggleButton text="Scacco Matto" styleClass="theme-toggle"/>
-                                    <ToggleButton text="Matto Affogato" styleClass="theme-toggle"/>
-                                    <ToggleButton text="Matto del Corridoio" styleClass="theme-toggle"/>
-                                    <ToggleButton text="Matto di Boden" styleClass="theme-toggle"/>
-                                </FlowPane>
-                            </VBox>
-                            
-                        </VBox>
-                    </content>
-                </ScrollPane>
-            </VBox>
-
-            <!-- Start Button -->
-            <Button onAction="#handleStart" styleClass="elegant-button" text="INIZIA SESSIONE" prefHeight="60" prefWidth="300">
-                <graphic>
-                    <FontIcon iconLiteral="fas-play" iconSize="20" iconColor="#121212"/>
-                </graphic>
-            </Button>
-
-        </VBox>
+                <VBox spacing="12">
+                    <HBox alignment="BASELINE_LEFT" spacing="8">
+                        <Label text="%puzzle.themes" styleClass="section-label"/>
+                        <Label text="%puzzle.themes.description" styleClass="caption"/>
+                    </HBox>
+                    <VBox fx:id="themeSections" spacing="20"/>
+                </VBox>
+            </ResponsiveColumns>
+        </ScrollPane>
     </center>
-
+    <bottom>
+        <HBox styleClass="page-footer" alignment="CENTER">
+            <Button fx:id="startButton" onAction="#handleStart" text="%puzzle.start" styleClass="btn, btn-primary, btn-lg" maxWidth="600" HBox.hgrow="ALWAYS">
+                <graphic><FontIcon iconLiteral="fth-play" iconSize="20" styleClass="icon"/></graphic>
+            </Button>
+        </HBox>
+    </bottom>
 </BorderPane>
