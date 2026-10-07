@@ -209,12 +209,12 @@ class BrilliantGreatExclusionsTest {
         ReviewInput c4 = rated(twoMoves("2rq1rk1/p2bb1pp/4pn2/1pp2p2/3P1N2/1P2P1P1/P3QPBP/R1B2RK1 w - - 1 17", "c1b2",
                 Eval.cp(90), "d4c5", "c5c4", Eval.cp(-33), "c5c4", Eval.cp(117), "c5d4", Eval.cp(-33)), 2513, 2617);
         assertEquals(MoveClassification.GREAT, label(c4, Tuning.DEFAULT));
-        assertNotEquals(MoveClassification.GREAT, label(c4, Tuning.DEFAULT.with("greatClassGap", 1)));
+        assertNotEquals(MoveClassification.GREAT, label(c4, Tuning.DEFAULT.with("greatClassGap", 1).with("greatQuietCp", 0)));
         // daily_1011205894 ply 56, 28...Rd2 (chess.com Great)
         ReviewInput rd2 = rated(oneMove("2kbR3/1pp2N1p/p5p1/5p2/1P6/1KP2P2/P5rP/8 b - - 1 28", "g2d2", Eval.cp(0),
                 "g2d2", Eval.cp(228), "c8d7", Eval.cp(0)), 1301, 1202);
         assertEquals(MoveClassification.GREAT, label(rd2, Tuning.DEFAULT));
-        assertNotEquals(MoveClassification.GREAT, label(rd2, Tuning.DEFAULT.with("greatClassGap", 1)));
+        assertNotEquals(MoveClassification.GREAT, label(rd2, Tuning.DEFAULT.with("greatClassGap", 1).with("greatQuietCp", 0)));
     }
 
     @Test
@@ -240,6 +240,63 @@ class BrilliantGreatExclusionsTest {
                 1875, 1857);
         assertNotEquals(MoveClassification.GREAT, label(bxa6, Tuning.DEFAULT));
         assertEquals(MoveClassification.GREAT, label(bxa6, Tuning.DEFAULT.with("greatCaptureRule", 0)));
+    }
+
+    // ------------------------------------------------------------------ SPEC v2.3
+
+    @Test
+    void theEnginesMoveGivingUpThePieceForGoodIsBrilliantEvenWhenWinning() {
+        // daily_1014523396 ply 35, 18.Bxf7!! at +7.3 (chess.com Brilliant): the bishop is gone for a pawn
+        ReviewInput bxf7 = rated(oneMove("2r2knr/1b1ppp2/pqn4p/1p2PN1B/7R/2PQ2B1/P1P2PP1/3RK3 w - - 2 18", "h5f7",
+                Eval.cp(730), "h5f7", Eval.cp(737), "f5d6", Eval.cp(730)), 2439, 2230);
+        assertEquals(MoveClassification.BRILLIANT, label(bxf7, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.BRILLIANT, label(bxf7, Tuning.DEFAULT.with("brilliantTopException", 0)));
+        // live_173843114164 ply 57, 29.Rxd6 at +9.8: takes the bishop, the line wins material back (chess.com Best)
+        ReviewInput rxd6 = rated(oneMove("2r5/pq2k1pp/2bb4/4pp2/2R5/2Q1P1P1/PB3P1P/3R2K1 w - - 3 29", "d1d6",
+                Eval.cp(982), "d1d6", Eval.cp(666), "e3e4", Eval.cp(982)), 2513, 2617);
+        assertNotEquals(MoveClassification.BRILLIANT, label(rxd6, Tuning.DEFAULT));
+    }
+
+    @Test
+    void aSacrificeLosingUnder003IsBrilliantEvenIfNotTheEnginesMove() {
+        // live_123574758978 ply 18, 9...Nxd4 (chess.com Brilliant), 0.029 worse than the engine's move
+        ReviewInput nxd4 = rated(oneMove("r3k1nr/pp3ppp/2n1p3/q2p4/1b1P2b1/2N2N2/PPPB1PPP/R2QKB1R b KQkq - 5 9", "c6d4",
+                Eval.cp(-119), "g4f3", Eval.cp(-100), "g8e7", Eval.cp(-73)), 934, 929);
+        assertEquals(MoveClassification.BRILLIANT, label(nxd4, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.BRILLIANT, label(nxd4, Tuning.DEFAULT.with("brilliantNonTopLoss", 0.01)));
+    }
+
+    @Test
+    void anAnswerToCheckThatDoesNotMoveTheKingCanBeGreat() {
+        // live_166861688890 ply 25, 13.Qxa5 after 12...Qa5+ (chess.com Great)
+        ReviewInput qxa5 = rated(twoMoves("r1bk3r/pppp1ppp/2n5/3QP3/2B5/q3PN2/P1P2PPP/1R2K2R b K - 0 12", "a3a5",
+                Eval.cp(112), "a3c3", "d5a5", Eval.cp(283), "d5a5", Eval.cp(85), "e1e2", Eval.cp(283)), 1509, 1535);
+        assertEquals(MoveClassification.GREAT, label(qxa5, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.GREAT, label(qxa5, Tuning.DEFAULT.with("greatInCheck", 0)));
+        // live_127051221683 ply 52, 26...Kh8 after 26.Qxf5+: a king escape (chess.com Best), even with a mate behind
+        ReviewInput kh8 = rated(twoMoves("2r3r1/2p3pk/p1b4p/1p2Pp2/7q/2P3RP/PPQ2P1K/6R1 w - - 0 26", "c2f5",
+                Eval.cp(33), "c2f5", "h7h8", Eval.cp(28), "h7h8", Eval.whiteMates(7), "g7g6", Eval.cp(28)), 1331, 1411);
+        assertNotEquals(MoveClassification.GREAT, label(kh8, Tuning.DEFAULT));
+    }
+
+    @Test
+    void aQuietMoveKeepingTheBalanceIsGreatWhenTheAlternativeIsAPawnWorse() {
+        // live_145773198260 ply 33, 17.Qd2 (chess.com Great): the second best move is -1.29, a quiet only-move
+        ReviewInput qd2 = rated(oneMove("r4rk1/pp3qpp/2pR4/2Pp2B1/3n4/8/PP2QPPP/RN4K1 w - - 0 17", "e2d2",
+                Eval.cp(88), "e2d2", Eval.cp(-129), "e2f1", Eval.cp(88)), 1103, 1109);
+        assertEquals(MoveClassification.GREAT, label(qd2, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.GREAT, label(qd2, Tuning.DEFAULT.with("greatQuietCp", 0)));
+    }
+
+    @Test
+    void lessThanAPawnBetterDoesNotChangeTheOutcome() {
+        // Capablanca - Marshall 1918, 15.d4 at +1.10, second best +0.17 (chess.com Best): judged as masters, the steep
+        // curve makes it a class change, but 93 centipawns do not change the outcome
+        ReviewInput d4 = rated(oneMove("r1b2rk1/2p2ppp/p2b4/1p6/6nq/1BP2Q1P/PP1P1PP1/RNB1R1K1 w - - 3 15", "d2d4",
+                Eval.cp(110), "d2d4", Eval.cp(17), "e1e4", Eval.cp(110)), 2500, 2500);
+        assertNotEquals(MoveClassification.GREAT, label(d4, Tuning.DEFAULT));
+        assertEquals(MoveClassification.GREAT, label(d4, Tuning.DEFAULT.with("greatClassCp", 0)
+                .with("greatQuietCpFloor", 0)));
     }
 
     private static ReviewInput rated(ReviewInput in, int white, int black) {
