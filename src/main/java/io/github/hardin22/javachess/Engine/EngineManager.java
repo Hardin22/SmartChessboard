@@ -522,20 +522,20 @@ public final class EngineManager implements EngineSelection {
     /**
      * Search budgets for one resource tier. LED numbers from {@code LedDepthStudyTest} (Stockfish 19, 613 moves of
      * real chess.com games of all levels plus their mating / mate-allowing moves, reference = both positions at depth
-     * 20, LED classification = the review's fast verdict). The position before is searched by the live analysis
+     * 20, LED classification = the review's fast verdict, SPEC v1.6). The position before is searched by the live analysis
      * while the player thinks, the position after the move with that warm hash:
      * <table>
      *   <caption>LED verdict at depth d of the position after the move, position before at depth 16</caption>
      *   <tr><th>d</th><th>same class</th><th>same ok/error</th><th>real mistakes shown ok</th><th>nodes p50 / p95 / max</th><th>Pi 5, 1 thread p50 / p95</th></tr>
-     *   <tr><td>10</td><td>78.5%</td><td>94.1%</td><td>5</td><td>2 k / 14 k / 77 k</td><td>7 / 47 ms</td></tr>
-     *   <tr><td>12</td><td>78.5%</td><td>93.6%</td><td>2</td><td>6 k / 44 k / 273 k</td><td>21 / 146 ms</td></tr>
-     *   <tr><td>14</td><td>80.8%</td><td>94.9%</td><td>3</td><td>27 k / 109 k / 568 k</td><td>89 / 362 ms</td></tr>
-     *   <tr><td>16</td><td>81.9%</td><td>96.4%</td><td>2</td><td>115 k / 300 k / 911 k</td><td>385 ms / 1.0 s</td></tr>
+     *   <tr><td>10</td><td>78.3%</td><td>94.3%</td><td>2</td><td>2 k / 14 k / 77 k</td><td>7 / 47 ms</td></tr>
+     *   <tr><td>12</td><td>77.8%</td><td>93.5%</td><td>0</td><td>6 k / 44 k / 273 k</td><td>21 / 146 ms</td></tr>
+     *   <tr><td>14</td><td>80.4%</td><td>95.1%</td><td>1</td><td>27 k / 109 k / 568 k</td><td>89 / 362 ms</td></tr>
+     *   <tr><td>16</td><td>81.2%</td><td>96.4%</td><td>0</td><td>115 k / 300 k / 911 k</td><td>385 ms / 1.0 s</td></tr>
      * </table>
      * Depth 12 is the verdict depth (shallower loses agreement, deeper costs 4x per two plies); 16 the confirmation,
      * which only changes the LEDs if the class changes. A shallow position before costs more than a shallow position
      * after (before at depth 12 instead of 16: -5 points of agreement). The engine's top move (at depth &ge; 10) is
-     * BEST at once: 1 mistake in ~250 such moves. Pi 5 = 300 k nodes/s per core (1/4 of an M4 core; 2 threads ~1.7x).
+     * BEST at once: 1 inaccuracy (no mistake) in ~250 such moves. Pi 5 = 300 k nodes/s per core (1/4 of an M4 core; 2 threads ~1.7x).
      * The Raspberry Pi 4 (1 thread at ~120 k nodes/s) keeps the depth 14 confirmation.
      *
      * @param threads            analysis engine threads
