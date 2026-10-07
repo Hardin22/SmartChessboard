@@ -3,6 +3,7 @@ package org.example.javachess.Controllers;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.geometry.Pos;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
@@ -60,7 +61,7 @@ public class ArchiveController implements NavigationAware {
      * What one archive row shows. Built from the stored games in {@link #readRows()}: that method is the only
      * place that touches the archive data, so the data layer can change without touching the presentation.
      */
-    public record Row(String title, String meta, String detail, String score, String finalFen, String moves,
+    public record Row(int id, String title, String meta, String detail, String score, String finalFen, String moves,
                       String initialFen) {
     }
 
@@ -85,11 +86,23 @@ public class ArchiveController implements NavigationAware {
             texts.setMinWidth(0);
             HBox.setHgrow(texts, Priority.ALWAYS);
             result.setMinWidth(USE_PREF_SIZE);
-            row = new HBox(miniBoard, texts, result, Icons.of("fth-chevron-right", 20));
-            row.getChildren().get(3).getStyleClass().setAll("icon-muted");
+            Button more = new Button();
+            more.getStyleClass().addAll("btn", "btn-ghost", "icon-btn");
+            more.setGraphic(Icons.of("fth-more-horizontal", 22));
+            more.setAccessibleText(I18n.t("archive.actions"));
+            more.setOnAction(e -> {
+                if (getItem() != null) {
+                    showActions(getItem());
+                }
+                e.consume();
+            });
+            row = new HBox(miniBoard, texts, result, more);
             row.getStyleClass().add("archive-row");
             row.setOnMouseClicked(e -> {
                 Row game = getItem();
+                if (e.getTarget() instanceof javafx.scene.Node n && isInside(n, more)) {
+                    return;
+                }
                 if (game != null) {
                     showReview(game.moves(), game.initialFen());
                 }
@@ -126,6 +139,75 @@ public class ArchiveController implements NavigationAware {
                 result.getStyleClass().add("badge-warning");
             }
         }
+    }
+
+    private static boolean isInside(javafx.scene.Node node, javafx.scene.Node parent) {
+        for (javafx.scene.Node n = node; n != null; n = n.getParent()) {
+            if (n == parent) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Sheet with the actions on one game: open, export as PGN, delete (with confirmation). */
+    private void showActions(Row game) {
+        Button open = actionButton(I18n.t("archive.open"), "fth-play", "btn-secondary");
+        open.setOnAction(e -> {
+            mainController.closeSheet();
+            showReview(game.moves(), game.initialFen());
+        });
+        Button export = actionButton(I18n.t("archive.export"), "fth-download", "btn-secondary");
+        export.setOnAction(e -> {
+            mainController.closeSheet();
+            org.example.javachess.Utils.AppExecutors.io().execute(() -> {
+                try {
+                    java.nio.file.Path file = java.nio.file.Path.of(System.getProperty("user.home"),
+                            "javachess-partita-" + game.id() + ".pgn");
+                    String pgn = GameArchiveService.getInstance().exportPgn(java.util.List.of(game.id()));
+                    java.nio.file.Files.writeString(file, pgn, java.nio.charset.StandardCharsets.UTF_8);
+                    mainController.showToast(I18n.t("archive.exported", file));
+                } catch (java.io.IOException | RuntimeException ex) {
+                    ErrorReporter.showError(I18n.t("archive.title"), ErrorReporter.userMessage(ex));
+                }
+            });
+        });
+        Button delete = actionButton(I18n.t("archive.delete"), "fth-trash-2", "btn-danger");
+        delete.setOnAction(e -> confirmDelete(game));
+        VBox content = new VBox(10, new Label(game.title() + " · " + game.meta()), open, export, delete);
+        content.getChildren().get(0).getStyleClass().add("card-description");
+        mainController.showSheet(I18n.t("archive.game"), content);
+    }
+
+    private void confirmDelete(Row game) {
+        Label text = new Label(I18n.t("archive.delete.confirm"));
+        text.getStyleClass().add("card-description");
+        text.setWrapText(true);
+        Button cancel = actionButton(I18n.t("common.cancel"), null, "btn-secondary");
+        cancel.setOnAction(e -> mainController.closeSheet());
+        Button confirm = actionButton(I18n.t("archive.delete"), "fth-trash-2", "btn-danger");
+        confirm.setOnAction(e -> {
+            mainController.closeSheet();
+            org.example.javachess.Utils.AppExecutors.io().execute(() -> {
+                GameArchiveService.getInstance().delete(game.id());
+                Platform.runLater(this::loadArchive);
+            });
+        });
+        HBox buttons = new HBox(12, cancel, confirm);
+        HBox.setHgrow(cancel, Priority.ALWAYS);
+        HBox.setHgrow(confirm, Priority.ALWAYS);
+        mainController.showSheet(I18n.t("archive.delete.title"), new VBox(20, text, buttons));
+    }
+
+    private static Button actionButton(String text, String icon, String variant) {
+        Button b = new Button(text);
+        b.getStyleClass().addAll("btn", variant, "btn-lg");
+        if (icon != null) {
+            b.setGraphic(Icons.of(icon, 20));
+        }
+        b.setMaxWidth(Double.MAX_VALUE);
+        b.setAlignment(Pos.CENTER_LEFT);
+        return b;
     }
 
     static String describeType(String type) {
@@ -193,7 +275,7 @@ public class ArchiveController implements NavigationAware {
                         ? "" : game.opening();
                 String detail = !opening.isEmpty() ? opening
                         : !game.termination().isEmpty() ? game.termination() : describeOutcome("");
-                rows.add(new Row(describe(game), meta, detail, scoreOf(game.result()),
+                rows.add(new Row(game.id(), describe(game), meta, detail, scoreOf(game.result()),
                         game.finalFen().isEmpty() ? START_FEN : game.finalFen(), game.movesAsUciString(),
                         game.initialFen().isEmpty() ? START_FEN : game.initialFen()));
             }
