@@ -37,10 +37,12 @@ public final class BotLevels {
             return elo >= 3000 ? "oltre 3000" : "circa " + elo;
         }
 
-        /** Name stored in the archive for the bot ("Stockfish · circa 1600", "Maia 1500"). */
+        /**
+         * Name stored in the archive for the bot: "Stockfish (1700)", "Maia 1500". Both forms carry the rating that
+         * the review reads back ({@code PlayerRating}) to judge the moves at the right level.
+         */
         public String playerName() {
-            return engine == EngineType.STOCKFISH ? "Stockfish " + (elo >= 3000 ? "massimo" : elo)
-                    : "Maia " + engine.name().substring(5);
+            return engine == EngineType.STOCKFISH ? "Stockfish (" + elo + ")" : "Maia " + engine.name().substring(5);
         }
 
         public boolean isMaia() {
