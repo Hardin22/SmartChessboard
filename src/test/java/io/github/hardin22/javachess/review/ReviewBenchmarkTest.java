@@ -2,12 +2,12 @@ package io.github.hardin22.javachess.review;
 
 import io.github.hardin22.javachess.Engine.EngineLocator;
 import io.github.hardin22.javachess.Engine.EngineSpec;
-import io.github.hardin22.javachess.Engine.MoveClassifier;
 import io.github.hardin22.javachess.Engine.MoveQuality;
-import io.github.hardin22.javachess.Engine.Score;
 import io.github.hardin22.javachess.Engine.SearchLimits;
 import io.github.hardin22.javachess.Engine.SearchResult;
 import io.github.hardin22.javachess.Engine.UciClient;
+import io.github.hardin22.javachess.Engine.review.Eval;
+import io.github.hardin22.javachess.Engine.review.ReviewClassifier;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -43,7 +43,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *   <li>Calibration: nps with 1, 2 and 4 threads.</li>
  *   <li>Review workload of the legacy GameAnalyzer (each position at depth D, MultiPV 3) on a sample of fixture
  *       games: nodes and time per ply.</li>
- *   <li>LED depth study: verdict of the played move ({@link MoveClassifier}) at depth 8..16 versus a depth-20
+ *   <li>LED depth study: verdict of the played move ({@link ReviewClassifier#fast}) at depth 8..16 versus a depth-20
  *       reference on real game positions, with the cost of each depth (single thread, like the LED path).</li>
  * </ul>
  */
@@ -118,7 +118,7 @@ class ReviewBenchmarkTest {
     void reviewWorkload(Path sf, Map<Integer, Double> nps) throws Exception {
         int depth = Integer.getInteger("review.depth", 12);
         int threads = Integer.getInteger("review.bench.threads", 4);
-        List<ChessComDataset.Game> games = sample(Integer.getInteger("review.bench.games", 8));
+        List<ChessComDataset.Game> games = sample(Integer.getInteger("review.bench.games", 4));
         long nodes = 0, ms = 0;
         int positions = 0, plies = 0;
         try (UciClient e = client(sf, threads, 128)) {
@@ -223,7 +223,10 @@ class ReviewBenchmarkTest {
         json.put("ledDepth", led);
     }
 
-    /** LED-style verdict: best line before vs the position after the move, both at {@code depth}, MultiPV 1. */
+    /**
+     * LED-style verdict ({@link ReviewClassifier#fast}): best line before vs the position after the move, both at
+     * {@code depth}, MultiPV 1.
+     */
     static MoveQuality verdict(UciClient e, String before, String move, String after, int depth, long[] cost)
             throws Exception {
         SearchResult b = e.search(before, SearchLimits.depth(depth)).result().get(10, TimeUnit.MINUTES);
@@ -232,9 +235,10 @@ class ReviewBenchmarkTest {
             cost[0] = b.nodes() + a.nodes();
             cost[1] = b.elapsedMs() + a.elapsedMs();
         }
-        Score best = b.score();
-        Score played = a.score().negate();
-        return MoveClassifier.classify(best, played, move.equals(b.bestMove())).quality();
+        boolean white = before.split(" ")[1].equals("w");
+        Eval best = Eval.fromUci(b.score(), white);
+        Eval played = Eval.fromUci(a.score(), !white);
+        return ReviewClassifier.fast(best, played, white, move.equals(b.bestMove())).quality();
     }
 
     // ------------------------------------------------------------------ helpers
