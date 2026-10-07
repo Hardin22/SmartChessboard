@@ -7,6 +7,7 @@ import com.github.bhlangonijr.chesslib.move.MoveGenerator;
 import java.util.List;
 import java.util.Random;
 
+/** Random but legal positions, reached by playing random legal moves from the start. */
 public class RandomFenGenerator {
 
     public static String generateRandomFen(int movesCount) {
@@ -23,10 +24,5 @@ public class RandomFenGenerator {
         }
 
         return board.getFen();
-    }
-
-    public static void main(String[] args) {
-        String randomFen = generateRandomFen(10); // Genera una posizione dopo 10 mosse
-        System.out.println("FEN casuale: " + randomFen);
     }
 }
