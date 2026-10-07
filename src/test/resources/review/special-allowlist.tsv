@@ -1,0 +1,2 @@
+# Documented "different engine" exceptions (PHASE4.md): one per line, numbers from the oracle (SF19 Lite vs SF16 d22) and the chess.com rule that explains the difference.
+id	ply	kind	justification
