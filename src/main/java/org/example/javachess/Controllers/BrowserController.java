@@ -409,7 +409,7 @@ public class BrowserController implements NavigationAware {
             java.util.List<String> moves = java.util.Arrays.stream(pgn.toString().trim().split("\\s+"))
                     .filter(org.example.javachess.Utils.PgnCodec::looksLikeUci).toList();
             if (moves.size() >= 3) {
-                String decided = org.example.javachess.Utils.PgnCodec.resultOf(internalBoard);
+                String decided = org.example.javachess.Utils.PgnCodec.forcedResultOf(internalBoard);
                 org.example.javachess.Services.GameArchiveService.getInstance().add(
                         new org.example.javachess.Oggetti.ArchivedGame(0,
                                 org.example.javachess.Oggetti.ArchivedGame.GameMode.BROWSER,

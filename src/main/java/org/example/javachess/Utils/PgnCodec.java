@@ -383,6 +383,20 @@ public final class PgnCodec {
         return null;
     }
 
+    /**
+     * Result only when the rules end the game by themselves: mate, stalemate, insufficient material
+     * (threefold repetition and the 50-move rule must be claimed, so they are not included).
+     */
+    public static String forcedResultOf(Board board) {
+        if (board.isMated()) {
+            return board.getSideToMove() == Side.WHITE ? "0-1" : "1-0";
+        }
+        if (board.isStaleMate() || board.isInsufficientMaterial()) {
+            return "1/2-1/2";
+        }
+        return null;
+    }
+
     // ------------------------------------------------------------------ PGN
 
     /** One game read from PGN text. */

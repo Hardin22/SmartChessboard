@@ -125,6 +125,8 @@ public final class BoardReading {
      */
     public BoardReading withPlacementRules() {
         float[][][] p = probabilities();
+        int takenF = -1;
+        int takenR = -1;
         for (char king : new char[]{'K', 'k'}) {
             int k = SYMBOLS.indexOf(king);
             int bestF = -1;
@@ -132,6 +134,9 @@ public final class BoardReading {
             float best = 0f;
             for (int f = 0; f < 8; f++) {
                 for (int r = 0; r < 8; r++) {
+                    if (f == takenF && r == takenR) {
+                        continue; // already holds the white king
+                    }
                     if (p[f][r][k] > best) {
                         best = p[f][r][k];
                         bestF = f;
@@ -144,6 +149,8 @@ public final class BoardReading {
                     if (f == bestF && r == bestR) {
                         if (best > 0.02f) {
                             forceSymbol(p[f][r], k); // the most likely square gets the king
+                            takenF = f;
+                            takenR = r;
                         }
                     } else if (argmax(p[f][r]) == k) {
                         suppress(p[f][r], k); // a second king: take the next best guess

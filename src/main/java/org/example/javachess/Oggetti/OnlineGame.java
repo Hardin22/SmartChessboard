@@ -86,7 +86,7 @@ public class OnlineGame extends AbstractGame {
                         return; // Don't overwrite with turn info
                     }
 
-                    if (lastMove != null) {
+                    {
                         // SYNC LOCAL BOARD: rebuild from the full move list sent by Lichess, so a missed event or
                         // a reconnection can never desynchronise it (promotions included).
                         PgnCodec.Replay replay = PgnCodec.replay(lichessGameManager.getInitialFen(),

@@ -141,7 +141,7 @@ public class SettingsController implements NavigationAware {
 
         lichessUsernameField.setText(ConfigManager.getProperty("lichess.username", ""));
         chessComEmailField.setText(ConfigManager.getProperty("chess.com.username", ""));
-        lichessApiKeyField.setText(ConfigManager.getProperty("lichess.token", ""));
+        lichessApiKeyField.setText(ConfigManager.getStoredProperty("lichess.token", ""));
 
         int brightness = ConfigManager.getIntProperty("hardware.led.brightness", 100);
         ledBrightnessSlider.setValue(brightness);

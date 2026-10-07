@@ -199,17 +199,49 @@ public class LichessClient {
      * {@code handle} is closed. Runs on the calling thread.
      */
     public void streamGame(String gameId, SeekHandle handle, Consumer<JSONObject> onEvent) throws LichessException {
+        streamGame(gameId, handle, onEvent, STREAM_IDLE_TIMEOUT_MS);
+    }
+
+    /**
+     * Lichess sends a keep-alive line every few seconds; if nothing arrives for this long the connection is dead
+     * (typical after a silent Wi-Fi drop) and the stream is closed so the caller can reconnect.
+     */
+    static final long STREAM_IDLE_TIMEOUT_MS = 30_000;
+
+    void streamGame(String gameId, SeekHandle handle, Consumer<JSONObject> onEvent, long idleTimeoutMs)
+            throws LichessException {
         HttpRequest request = authorized(baseUrl + "/api/board/game/stream/" + encode(gameId)).GET().build();
+        java.util.concurrent.atomic.AtomicLong lastData = new java.util.concurrent.atomic.AtomicLong(
+                System.currentTimeMillis());
+        java.util.concurrent.atomic.AtomicBoolean idle = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.ScheduledExecutorService watchdog =
+                java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                    Thread t = new Thread(r, "lichess-stream-watchdog");
+                    t.setDaemon(true);
+                    return t;
+                });
         try {
             HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
             if (response.statusCode() != 200) {
                 throw errorFor(response.statusCode(), readAll(response.body()));
             }
-            handle.attach(response.body());
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+            InputStream body = response.body();
+            handle.attach(body);
+            long period = Math.max(50, idleTimeoutMs / 4);
+            watchdog.scheduleAtFixedRate(() -> {
+                if (System.currentTimeMillis() - lastData.get() > idleTimeoutMs && idle.compareAndSet(false, true)) {
+                    log.warn("No data from Lichess for {} s, closing the stream", idleTimeoutMs / 1000);
+                    try {
+                        body.close();
+                    } catch (IOException ignored) {
+                        // closing anyway
+                    }
+                }
+            }, period, period, java.util.concurrent.TimeUnit.MILLISECONDS);
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8))) {
                 String line;
                 while (!handle.isCancelled() && (line = reader.readLine()) != null) {
+                    lastData.set(System.currentTimeMillis());
                     if (line.isBlank()) {
                         continue; // keep-alive
                     }
@@ -220,12 +252,18 @@ public class LichessClient {
                     }
                 }
             }
+            if (idle.get() && !handle.isCancelled()) {
+                throw new LichessException("Connessione alla partita persa (nessuna risposta da Lichess)", 0, null);
+            }
         } catch (IOException e) {
             if (!handle.isCancelled()) {
-                throw new LichessException("Connessione alla partita persa: " + ErrorReporter.userMessage(e), 0, e);
+                throw new LichessException(idle.get() ? "Connessione alla partita persa (nessuna risposta da Lichess)"
+                        : "Connessione alla partita persa: " + ErrorReporter.userMessage(e), 0, e);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        } finally {
+            watchdog.shutdownNow();
         }
     }
 

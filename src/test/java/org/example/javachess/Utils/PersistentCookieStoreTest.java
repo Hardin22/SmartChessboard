@@ -47,6 +47,19 @@ class PersistentCookieStoreTest {
     }
 
     @Test
+    void sitesCannotSetCookiesForOtherDomains() {
+        PersistentCookieStore store = new PersistentCookieStore(dir.resolve("c.json"));
+        HttpCookie evil = new HttpCookie("sid", "x");
+        evil.setDomain("lichess.org");
+        store.add(URI.create("https://evil.example/"), evil);
+        assertTrue(store.getCookies().isEmpty());
+        HttpCookie parent = new HttpCookie("sid", "y");
+        parent.setDomain(".chess.com");
+        store.add(URI.create("https://www.chess.com/"), parent);
+        assertEquals(1, store.getCookies().size());
+    }
+
+    @Test
     void corruptFileStartsEmpty() throws Exception {
         Path file = dir.resolve("cookies.json");
         Files.writeString(file, "[{");

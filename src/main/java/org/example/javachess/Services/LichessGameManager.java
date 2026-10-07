@@ -147,9 +147,19 @@ public class LichessGameManager {
         while (isRunning && !gameOver) {
             LichessClient.SeekHandle handle = new LichessClient.SeekHandle();
             streamHandle = handle;
+            if (!isRunning) {
+                handle.close(); // stop() ran while we were creating the handle
+                break;
+            }
             try {
                 log.info("Connecting to Lichess game {}", gameId);
-                client.streamGame(gameId, handle, this::processEvent);
+                client.streamGame(gameId, handle, event -> {
+                    try {
+                        processEvent(event);
+                    } catch (RuntimeException e) {
+                        log.error("Cannot process Lichess event {}", event.optString("type"), e);
+                    }
+                });
                 failures = 0; // the server closed the stream normally
             } catch (LichessClient.LichessException e) {
                 failures++;
@@ -236,6 +246,7 @@ public class LichessGameManager {
             finish(state);
             return;
         }
+        replicatedMoves = Math.min(replicatedMoves, moves.size()); // takebacks shrink the move list
         // Opponent just moved (or had moved before we connected): show it on the physical board.
         if (lastMove != null && isMyTurn() && moves.size() > replicatedMoves && boardStateManager != null) {
             replicatedMoves = moves.size();
