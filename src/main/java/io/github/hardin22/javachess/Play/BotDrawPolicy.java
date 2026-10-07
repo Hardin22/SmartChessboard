@@ -50,6 +50,11 @@ public final class BotDrawPolicy {
         return ply - lastOfferPly >= PLIES_BETWEEN_OFFERS;
     }
 
+    /** Allows a new offer at once (the last one could not be applied: the position changed meanwhile). */
+    public void forgetLastOffer() {
+        lastOfferPly = Integer.MIN_VALUE / 2;
+    }
+
     /** Half-moves left before a new offer is possible (0 = now). */
     public int pliesUntilNextOffer(int ply) {
         return Math.max(0, PLIES_BETWEEN_OFFERS - (ply - lastOfferPly));

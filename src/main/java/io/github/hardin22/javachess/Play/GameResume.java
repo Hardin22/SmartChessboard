@@ -38,9 +38,12 @@ public final class GameResume {
         }
     }
 
-    /** The player does not want to resume it. */
+    /** The player does not want to resume it: it goes to the archive as interrupted (if not there yet). */
     public static void discard() {
+        Optional<GameSnapshot> s = GameSnapshotStore.get().load();
         GameSnapshotStore.get().clear();
+        s.ifPresent(snapshot -> io.github.hardin22.javachess.Utils.AppExecutors.storage().execute(
+                () -> keepInArchive(snapshot, GameArchiveService.getInstance())));
     }
 
     /** True for the end-of-game messages that mean "interrupted" (left, app closed), not a result. */
@@ -50,25 +53,49 @@ public final class GameResume {
     }
 
     /**
-     * Removes the archived "interrupted" copy of a game being resumed (same start, same moves, no result), so the
-     * game is archived once when it ends. Runs on the storage thread.
+     * Id of the archived "interrupted" copy of a game being resumed (same mode, start and moves, no result), or 0.
+     * The resumed game deletes it only when it is archived again ({@code AbstractGame.saveGameToJson}), so a power
+     * cut after resuming never leaves the game neither in the archive nor on disk.
      */
-    public static void forgetArchivedInterruption(GameSnapshot s) {
-        io.github.hardin22.javachess.Utils.AppExecutors.storage().execute(() -> forgetArchivedInterruption(s,
-                GameArchiveService.getInstance()));
-    }
-
-    static void forgetArchivedInterruption(GameSnapshot s, GameArchiveService archive) {
+    public static int archivedInterruption(GameSnapshot s, GameArchiveService archive) {
         ArchivedGame.GameMode mode = s.mode() == GameSnapshot.Mode.PVC ? ArchivedGame.GameMode.PVC
                 : ArchivedGame.GameMode.PVP;
         for (ArchivedGame g : archive.list()) {
             if (g.mode() == mode && "*".equals(g.result()) && g.movesUci().equals(s.moves())
                     && sameStart(g.initialFen(), s.initialFen())) {
-                archive.delete(g.id());
-                log.info("resumed game: removed its interrupted copy from the archive (id {})", g.id());
-                return;
+                return g.id();
             }
         }
+        return 0;
+    }
+
+    /**
+     * Keeps a saved game that is about to be dropped (discarded, or replaced by a new game) in the archive as an
+     * interrupted game, unless the archive already has it. Nothing played is ever lost.
+     */
+    public static void keepInArchive(GameSnapshot s, GameArchiveService archive) {
+        if (s == null || s.moves().isEmpty()) {
+            return;
+        }
+        for (ArchivedGame g : archive.list()) {
+            if (g.movesUci().equals(s.moves()) && sameStart(g.initialFen(), s.initialFen())) {
+                return; // already archived (interrupted or finished)
+            }
+        }
+        String bot = s.botLevelId() == null ? null
+                : BotLevels.byId(s.botLevelId()).map(BotLevels.Level::playerName).orElse(null);
+        if (bot == null && s.mode() == GameSnapshot.Mode.PVC) {
+            bot = s.botEngine() != null && s.botEngine().startsWith("MAIA_") ? "Maia " + s.botEngine().substring(5)
+                    : "Stockfish livello " + s.skillLevel();
+        }
+        String white = s.mode() == GameSnapshot.Mode.PVP ? "Bianco" : s.humanWhite() ? "Giocatore" : bot;
+        String black = s.mode() == GameSnapshot.Mode.PVP ? "Nero" : s.humanWhite() ? bot : "Giocatore";
+        ArchivedGame.GameMode mode = s.mode() == GameSnapshot.Mode.PVC ? ArchivedGame.GameMode.PVC
+                : ArchivedGame.GameMode.PVP;
+        archive.add(new ArchivedGame(0, mode, s.mode() == GameSnapshot.Mode.PVC ? "Player vs " + bot
+                : "Player vs Player", white, black, "*", "Interrotta", "", s.timeControl().archiveForm(),
+                s.savedAt() != null ? s.savedAt() : java.time.LocalDateTime.now(), s.initialFen(), "", s.moves()));
+        log.info("saved game kept in the archive as interrupted ({} moves)", s.moves().size());
     }
 
     private static boolean sameStart(String archived, String snapshot) {

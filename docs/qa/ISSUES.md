@@ -10,16 +10,23 @@ Gravità: **alta** (vicolo cieco, perdita di dati, partita bloccata), **media** 
 | QA-002 | alta | logica | Se il motore fallisce (assente, crash, bloccato) la mossa del bot non viene mai ritentata: partita ferma | corretto |
 | QA-003 | media | logica | La mossa del bot che chiude la partita non viene fatta replicare; "Errore: controlla X" copre il risultato | corretto |
 | QA-004 | media | logica | Ricollegamento della scacchiera a metà partita: nessuna guida per rimettere i pezzi, mossa del bot persa | corretto |
-| QA-005 | bassa | UI | Impostazioni: "indietro" scarta le modifiche senza avviso (si salvano solo con "Salva") | assegnato a design |
-| QA-006 | media | UI | Rotazione 180° solo dalle impostazioni e non persistente (persa al riavvio) | assegnato a design |
+| QA-005 | bassa | UI | Impostazioni: "indietro" scarta le modifiche senza avviso (si salvano solo con "Salva") | risolto da design (salvataggio a ogni tocco) |
+| QA-006 | media | UI | Rotazione 180° solo dalle impostazioni e non persistente (persa al riavvio) | risolto da design (↻ in ogni intestazione; "Monitor capovolto" salvato in ui.screen.flipped) |
 | QA-007 | media | logica | Puzzle: una mossa durante la risposta dell'avversario contava come errore; mosse del lato avversario lette dalla scacchiera; mossa sbagliata senza guida LED | corretto |
-| QA-008 | media | logica+UI | Puzzle senza database: "Nessun puzzle trovato con questi filtri" invece di spiegare che mancano i dati | aperto |
-| QA-009 | bassa | UI | Revisione aperta dalla home: "indietro" porta all'archivio | assegnato a design |
+| QA-008 | media | logica+UI | Puzzle senza database: "Nessun puzzle trovato con questi filtri" invece di spiegare che mancano i dati | logica corretta (PuzzleService.hasPuzzleData); UI in carico a design |
+| QA-009 | bassa | UI | Revisione aperta dalla home: "indietro" porta all'archivio | risolto da design (indietro torna alla schermata di provenienza) |
 | QA-010 | bassa | logica | Archivio danneggiato: il dialogo d'errore ricompare a ogni apertura dell'archivio | aperto |
 | QA-011 | media | browser | Partita Lichess (API) lasciata a metà: non archiviata e non abbandonata su Lichess | assegnato a browser |
-| QA-012 | alta | logica | Kill/spegnimento del Pi a partita in corso: partita persa (lo shutdown hook non salva); nessuna ripresa | assegnato a features (snapshot a ogni mossa) |
-| QA-013 | media | logica+UI | Nessun abbandono / offerta di patta: "Termina" archivia sempre come interrotta (`*`) | assegnato a features |
-| QA-014 | bassa | logica | Nome dell'apertura solo online (explorer Lichess, che ora chiede un token): offline non compare | assegnato a features |
+| QA-012 | alta | logica | Kill/spegnimento del Pi a partita in corso: partita persa (lo shutdown hook non salva); nessuna ripresa | logica fatta da features (snapshot a ogni mossa, GameResume); carta in Home a design |
+| QA-013 | media | logica+UI | Nessun abbandono / offerta di patta: "Termina" archivia sempre come interrotta (`*`) | fatto: abbandono e patta nella UI di design, patta col bot (BotDrawPolicy) da features |
+| QA-014 | bassa | logica | Nome dell'apertura solo online (explorer Lichess, che ora chiede un token): offline non compare | fatto da features (libro offline prima dell'explorer) |
+| QA-015 | media | UI | Revisione: dopo "Analizza partita" la scacchiera si rimpicciolisce e le etichette si troncano | risolto da design (scacchiera a tutta larghezza nel ridisegno) |
+| QA-016 | media | UI | Motore che fallisce in PvC: manca un "Riprova" accanto al messaggio | in carico a design |
+| QA-017 | bassa | UI+logica | Home: il riquadro "Partita in corso / Riprendi" non compare mai (uscire da GAME termina la partita) | assegnato a design + features |
+| QA-018 | media | logica | Revisione: l'analisi completa continua (6 processi Stockfish, analisi live sospesa) dopo aver lasciato la schermata o aperto un'altra partita | corretto |
+| QA-019 | media | logica | Import PGN lentissimo (1000 partite: 9,6 s su Mac, minuti sul Pi) | corretto |
+| QA-020 | media | logica | Re sollevato subito dopo una spinta di due case: eccezione nel listener della scacchiera, schermo non aggiornato | corretto |
+| QA-021 | media | logica | PvP: abbandono / patta d'accordo nelle prime mosse non archiviati (soglia delle partite interrotte applicata a tutte) | corretto |
 
 ---
 
@@ -108,3 +115,43 @@ persone si accordano per la patta. In carico a features (offerta/accettazione, a
 
 ## QA-014 · Nome dell'apertura offline (bassa)
 `OpeningExplorer` usa solo explorer.lichess.ovh: senza rete non c'è il nome. Features cura "nome apertura".
+
+## QA-015 · Revisione: layout dopo l'analisi (media, UI)
+**Passi**: archivio → partita → "Analizza partita" (720×1280): al termine compaiono precisione e grafico e la
+scacchiera passa da ~530 a ~310 px di lato; "Mossa 12 di 28" diventa "Mo...", "Classificazione delle mo...".
+
+## QA-016 · "Riprova" per il motore (media, UI)
+Con QA-002 la logica ritenta da sola e mette in stato "Motore non disponibile: <motivo>. Nuovo tentativo tra N s";
+serve un pulsante che chiami `PvcGame.retryBotMove()`.
+
+## QA-017 · Riquadro "Partita in corso" morto (bassa, UI+logica)
+`HomeController` mostra "Partita in corso / Riprendi" se `ActiveGameController.isGameInProgress()`, ma ogni uscita
+da GAME passa da `onNavigatedFrom → stopAndSaveGame`, quindi non c'è mai una partita in corso fuori dalla schermata
+di gioco. Da decidere con la ripresa di features (sospendere invece di terminare).
+
+## QA-018 · Revisione che continua in background (media, logica)
+**Passi**: archivio → partita lunga → "Analizza partita" → indietro → Home → nuova partita PvC. Il thread
+`game-analysis` continuava con il suo pool (6 processi Stockfish su questo Mac) e teneva sospesa l'analisi live
+(`holdLive`) fino alla fine; aprendo un'altra partita la vecchia analisi continuava in parallelo alla nuova.
+**Correzione**: `ReviewController` interrompe la revisione quando si lascia la schermata o si carica un'altra
+partita (il pool si chiude subito), senza dialogo d'errore né barra di avanzamento rimasta. Test: E2E
+`leavingTheReviewStopsTheFullAnalysisAndItsEngines` (motori chiusi entro 3 s).
+
+## QA-019 · Import PGN lento (media, logica)
+`PgnCodec.fromSan` generava il SAN di ogni mossa legale (e compilava una regex) per ogni mossa letta.
+Misura (`ArchiveBench`, 1000 partite da 80 semimosse): import 9,6 s → 2,1 s; caricamento 3000 partite 127 ms;
+salvataggio di una partita con 3000 in archivio ~60 ms (file di 7 MB riscritto ogni volta: accettabile sul Pi,
+sul thread di storage). Test: `PgnCodecTest.fromSanCapturesPromotionsAndDisambiguation`.
+
+## QA-020 · FEN della scacchiera fisica illeggibile (media, logica)
+**Passi**: 1.e4 c5 2.e5 d5 (en passant possibile su d6) → il Bianco solleva il re. `BoardStateManager.displayFen`
+pubblicava la posizione fisica (senza il re) con il campo en passant `d6` della posizione logica; chesslib, nel
+caricarla, verifica la cattura en passant contro il re e lancia `ArrayIndexOutOfBoundsException`: "Board listener
+failed" nel log e scacchiera a schermo non aggiornata. Trovato dall'E2E con la scacchiera simulata.
+**Correzione**: nella fotografia parziale (pezzi sollevati) il campo en passant è `-`. Test
+`BoardStateManagerTest.liftingTheKingAfterADoublePawnPushPublishesAReadableFen`.
+
+## QA-021 · Risultati PvP brevi persi (media, logica)
+**Passi**: Due giocatori → 1.e4 e5 → patta d'accordo (o abbandono): la partita non andava in archivio perché
+`PvpGame.endGame` scartava ogni partita con meno di ~4 semimosse, anche con un risultato (contro il bot invece
+vengono tenute). **Correzione**: la soglia vale solo per le partite interrotte. Test E2E `pvpDrawByAgreement`.

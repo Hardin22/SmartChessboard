@@ -127,6 +127,11 @@ public final class MistakeTrainer {
             if (!wanted || m.whiteMoved() != white || m.bestMove() == null || m.bestMove().equals(m.uci())) {
                 continue;
             }
+            var b = new com.github.bhlangonijr.chesslib.Board();
+            b.loadFromFen(m.fenBefore());
+            if (MoveText.legal(b, m.bestMove()) == null) {
+                continue; // inconsistent review data
+            }
             List<String> line = m.bestLine().isEmpty() ? List.of(m.bestMove()) : m.bestLine();
             out.add(new Exercise(m.ply(), m.fenBefore(), white, m.uci(), m.bestMove(), line, c,
                     MoveText.numbered(m.fenBefore(), m.uci()), MoveText.numbered(m.fenBefore(), m.bestMove())));
@@ -254,7 +259,11 @@ public final class MistakeTrainer {
         generation++;
         var board = new com.github.bhlangonijr.chesslib.Board();
         board.loadFromFen(e.fen());
-        board.doMove(MoveText.legal(board, e.best()));
+        var bestMove = MoveText.legal(board, e.best());
+        if (bestMove == null) {
+            return; // a review whose best move does not fit the position: nothing sensible to show
+        }
+        board.doMove(bestMove);
         fen.set(board.getFen());
         shownMove.set(e.best());
         state.set(State.SOLUTION);

@@ -76,6 +76,22 @@ class PgnCodecTest {
     }
 
     @Test
+    void fromSanCapturesPromotionsAndDisambiguation() {
+        // knights on b8 and f6 can both reach d7; the pawn on b7 can take on a8 or c8 and promote
+        Board b = board("r1b1k2r/1P1p4/5n2/8/8/8/8/1n2K3 b k - 0 1");
+        assertEquals("b1d2", PgnCodec.toUci(PgnCodec.fromSan(b, "Nd2+")));
+        Board w = board("r1b1k3/1P6/8/8/8/8/8/4K3 w - - 0 1");
+        assertEquals("b7a8q", PgnCodec.toUci(PgnCodec.fromSan(w, "bxa8=Q")));
+        assertEquals("b7c8n", PgnCodec.toUci(PgnCodec.fromSan(w, "bxc8=N")));
+        assertEquals("b7c8r", PgnCodec.toUci(PgnCodec.fromSan(w, "bc8R")), "capture mark missing");
+        Board two = board("4k3/8/8/8/8/2N3N1/8/4K3 w - - 0 1");
+        assertEquals("c3e4", PgnCodec.toUci(PgnCodec.fromSan(two, "Nce4")));
+        assertEquals("g3e4", PgnCodec.toUci(PgnCodec.fromSan(two, "Ng3e4")), "over-specified");
+        Board c = board("r3k2r/8/8/8/8/8/8/R3K2R b KQkq - 0 1");
+        assertEquals("e8c8", PgnCodec.toUci(PgnCodec.fromSan(c, "O-O-O")));
+    }
+
+    @Test
     void fenValidation() {
         assertTrue(PgnCodec.isValidFen(PgnCodec.START_FEN));
         assertTrue(PgnCodec.isValidFen("4k3/8/8/8/8/8/8/4K3 w - -"));

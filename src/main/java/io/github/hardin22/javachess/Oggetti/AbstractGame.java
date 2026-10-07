@@ -146,13 +146,21 @@ public abstract class AbstractGame {
             return;
         }
         String fen = board.getFen();
-        // offline book first (the board often has no network), then the online explorer if it answers
+        int lookup = openingLookups.incrementAndGet();
+        // offline book first (the board often has no network), then the online explorer if it answers; a late
+        // answer for an older position (or after the end of the game) is dropped
+        java.util.function.Consumer<java.util.Optional<String>> show = name -> name.ifPresent(n -> Platform.runLater(() -> {
+            if (lookup == openingLookups.get() && gameRunning) {
+                label.setText(n);
+            }
+        }));
         java.util.concurrent.CompletableFuture.supplyAsync(
                 () -> io.github.hardin22.javachess.Engine.review.OpeningBook.standard().nameAfter(fen),
-                AppExecutors.compute()).thenAccept(name -> name.ifPresent(n -> Platform.runLater(() -> label.setText(n))));
-        OpeningExplorer.lookup(fen).thenAccept(name ->
-                name.ifPresent(n -> Platform.runLater(() -> label.setText(n))));
+                AppExecutors.compute()).thenAccept(show);
+        OpeningExplorer.lookup(fen).thenAccept(show);
     }
+
+    private final java.util.concurrent.atomic.AtomicInteger openingLookups = new java.util.concurrent.atomic.AtomicInteger();
 
     public void setAnalysisParams(int depth, int multiPV) {
         this.analysisDepth = depth;
@@ -298,12 +306,40 @@ public abstract class AbstractGame {
         log.info("Saving game: {}", pgnText);
         String white = whitePlayerName();
         String black = blackPlayerName();
-        AppExecutors.storage().execute(() -> io.github.hardin22.javachess.Services.GameArchiveService.saveGame(
-                type, openingName, pgnText, startFen, finalFen, result, timeControl, white, black));
+        int replaced = replacesArchivedId;
+        replacesArchivedId = 0;
+        AppExecutors.storage().execute(() -> {
+            io.github.hardin22.javachess.Services.GameArchiveService.saveGame(
+                    type, openingName, pgnText, startFen, finalFen, result, timeControl, white, black);
+            if (replaced > 0) {
+                // a resumed game: its earlier "interrupted" copy is replaced by this record
+                io.github.hardin22.javachess.Services.GameArchiveService.getInstance().delete(replaced);
+            }
+        });
+    }
+
+    /** Archive id of the interrupted copy a resumed game replaces when it is archived again (0 = none). */
+    protected volatile int replacesArchivedId;
+
+    /** Looks up (storage thread) the archived interrupted copy of a resumed game, replaced when archived again. */
+    protected void replaceArchivedCopyOf(io.github.hardin22.javachess.Play.GameSnapshot snapshot) {
+        if (isDemoRun()) {
+            return;
+        }
+        AppExecutors.storage().execute(() -> replacesArchivedId = io.github.hardin22.javachess.Play.GameResume
+                .archivedInterruption(snapshot, io.github.hardin22.javachess.Services.GameArchiveService.getInstance()));
+    }
+
+    /** Demo and screenshot runs never touch the user's saved game (like the archive). */
+    private static boolean isDemoRun() {
+        return System.getProperty("javachess.demo") != null || System.getProperty("javachess.snapshot") != null;
     }
 
     /** A game that ended with a result is no longer resumable; an interrupted one stays resumable. */
     protected void forgetSnapshotIfFinished(String result) {
+        if (isDemoRun()) {
+            return;
+        }
         if (snapshot() != null && !io.github.hardin22.javachess.Play.GameResume.isInterruption(result)) {
             io.github.hardin22.javachess.Play.GameSnapshotStore.get().clear();
         }
@@ -507,7 +543,7 @@ public abstract class AbstractGame {
 
     /** Saves the game for resuming (after each move). */
     protected void saveSnapshot() {
-        if (!gameRunning) {
+        if (!gameRunning || isDemoRun()) {
             return;
         }
         io.github.hardin22.javachess.Play.GameSnapshot s = snapshot();

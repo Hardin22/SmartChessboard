@@ -25,8 +25,9 @@ ReviewStore.get().save(archivedGame, gameReview);
 ## 2. Rigioca i tuoi errori — `Analysis.MistakeTrainer`
 
 Dalla revisione (dopo l'analisi): pulsante **Rigioca i tuoi errori** (scheda Riepilogo, vicino ai momenti
-chiave), visibile se `MistakeTrainer.exercises(review, mioLato, false)` non è vuoto. Il "mio lato": contro il
-computer il lato del giocatore; online il lato con il proprio nome; a due giocatori chiedi "Bianco o Nero?".
+chiave), visibile se `MistakeTrainer.exercises(review, mioLato, false)` non è vuoto. Il "mio lato":
+`PlayerStats.localSide(archivedGame)` (contro il computer il lato del giocatore, online il lato con il proprio nome);
+se è vuoto (partita a due) chiedi "Bianco o Nero?".
 
 ```java
 MistakeTrainer t = new MistakeTrainer(MistakeTrainer.exercises(review, white, false), session.boardFollower());
@@ -119,6 +120,14 @@ rush.start();
 - `stateProperty()`: LOADING (breve) / PLAYING / FINISHED → carta finale con `messageProperty()` ("Tempo scaduto:
   14 puzzle risolti · nuovo record!"), **Ancora** (`start()`), **Esci** (`stop()` se in corso).
 - Ricordati di rimettere `setRated(true)` e `setResultListener(null)` per i puzzle normali.
+
+## 6. Nomi delle aperture in italiano
+
+`Analysis.OpeningNames.italian(nome)`: "C50 Italian Game: Giuoco Piano" → "C50 Partita Italiana: Giuoco Piano",
+"B90 Sicilian Defense: Najdorf Variation" → "B90 Difesa Siciliana: Variante Najdorf" (nomi sconosciuti invariati).
+`AnalysisSession.openingProperty()` e le aperture di `PlayerStats` sono già in italiano; nella partita il
+`openingNameLabel` resta in inglese (finisce nell'archivio e nel PGN): mostralo con `OpeningNames.italian(...)`,
+e così anche la colonna apertura dell'archivio.
 
 ## Testi (chiavi i18n proposte)
 

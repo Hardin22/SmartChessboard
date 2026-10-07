@@ -68,6 +68,14 @@ class GameFeaturesTest {
         void replay(List<String> moves) {
             replayMoves(moves);
         }
+
+        void replacing(GameSnapshot s) {
+            replaceArchivedCopyOf(s);
+        }
+
+        void archive(String result) {
+            saveGameToJson(result, "", "Player vs Player", "5+0");
+        }
     }
 
     @BeforeAll
@@ -128,6 +136,29 @@ class GameFeaturesTest {
         assertEquals("e8d7 41. e2e4", g.pgnText());
         g.startGame();
         assertThrows(IllegalStateException.class, () -> g.setStartPosition(START));
+    }
+
+    @Test
+    void aResumedGameReplacesItsInterruptedCopyOnlyWhenArchivedAgain() throws Exception {
+        io.github.hardin22.javachess.Services.GameArchiveService archive =
+                io.github.hardin22.javachess.Services.GameArchiveService.getInstance();
+        List<String> moves = List.of("h2h4", "a7a5", "h4h5");
+        int copy = archive.add(new ArchivedGame(0, ArchivedGame.GameMode.PVP, "", "Bianco", "Nero", "*",
+                "Interrotta", "", "", java.time.LocalDateTime.now(), "", "", moves)).id();
+        Game g = new Game();
+        GameSnapshot saved = new GameSnapshot(GameSnapshot.Mode.PVP, null, moves, true, null, null, 0,
+                TimeControl.minutes(5, 0), 1, 1, 0, 0, null, null);
+        g.replay(moves);
+        g.replacing(saved);
+        flushStorage();
+        assertTrue(archive.get(copy).isPresent(), "still there while the game goes on");
+        g.startGame();
+        g.handleMoveInput("a5a4");
+        g.archive("Il Bianco vince per tempo");
+        flushStorage();
+        assertTrue(archive.get(copy).isEmpty(), "replaced by the finished game");
+        assertTrue(archive.list().stream().anyMatch(a -> a.movesUci().equals(List.of("h2h4", "a7a5", "h4h5", "a5a4"))
+                && a.result().equals("1-0")));
     }
 
     @Test

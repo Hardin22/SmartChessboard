@@ -101,6 +101,7 @@ public class PvcGame extends AbstractGame {
             public void onBoardSetupComplete() {
                 updateStatus("SCACCHIERA PRONTA! Partita Iniziata");
                 manager.startGameMode(); // ACTIVATE GAME MODE
+                boardReady = true;
                 startTurnClock();
 
                 // the bot moves first when it is its turn (Black chosen, a position or a resumed game)
@@ -449,8 +450,14 @@ public class PvcGame extends AbstractGame {
         return gameRunning && pliesToTakeBack() > 0;
     }
 
+    /** True once the pieces are set up (a take-back during the set-up would be undone by the board). */
+    private volatile boolean boardReady;
+
     /** Half-moves a take-back removes now: the player's last move, and the bot's answer if it already came. */
     private int pliesToTakeBack() {
+        if (!boardReady) {
+            return 0;
+        }
         int plies = board.getSideToMove() == humanSide() ? 2 : 1;
         return movesUci.size() >= plies ? plies : 0;
     }
@@ -494,10 +501,17 @@ public class PvcGame extends AbstractGame {
         java.util.concurrent.CompletableFuture<io.github.hardin22.javachess.Play.BotDrawPolicy.Decision> answer =
                 new java.util.concurrent.CompletableFuture<>();
         drawPolicy.offer(fen, movesUci.size(), humanSide().flip(), botName()).thenAccept(d -> Platform.runLater(() -> {
-            if (d.accepted() && gameRunning && fen.equals(board.getFen())) {
+            if (!d.accepted()) {
+                answer.complete(d);
+            } else if (gameRunning && fen.equals(board.getFen())) {
                 endGame("Patta d'accordo", true);
+                answer.complete(d);
+            } else {
+                // a move was made (or the game ended) while the bot was thinking about it
+                drawPolicy.forgetLastOffer();
+                answer.complete(new io.github.hardin22.javachess.Play.BotDrawPolicy.Decision(false,
+                        "La posizione è cambiata: riproponi la patta"));
             }
-            answer.complete(d);
         }));
         return answer;
     }
@@ -519,7 +533,7 @@ public class PvcGame extends AbstractGame {
         if (clock != null) {
             clock.restore(snapshot.whiteMillis(), snapshot.blackMillis());
         }
-        io.github.hardin22.javachess.Play.GameResume.forgetArchivedInterruption(snapshot);
+        replaceArchivedCopyOf(snapshot);
     }
 
     /** A game against the computer rebuilt from a saved one, ready for {@link #startGame()}. */
@@ -576,12 +590,19 @@ public class PvcGame extends AbstractGame {
         super.notifyOpponentMove(from, to);
         if (clock != null) {
             clock.moveMade(humanSide().flip());
-            if (!io.github.hardin22.javachess.Controllers.ArduinoController.getInstance().getBoardStateManager()
-                    .isHardwareConnected()) {
-                startTurnClock(); // no board: nothing to reproduce
+            boolean board = io.github.hardin22.javachess.Controllers.ArduinoController.getInstance()
+                    .getBoardStateManager().isHardwareConnected();
+            // With a board the player's time starts once the bot's move is reproduced on it (setting
+            // game.clock.replicationFree=false makes it start at once, as in an online game)
+            if (!board || !io.github.hardin22.javachess.Utils.ConfigManager.getBooleanProperty(
+                    REPLICATION_FREE_KEY, true)) {
+                startTurnClock();
             }
         }
     }
+
+    /** Setting: the time spent reproducing the bot's move on the board is not counted (default true). */
+    public static final String REPLICATION_FREE_KEY = "game.clock.replicationFree";
 
     /** Starts the clock of the side to move (game start, board in step again, bot move reproduced). */
     private void startTurnClock() {
@@ -616,10 +637,13 @@ public class PvcGame extends AbstractGame {
         }
     }
 
-    /** End of the game: clock stopped, hint removed. */
+    /** End of the game: clock stopped, hint removed, the bot strength back to the plain skill level. */
     private void endFeatures() {
         if (clock != null) {
             clock.stop();
+        }
+        if (level != null) {
+            EngineManager.get().setBotStrength(null);
         }
         if (hintAdvisor != null) {
             hintAdvisor.clear();
