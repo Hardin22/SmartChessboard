@@ -299,6 +299,21 @@ class BrilliantGreatExclusionsTest {
                 .with("greatQuietCpFloor", 0)));
     }
 
+    @Test
+    void aQuietMoveStartingAMateIsGreatWhenTheAlternativeDoesNotWin() {
+        // live_171977517802 ply 86, 43...d2 starts a mate in 9, the second best move only draws (chess.com Great)
+        ReviewInput d2 = rated(oneMove("8/pb3k2/1p6/5Pp1/3B2P1/1P1pp1K1/P7/8 b - - 1 43", "d3d2", Eval.blackMates(9),
+                "d3d2", Eval.cp(0), "e3e2", Eval.blackMates(9)), 2555, 2565);
+        assertEquals(MoveClassification.GREAT, label(d2, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.GREAT, label(d2, Tuning.DEFAULT.with("greatStartsMate", 0)));
+        // Anderssen - Dufresne 1852, 22.Bf5+ (the Evergreen): a check without capture into mate in 3, the second best
+        // move loses (chess.com Great)
+        ReviewInput bf5 = rated(oneMove("1r4r1/pbpknp1p/1b3P2/8/8/B1PB1q2/P4PPP/3R2K1 w - - 0 22", "d3f5",
+                Eval.whiteMates(3), "d3f5", Eval.cp(-965), "d3e2", Eval.whiteMates(3)), 2500, 2500);
+        assertEquals(MoveClassification.GREAT, label(bf5, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.GREAT, label(bf5, Tuning.DEFAULT.with("greatStartsMate", 0)));
+    }
+
     private static ReviewInput rated(ReviewInput in, int white, int black) {
         return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
     }

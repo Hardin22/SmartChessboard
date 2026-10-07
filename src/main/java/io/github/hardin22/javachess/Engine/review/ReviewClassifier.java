@@ -91,6 +91,8 @@ public final class ReviewClassifier {
          */
         final boolean brilliantTopException;
         final double brilliantTopRegain;
+        /** v2.3 R9: a quiet move starting a forced mate is Great when the alternative does not win. */
+        final boolean greatStartsMate;
         /** v2.3: the 'winning anyway' tests of Brilliant only for a move that is not the engine's choice. */
         final boolean brilliantAltNonTopOnly;
         /** v2.3: players under this rating get Great for a capture from {@link #greatCaptureGapLow}. */
@@ -199,6 +201,7 @@ public final class ReviewClassifier {
             greatNoCapture = get("greatNoCapture", 1) != 0;
             greatRule = (int) get("greatRule", 2);
             brilliantAltNonTopOnly = get("brilliantAltNonTopOnly", 0) != 0;
+            greatStartsMate = get("greatStartsMate", 1) != 0;
             brilliantTopException = get("brilliantTopException", 1) != 0;
             brilliantTopRegain = get("brilliantTopRegain", 1);
             greatInCheckGap = get("greatInCheckGap", 0.10);
@@ -491,8 +494,11 @@ public final class ReviewClassifier {
             }
             double ep = before.eval().winChance(me);
             boolean greatRange = ep >= SECOND_LINE_MIN_EP && ep <= SECOND_LINE_MAX_EP && !before.eval().isMate();
+            // R9: a quiet move starting a forced mate is Great only if the second best move does not win
+            boolean startsMate = Tuning.DEFAULT.greatStartsMate && before.eval().isMateFor(me)
+                    && before.eval().mateIn() > 1 && !b.isKingAttacked() && !Tactics.isCapture(b, uci);
             // a sacrifice can be Brilliant even when it mates: only the second line tells if it was needed
-            if (greatRange || (!before.eval().isMateAgainst(me) && brilliant(b, uci, me))) {
+            if (greatRange || startsMate || (!before.eval().isMateAgainst(me) && brilliant(b, uci, me))) {
                 need.set(i);
             }
         }
@@ -730,6 +736,9 @@ public final class ReviewClassifier {
         if (t.brilliantRule == 0 && brilliant(b0, uci, me)) {
             return MoveClassification.BRILLIANT;
         }
+        if (t.greatStartsMate && label == MoveClassification.BEST && isTop && startsMate(b0, uci, played, second, me)) {
+            return MoveClassification.GREAT; // R9
+        }
         if (label != MoveClassification.BEST || !isTop || played.isMateFor(me)) {
             return null;
         }
@@ -813,6 +822,20 @@ public final class ReviewClassifier {
         boolean quiet = t.greatQuietCp > 0 && !capture && !second.eval().isMate()
                 && second.eval().cpFor(me) <= t.greatQuietCp && gap >= t.greatQuietGap && cpGap >= t.greatQuietCpFloor;
         return changesOutcome || quiet || gap >= t.greatGap;
+    }
+
+    /**
+     * SPEC v2.3 R9: a quiet move or a check without capture that starts a forced mate (not mate at once) when the
+     * second best move does not win (at most +150 cp, or loses to mate) is Great: chess.com 8 of 8 (Anderssen -
+     * Dufresne 22.Bf5+, Wei Yi - Bruzon...). Finding a mate is not "critical" only when the alternative wins anyway.
+     */
+    private static boolean startsMate(Board b0, String uci, Eval played, EngineLine second, boolean me) {
+        if (second == null || !played.isMateFor(me) || played.isCheckmate() || b0.isKingAttacked()
+                || Tactics.isCapture(b0, uci) || uci.length() > 4) {
+            return false;
+        }
+        Eval alt = second.eval();
+        return alt.isMateAgainst(me) || (!alt.isMate() && alt.cpFor(me) <= 150);
     }
 
     /** 0 losing, 1 about equal, 2 winning (SPEC v2.1). */
