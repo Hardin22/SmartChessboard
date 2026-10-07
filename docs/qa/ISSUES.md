@@ -20,6 +20,11 @@ Gravità: **alta** (vicolo cieco, perdita di dati, partita bloccata), **media** 
 | QA-012 | alta | logica | Kill/spegnimento del Pi a partita in corso: partita persa (lo shutdown hook non salva); nessuna ripresa | assegnato a features (snapshot a ogni mossa) |
 | QA-013 | media | logica+UI | Nessun abbandono / offerta di patta: "Termina" archivia sempre come interrotta (`*`) | assegnato a features |
 | QA-014 | bassa | logica | Nome dell'apertura solo online (explorer Lichess, che ora chiede un token): offline non compare | assegnato a features |
+| QA-015 | media | UI | Revisione: dopo "Analizza partita" la scacchiera si rimpicciolisce e le etichette si troncano | assegnato a design |
+| QA-016 | media | UI | Motore che fallisce in PvC: manca un "Riprova" accanto al messaggio | assegnato a design |
+| QA-017 | bassa | UI+logica | Home: il riquadro "Partita in corso / Riprendi" non compare mai (uscire da GAME termina la partita) | assegnato a design + features |
+| QA-018 | media | logica | Revisione: l'analisi completa continua (6 processi Stockfish, analisi live sospesa) dopo aver lasciato la schermata o aperto un'altra partita | corretto |
+| QA-019 | media | logica | Import PGN lentissimo (1000 partite: 9,6 s su Mac, minuti sul Pi) | corretto |
 
 ---
 
@@ -108,3 +113,30 @@ persone si accordano per la patta. In carico a features (offerta/accettazione, a
 
 ## QA-014 · Nome dell'apertura offline (bassa)
 `OpeningExplorer` usa solo explorer.lichess.ovh: senza rete non c'è il nome. Features cura "nome apertura".
+
+## QA-015 · Revisione: layout dopo l'analisi (media, UI)
+**Passi**: archivio → partita → "Analizza partita" (720×1280): al termine compaiono precisione e grafico e la
+scacchiera passa da ~530 a ~310 px di lato; "Mossa 12 di 28" diventa "Mo...", "Classificazione delle mo...".
+
+## QA-016 · "Riprova" per il motore (media, UI)
+Con QA-002 la logica ritenta da sola e mette in stato "Motore non disponibile: <motivo>. Nuovo tentativo tra N s";
+serve un pulsante che chiami `PvcGame.retryBotMove()`.
+
+## QA-017 · Riquadro "Partita in corso" morto (bassa, UI+logica)
+`HomeController` mostra "Partita in corso / Riprendi" se `ActiveGameController.isGameInProgress()`, ma ogni uscita
+da GAME passa da `onNavigatedFrom → stopAndSaveGame`, quindi non c'è mai una partita in corso fuori dalla schermata
+di gioco. Da decidere con la ripresa di features (sospendere invece di terminare).
+
+## QA-018 · Revisione che continua in background (media, logica)
+**Passi**: archivio → partita lunga → "Analizza partita" → indietro → Home → nuova partita PvC. Il thread
+`game-analysis` continuava con il suo pool (6 processi Stockfish su questo Mac) e teneva sospesa l'analisi live
+(`holdLive`) fino alla fine; aprendo un'altra partita la vecchia analisi continuava in parallelo alla nuova.
+**Correzione**: `ReviewController` interrompe la revisione quando si lascia la schermata o si carica un'altra
+partita (il pool si chiude subito), senza dialogo d'errore né barra di avanzamento rimasta. Test: E2E
+`leavingTheReviewStopsTheFullAnalysisAndItsEngines` (motori chiusi entro 3 s).
+
+## QA-019 · Import PGN lento (media, logica)
+`PgnCodec.fromSan` generava il SAN di ogni mossa legale (e compilava una regex) per ogni mossa letta.
+Misura (`ArchiveBench`, 1000 partite da 80 semimosse): import 9,6 s → 2,1 s; caricamento 3000 partite 127 ms;
+salvataggio di una partita con 3000 in archivio ~60 ms (file di 7 MB riscritto ogni volta: accettabile sul Pi,
+sul thread di storage). Test: `PgnCodecTest.fromSanCapturesPromotionsAndDisambiguation`.
