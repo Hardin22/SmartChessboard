@@ -814,6 +814,16 @@ class BrilliantGreatExclusionsTest {
         assertEquals(MoveClassification.GREAT, label(bxe4, Tuning.DEFAULT.with("greatNoQueenAttackerTaken", 0)));
     }
 
+    @Test
+    void aQuietBishopMoveInABishopAgainstPawnsEndingIsNotGreat() {
+        // Spassky - Fischer 1972 g1, 44.Bf2 (Lite +3.28, second Bg1 +1.27): SF16 d22 has four equivalent bishop moves,
+        // chess.com Best
+        ReviewInput bf2 = rated(oneMove("8/1p4p1/pP2p3/7K/P3k3/4B3/8/8 w - - 4 44", "e3f2", Eval.cp(328), "e3f2",
+                Eval.cp(127), "e3g1", Eval.cp(328)), 0, 0);
+        assertEquals(MoveClassification.BEST, label(bf2, Tuning.DEFAULT));
+        assertEquals(MoveClassification.GREAT, label(bf2, Tuning.DEFAULT.with("greatNoBishopEndingMove", 0)));
+    }
+
     private static ReviewInput rated(ReviewInput in, int white, int black) {
         return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
     }

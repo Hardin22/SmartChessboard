@@ -193,6 +193,8 @@ public final class ReviewClassifier {
         final boolean greatNoEscortedPush;
         /** Phase 4 obvious Great: taking the piece just moved to attack the queen, in a position already won. */
         final boolean greatNoQueenAttackerTaken;
+        /** Phase 4 obvious Great: a quiet bishop move in a bishop against pawns ending. */
+        final boolean greatNoBishopEndingMove;
         final boolean greatKickedBishop;
         /** Phase 4 (0 = off): R9 also when the opponent's move lost at least this much, whatever the alternative. */
         final double greatStartsMatePunish;
@@ -323,6 +325,7 @@ public final class ReviewClassifier {
             greatNoCashInBrilliant = get("greatNoCashInBrilliant", 1) != 0;
             greatNoEscortedPush = get("greatNoEscortedPush", 1) != 0;
             greatNoQueenAttackerTaken = get("greatNoQueenAttackerTaken", 1) != 0;
+            greatNoBishopEndingMove = get("greatNoBishopEndingMove", 1) != 0;
             greatStartsMatePunish = get("greatStartsMatePunish", 0.15);
             greatStartsMateInCheck = get("greatStartsMateInCheck", 1) != 0;
             greatStartsMateKing = get("greatStartsMateKing", 1) != 0;
@@ -1198,7 +1201,37 @@ public final class ReviewClassifier {
         Side side = me ? Side.WHITE : Side.BLACK;
         return (t.greatNoEscortedPush && escortedPush(b0, m, side))
                 || (t.greatNoQueenAttackerTaken && epBefore > t.greatInCheckMaxEp && !b0.isKingAttacked()
-                && takesQueenAttacker(b0, m, side, previous));
+                && takesQueenAttacker(b0, m, side, previous))
+                || (t.greatNoBishopEndingMove && bishopEndingMove(b0, m, side));
+    }
+
+    /**
+     * Bishop against pawns: a quiet move of the mover's only piece, a bishop, when the opponent has no piece. The bishop
+     * holds a diagonal from several equivalent squares, so the move is not a find even when our short second line says
+     * so (Spassky - Fischer 1972 g1, 44.Bf2 and 46.Bg5: SF16 d22 has Bc1/Bd2/Bg5 = Bf2 + 31 cp and Be1 = Bg5, chess.com
+     * Best). On the 177 games no such move is chess.com Great.
+     */
+    private static boolean bishopEndingMove(Board b0, Move m, Side side) {
+        if (b0.getPiece(m.getFrom()).getPieceType() != PieceType.BISHOP || b0.getPiece(m.getTo()) != Piece.NONE) {
+            return false;
+        }
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        if (b1.isKingAttacked()) {
+            return false;
+        }
+        int mine = 0;
+        for (Square sq : Square.values()) {
+            Piece p = sq == Square.NONE ? Piece.NONE : b0.getPiece(sq);
+            if (p == Piece.NONE || p.getPieceType() == PieceType.KING || p.getPieceType() == PieceType.PAWN) {
+                continue;
+            }
+            if (p.getPieceSide() != side) {
+                return false; // the opponent has a piece
+            }
+            mine++;
+        }
+        return mine == 1;
     }
 
     /**
