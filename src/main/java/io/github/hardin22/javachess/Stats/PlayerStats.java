@@ -106,7 +106,10 @@ public final class PlayerStats {
 
     /** Who "I" am: names the archive uses for the local player. */
     public record Identity(Set<String> names) {
-        /** "Giocatore"/"Tu" (games against the computer) plus the online usernames in the settings. */
+        /**
+         * "Giocatore"/"Tu" (games against the computer) plus the online usernames in the settings and the ones used
+         * to import games.
+         */
         public static Identity fromSettings() {
             java.util.Set<String> n = new java.util.HashSet<>(Set.of("giocatore", "tu"));
             String lichess = ConfigManager.getProperty("lichess.username", "").trim();
@@ -116,6 +119,12 @@ public final class PlayerStats {
             String chessCom = ConfigManager.getProperty("chess.com.username", "").trim();
             if (!chessCom.isEmpty() && !chessCom.contains("@")) {
                 n.add(chessCom.toLowerCase(Locale.ROOT));
+            }
+            for (OnlineImport.Source s : OnlineImport.Source.values()) {
+                String imported = OnlineImport.lastUsername(s);
+                if (!imported.isEmpty()) {
+                    n.add(imported.toLowerCase(Locale.ROOT));
+                }
             }
             return new Identity(Set.copyOf(n));
         }

@@ -154,6 +154,24 @@ public class GameArchiveService {
         return stored;
     }
 
+    /** Adds several games with a single write (imports). Returns them with their ids. */
+    public synchronized List<ArchivedGame> addAll(List<ArchivedGame> drafts) {
+        List<ArchivedGame> stored = new ArrayList<>();
+        for (ArchivedGame draft : drafts) {
+            ArchivedGame g = sanitize(draft).withId(nextId++);
+            games.add(g);
+            stored.add(g);
+            if (readOnly) {
+                saveAside(g);
+            }
+        }
+        if (!stored.isEmpty()) {
+            persist();
+            log.info("Archived {} games", stored.size());
+        }
+        return stored;
+    }
+
     /** Replaces the game with the same id. Returns false if it does not exist. */
     public synchronized boolean update(ArchivedGame game) {
         for (int i = 0; i < games.size(); i++) {
