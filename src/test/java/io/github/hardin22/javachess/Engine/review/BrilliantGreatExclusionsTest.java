@@ -480,6 +480,17 @@ class BrilliantGreatExclusionsTest {
     }
 
     @Test
+    void aMateStartPunishingAnErrorIsGreatAlthoughTheAlternativeWins() {
+        // live_117364247477 ply 41 (1229): 20...Qxa2?? (instead of 20...Bxb1) allows 21.Rb8+ Ne8 22.Rxe8#; the second
+        // best move 21.e4 also wins (+5.38) but chess.com calls the mate Great
+        ReviewInput rb8 = rated(twoMoves("6k1/p4ppp/2pBpn2/2Pp1b2/3P4/4PP2/Pq2BKPP/1R5R b - - 5 20", "b2a2",
+                Eval.cp(-728), "f5b1", "b1b8", Eval.whiteMates(2), "b1b8", Eval.cp(538), "e3e4", Eval.whiteMates(1)),
+                1229, 1187);
+        assertEquals(MoveClassification.GREAT, label(rb8, Tuning.DEFAULT));
+        assertEquals(MoveClassification.BEST, label(rb8, Tuning.DEFAULT.with("greatStartsMatePunish", 0)));
+    }
+
+    @Test
     void aBishopDrivenBackByAPawnPushIsNotGreat() {
         // live_173864617688 ply 28 (2007): 14.g4 attacks Bh5, 14...Bg6 is the only move (f5 -0.70) but chess.com Best
         ReviewInput bg6 = rated(twoMoves("r4rk1/1pq1npp1/p1nbp2p/3p3b/3P4/2PBBN1P/PPQN1PP1/R3R1K1 w - - 0 14", "g2g4",

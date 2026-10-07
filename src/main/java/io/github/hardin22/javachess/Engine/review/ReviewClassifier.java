@@ -158,6 +158,8 @@ public final class ReviewClassifier {
         final boolean greatInCheckFreeMaterial;
         /** Phase 4: no Great for a bishop retreating from the pawn that has just advanced against it. */
         final boolean greatKickedBishop;
+        /** Phase 4 (0 = off): R9 also when the opponent's move lost at least this much, whatever the alternative. */
+        final double greatStartsMatePunish;
         /** v1.9: no capture is Great (G-E1). */
         final boolean greatNoCapture;
         /**
@@ -274,6 +276,7 @@ public final class ReviewClassifier {
             greatWonQuiet = get("greatWonQuiet", 1) != 0;
             greatInCheckFreeMaterial = get("greatInCheckFreeMaterial", 1) != 0;
             greatKickedBishop = get("greatKickedBishop", 1) != 0;
+            greatStartsMatePunish = get("greatStartsMatePunish", 0.15);
             pieceSacrifice = get("pieceSacrifice", 1) != 0;
             outcomeLow = get("outcomeLow", 0.40);
             outcomeHigh = get("outcomeHigh", 0.60);
@@ -829,7 +832,8 @@ public final class ReviewClassifier {
         if (t.brilliantRule == 0 && brilliant(b0, uci, me)) {
             return MoveClassification.BRILLIANT;
         }
-        if (t.greatStartsMate && label == MoveClassification.BEST && isTop && startsMate(b0, uci, played, second, me, t)) {
+        if (t.greatStartsMate && label == MoveClassification.BEST && isTop
+                && startsMate(b0, uci, played, second, me, oppLoss, t)) {
             return MoveClassification.GREAT; // R9
         }
         if (label != MoveClassification.BEST || !isTop || played.isMateFor(me)) {
@@ -951,13 +955,17 @@ public final class ReviewClassifier {
      * chess.com 8 of 8 (Anderssen - Dufresne 22.Bf5+, Wei Yi - Bruzon...). Finding a mate is not "critical" only when
      * the alternative wins anyway.
      */
-    private static boolean startsMate(Board b0, String uci, Eval played, EngineLine second, boolean me, Tuning t) {
+    private static boolean startsMate(Board b0, String uci, Eval played, EngineLine second, boolean me,
+                                      double oppLoss, Tuning t) {
         if (second == null || !played.isMateFor(me) || played.isCheckmate() || b0.isKingAttacked()
                 || Tactics.isCapture(b0, uci) || uci.length() > 4) {
             return false;
         }
         Eval alt = second.eval();
-        return alt.isMateAgainst(me) || (!alt.isMate() && alt.cpFor(me) <= t.greatStartsMateAltCp);
+        // Phase 4: right after the opponent's error, finding the mate is the punishment even when the alternative
+        // also wins (candidate() still excludes alternatives at +700 or more)
+        boolean punishes = t.greatStartsMatePunish > 0 && oppLoss >= t.greatStartsMatePunish;
+        return alt.isMateAgainst(me) || (!alt.isMate() && (alt.cpFor(me) <= t.greatStartsMateAltCp || punishes));
     }
 
     /** True when {@code uci} moves a pawn. */
@@ -966,7 +974,6 @@ public final class ReviewClassifier {
         return m != null && b.getPiece(m.getFrom()).getPieceType() == PieceType.PAWN;
     }
 
-    /** True when {@code uci} pushes a passed pawn that arrived on its square with the mover's previous move. */
     /** Move i moves a bishop the opponent's last move, a pawn push, attacks. */
     private static boolean kickedBishop(Board b0, String uci, GameReplay replay, int i, boolean me) {
         Move m = Tactics.find(b0, uci);
@@ -982,6 +989,7 @@ public final class ReviewClassifier {
         return files == 1 && ranks == (me ? -1 : 1);
     }
 
+    /** True when {@code uci} pushes a passed pawn that arrived on its square with the mover's previous move. */
     private static boolean pushesPassedPawnAgain(Board b0, String uci, String previousOwn) {
         Move m = Tactics.find(b0, uci);
         return m != null && b0.getPiece(m.getFrom()).getPieceType() == PieceType.PAWN
