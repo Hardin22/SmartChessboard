@@ -12,12 +12,20 @@ import java.util.List;
  * @param nodes      nodes searched
  * @param elapsedMs  wall clock time from "go" to "bestmove"
  * @param stopped    true when the search was interrupted (stop, timeout, superseded) instead of reaching its limit
+ * @param perMove    latest exact line for every root move seen (MultiPV slots get reshuffled between iterations,
+ *                   so with many lines a move can drop out of {@code lines}; this keeps them all)
  */
 public record SearchResult(String bestMove, String ponder, List<InfoLine> lines, int depth, long nodes,
-                           long elapsedMs, boolean stopped) {
+                           long elapsedMs, boolean stopped, List<InfoLine> perMove) {
 
     public SearchResult {
         lines = List.copyOf(lines);
+        perMove = perMove == null ? lines : List.copyOf(perMove);
+    }
+
+    public SearchResult(String bestMove, String ponder, List<InfoLine> lines, int depth, long nodes, long elapsedMs,
+                        boolean stopped) {
+        this(bestMove, ponder, lines, depth, nodes, elapsedMs, stopped, null);
     }
 
     /** The first line, or null when the engine printed none. */
@@ -33,7 +41,7 @@ public record SearchResult(String bestMove, String ponder, List<InfoLine> lines,
 
     /** The line whose first move is {@code uci}, or null. */
     public InfoLine lineFor(String uci) {
-        for (InfoLine l : lines) {
+        for (InfoLine l : perMove) {
             if (l.move().equals(uci)) {
                 return l;
             }

@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class CoachLatencyTest {
 
-    static final double PI5 = Double.parseDouble(System.getProperty("pi5.ratio", "0.33"));
+    static final double PI5 = Double.parseDouble(System.getProperty("pi5.ratio", "0.25"));
 
     /** Middlegame / opening positions with a natural move each. */
     static final String[][] CASES = {

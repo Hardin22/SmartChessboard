@@ -97,10 +97,7 @@ public class App extends Application {
         }
         AppExecutors.shutdown(); // pending archive writes are completed first
         org.example.javachess.Controllers.BrowserController.disposeIfStarted();
-        if (ProcessHandle.current().children().findAny().isPresent()) {
-            // let the engines quit cleanly ("quit" over UCI) before anything is killed
-            org.example.javachess.Engine.EngineManager.get().shutdown();
-        }
+        org.example.javachess.Engine.EngineManager.shutdownIfStarted(); // engines get "quit" before the kill below
         stopChildProcesses();
         logLingeringThreads();
         // Last resort for threads started by libraries that do not use daemon threads.

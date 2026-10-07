@@ -91,7 +91,10 @@ public final class EngineManager implements EngineSelection {
     EngineManager(boolean persist) {
         this.persist = persist;
         refreshProfiles();
-        String saved = ConfigManager.getProperty(CONFIG_KEY, STOCKFISH);
+        String saved = ConfigManager.getProperty(CONFIG_KEY, "").trim();
+        if (saved.isEmpty()) {
+            saved = defaultProfileForThisMachine();
+        }
         EngineProfile initial = findProfile(saved).filter(EngineProfile::available)
                 .or(() -> profiles.stream().filter(EngineProfile::available).findFirst())
                 .orElse(profiles.get(0));
@@ -250,7 +253,8 @@ public final class EngineManager implements EngineSelection {
             if (err == null) {
                 return CompletableFuture.completedFuture(move);
             }
-            log.warn("bot move failed ({}), retrying once", rootMessage(err));
+            // typical cause: the profile was switched while the bot was thinking (old engine closed)
+            log.info("bot move not completed ({}), retrying once on the current engine", rootMessage(err));
             return botMoveOnce(fen, skillLevel);
         }).thenCompose(f -> f);
     }
@@ -333,6 +337,32 @@ public final class EngineManager implements EngineSelection {
         client.setOption("Hash", String.valueOf(b.hashMb()));
         // outside our lock: the analyzer calls analysisClient() under its own
         reconfigureHooks.forEach(Runnable::run);
+    }
+
+    /** Stockfish Lite on a Raspberry Pi 4 or older (Cortex-A72: ~1/7 of an M-series core), Stockfish elsewhere. */
+    static String defaultProfileForThisMachine() {
+        try {
+            Path model = Path.of("/proc/device-tree/model");
+            if (Files.isReadable(model)) {
+                String m = Files.readString(model).replace("\0", "");
+                java.util.regex.Matcher v = java.util.regex.Pattern.compile("Raspberry Pi (\\d+)").matcher(m);
+                if (v.find() && Integer.parseInt(v.group(1)) <= 4) {
+                    log.info("{}: defaulting to Stockfish Lite", m.trim());
+                    return STOCKFISH_LITE;
+                }
+            }
+        } catch (Exception ignored) {
+            // not a Pi / unreadable
+        }
+        return STOCKFISH;
+    }
+
+    /** Closes the engines if the manager was ever created (application exit); never starts anything. */
+    public static void shutdownIfStarted() {
+        EngineManager m = instance;
+        if (m != null) {
+            m.shutdown();
+        }
     }
 
     /** Closes every engine process (used at shutdown; safe to call more than once). */
@@ -426,13 +456,15 @@ public final class EngineManager implements EngineSelection {
 
     /**
      * Search budgets for one resource tier. Numbers come from {@code EngineBenchmarkTest} (Stockfish 19, 240 moves
-     * of weak self-play, reference depth 20; Pi 5 core ~1/3 and Pi 4 core ~1/7 of an Apple M-series core):
+     * of weak self-play, reference depth 20). Official SF 19 binary: 1.24 M nodes/s on one Apple M4 core, so
+     * ~310 k on a Pi 5 core (1/4) and ~135 k on a Pi 4 core (1/9):
      * <ul>
      *   <li>depth 12 is the shallowest depth with no missed and no invented blunder vs the reference (depth 10
-     *       missed 3/240, depth 8 missed 2); cold-hash cost after a move: p50 10k / p95 33k nodes, i.e.
-     *       ~80 / 310 ms on one Pi 5 core and ~190 / 730 ms on one Pi 4 core;</li>
+     *       missed 3/240, depth 8 missed 2); cold-hash cost after a move: p50 10 k / p95 33 k nodes, i.e.
+     *       ~30 / 110 ms on one Pi 5 core and ~75 / 245 ms on one Pi 4 core (much less with the warm hash of
+     *       the live analysis);</li>
      *   <li>depth 16 raises the ok/error agreement to 96% (when the position before was searched deeper) but costs
-     *       ~1.1 / 2.8 s on one Pi 5 core: used only as a capped confirmation.</li>
+     *       p50 134 k / p95 330 k nodes (~0.4 / 1.1 s on one Pi 5 core): used only as a capped confirmation.</li>
      * </ul>
      *
      * @param threads            analysis engine threads
@@ -458,12 +490,12 @@ public final class EngineManager implements EngineSelection {
             int cores = Runtime.getRuntime().availableProcessors();
             int threads = ConfigManager.getIntProperty("stockfish.threads", Math.max(1, Math.min(cores / 2, 4)));
             int hash = ConfigManager.getIntProperty("stockfish.hash", 64);
-            return new Budget(threads, hash, 30, 12, 16, 2_500, 150_000, 600, 1, 32, 10_000, 0, 4_000);
+            return new Budget(threads, hash, 30, 12, 16, 2_500, 150_000, 600, 1, 32, 10_000, 0, 1_500);
         }
 
         /** Pi 4 / weak hardware: 1 thread everywhere, same verdict depth (12), cheaper confirmation and hints. */
         public static Budget lite() {
-            return new Budget(1, 16, 16, 12, 14, 1_500, 40_000, 500, 1, 16, 1_000, 300_000, 1_500);
+            return new Budget(1, 16, 16, 12, 14, 1_500, 40_000, 500, 1, 16, 1_000, 300_000, 1_000);
         }
     }
 }

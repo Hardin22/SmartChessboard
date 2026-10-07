@@ -507,12 +507,14 @@ public final class UciClient implements AutoCloseable {
         cancelTimer(s);
         InfoLine best;
         List<InfoLine> lines;
+        List<InfoLine> perMove;
         synchronized (s) {
             lines = new ArrayList<>(s.lines.values());
+            perMove = new ArrayList<>(s.byMove.values());
         }
         best = lines.isEmpty() ? null : lines.get(0);
         s.future.complete(new SearchResult(best == null ? null : best.move(), null, lines, s.maxDepth, s.nodes,
-                elapsedMs(s), true));
+                elapsedMs(s), true, perMove));
     }
 
     private void failSearch(ActiveSearch s, Throwable t) {
@@ -611,6 +613,9 @@ public final class UciClient implements AutoCloseable {
             if (info.bound() == InfoLine.Bound.EXACT || !s.lines.containsKey(info.multiPv())) {
                 s.lines.put(info.multiPv(), info);
             }
+            if (info.bound() == InfoLine.Bound.EXACT || !s.byMove.containsKey(info.move())) {
+                s.byMove.put(info.move(), info);
+            }
             if (info.bound() == InfoLine.Bound.EXACT && info.multiPv() == 1) {
                 s.maxDepth = Math.max(s.maxDepth, info.depth());
             }
@@ -649,10 +654,12 @@ public final class UciClient implements AutoCloseable {
         current = null;
         cancelTimer(s);
         List<InfoLine> lines;
+        List<InfoLine> perMove;
         synchronized (s) {
             lines = new ArrayList<>(s.lines.values());
+            perMove = new ArrayList<>(s.byMove.values());
         }
-        s.future.complete(new SearchResult(best, ponder, lines, s.maxDepth, s.nodes, elapsedMs(s), s.stopSent));
+        s.future.complete(new SearchResult(best, ponder, lines, s.maxDepth, s.nodes, elapsedMs(s), s.stopSent, perMove));
     }
 
     private static long elapsedMs(ActiveSearch s) {
@@ -668,6 +675,7 @@ public final class UciClient implements AutoCloseable {
         final Consumer<InfoLine> onInfo;
         final CompletableFuture<SearchResult> future = new CompletableFuture<>();
         final TreeMap<Integer, InfoLine> lines = new TreeMap<>();
+        final java.util.LinkedHashMap<String, InfoLine> byMove = new java.util.LinkedHashMap<>();
         volatile boolean cancelled;
         volatile boolean stopSent;
         volatile ScheduledFuture<?> timeoutTask;

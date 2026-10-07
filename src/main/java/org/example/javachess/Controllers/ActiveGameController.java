@@ -90,6 +90,7 @@ public class ActiveGameController implements NavigationAware {
     public void startPvP(int duration, int increment) {
         setupBoard();
         arduinoController.getBoardStateManager().setEvaluationEnabled(showBestMoves);
+        MoveCoach.get().setEnabled(showBestMoves); // LED verdicts follow the suggestions toggle
         currentGame = new PvpGame(chessBoard, evalBar, openingNameLabel, bottomLabel, topLabel, duration * 60,
                 increment);
         setupGameCallbacks();
@@ -101,6 +102,7 @@ public class ActiveGameController implements NavigationAware {
     public void startPvC(int difficulty, boolean isPlayerWhite, EngineService.EngineType botType) {
         setupBoard();
         arduinoController.getBoardStateManager().setEvaluationEnabled(showBestMoves);
+        MoveCoach.get().setEnabled(showBestMoves); // LED verdicts follow the suggestions toggle
         currentGame = new PvcGame(chessBoard, evalBar, openingNameLabel, isPlayerWhite, difficulty, botType);
         setupGameCallbacks();
         updateAnalysisParams(); // Apply initial spinner values
@@ -111,6 +113,7 @@ public class ActiveGameController implements NavigationAware {
     public void startOnlineGame(String gameId) {
         setupBoard();
         arduinoController.getBoardStateManager().setEvaluationEnabled(false);
+        MoveCoach.get().setEnabled(false); // LED verdicts follow the suggestions toggle
         currentGame = new OnlineGame(chessBoard, evalBar, gameId);
         setupGameCallbacks();
         // Disable analysis for online games by default
@@ -291,6 +294,7 @@ public class ActiveGameController implements NavigationAware {
 
             // Link physical board evaluation to the suggestions toggle
             arduinoController.getBoardStateManager().setEvaluationEnabled(showBestMoves);
+            MoveCoach.get().setEnabled(showBestMoves); // LED verdicts follow the suggestions toggle
         }
     }
 

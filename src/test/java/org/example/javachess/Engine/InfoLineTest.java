@@ -52,7 +52,7 @@ class InfoLineTest {
     void goCommand() {
         assertEquals("go depth 12", SearchLimits.depth(12).toGoCommand());
         assertEquals("go infinite", SearchLimits.infinite().toGoCommand());
-        assertEquals("go searchmoves e2e4 e2e3 nodes 1000",
+        assertEquals("go nodes 1000 searchmoves e2e4 e2e3",
                 SearchLimits.nodes(1000).withSearchMoves(List.of("e2e4", "e2e3")).toGoCommand());
         assertEquals("go movetime 500", SearchLimits.movetime(500).toGoCommand());
     }

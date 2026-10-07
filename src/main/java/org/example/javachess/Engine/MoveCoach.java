@@ -69,9 +69,9 @@ public final class MoveCoach {
         final String afterKey;
         final String uci;
         final long t0 = System.nanoTime();
-        final Score bestBefore;
-        final String bestMove;
-        final boolean playedIsBest;
+        volatile Score bestBefore;
+        volatile String bestMove;
+        volatile boolean playedIsBest;
         MoveQuality emitted;
         boolean confirmed;
         boolean fallbackStarted;
@@ -95,6 +95,7 @@ public final class MoveCoach {
                 c = instance;
                 if (c == null) {
                     c = new MoveCoach(PositionAnalyzer.get(), () -> EngineManager.get().budget());
+                    c.setFallbackListener(new HardwareMoveFeedback()); // board LEDs by default
                     instance = c;
                 }
             }
@@ -118,7 +119,7 @@ public final class MoveCoach {
         return listener != null;
     }
 
-    /** Renderer used while no listener is registered (the legacy direct-to-Arduino rendering). */
+    /** Renderer used while no listener is registered (default: the board LEDs via the hardware layer). */
     public void setFallbackListener(MoveFeedbackListener l) {
         this.fallbackListener = l;
     }
@@ -210,7 +211,7 @@ public final class MoveCoach {
                 return null;
             }
             Map<String, MoveQuality> dest = new LinkedHashMap<>();
-            List<InfoLine> lines = new ArrayList<>(r.lines());
+            List<InfoLine> lines = new ArrayList<>(r.perMove());
             lines.sort(Comparator.comparingInt((InfoLine l) -> l.score().centipawns()).reversed());
             for (InfoLine l : lines) {
                 MoveQuality q = MoveClassifier.classify(best.score, l.score(), l.move().equals(best.move)).quality();
@@ -266,6 +267,27 @@ public final class MoveCoach {
             emit(p, MoveClassifier.classify(best.score, scored.score(), p.playedIsBest), scored.depth(), true);
         }
 
+        if (best == null || best.depth < b.coachMinDepth() - 2) {
+            // Moved before the analysis of the previous position got anywhere (game start, very fast move):
+            // first get a real "best" for the position before, then follow the new position.
+            analyzer.searchBest(fenBefore, b.candidateNodes(), b.coachCapMs()).whenComplete((r, err) ->
+                    EngineEvents.EXECUTOR.execute(() -> {
+                        if (pending != p) {
+                            return;
+                        }
+                        if (r != null && r.best() != null && (best == null || r.depth() >= best.depth)) {
+                            p.bestBefore = r.best().score();
+                            p.bestMove = r.bestMove();
+                            p.playedIsBest = uci.equals(r.bestMove());
+                        }
+                        startFollowing(p, fenAfter, b);
+                    }));
+        } else {
+            startFollowing(p, fenAfter, b);
+        }
+    }
+
+    private void startFollowing(Pending p, String fenAfter, EngineManager.Budget b) {
         p.capTask = EngineEvents.EXECUTOR.schedule(() -> onCap(p), b.coachCapMs(), TimeUnit.MILLISECONDS);
         p.deadlineTask = EngineEvents.EXECUTOR.schedule(() -> onDeadline(p), HARD_DEADLINE_MS, TimeUnit.MILLISECONDS);
         analyzer.follow(fenAfter);
@@ -420,7 +442,7 @@ public final class MoveCoach {
             b = new Best(main.best().score(), main.bestMove(), main.depth());
         }
         if (cand != null) {
-            for (InfoLine l : cand.lines()) {
+            for (InfoLine l : cand.perMove()) {
                 if (b != null && l.move().equals(b.move)) {
                     if (l.depth() >= b.depth) {
                         b = new Best(l.score(), l.move(), l.depth());
