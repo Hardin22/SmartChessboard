@@ -15,8 +15,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * Latency of the LED verdict on a simulated Raspberry Pi.
  *
  * <p>Simulation independent of the machine running the test: the single-thread speed of THIS machine is measured
- * first, then every latency is scaled by {@code thisNps / piNps} (Pi numbers from the linux/arm64 measurements,
- * {@code -Dpi5.nps}, {@code -Dpi4.nps}). A slow CI runner measures longer latencies but also a lower nps, so the
+ * first, then every latency is scaled by {@code thisNps / piNps}. Pi numbers: SF19 aarch64 does 1.08 M nps on one
+ * Apple-silicon core in the linux/arm64 container; a Cortex-A76 (Pi 5) core is ~3.5x slower (310 k) and a
+ * Cortex-A72 (Pi 4) core ~9x slower (120 k). Override with {@code -Dpi5.nps}, {@code -Dpi4.nps} once measured on a
+ * real board ({@code engines/stockfish/stockfish bench}). A slow CI runner measures longer latencies but also a lower nps, so the
  * estimate and the assertions stay stable. The analysis engine has ONE thread here (two on the real Pi), so the
  * estimate is pessimistic. The player "thinks" until the live analysis of the position reached the verdict depth,
  * and does not lift the piece first (no instant verdict from the hint search): this measures the post-move path.</p>
@@ -24,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class CoachLatencyTest {
 
     static final long PI5_NPS = Long.getLong("pi5.nps", 310_000);
-    static final long PI4_NPS = Long.getLong("pi4.nps", 135_000);
+    static final long PI4_NPS = Long.getLong("pi4.nps", 120_000);
     static final String MIDDLEGAME = "r1bq1rk1/pp2bppp/2n1pn2/3p4/2PP4/2N1PN2/PP1B1PPP/R2QKB1R w KQ - 0 8";
 
     /** Middlegame / opening positions with a natural move each. */

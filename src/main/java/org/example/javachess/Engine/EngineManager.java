@@ -351,8 +351,15 @@ public final class EngineManager implements EngineSelection {
         reconfigureHooks.forEach(Runnable::run);
     }
 
-    /** Stockfish Lite on a Raspberry Pi 4 or older (Cortex-A72: ~1/7 of an M-series core), Stockfish elsewhere. */
+    /**
+     * Stockfish Lite on a Raspberry Pi 4 or older (Cortex-A72: ~1/9 of an M-series core) or with less than ~1.4 GB of
+     * RAM, Stockfish elsewhere.
+     */
     static String defaultProfileForThisMachine() {
+        if (ProcessPlan.detect().ramMb() < 1_400) {
+            log.info("{} MB of RAM: defaulting to Stockfish Lite", ProcessPlan.detect().ramMb());
+            return STOCKFISH_LITE;
+        }
         try {
             Path model = Path.of("/proc/device-tree/model");
             if (Files.isReadable(model)) {
@@ -515,8 +522,8 @@ public final class EngineManager implements EngineSelection {
 
     /**
      * Search budgets for one resource tier. Numbers come from {@code EngineBenchmarkTest} (Stockfish 19, 240 moves
-     * of weak self-play, reference depth 20). Official SF 19 binary: 1.24 M nodes/s on one Apple M4 core, so
-     * ~310 k on a Pi 5 core (1/4) and ~135 k on a Pi 4 core (1/9):
+     * of weak self-play, reference depth 20). Official SF 19 binary: 1.24 M nodes/s on one Apple M4 core (1.08 M in the
+     * linux/arm64 container), so ~310 k on a Pi 5 core (1/3.5-1/4) and ~120-135 k on a Pi 4 core (1/9):
      * <ul>
      *   <li>depth 12 is the shallowest depth with no missed and no invented blunder vs the reference (depth 10
      *       missed 3/240, depth 8 missed 2); cold-hash cost after a move: p50 10 k / p95 33 k nodes, i.e.
