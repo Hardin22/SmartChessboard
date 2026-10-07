@@ -9,6 +9,10 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import org.example.javachess.Oggetti.*;
 import org.example.javachess.Utils.ConfigManager;
+import org.example.javachess.Engine.AnalysisUpdate;
+import org.example.javachess.Engine.MoveCoach;
+import org.example.javachess.Engine.MoveQuality;
+import org.example.javachess.Engine.PositionAnalyzer;
 import org.example.javachess.Services.EngineService;
 
 public class ActiveGameController implements NavigationAware {
@@ -122,10 +126,22 @@ public class ActiveGameController implements NavigationAware {
         }
     }
 
-    private UCIEngine.AnalysisUpdateCallback createAnalysisCallback() {
-        return (pv, bestMove, fullLine, score, moveEvaluations) -> {
+    private PositionAnalyzer.Listener createAnalysisCallback() {
+        return (AnalysisUpdate update) -> {
+            // Format lines on the engine thread, then one hop to the FX thread per update.
+            int n = Math.max(1, update.lines().size());
+            String[] lines = new String[n];
+            String[] evals = new String[n];
+            for (int i = 0; i < n; i++) {
+                lines[i] = update.formatLine(i);
+                evals[i] = update.evalText(i);
+            }
+            String best = update.bestMove();
+            double score = update.whitePawns();
             javafx.application.Platform.runLater(() -> {
-                updateAnalysisUI(pv, bestMove, fullLine, score, moveEvaluations);
+                for (int i = 0; i < n; i++) {
+                    updateAnalysisUI(i, best, lines[i], score, new String[] { evals[i] });
+                }
             });
         };
     }
@@ -183,12 +199,33 @@ public class ActiveGameController implements NavigationAware {
         if (input != null && !input.isEmpty() && currentGame instanceof PvpGame) {
             try {
                 Square selectedSquare = Square.valueOf(input.toUpperCase());
-                UCIEngine currentstockfish = ((PvpGame) currentGame).getStockfish();
-                currentstockfish.highlightLegalMovesWithEvaluation(currentGame.getBoard(), selectedSquare, chessBoard,
-                        currentEvaluation);
+                MoveCoach.get().scorePiece(currentGame.getBoard().getFen(), selectedSquare.name()).thenAccept(fb -> {
+                    if (fb == null) {
+                        return;
+                    }
+                    javafx.application.Platform.runLater(() -> fb.destinations().forEach((to, q) -> {
+                        Square sq = Square.valueOf(to);
+                        int col = sq.ordinal() % 8;
+                        int row = 7 - (sq.ordinal() / 8);
+                        chessBoard.highlightSquare(col, row, colorFor(q));
+                    }));
+                });
             } catch (IllegalArgumentException e) {
                 System.out.println("Invalid square");
             }
+        }
+    }
+
+    private static javafx.scene.paint.Color colorFor(MoveQuality q) {
+        switch (q) {
+            case INACCURACY:
+                return javafx.scene.paint.Color.YELLOW;
+            case MISTAKE:
+                return javafx.scene.paint.Color.ORANGE;
+            case BLUNDER:
+                return javafx.scene.paint.Color.RED;
+            default:
+                return javafx.scene.paint.Color.GREEN;
         }
     }
 

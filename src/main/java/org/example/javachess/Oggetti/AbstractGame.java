@@ -9,7 +9,10 @@ import com.github.bhlangonijr.chesslib.move.MoveGenerator;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
 
-import org.example.javachess.Services.EngineService;
+import org.example.javachess.Engine.AnalysisUpdate;
+import org.example.javachess.Engine.MoveCoach;
+import org.example.javachess.Engine.OpeningExplorer;
+import org.example.javachess.Engine.PositionAnalyzer;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -28,14 +31,13 @@ public abstract class AbstractGame {
     // Removed move labels
     protected EvalBar evalBar;
     protected boolean gameRunning;
-    protected UCIEngine stockfish;
     protected StringBuilder pgn;
     protected int gameId;
     protected Path archivePath;
     protected boolean saveGame = true;
     protected String initialFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
     protected Task<Void> moveCalculationTask;
-    protected UCIEngine.AnalysisUpdateCallback analysisCallback;
+    protected PositionAnalyzer.Listener analysisCallback;
     protected java.util.function.Consumer<String> statusCallback;
 
     public AbstractGame(ChessBoardUI chessBoardUI, EvalBar evalBar) {
@@ -44,7 +46,6 @@ public abstract class AbstractGame {
         // Removed evaluationLabel assignment
         this.evalBar = evalBar;
         // Removed move labels assignment
-        this.stockfish = EngineService.getInstance().getEngine();
         this.pgn = new StringBuilder();
         this.archivePath = copyArchiveJsonToWritableLocation();
         this.gameId = getNextGameId();
@@ -60,7 +61,7 @@ public abstract class AbstractGame {
         }
     }
 
-    public void setAnalysisCallback(UCIEngine.AnalysisUpdateCallback callback) {
+    public void setAnalysisCallback(PositionAnalyzer.Listener callback) {
         this.analysisCallback = callback;
     }
 
@@ -110,27 +111,68 @@ public abstract class AbstractGame {
     protected boolean analysisEnabled = org.example.javachess.Utils.ConfigManager.getBooleanProperty("game.evaluation",
             true);
 
+    /**
+     * Starts (or keeps) the live analysis of the current position: eval bar, arrows and analysis panel.
+     * Non-blocking: the engine layer runs it on its own threads and replaces any previous analysis.
+     */
     protected void evaluatePositionAndMoves() {
         if (!gameRunning || !analysisEnabled) {
-            if (stockfish != null)
-                stockfish.stopCalculating();
+            PositionAnalyzer.get().stop();
             return;
         }
+        PositionAnalyzer.get().analyze(board.getFen(), analysisDepth, analysisMultiPV, this::onAnalysisUpdate);
+    }
 
-        if (moveCalculationTask != null && moveCalculationTask.isRunning()) {
-            moveCalculationTask.cancel();
+    /** Engine event thread: forwards to the controller callback and updates eval bar and arrows. */
+    private void onAnalysisUpdate(AnalysisUpdate update) {
+        if (analysisCallback != null) {
+            analysisCallback.onUpdate(update);
         }
+        double score = update.whitePawns();
+        String best = update.bestMove();
+        boolean arrows = showArrows && shouldShowArrows(update);
+        if (evalBar != null) {
+            evalBar.updateEvaluation(score); // EvalBar hops to the FX thread itself
+        }
+        if (showArrows && chessBoardUI != null) {
+            Platform.runLater(() -> {
+                chessBoardUI.clearArrows();
+                if (arrows && best != null && best.length() >= 4) {
+                    int fromCol = best.charAt(0) - 'a';
+                    int fromRow = '8' - best.charAt(1);
+                    int toCol = best.charAt(2) - 'a';
+                    int toRow = '8' - best.charAt(3);
+                    chessBoardUI.drawArrowOnBoard(fromCol, fromRow, toCol, toRow,
+                            javafx.scene.paint.Color.rgb(156, 204, 101, 0.7));
+                }
+            });
+        }
+    }
 
-        moveCalculationTask = new Task<Void>() {
-            @Override
-            protected Void call() {
-                stockfish.startAnalysis(board.getFen(), analysisDepth, analysisMultiPV, analysisCallback, chessBoardUI,
-                        evalBar, showArrows);
-                return null;
-            }
-        };
+    /** Whether the best-move arrow should be drawn for this update (PvC hides the bot's suggestions). */
+    protected boolean shouldShowArrows(AnalysisUpdate update) {
+        return true;
+    }
 
-        new Thread(moveCalculationTask).start();
+    /** Call after a human move was applied: LED verdict + analysis of the new position. */
+    protected void onHumanMove(String fenBefore, Move move) {
+        if (analysisEnabled && gameRunning) {
+            MoveCoach.get().onMovePlayed(fenBefore, move.toString());
+        }
+    }
+
+    /** Stops the live analysis (game over / left the screen). */
+    protected void stopAnalysis() {
+        PositionAnalyzer.get().stop();
+    }
+
+    /** Looks the opening up asynchronously and shows it in {@code label} when found. */
+    protected void updateOpeningLabel(javafx.scene.control.Label label) {
+        if (label == null) {
+            return;
+        }
+        OpeningExplorer.lookup(board.getFen()).thenAccept(name ->
+                name.ifPresent(n -> Platform.runLater(() -> label.setText(n))));
     }
 
     public void setAnalysisParams(int depth, int multiPV) {
@@ -144,8 +186,7 @@ public abstract class AbstractGame {
         if (enabled) {
             evaluatePositionAndMoves();
         } else {
-            if (stockfish != null)
-                stockfish.stopCalculating();
+            PositionAnalyzer.get().stop();
             chessBoardUI.clearArrows();
         }
     }
@@ -250,10 +291,6 @@ public abstract class AbstractGame {
 
     public Board getBoard() {
         return board;
-    }
-
-    public UCIEngine getStockfish() {
-        return stockfish;
     }
 
     // --- LED VISUALIZATION METHODS ---

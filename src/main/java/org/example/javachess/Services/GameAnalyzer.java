@@ -4,102 +4,152 @@ import com.github.bhlangonijr.chesslib.*;
 import com.github.bhlangonijr.chesslib.move.Move;
 import com.github.bhlangonijr.chesslib.move.MoveGenerator;
 import com.github.bhlangonijr.chesslib.move.MoveGeneratorException;
-import org.example.javachess.Oggetti.AnalysisResult;
+import org.example.javachess.Engine.EngineManager;
+import org.example.javachess.Engine.InfoLine;
+import org.example.javachess.Engine.MoveClassifier;
+import org.example.javachess.Engine.OpeningExplorer;
+import org.example.javachess.Engine.Score;
+import org.example.javachess.Engine.SearchLimits;
+import org.example.javachess.Engine.SearchResult;
+import org.example.javachess.Engine.UciClient;
 import org.example.javachess.Oggetti.MoveAnalysis;
 import org.example.javachess.Oggetti.MoveAnalysis.MoveClassification;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
+/**
+ * Full game review: move labels (book, forced, brilliant, great, miss, best ... blunder) and accuracy.
+ *
+ * <p>Engine use: every position of the game is searched once (MultiPV 3) on the shared review engine of
+ * {@link EngineManager}; the score after a move outside the top 3 comes from the search of the next position
+ * (same depth), so a game of N moves costs N+1 searches instead of up to 2N, and no process is spawned per
+ * review. Scores are kept from the mover's point of view (fixes the old sign error on Black's mates).</p>
+ */
 public class GameAnalyzer {
 
-    private final StockfishAnalyzer stockfishAnalyzer;
+    private static final Logger log = LoggerFactory.getLogger(GameAnalyzer.class);
+    private static final String START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    private static final int MULTI_PV = 3;
+    private static final int BOOK_MAX_PLY = 24;
+
+    /** One searched line, mover's point of view. */
+    private record Eval(Score score, String move, List<String> pv) {
+        double cp() {
+            return score.centipawns();
+        }
+    }
 
     public GameAnalyzer() {
-        this.stockfishAnalyzer = new StockfishAnalyzer();
+        // engines are owned by EngineManager: nothing to start here
     }
 
     public List<MoveAnalysis> analyzeGame(String pgn, int depth, Consumer<Double> progressCallback) {
+        return analyzeGame(pgn, START_FEN, depth, progressCallback);
+    }
+
+    /** Analyses a game from {@code initialFen} given as a list of UCI moves. Blocking. */
+    public List<MoveAnalysis> analyzeGame(String initialFen, List<String> uciMoves, int depth,
+                                          Consumer<Double> progressCallback) {
+        return analyzeGame(String.join(" ", uciMoves), initialFen, depth, progressCallback);
+    }
+
+    /**
+     * Analyses a game given as UCI moves (tokens like "1." and results are ignored).
+     * Blocking: call it from a background thread.
+     */
+    public List<MoveAnalysis> analyzeGame(String pgn, String initialFen, int depth, Consumer<Double> progressCallback) {
         List<MoveAnalysis> analysisList = new ArrayList<>();
         Board board = new Board();
+        board.loadFromFen(initialFen == null || initialFen.isBlank() ? START_FEN : initialFen);
 
-        List<String> moveStrs = parsePgnMoves(pgn);
-        int totalMoves = moveStrs.size();
+        // 1. Replay the game to collect positions (stops at the first unreadable/illegal token)
+        List<String> moveStrs = new ArrayList<>();
+        List<Move> moves = new ArrayList<>();
+        List<String> fens = new ArrayList<>();
+        fens.add(board.getFen());
+        for (String token : parsePgnMoves(pgn)) {
+            Move m = parseMove(token, board);
+            if (m == null || !board.legalMoves().contains(m)) {
+                log.warn("review: stopping at unreadable move '{}'", token);
+                break;
+            }
+            board.doMove(m);
+            moveStrs.add(token);
+            moves.add(m);
+            fens.add(board.getFen());
+        }
+        int totalMoves = moves.size();
+        if (totalMoves == 0) {
+            return analysisList;
+        }
 
-        board.loadFromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+        // 2. Search every position once (N+1 searches)
+        List<List<Eval>> evals = new ArrayList<>();
+        EngineManager manager = EngineManager.get();
+        UciClient engine = manager.acquireReviewClient();
+        long t0 = System.nanoTime();
+        try {
+            engine.newGame().get(30, TimeUnit.SECONDS);
+            int cap = manager.budget().reviewMovetimeCapMs();
+            for (int i = 0; i <= totalMoves; i++) {
+                evals.add(search(engine, fens.get(i), depth, cap));
+                if (progressCallback != null) {
+                    progressCallback.accept(0.98 * (i + 1) / (totalMoves + 1));
+                }
+            }
+        } catch (Exception e) {
+            log.error("review engine failed: {}", e.toString());
+            return analysisList;
+        } finally {
+            manager.releaseReviewClient();
+        }
+        log.info("review: {} positions searched at depth {} in {} ms", totalMoves + 1, depth,
+                (System.nanoTime() - t0) / 1_000_000);
 
+        // 3. Classify
+        board.loadFromFen(fens.get(0));
+        boolean inBook = true;
         for (int i = 0; i < totalMoves; i++) {
             String moveStr = moveStrs.get(i);
-            String fenBefore = board.getFen();
+            String fenBefore = fens.get(i);
             Side sideToMove = board.getSideToMove();
+            Move playedMove = moves.get(i);
+            List<Eval> results = evals.get(i);
 
             // 1. Check Forced Move
             boolean isForced = isForcedMove(board);
 
-            // 2. Check Book Move
-            boolean isBook = isBookMove(fenBefore, moveStr);
+            // 2. Check Book Move (only while the game is still in book, with a short network timeout)
+            boolean isBook = inBook && i < BOOK_MAX_PLY && isBookMove(fenBefore, moveStr);
+            inBook = isBook;
 
-            // 3. Run Stockfish Analysis
-            List<AnalysisResult> stockfishResults = stockfishAnalyzer.analyze(fenBefore, depth, 3);
-
-            AnalysisResult bestEval = getResultByPv(stockfishResults, 1);
-            AnalysisResult secondBestEval = getResultByPv(stockfishResults, 2);
-
-            Move playedMove = parseMove(moveStr, board);
-            if (playedMove == null) {
-                System.err.println("Failed to parse move: " + moveStr);
-                continue;
-            }
-
-            AnalysisResult playedEval = findEvalForMove(stockfishResults, playedMove);
-
-            double playedScoreVal;
-            if (playedEval != null) {
-                playedScoreVal = playedEval.score;
-            } else {
-                board.doMove(playedMove);
-                String fenAfter = board.getFen();
-                List<AnalysisResult> afterResults = stockfishAnalyzer.analyze(fenAfter, depth, 1);
-                if (!afterResults.isEmpty()) {
-                    playedScoreVal = afterResults.get(0).score;
-                } else {
-                    playedScoreVal = bestEval != null ? bestEval.score - 1.0 : 0.0;
-                }
-                board.undoMove();
+            Eval bestEval = results.isEmpty() ? null : results.get(0);
+            Eval secondBestEval = results.size() > 1 ? results.get(1) : null;
+            Eval playedEval = findEvalForMove(results, playedMove);
+            if (playedEval == null) {
+                playedEval = evalAfter(playedMove, evals.get(i + 1), fens.get(i + 1));
             }
 
             // --- CALCOLO MATERIALE E IMBALANCE ---
             // Calcoliamo se siamo sotto di materiale PRIMA della mossa (per capire se è una ricattura/difesa)
             int rawImbalance = getMaterialImbalance(board);
             int myImbalance = (sideToMove == Side.WHITE) ? rawImbalance : -rawImbalance;
-            // --- CALCOLO CP (MATERIALE) ---
-            double bestCp = bestEval != null ? bestEval.score * 100 : 0;
-            double playedCp = playedScoreVal * 100;
-            
-            if (bestEval != null && bestEval.isMate) bestCp = bestEval.mateIn > 0 ? 10000 : -10000;
-            if (playedEval != null && playedEval.isMate) playedCp = playedEval.mateIn > 0 ? 10000 : -10000;
-
-            double secondBestCpRaw = secondBestEval != null ? secondBestEval.score * 100 : -10000;
-            if (secondBestEval != null && secondBestEval.isMate) secondBestCpRaw = secondBestEval.mateIn > 0 ? 10000 : -10000;
-
-            if (sideToMove == Side.BLACK) {
-                bestCp = -bestCp;
-                playedCp = -playedCp;
-                secondBestCpRaw = -secondBestCpRaw; 
-            }
-            double secondBestCp = secondBestCpRaw;
+            // --- CALCOLO CP (MATERIALE), punto di vista di chi muove, matti = +/-10000 ---
+            double bestCp = bestEval != null ? bestEval.cp() : playedEval.cp();
+            double playedCp = playedEval.cp();
+            double secondBestCp = secondBestEval != null ? secondBestEval.cp() : -10000;
 
             // --- CALCOLO WP (STATISTICA) ---
             double bestWp = calculateWinProbability(bestCp);
             double playedWp = calculateWinProbability(playedCp);
             double secondBestWp = calculateWinProbability(secondBestCp);
-            
-            double deltaWp = bestWp - playedWp;
-            
+
+            double deltaWp = Math.max(0, bestWp - playedWp);
+
             // GAPS
             double wpGap = bestWp - secondBestWp;    // Gap Posizionale
             double cpGap = bestCp - secondBestCp;     // Gap Materiale
@@ -118,9 +168,9 @@ public class GameAnalyzer {
 
             // 1. BRILLIANT (!!)
             if (classification == null) {
-                boolean isCloseToBest = deltaWp < 0.03; 
-                boolean isTop3 = isMoveInTopX(stockfishResults, playedMove, 3);
-                
+                boolean isCloseToBest = deltaWp < 0.03;
+                boolean isTop3 = isMoveInTopX(results, playedMove, 3);
+
                 if (isSacrifice && isCloseToBest && isTop3 && playedWp > 0.55) {
                     classification = MoveClassification.BRILLIANT;
                     logMove(moveStr, bestWp, playedWp, deltaWp, classification);
@@ -129,7 +179,7 @@ public class GameAnalyzer {
 
             // 2. GREAT MOVE (!) - LOGICA MATERIALE DEFINITIVA
             if (classification == null) {
-                
+
                 // LOGICA RECOVERY:
                 // Se eravamo sotto di materiale (<-50, es. meno di un pedone) E stiamo catturando,
                 // stiamo probabilmente "Ricatturando" o "Recuperando".
@@ -141,7 +191,7 @@ public class GameAnalyzer {
 
                 // CRITERIO A: Gap Posizionale
                 boolean positionalGreat = (wpGap > 0.08) && (playedWp > 0.50);
-                
+
                 // CRITERIO B: Gap Materiale (Pezzo Gratis)
                 // Se guadagniamo > 200cp rispetto alla seconda mossa, è un pezzo gratis.
                 boolean materialGreat = (cpGap > 200) && isCapture;
@@ -152,7 +202,7 @@ public class GameAnalyzer {
                 if (isRecovery && !isWinning) {
                     // Force BEST for standard trades/recaptures
                     classification = MoveClassification.BEST;
-                } 
+                }
                 else if (deltaWp < 0.02) {
                     // Se non è bloccato dal filtro sopra, verifichiamo se è Great
                     if (positionalGreat || materialGreat) {
@@ -171,7 +221,7 @@ public class GameAnalyzer {
             if (classification == null) {
                 boolean missedPositional = wpGap > 0.08;
                 boolean missedMaterial = cpGap > 200;
-                
+
                 if ((missedPositional || missedMaterial) && deltaWp > 0.09 && bestWp > 0.50) {
                     classification = MoveClassification.MISS;
                     logMove(moveStr, bestWp, playedWp, deltaWp, classification);
@@ -187,16 +237,17 @@ public class GameAnalyzer {
                 logMove(moveStr, bestWp, playedWp, deltaWp, classification);
             }
 
+            boolean whiteMoved = sideToMove == Side.WHITE;
             MoveAnalysis analysis = new MoveAnalysis(
                     i + 1,
                     moveStr,
                     fenBefore,
-                    playedScoreVal * 100,
-                    bestEval != null ? bestEval.bestMove : "",
+                    playedEval.score().forWhite(whiteMoved).legacyPawns() * 100, // White POV, as the graph expects
+                    bestEval != null ? bestEval.move() : "",
                     classification,
                     deltaWp * 100,
                     playedMove.getTo().ordinal(),
-                    bestEval != null && bestEval.isMate,
+                    playedEval.score().mate(),
                     100 * (1 - deltaWp),
                     playedWp,
                     bestWp);
@@ -204,13 +255,45 @@ public class GameAnalyzer {
             analysisList.add(analysis);
 
             board.doMove(playedMove);
-            
-            if (progressCallback != null) {
-                progressCallback.accept((double) (i + 1) / totalMoves);
-            }
+        }
+        if (progressCallback != null) {
+            progressCallback.accept(1.0);
         }
 
         return analysisList;
+    }
+
+    private static List<Eval> search(UciClient engine, String fen, int depth, int capMs) throws Exception {
+        Board b = new Board();
+        b.loadFromFen(fen);
+        if (b.legalMoves().isEmpty()) {
+            return List.of();
+        }
+        SearchLimits limits = SearchLimits.depth(Math.max(1, depth)).withMultiPv(MULTI_PV);
+        if (capMs > 0) {
+            limits = limits.withMovetime(capMs);
+        }
+        SearchResult r = engine.search(fen, limits.withTimeout(Math.max(capMs, 30_000) + 5_000L)).result()
+                .get(120, TimeUnit.SECONDS);
+        List<Eval> out = new ArrayList<>();
+        for (InfoLine l : r.lines()) {
+            out.add(new Eval(l.score(), l.move(), l.pv()));
+        }
+        return out;
+    }
+
+    /** Score of a move outside the top lines, from the search of the resulting position (same depth). */
+    private static Eval evalAfter(Move played, List<Eval> next, String fenAfter) {
+        List<String> pv = new ArrayList<>();
+        pv.add(played.toString());
+        if (next.isEmpty()) {
+            Board b = new Board();
+            b.loadFromFen(fenAfter);
+            return new Eval(b.isKingAttacked() ? Score.mate(1) : Score.cp(0), played.toString(), pv);
+        }
+        Eval reply = next.get(0);
+        pv.addAll(reply.pv());
+        return new Eval(reply.score().negate(), played.toString(), pv);
     }
 
     private MoveClassification classifyStandard(double deltaWp) {
@@ -223,9 +306,7 @@ public class GameAnalyzer {
     }
 
     private double calculateWinProbability(double cp) {
-        if (cp > 9000) return 1.0;
-        if (cp < -9000) return 0.0;
-        return 1.0 / (1.0 + Math.pow(10, -cp / 400.0));
+        return MoveClassifier.winProbability(cp);
     }
 
     private boolean isForcedMove(Board board) {
@@ -236,74 +317,38 @@ public class GameAnalyzer {
         }
     }
 
+    /** Book move = played at least 10 times in the Lichess masters database (network, 2 s cap). */
     private boolean isBookMove(String fen, String moveUci) {
         try {
-            URL url = new URL("https://explorer.lichess.ovh/masters?fen=" + fen.replace(" ", "%20"));
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(1000);
-            conn.setReadTimeout(1000);
-
-            if (conn.getResponseCode() == 200) {
-                BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                String inputLine;
-                StringBuilder content = new StringBuilder();
-                while ((inputLine = in.readLine()) != null) {
-                    content.append(inputLine);
-                }
-                in.close();
-                String json = content.toString();
-                String searchKey = "\"uci\":\"" + moveUci + "\"";
-                int moveIndex = json.indexOf(searchKey);
-                if (moveIndex == -1) return false;
-                String afterMove = json.substring(moveIndex);
-                int closeBrace = afterMove.indexOf("}");
-                if (closeBrace == -1) return false;
-                String moveData = afterMove.substring(0, closeBrace);
-                int white = extractCount(moveData, "\"white\":");
-                int draws = extractCount(moveData, "\"draws\":");
-                int black = extractCount(moveData, "\"black\":");
-                int totalGames = white + draws + black;
-                return totalGames >= 10;
-            }
-        } catch (Exception e) { return false; }
-        return false;
-    }
-
-    private int extractCount(String data, String key) {
-        try {
-            int start = data.indexOf(key);
-            if (start == -1) return 0;
-            start += key.length();
-            int end = start;
-            while (end < data.length() && Character.isDigit(data.charAt(end))) { end++; }
-            return Integer.parseInt(data.substring(start, end));
-        } catch (Exception e) { return 0; }
+            return OpeningExplorer.masterGames(fen, moveUci).get(2500, TimeUnit.MILLISECONDS) >= 10;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private boolean isCapture(Board board, Move playedMove) {
         return board.getPiece(playedMove.getTo()) != com.github.bhlangonijr.chesslib.Piece.NONE;
     }
 
-    private boolean isMoveInTopX(List<AnalysisResult> results, Move playedMove, int x) {
+    private boolean isMoveInTopX(List<Eval> results, Move playedMove, int x) {
         for (int i = 0; i < Math.min(results.size(), x); i++) {
-            if (results.get(i).bestMove.equals(playedMove.toString())) {
+            if (results.get(i).move().equals(playedMove.toString())) {
                 return true;
             }
         }
         return false;
     }
 
-    private boolean isSacrifice(Board board, Move playedMove, AnalysisResult playedEval, Side side) {
+    private boolean isSacrifice(Board board, Move playedMove, Eval playedEval, Side side) {
         if (board.isKingAttacked()) return false;
-        if (playedEval == null || playedEval.fullPv == null) return false;
+        if (playedEval == null || playedEval.pv().isEmpty()) return false;
         
         int balanceT0 = getMaterialBalance(board, side);
         board.doMove(playedMove);
 
         boolean pvSacrifice = false;
-        if (playedEval != null && playedEval.fullPv != null) {
-            String[] pvMoves = playedEval.fullPv.split(" ");
+        if (playedEval != null && !playedEval.pv().isEmpty()) {
+            String[] pvMoves = playedEval.pv().toArray(new String[0]);
             if (pvMoves.length > 1) {
                 String oppResponseStr = pvMoves[1];
                 Move oppResponse = parseMove(oppResponseStr, board);
@@ -344,7 +389,7 @@ public class GameAnalyzer {
                     if ((balanceT0 - balanceT1 > 1) && !canRecapture) { offeredSacrifice = true; break; }
                 }
             }
-        } catch (Exception e) { e.printStackTrace(); }
+        } catch (Exception e) { log.debug("sacrifice check failed: {}", e.toString()); }
         board.undoMove(); 
         return offeredSacrifice;
     }
@@ -396,9 +441,9 @@ public class GameAnalyzer {
 
     private List<String> parsePgnMoves(String pgn) {
         List<String> moves = new ArrayList<>();
-        String[] tokens = pgn.split("\\s+");
+        String[] tokens = pgn == null ? new String[0] : pgn.trim().split("\\s+");
         for (String token : tokens) {
-            if (!token.matches("\\d+\\.") && !token.matches("1-0|0-1|1/2-1/2")) {
+            if (!token.isEmpty() && !token.matches("\\d+\\.+") && !token.matches("1-0|0-1|1/2-1/2|\\*")) {
                 moves.add(token);
             }
         }
@@ -424,14 +469,9 @@ public class GameAnalyzer {
         } catch (Exception e) { return null; }
     }
 
-    private AnalysisResult getResultByPv(List<AnalysisResult> results, int pv) {
-        if (results.size() >= pv) return results.get(pv - 1);
-        return null;
-    }
-
-    private AnalysisResult findEvalForMove(List<AnalysisResult> results, Move move) {
-        for (AnalysisResult res : results) {
-            if (res.bestMove.equals(move.toString())) return res;
+    private Eval findEvalForMove(List<Eval> results, Move move) {
+        for (Eval res : results) {
+            if (res.move().equals(move.toString())) return res;
         }
         return null;
     }
@@ -471,7 +511,9 @@ public class GameAnalyzer {
     }
 
     private void logMove(String move, double wpPrev, double wpPost, double delta, MoveClassification label) {
-        System.out.printf("Mossa %s | WP Prev %.2f | WP Post %.2f | Delta %.3f | Label %s%n", 
-            move, wpPrev, wpPost, delta, label);
+        if (log.isDebugEnabled()) {
+            log.debug(String.format(Locale.ROOT, "Mossa %s | WP Prev %.2f | WP Post %.2f | Delta %.3f | Label %s",
+                    move, wpPrev, wpPost, delta, label));
+        }
     }
 }
