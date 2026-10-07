@@ -342,6 +342,11 @@ class BrilliantGreatExclusionsTest {
                 Eval.whiteMates(3), "d3f5", Eval.cp(-965), "d3e2", Eval.whiteMates(3)), 2500, 2500);
         assertEquals(MoveClassification.GREAT, label(bf5, Tuning.DEFAULT));
         assertNotEquals(MoveClassification.GREAT, label(bf5, Tuning.DEFAULT.with("greatStartsMate", 0)));
+        // daily_1027855652 ply 63, 32.Rh6+ mates in 2, the second best move keeps +1.78 (chess.com Great)
+        ReviewInput rh6 = rated(oneMove("2r1r2k/p5n1/1pp2NR1/3pPq1p/3P1P1P/8/PPP1Q3/2K5 w - - 1 32", "g6h6",
+                Eval.whiteMates(2), "g6h6", Eval.cp(178), "e2d3", Eval.whiteMates(1)), 1709, 1652);
+        assertEquals(MoveClassification.GREAT, label(rh6, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.GREAT, label(rh6, Tuning.DEFAULT.with("greatStartsMateAltCp", 150)));
     }
 
     @Test

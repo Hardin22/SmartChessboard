@@ -102,6 +102,8 @@ public final class ReviewClassifier {
         final double brilliantTopRegain;
         /** v2.3 R9: a quiet move starting a forced mate is Great when the alternative does not win. */
         final boolean greatStartsMate;
+        /** ... when the second best move is at most this many centipawns (v2.3: 150; v2.5: 200, Rh6+ +1.78 Great). */
+        final double greatStartsMateAltCp;
         /**
          * Phase 4: a player under this rating (0 = off) who punishes the opponent's Blunder with the engine's move, not a
          * recapture, and stands winning (win chance above {@link #greatPunishMinEp}) gets Great (the mates in one are
@@ -230,6 +232,7 @@ public final class ReviewClassifier {
             greatRule = (int) get("greatRule", 2);
             brilliantAltNonTopOnly = get("brilliantAltNonTopOnly", 0) != 0;
             greatStartsMate = get("greatStartsMate", 1) != 0;
+            greatStartsMateAltCp = get("greatStartsMateAltCp", 200);
             greatPunishRating = get("greatPunishRating", 1000);
             greatPunishMinEp = get("greatPunishMinEp", 0.60);
             greatPunishCaptureLoss = get("greatPunishCaptureLoss", 0.20);
@@ -787,7 +790,7 @@ public final class ReviewClassifier {
         if (t.brilliantRule == 0 && brilliant(b0, uci, me)) {
             return MoveClassification.BRILLIANT;
         }
-        if (t.greatStartsMate && label == MoveClassification.BEST && isTop && startsMate(b0, uci, played, second, me)) {
+        if (t.greatStartsMate && label == MoveClassification.BEST && isTop && startsMate(b0, uci, played, second, me, t)) {
             return MoveClassification.GREAT; // R9
         }
         if (label != MoveClassification.BEST || !isTop || played.isMateFor(me)) {
@@ -895,16 +898,17 @@ public final class ReviewClassifier {
 
     /**
      * SPEC v2.3 R9: a quiet move or a check without capture that starts a forced mate (not mate at once) when the
-     * second best move does not win (at most +150 cp, or loses to mate) is Great: chess.com 8 of 8 (Anderssen -
-     * Dufresne 22.Bf5+, Wei Yi - Bruzon...). Finding a mate is not "critical" only when the alternative wins anyway.
+     * second best move does not win (at most {@link Tuning#greatStartsMateAltCp} cp, or loses to mate) is Great:
+     * chess.com 8 of 8 (Anderssen - Dufresne 22.Bf5+, Wei Yi - Bruzon...). Finding a mate is not "critical" only when
+     * the alternative wins anyway.
      */
-    private static boolean startsMate(Board b0, String uci, Eval played, EngineLine second, boolean me) {
+    private static boolean startsMate(Board b0, String uci, Eval played, EngineLine second, boolean me, Tuning t) {
         if (second == null || !played.isMateFor(me) || played.isCheckmate() || b0.isKingAttacked()
                 || Tactics.isCapture(b0, uci) || uci.length() > 4) {
             return false;
         }
         Eval alt = second.eval();
-        return alt.isMateAgainst(me) || (!alt.isMate() && alt.cpFor(me) <= 150);
+        return alt.isMateAgainst(me) || (!alt.isMate() && alt.cpFor(me) <= t.greatStartsMateAltCp);
     }
 
     /** True when {@code uci} pushes a passed pawn that arrived on its square with the mover's previous move. */

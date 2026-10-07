@@ -1,6 +1,6 @@
 # Brilliant/Great errors accepted today by SpecialLabelsGateTest (Phase 4). It only shrinks: regenerate
 # (-Dreview.special.regen=true) after fixing errors. Allowlisted exceptions are not repeated here.
-# exact 0.6818 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
+# exact 0.6819 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
 id	ply	kind	set	san	ours	chesscom
 daily_1008989784	49	fp-brilliant	ex-holdout49	Bf8	brilliant	excellent
 daily_1009092152	30	fn-great	cv93	Bxb5	best	great
@@ -21,7 +21,6 @@ daily_1024819088	43	fp-great	cv93	Nd4	great	best
 daily_1027855652	9	fn-great	ex-holdout49	e5	best	great
 daily_1027855652	49	fn-great	ex-holdout49	h4	best	great
 daily_1027855652	59	fn-brilliant	ex-holdout49	Rxg6	excellent	brilliant
-daily_1027855652	63	fn-great	ex-holdout49	Rh6+	best	great
 daily_1033021160	51	fn-great	cv93	Rxd8	best	great
 daily_990231844	43	fn-great	cv93	bxa6	best	great
 daily_998267522	41	fn-great	ex-holdout49	Bxd4	best	great
@@ -209,7 +208,6 @@ ivanchuk_yusupov_1991_g9	24	fp-great	famous-brilliant	e3	great	best
 ivanchuk_yusupov_1991_g9	38	fn-great	famous-brilliant	gxf4	best	great
 ivanchuk_yusupov_1991_g9	56	fn-great	famous-brilliant	Rg6	excellent	great
 ivanchuk_yusupov_1991_g9	62	fn-great	famous-brilliant	Kh7	best	great
-ivanchuk_yusupov_1991_g9	78	fn-great	famous-brilliant	Qg3	best	great
 karpov_kasparov_1985_g16	26	fp-great	famous-brilliant	Bf5	great	best
 karpov_kasparov_1985_g16	36	fn-great	famous-brilliant	b4	best	great
 karpov_kasparov_1985_g16	74	fn-brilliant	famous-brilliant	Rc1	best	brilliant
