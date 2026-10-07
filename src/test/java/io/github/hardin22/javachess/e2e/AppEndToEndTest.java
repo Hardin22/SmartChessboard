@@ -243,8 +243,10 @@ class AppEndToEndTest {
             return r;
         });
         waitFor("full analysis", () -> fxGet(() -> {
+            // the provisional results of the moves reviewed so far come first: wait for the accuracy as well
             List<?> analysis = (List<?>) field(review, "currentAnalysis");
-            return analysis != null && analysis.size() == 7;
+            return analysis != null && analysis.size() == 7
+                    && ((javafx.scene.Node) field(review, "accuracyWrapper")).isVisible();
         }));
         String white = fxGet(() -> ((Label) field(review, "whiteAccuracyLabel")).getText());
         String black = fxGet(() -> ((Label) field(review, "blackAccuracyLabel")).getText());
@@ -293,6 +295,43 @@ class AppEndToEndTest {
         fireButton(I18n.t("archive.delete"));   // confirms
         waitFor("deleted", () -> archive().get(first.id()).isEmpty());
         waitFor("list refreshed", () -> fxGet(() -> list.getItems().size()) == stored - 1);
+    }
+
+    @Test
+    @Order(7)
+    void botMoveIsRetriedWhenTheEngineCrashesOrHangs() throws Exception {
+        for (String failure : List.of("!crash", "!hang")) {
+            if (failure.equals("!hang")) {
+                // a new bot process for the second case: the crashes above used up the restart budget
+                fx(() -> {
+                    EngineSelection.get().select(EngineManager.STOCKFISH_LITE);
+                    return null;
+                });
+                waitFor("lite profile", () -> EngineManager.STOCKFISH_LITE.equals(EngineManager.get().activeProfile().id()));
+            }
+            Files.writeString(script, failure + "\n");
+            ActiveGameController game = startPvc(true);
+            fx(() -> {
+                currentGame(game).handleMoveInput("e2e4");
+                return null;
+            });
+            waitFor("engine failure reported (" + failure + ")",
+                    () -> fxGet(() -> currentGame(game).lastStatus()).startsWith("Motore non disponibile"));
+            assertEquals(1, (int) fxGet(() -> currentGame(game).getBoard().getHistory().size() - 1));
+            assertFalse(fxGet(() -> currentGame(game).isAwaitingHumanMove()), "still the bot's turn");
+            Files.writeString(script, "e7e5\n"); // the engine works again
+            waitFor("bot move after the retry (" + failure + ")",
+                    () -> fxGet(() -> currentGame(game).getBoard().getHistory().size() - 1) >= 2);
+            assertTrue(fxGet(() -> currentGame(game).isAwaitingHumanMove()));
+            fx(() -> {
+                main.navigateTo("HOME");
+                return null;
+            });
+        }
+        fx(() -> {
+            EngineSelection.get().select(EngineManager.STOCKFISH);
+            return null;
+        });
     }
 
     // ================================================================== helpers

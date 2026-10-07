@@ -122,6 +122,8 @@ public class PuzzleGame extends AbstractGame {
         manager.setSetupTargetFen(board.getFen());
         // No engine hints while solving: coloured destinations would give the solution away.
         manager.setEvaluationEnabled(false);
+        // Only the solver's moves are read from the board; the opponent's replies are reproduced.
+        manager.setPhysicalMoveSide(board.getSideToMove());
 
         manager.setListener(new io.github.hardin22.javachess.Services.BoardStateManager.BoardMoveListener() {
             @Override
@@ -202,10 +204,18 @@ public class PuzzleGame extends AbstractGame {
         this.onTurnChange = onTurnChange;
     }
 
+    /** The solver's turn: the puzzle is being solved and the opponent's reply is not pending. */
+    @Override
+    public boolean isAwaitingHumanMove() {
+        return gameRunning && isSolving && currentPuzzle != null && currentMoveIndex % 2 == 1
+                && currentMoveIndex < currentPuzzle.getMoves().size();
+    }
+
     @Override
     public void handleMoveInput(String moveInput) {
-        if (!gameRunning || !isSolving)
-            return;
+        if (!isAwaitingHumanMove()) {
+            return; // e.g. a move while the opponent's reply is still to come
+        }
 
         Move move = parseMoveInput(moveInput);
         if (move == null)
@@ -244,6 +254,7 @@ public class PuzzleGame extends AbstractGame {
                         currentMoveIndex++;
 
                         if (currentMoveIndex >= puzzle.getMoves().size()) {
+                            isSolving = false;
                             updateStatus("PUZZLE COMPLETATO!");
                             recordProgress(puzzle);
                             instructionLabel.setText("COMPLIMENTI!");
@@ -265,9 +276,12 @@ public class PuzzleGame extends AbstractGame {
                 log.info("Wrong puzzle move {} (expected {})", move, expectedUci);
                 updateStatus("Mossa Errata! Riprova.");
                 mistakes++;
-                // the board manager already took the move: tell it the position did not change
-                io.github.hardin22.javachess.Controllers.ArduinoController.getInstance().getBoardStateManager()
-                        .setLogicalBoard(board);
+                // the board manager already took the move: tell it the position did not change, and show on
+                // the LEDs how to put the piece back
+                io.github.hardin22.javachess.Services.BoardStateManager manager =
+                        io.github.hardin22.javachess.Controllers.ArduinoController.getInstance().getBoardStateManager();
+                manager.setLogicalBoard(board);
+                manager.resyncToLogical();
                 io.github.hardin22.javachess.Controllers.ArduinoController.getInstance().flashLed(move.getFrom().name(), 255,
                         0, 0, 2);
 

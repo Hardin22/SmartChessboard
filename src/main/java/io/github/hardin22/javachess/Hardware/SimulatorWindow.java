@@ -17,7 +17,8 @@ import javafx.stage.Stage;
 /**
  * Debug window for the software board ({@code -Djavachess.board=sim -Djavachess.simulator.window=true}).
  * Each cell shows the LED color as the real board would; a dark disc marks a piece. Click a cell to lift or
- * place a piece, or type a move such as "e2e4" (lift e2, place e4) in the text field.
+ * place a piece, or type a move such as "e2e4" (lift e2, place e4) in the text field; "Scollega" unplugs the
+ * simulated cable.
  */
 public final class SimulatorWindow {
 
@@ -67,8 +68,16 @@ public final class SimulatorWindow {
                 moveField.clear();
             }
         });
-        BorderPane root = new BorderPane(grid, null, null, moveField, null);
-        BorderPane.setMargin(moveField, new Insets(6, 0, 0, 0));
+        // unplug / plug the simulated cable (tests the reconnection during a game)
+        javafx.scene.control.ToggleButton cable = new javafx.scene.control.ToggleButton("Scollega");
+        cable.setOnAction(e -> {
+            board.setConnected(!cable.isSelected());
+            cable.setText(cable.isSelected() ? "Ricollega" : "Scollega");
+        });
+        javafx.scene.layout.HBox bottom = new javafx.scene.layout.HBox(6, moveField, cable);
+        javafx.scene.layout.HBox.setHgrow(moveField, javafx.scene.layout.Priority.ALWAYS);
+        BorderPane root = new BorderPane(grid, null, null, bottom, null);
+        BorderPane.setMargin(bottom, new Insets(6, 0, 0, 0));
         root.setPadding(new Insets(8));
         root.setStyle("-fx-background-color: #1b1b1b;");
         stage.setScene(new Scene(root));

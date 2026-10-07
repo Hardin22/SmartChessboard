@@ -20,6 +20,18 @@ public class PvcGame extends AbstractGame {
     private boolean isPlayerWhite;
     private int skillLevel;
     private EngineService.EngineType botType;
+    /** A bot move has been asked for and not applied yet. */
+    private boolean botThinking;
+    /** Consecutive failed bot moves (engine missing or crashed): the retries get further apart. */
+    private int botFailures;
+    private static final long[] BOT_RETRY_DELAYS_MS = { 2_000, 5_000, 15_000, 30_000 };
+    /** Choosing another engine while the bot cannot move retries at once. */
+    private final javafx.beans.value.ChangeListener<io.github.hardin22.javachess.Engine.EngineProfile> profileListener =
+            (obs, o, n) -> {
+                if (botFailures > 0) {
+                    retryBotMove();
+                }
+            };
 
     public PvcGame(ChessBoardUI chessBoardUI, EvalBar evalBar, Label openingPvc, boolean isPlayerWhite,
             int skillLevel, EngineService.EngineType botType) {
@@ -46,6 +58,7 @@ public class PvcGame extends AbstractGame {
     public void startGame() {
         gameRunning = true;
         updateStatus("");
+        EngineManager.get().activeProfileProperty().addListener(profileListener);
 
         Platform.runLater(() -> chessBoardUI.setPosition(board.getFen(), null));
         evaluatePositionAndMoves();
@@ -89,14 +102,17 @@ public class PvcGame extends AbstractGame {
                 }
                 if (errorSquare != null) {
                     chessBoardUI.highlightErrorSquare(errorSquare);
-                    updateStatus("ERRORE: Controlla " + errorSquare);
+                    if (gameRunning) { // after the end the result stays on screen
+                        updateStatus("ERRORE: Controlla " + errorSquare);
+                    }
                 }
             }
 
             @Override
             public void onBotMoveReplicated() {
-                updateStatus("Mossa Bot Replicata! Tocca a te");
-                // Game continues naturally as we are now listening for user moves again
+                if (gameRunning) {
+                    updateStatus("Mossa Bot Replicata! Tocca a te");
+                }
             }
         });
 
@@ -122,14 +138,8 @@ public class PvcGame extends AbstractGame {
         }
 
         try {
-            Move move = parseMoveInput(moveInput);
-
-            // Handle Promotion (Auto-Queen)
-            if (move != null && isPromotionMove(move)) {
-                Side side = board.getSideToMove();
-                Piece promotionPiece = side == Side.WHITE ? Piece.WHITE_QUEEN : Piece.BLACK_QUEEN;
-                move = new Move(move.getFrom(), move.getTo(), promotionPiece);
-            }
+            // promotion: the piece chosen on the screen ("e7e8n"), a queen for a move from the board
+            Move move = withAutoQueen(parseMoveInput(moveInput));
 
             if (move != null && MoveGenerator.generateLegalMoves(board).contains(move)) {
                 String fenBefore = board.getFen();
@@ -169,23 +179,57 @@ public class PvcGame extends AbstractGame {
         if (!gameRunning)
             return;
 
+        botThinking = true;
         final String requestedFen = board.getFen();
         // Asynchronous: the engine layer never blocks this thread nor the FX thread.
         EngineManager.get().botMove(requestedFen, skillLevel).whenComplete((bestMoveUci, err) -> {
+            // Board is not thread-safe: the outcome is handled on the FX thread.
             if (err != null) {
-                log.error("bot move failed: {}", err.toString());
-                updateStatus("Motore non disponibile: " + EngineManager.get().statusProperty().get().message());
-                return;
+                Platform.runLater(() -> onBotMoveFailed(requestedFen, err));
+            } else {
+                Platform.runLater(() -> applyBotMove(requestedFen, bestMoveUci));
             }
-            // Board is not thread-safe: apply the bot move on the FX thread.
-            Platform.runLater(() -> applyBotMove(requestedFen, bestMoveUci));
         });
+    }
+
+    /** The engine could not move (missing, crashed, timed out): tell the player and try again later. */
+    private void onBotMoveFailed(String requestedFen, Throwable err) {
+        if (!gameRunning || !requestedFen.equals(board.getFen())) {
+            return;
+        }
+        botThinking = false;
+        long delay = BOT_RETRY_DELAYS_MS[Math.min(botFailures, BOT_RETRY_DELAYS_MS.length - 1)];
+        botFailures++;
+        log.error("bot move failed ({} in a row), retrying in {} ms: {}", botFailures, delay, err.toString());
+        var status = EngineManager.get().statusProperty().get();
+        String reason = status != null && !status.message().isBlank() ? status.message() : "nessuna risposta";
+        updateStatus("Motore non disponibile: " + reason + ". Nuovo tentativo tra " + delay / 1000 + " s");
+        runLaterOnFx(delay, () -> {
+            if (gameRunning && !botThinking && requestedFen.equals(board.getFen())) {
+                handleComputerMove();
+            }
+        });
+    }
+
+    /** Asks the bot again for its move now (e.g. "Riprova" after an engine failure). No effect on the human's turn. */
+    public void retryBotMove() {
+        if (gameRunning && !botThinking && board.getSideToMove() != (isPlayerWhite ? Side.WHITE : Side.BLACK)) {
+            handleComputerMove();
+        }
+    }
+
+    /** True while it is the human's turn and nothing else is pending (moves from the screen are accepted). */
+    @Override
+    public boolean isAwaitingHumanMove() {
+        return gameRunning && !botThinking && board.getSideToMove() == (isPlayerWhite ? Side.WHITE : Side.BLACK);
     }
 
     private void applyBotMove(String requestedFen, String bestMoveUci) {
         if (!gameRunning || !requestedFen.equals(board.getFen())) {
             return; // game ended or position changed meanwhile
         }
+        botThinking = false;
+        botFailures = 0;
         Move bestMove = parseMoveUci(bestMoveUci);
 
         if (isPromotionMove(bestMove) && bestMove.getPromotion() == Piece.NONE) {
@@ -205,6 +249,10 @@ public class PvcGame extends AbstractGame {
 
         chessBoardUI.setPosition(board.getFen(), finalBestMove);
         updateOpeningLabel(openingPvc);
+        // The player reproduces the bot's move on the board, also the one that ends the game.
+        io.github.hardin22.javachess.Controllers.ArduinoController.getInstance()
+                .getBoardStateManager()
+                .startBotMoveReplication(finalBestMove.getFrom().name(), finalBestMove.getTo().name());
         if (board.isMated()) {
             notifyMate(); // Trigger Victory Animation
             String winner = board.getSideToMove().flip() == Side.WHITE ? "Bianco" : "Nero";
@@ -213,12 +261,6 @@ public class PvcGame extends AbstractGame {
             String drawReason = getDrawReason();
             endGameWithMessage("Partita patta per " + drawReason + ".");
         } else {
-            // Trigger Physical Replication FIRST
-            io.github.hardin22.javachess.Controllers.ArduinoController.getInstance()
-                    .getBoardStateManager()
-                    .startBotMoveReplication(finalBestMove.getFrom().name(),
-                            finalBestMove.getTo().name());
-
             evaluatePositionAndMoves();
 
             // LED: Notify Opponent Move (Check/Mate only now)
@@ -261,6 +303,9 @@ public class PvcGame extends AbstractGame {
 
     public void endGame(boolean saveGame) {
         gameRunning = false;
+        botThinking = false;
+        cancelPendingActions(); // pending bot retries
+        EngineManager.get().activeProfileProperty().removeListener(profileListener);
 
         if (pgn.length() < 10) {
             saveGame = false;

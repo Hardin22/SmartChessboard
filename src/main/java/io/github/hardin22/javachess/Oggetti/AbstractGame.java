@@ -56,7 +56,15 @@ public abstract class AbstractGame {
         this.statusCallback = callback;
     }
 
+    private volatile String lastStatus = "";
+
+    /** The last status message of the game (instructions, errors, result), as given to the status callback. */
+    public String lastStatus() {
+        return lastStatus;
+    }
+
     protected void updateStatus(String message) {
+        lastStatus = message == null ? "" : message;
         if (statusCallback != null) {
             Platform.runLater(() -> statusCallback.accept(message));
         }
@@ -196,8 +204,41 @@ public abstract class AbstractGame {
         return "Patta";
     }
 
+    /**
+     * True when a move made by the player is expected now, i.e. the screen may accept a move (tap on the board).
+     * Subclasses restrict it (bot's turn, puzzle being set up...).
+     */
+    public boolean isAwaitingHumanMove() {
+        return gameRunning;
+    }
+
+    /**
+     * Move from the board or the screen: UCI ("e2e4", "e7e8n" with the promotion piece), or the short forms
+     * "Nf3"-like "nf3" (piece + square) and "e4" (pawn to square). Null when the text is not a move here.
+     */
     protected Move parseMoveInput(String moveInput) {
-        if (moveInput.length() == 4) {
+        try {
+            return parseMoveText(moveInput == null ? "" : moveInput.trim());
+        } catch (IllegalArgumentException e) {
+            return null; // not a square / not a piece
+        }
+    }
+
+    private Move parseMoveText(String moveInput) {
+        if (moveInput.length() == 5) {
+            Square from = Square.valueOf(moveInput.substring(0, 2).toUpperCase());
+            Square to = Square.valueOf(moveInput.substring(2, 4).toUpperCase());
+            char promotion = Character.toUpperCase(moveInput.charAt(4));
+            if ("QRBN".indexOf(promotion) < 0) {
+                return null;
+            }
+            Side side = board.getPiece(from).getPieceSide();
+            if (side == null) {
+                return null;
+            }
+            return new Move(from, to, Piece.fromFenSymbol(side == Side.WHITE
+                    ? String.valueOf(promotion) : String.valueOf(Character.toLowerCase(promotion))));
+        } else if (moveInput.length() == 4) {
             Square from = Square.valueOf(moveInput.substring(0, 2).toUpperCase());
             Square to = Square.valueOf(moveInput.substring(2, 4).toUpperCase());
             return new Move(from, to);
