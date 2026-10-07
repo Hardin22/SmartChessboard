@@ -508,7 +508,7 @@ public final class UciClient implements AutoCloseable {
         InfoLine best;
         List<InfoLine> lines;
         synchronized (s) {
-            lines = new ArrayList<>(s.lines.values());
+            lines = s.resultLines();
         }
         best = lines.isEmpty() ? null : lines.get(0);
         s.future.complete(new SearchResult(best == null ? null : best.move(), null, lines, s.maxDepth, s.nodes,
@@ -610,6 +610,9 @@ public final class UciClient implements AutoCloseable {
         synchronized (s) {
             if (info.bound() == InfoLine.Bound.EXACT || !s.lines.containsKey(info.multiPv())) {
                 s.lines.put(info.multiPv(), info);
+                if (!info.pv().isEmpty()) {
+                    s.byMove.put(info.move(), info);
+                }
             }
             if (info.bound() == InfoLine.Bound.EXACT && info.multiPv() == 1) {
                 s.maxDepth = Math.max(s.maxDepth, info.depth());
@@ -650,7 +653,7 @@ public final class UciClient implements AutoCloseable {
         cancelTimer(s);
         List<InfoLine> lines;
         synchronized (s) {
-            lines = new ArrayList<>(s.lines.values());
+            lines = s.resultLines();
         }
         s.future.complete(new SearchResult(best, ponder, lines, s.maxDepth, s.nodes, elapsedMs(s), s.stopSent));
     }
@@ -668,6 +671,29 @@ public final class UciClient implements AutoCloseable {
         final Consumer<InfoLine> onInfo;
         final CompletableFuture<SearchResult> future = new CompletableFuture<>();
         final TreeMap<Integer, InfoLine> lines = new TreeMap<>();
+        /** Latest line per first move: a MultiPV search stopped mid-iteration mixes depths in {@link #lines}. */
+        final java.util.LinkedHashMap<String, InfoLine> byMove = new java.util.LinkedHashMap<>();
+
+        /**
+         * Lines by MultiPV rank without duplicates; moves whose line was overwritten by a newer, unfinished
+         * iteration are appended with their latest line (otherwise they would be missing from the result).
+         * Caller holds the lock.
+         */
+        List<InfoLine> resultLines() {
+            List<InfoLine> result = new ArrayList<>();
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            for (InfoLine line : lines.values()) {
+                if (line.pv().isEmpty() || seen.add(line.move())) {
+                    result.add(line);
+                }
+            }
+            for (InfoLine line : byMove.values()) {
+                if (seen.add(line.move())) {
+                    result.add(line);
+                }
+            }
+            return result;
+        }
         volatile boolean cancelled;
         volatile boolean stopSent;
         volatile ScheduledFuture<?> timeoutTask;

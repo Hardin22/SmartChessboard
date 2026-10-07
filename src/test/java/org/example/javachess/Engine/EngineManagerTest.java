@@ -109,15 +109,20 @@ class EngineManagerTest {
     @Test
     void shutdownLeavesNoEngineProcesses() throws Exception {
         StockfishTestSupport.requireStockfish();
+        // only the processes started by this manager: other tests in the same JVM may still own engines
+        java.util.Set<Long> existing = ProcessHandle.current().children().map(ProcessHandle::pid)
+                .collect(java.util.stream.Collectors.toSet());
         manager = new EngineManager(false);
         manager.botMove(new Board().getFen(), 1).get(15, TimeUnit.SECONDS);
         manager.analysisClient().search(new Board().getFen(), SearchLimits.depth(5)).result().get(10, TimeUnit.SECONDS);
-        assumeTrue(ProcessHandle.current().children().count() >= 2);
+        java.util.function.Supplier<java.util.List<ProcessHandle>> mine = () -> ProcessHandle.current().children()
+                .filter(p -> !existing.contains(p.pid())).filter(ProcessHandle::isAlive).toList();
+        assumeTrue(mine.get().size() >= 2);
         manager.shutdown();
         long deadline = System.currentTimeMillis() + 3_000;
-        while (ProcessHandle.current().children().anyMatch(ProcessHandle::isAlive) && System.currentTimeMillis() < deadline) {
+        while (!mine.get().isEmpty() && System.currentTimeMillis() < deadline) {
             Thread.sleep(50);
         }
-        assertEquals(0, ProcessHandle.current().children().filter(ProcessHandle::isAlive).count());
+        assertEquals(java.util.List.of(), mine.get());
     }
 }
