@@ -50,9 +50,11 @@ public final class GameReviewer implements AutoCloseable {
         Path sf = EngineLocator.stockfish().path()
                 .orElseThrow(() -> new EngineException(EngineLocator.stockfish().describeMissing()));
         EngineManager m = EngineManager.get();
-        int cores = Runtime.getRuntime().availableProcessors();
         boolean lite = EngineManager.STOCKFISH_LITE.equals(m.activeProfile().id());
-        ReviewSettings s = lite ? ReviewSettings.lite(m.plan(), cores) : ReviewSettings.full(m.plan(), cores);
+        // processes and hash come from the engine budget of the board, nodes from the profile
+        EngineManager.ReviewPlan plan = m.budget().review();
+        ReviewSettings base = lite ? ReviewSettings.lite() : ReviewSettings.full();
+        ReviewSettings s = new ReviewSettings(base.nodes(), base.secondLineNodes(), plan.workers(), plan.hashMb());
         StockfishPool pool = new StockfishPool(sf, s.processes(), s.hashMb());
         Path dir = AppPaths.resolve("review-cache");
         return new GameReviewer(new CachingEvaluator(pool, EvalCache.in(dir, pool.id())), s, OpeningBook.standard());

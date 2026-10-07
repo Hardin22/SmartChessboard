@@ -1,7 +1,5 @@
 package io.github.hardin22.javachess.Engine.review;
 
-import io.github.hardin22.javachess.Engine.ProcessPlan;
-
 /**
  * Engine budget of a game review.
  *
@@ -21,16 +19,16 @@ public record ReviewSettings(long nodes, long secondLineNodes, int processes, in
     }
 
     /**
-     * Stockfish Lite (default, Raspberry Pi 5): 300k nodes per position (depth ~16-19), one process per core
-     * (up to 4) while nobody plays. SPEC §9; calibrated by the validation harness.
+     * Stockfish Lite (default, Raspberry Pi 5): 300k nodes per position (depth ~16-19). The processes and hash used
+     * by the app come from {@code EngineManager.Budget.review()} (3 x 64 MB on a Pi 5 8 GB).
      */
-    public static ReviewSettings lite(ProcessPlan plan, int cores) {
-        return new ReviewSettings(300_000, 100_000, Math.max(1, Math.min(4, cores)), 64);
+    public static ReviewSettings lite() {
+        return new ReviewSettings(300_000, 100_000, 3, 64);
     }
 
     /** Full Stockfish: 1M nodes per position, like Lichess user analysis. */
-    public static ReviewSettings full(ProcessPlan plan, int cores) {
-        return new ReviewSettings(1_000_000, 300_000, Math.max(1, Math.min(8, cores)), 64);
+    public static ReviewSettings full() {
+        return new ReviewSettings(1_000_000, 300_000, 6, 128);
     }
 
     public ReviewSettings withNodes(long n) {
