@@ -62,12 +62,19 @@ def classpath():
     return f"{REPO / 'target' / 'classes'}:{REPO / 'target' / 'test-classes'}:{cp_file.read_text().strip()}"
 
 
-def run_java(cp, knobs, out, budget, mode, dataset, dump):
+def run_java(cp, knobs, out, budget, mode, dataset, dump, labels=None, games=None, folds=None, explain=False,
+             recheck=None):
     cmd = ["java", "-Xss8m"] + [f"-Djavachess.review.{k}={v}" for k, v in sorted(knobs.items())]
     cmd += ["-cp", cp, "io.github.hardin22.javachess.review.ReviewCv", "--out", str(out), "--budget", budget,
-            "--mode", mode, "--set", dataset, "--dump", str(dump), "--labels", str(LABELS_DIR)]
-    if FOLDS:
-        cmd += ["--folds", str(FOLDS)]
+            "--mode", mode, "--set", dataset, "--dump", str(dump), "--labels", str(labels or LABELS_DIR)]
+    if folds or FOLDS:
+        cmd += ["--folds", str(folds or FOLDS)]
+    if games:
+        cmd += ["--games", str(games)]
+    if explain:
+        cmd += ["--explain", "true"]
+    if recheck:
+        cmd += ["--recheck", recheck]
     r = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(f"ReviewCv failed for {knobs}:\n{r.stdout[-2000:]}\n{r.stderr[-4000:]}")
@@ -165,6 +172,8 @@ def summary_line(name, m):
 
 SPECIAL = ["brilliant", "great", "miss"]
 # win chance loss thresholds of ReviewClassifier.Tuning (defaults; -D overrides apply) for the "near a threshold" test
+# our top move called Good/Excellent by chess.com while our second line is this close: the engines' best moves differ
+TOP_TIE_PAWNS = 0.30
 THRESHOLDS = {"excellent": 0.02, "good": 0.05, "inaccuracy": 0.10, "mistake": 0.20, "blunderAnyway": 0.30}
 
 
@@ -220,12 +229,28 @@ def classify_far(far, deep, knobs_of, margin, ref):
     from lite to deep, or the move is within `margin` win chance of a threshold) and rule cases (everything else).
     Returns [(ply, [reasons])]."""
     rr = rerun_labels() if ref == "torch18" else {}
+    # the other chess.com engine (Torch18 vs SF22): a ply where they already differ by >= 2 levels is unstable
+    other = {}
+    other_dir = DATA / REFS["torch18" if ref == "sf22" else "sf22"]
+    for gid in {p["game"] for p in far}:
+        f = other_dir / f"{gid}.json"
+        if f.exists():
+            for x in json.loads(f.read_text())["labels"]:
+                other[(gid, str(x["ply"]))] = x["label"]
     out = []
     for p in far:
         why = []
         k = (p["game"], p["ply"])
         if k in rr and rr[k] != p["cc"]:
             why.append(f"chess.com rerun {rr[k]}")
+        o = other.get(k)
+        if o is not None and dist(o, p["cc"]) >= 2:
+            why.append(f"chess.com engines disagree ({'torch18' if ref == 'sf22' else 'sf22'} {o})")
+        w = p["color"] == "w"
+        b, s2 = pawns(p["eval_before"], w), pawns(p["second_eval"], w) if p["second_eval"] else None
+        if p["is_top"] == "true" and p["cc"] in ("good", "excellent") and b is not None and s2 is not None \
+                and b - s2 < TOP_TIE_PAWNS:
+            why.append(f"top-move tie (2nd line {100 * (b - s2):.0f} cp behind)")
         d = deep.get(k)
         if d is not None and d["ours"] != p["ours"]:
             why.append(f"deep {d['ours']}")
@@ -243,6 +268,8 @@ def far_split_md(split, margin, has_deep, ref):
     rule = [p for p, w in split if not w]
     unstable = [(p, w) for p, w in split if w]
     md = [f"Unstable = chess.com changes its label in a recomputed rerun{'' if ref == 'torch18' else ' (no rerun for this reference)'}, "
+          f"or the two chess.com engines (Torch18, SF22) differ by >= 2 levels on the ply, or our top move is called "
+          f"Good/Excellent with our second line < {100 * TOP_TIE_PAWNS:.0f} cp behind (top-move tie), "
           f"or our label changes lite→deep{'' if has_deep else ' (no deep dump)'}, or the win chance loss is within {margin} of a "
           f"threshold. **Rule cases: {len(rule)}**, unstable: {len(unstable)}.", "",
           f"### Rule cases ({len(rule)})", far_table(rule), "", f"### Unstable cases ({len(unstable)})"]
@@ -291,8 +318,9 @@ def cmd_cv(a):
     dataset = "holdout" if a.holdout else "cv"
     root = REPO / "target" / "cv"
     with ThreadPoolExecutor(max_workers=a.jobs) as ex:
-        runs = list(ex.map(lambda k: (k, *run_java(cp, k, root / "runs" / f"{a.budget}-{a.mode}-{dataset}-{tag(k)}",
-                                                     a.budget, a.mode, dataset, a.dump)), points))
+        runs = list(ex.map(lambda k: (k, *run_java(cp, k, root / "runs" / f"{a.budget}-{a.mode}-{dataset}-{a.ref}-"
+                                                     f"{a.recheck or 'norecheck'}-{tag(k)}", a.budget, a.mode, dataset,
+                                                     a.dump, recheck=a.recheck)), points))
     name = a.name or (f"{dataset}-{a.budget}-{a.mode}-{a.ref}-" + ("grid" if a.grid else tag(fixed)))
     out = root / name
     out.mkdir(parents=True, exist_ok=True)
@@ -503,9 +531,192 @@ def cmd_refs(a):
     print("\n".join("  " + x for x in far[:60]))
 
 
+FP_COLUMNS = ["set", "kind", "id", "ply", "san", "class", "ours", "chesscom", "fen_before", "fen_after", "eval_before",
+              "eval_played", "best", "best_pv", "second", "second_eval", "second_pv", "material_before",
+              "material_after", "rule", "epB", "epA", "loss", "alt_eval", "alt_ep", "gap", "opp_loss", "sac_value",
+              "sac_regain", "is_top", "in_check", "capture"]
+
+
+def chessigma_labels(out):
+    """Label files for the Chessigma benchmark: the chess.com-certified Brilliant ply; every other ply unknown
+    (written as 'best', only the certified ply is scored)."""
+    out.mkdir(parents=True, exist_ok=True)
+    certified = {}
+    for line in (REPO / "src/test/resources/review/chesscom-games.jsonl").read_text().splitlines():
+        g = json.loads(line) if line.strip() else None
+        if not g or "brilliant_benchmark" not in g.get("tags", []):
+            continue
+        plies = {x["ply"] for x in g.get("labels") or [] if str(x.get("label", "")).lower() == "brilliant"}
+        if len(plies) != 1:
+            continue
+        ply = plies.pop()
+        certified[g["id"]] = ply
+        labels = [{"ply": i + 1, "san": s, "label": "brilliant" if i + 1 == ply else "best"}
+                  for i, s in enumerate(g["moves_san"])]
+        (out / f"{g['id']}.json").write_text(json.dumps({"id": g["id"], "labels": labels}))
+    return certified
+
+
+def cmd_fplist(a):
+    """Every false positive / negative of Brilliant and Great (FP_LIST.csv, FN_LIST.csv) on the CV games (SF22 and
+    Torch18), the famous games (SF16 depth 22) and the Chessigma benchmark (recall only), never the hold-out."""
+    if not a.no_build:
+        subprocess.run([str(REPO / "mvnw"), "-q", "test-compile"], cwd=REPO, check=True)
+    cp = classpath()
+    root = REPO / "target" / "cv" / "fp"
+    nofolds = root / "nofolds.json"
+    root.mkdir(parents=True, exist_ok=True)
+    nofolds.write_text('{"folds": {}}')
+    knobs = dict(kv.split("=", 1) for kv in a.D)
+    famous_kind = {f.stem: json.loads(f.read_text()).get("kind", "") for f in (DATA / "famous_chesscom").glob("*.json")}
+    certified = chessigma_labels(root / "chessigma-labels")
+    sets = [
+        ("cv-sf22", dict(budget=a.budget, dataset="cv", dump=a.dump, labels=DATA / REFS["sf22"])),
+        ("cv-torch18", dict(budget=a.budget, dataset="cv", dump=a.dump, labels=DATA / REFS["torch18"])),
+        ("famous", dict(budget="lite", dataset="all", dump=DATA / "evals_famous", labels=DATA / "famous_chesscom",
+                        folds=nofolds, games=DATA / "famous")),
+        ("chessigma", dict(budget="lite", dataset="all", dump=DATA / "evals_chessigma", labels=root / "chessigma-labels",
+                           folds=nofolds)),
+    ]
+    fp, fn, summary = [], [], []
+    for name, kw in sets:
+        if not (Path(kw["dump"]) / kw["budget"]).is_dir():
+            print(f"{name}: no dump, skipped")
+            continue
+        run_java(cp, knobs, root / name, kw["budget"], a.mode, kw["dataset"], kw["dump"], labels=kw["labels"],
+                 games=kw.get("games"), folds=kw.get("folds"), explain=True)
+        rows = read_tsv(root / name / "specials.tsv") if (root / name / "specials.tsv").stat().st_size else []
+        plies = read_tsv(root / name / "plies.tsv")
+        for r in rows:
+            if name == "chessigma" and r["cc"] != "brilliant" and r["ours"] != "brilliant":
+                continue
+            kind = famous_kind.get(r["game"], "") if name == "famous" else ""
+            for c in ("brilliant", "great"):
+                if name == "chessigma" and c == "great":
+                    continue
+                base = {"set": name, "kind": kind, "id": r["game"], "ply": r["ply"], "san": r["san"], "class": c,
+                        "ours": r["ours"], "chesscom": r["cc"] if name != "chessigma" or r["cc"] == "brilliant" else "unlabelled"}
+                base.update({k: r.get(k, "") for k in FP_COLUMNS if k not in base})
+                if r["ours"] == c and r["cc"] != c and name != "chessigma":
+                    fp.append(base)
+                if r["cc"] == c and r["ours"] != c:
+                    fn.append(base)
+        groups = {"chessigma": [("chessigma", plies)]} if name == "chessigma" else (
+            {"famous": [(f"famous-{k}", [p for p in plies if famous_kind.get(p["game"]) == k]) for k in ("brilliant", "control")]}
+            if name == "famous" else {name: [(name, plies)]})
+        for label, ps in next(iter(groups.values())):
+            for c in ("brilliant", "great"):
+                if label == "chessigma" and c == "great":
+                    continue
+                if label == "chessigma":
+                    tp = sum(1 for p in ps if p["cc"] == "brilliant" and p["ours"] == "brilliant")
+                    pos = sum(1 for p in ps if p["cc"] == "brilliant")
+                    other = sum(1 for p in ps if p["ours"] == "brilliant" and p["cc"] != "brilliant")
+                    summary.append((label, c, pos, tp + other, tp, None, pos - tp, float("nan"), tp / pos if pos else float("nan"), other))
+                    continue
+                tp = sum(1 for p in ps if p["cc"] == c and p["ours"] == c)
+                nfp = sum(1 for p in ps if p["ours"] == c and p["cc"] != c)
+                nfn = sum(1 for p in ps if p["cc"] == c and p["ours"] != c)
+                summary.append((label, c, tp + nfn, tp + nfp, tp, nfp, nfn, tp / (tp + nfp) if tp + nfp else float("nan"),
+                                tp / (tp + nfn) if tp + nfn else float("nan"), None))
+    outdir = Path(a.fp_out)
+    outdir.mkdir(parents=True, exist_ok=True)
+    for fname, rows in (("FP_LIST.csv", fp), ("FN_LIST.csv", fn)):
+        with open(outdir / fname, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=FP_COLUMNS)
+            w.writeheader()
+            w.writerows(rows)
+    print("| set | class | chess.com | ours | TP | FP | FN | precision | recall |")
+    print("|---|---|---:|---:|---:|---:|---:|---:|---:|")
+    for label, c, pos, ours, tp, nfp, nfn, pr, rc, other in summary:
+        fp_txt = f"({other} other plies, unlabelled)" if other is not None else str(nfp)
+        print(f"| {label} | {c} | {pos} | {ours} | {tp} | {fp_txt} | {nfn} | {pr:.0%} | {rc:.0%} |")
+    print(f"{len(fp)} false positives -> {outdir / 'FP_LIST.csv'}; {len(fn)} false negatives -> {outdir / 'FN_LIST.csv'}")
+
+
+def pr(ps, c):
+    tp = sum(1 for p in ps if p["cc"] == c and p["ours"] == c)
+    fp = sum(1 for p in ps if p["ours"] == c and p["cc"] != c)
+    fn = sum(1 for p in ps if p["cc"] == c and p["ours"] != c)
+    return tp, fp, fn
+
+
+def fmt_pr(t):
+    tp, fp, fn = t
+    p = f"{tp / (tp + fp):.2f}" if tp + fp else "-"
+    r = f"{tp / (tp + fn):.2f}" if tp + fn else "-"
+    return f"{tp}/{fp} P {p} R {r}"
+
+
+def cmd_prcurve(a):
+    """Precision/recall of Brilliant, Great (and Miss) for a list of classifier variants on the CV games (SF22), the
+    famous games at the product's default rating 1500 and at 2500 (sensitivity), and Chessigma (recall)."""
+    if not a.no_build:
+        subprocess.run([str(REPO / "mvnw"), "-q", "test-compile"], cwd=REPO, check=True)
+    cp = classpath()
+    spec = json.loads(Path(a.variants).read_text())
+    variants = spec if isinstance(spec, list) else [{"name": tag(k), "knobs": k} for k in expand_grid(spec)]
+    root = REPO / "target" / "cv" / "prcurve"
+    nofolds = root / "nofolds.json"
+    root.mkdir(parents=True, exist_ok=True)
+    nofolds.write_text('{"folds": {}}')
+    chessigma_labels(root / "chessigma-labels")
+    kind = {f.stem: json.loads(f.read_text()).get("kind", "") for f in (DATA / "famous_chesscom").glob("*.json")}
+    famous_deep = (DATA / "evals_famous" / "deep").is_dir() and len(list((DATA / "evals_famous" / "deep").glob("*.jsonl"))) >= 35
+
+    def one(v):
+        k = {kk: str(vv) for kk, vv in v.get("knobs", {}).items()}
+        rc = v.get("recheck")
+        nm = v.get("name") or tag(k)
+        out = {"name": nm}
+        cvp, cvg = run_java(cp, k, root / nm / "cv", a.budget, a.mode, "cv", a.dump, labels=DATA / REFS["sf22"],
+                            recheck=rc)
+        m = metrics(cvp, cvg)
+        out["cv"] = {c: pr(cvp, c) for c in SPECIAL}
+        out["exact"], out["far"], out["pi5"] = m["exact"], m["far_n"], m["pi5_s_per_40"]
+        out["pi5max"] = m["pi5_s_per_40_max"]
+        # worst real game: its whole review time on the Pi 5, not normalised to 40 moves
+        game_s = [(int(g["product_nodes"]) / (PI5_NPS * PI5_PROCESSES), g["game"], int(g["plies"])) for g in cvg]
+        out["pi5game"] = max(game_s)
+        for rating in (1500, 2500):
+            kr = dict(k, defaultRating=str(rating))
+            fr = rc if famous_deep else None
+            fp_, _ = run_java(cp, kr, root / nm / f"famous{rating}", "lite", a.mode, "all", DATA / "evals_famous",
+                              labels=DATA / "famous_chesscom", games=DATA / "famous", folds=nofolds, recheck=fr)
+            for kd in ("brilliant", "control"):
+                ps = [p for p in fp_ if kind.get(p["game"]) == kd]
+                out[f"f{rating}{kd}"] = {c: pr(ps, c) for c in ("brilliant", "great")}
+            out[f"f{rating}recheck"] = bool(fr) or not rc
+        cs, _ = run_java(cp, k, root / nm / "chessigma", "lite", a.mode, "all", DATA / "evals_chessigma",
+                         labels=root / "chessigma-labels", folds=nofolds)
+        tp = sum(1 for p in cs if p["cc"] == "brilliant" and p["ours"] == "brilliant")
+        pos = sum(1 for p in cs if p["cc"] == "brilliant")
+        out["chessigma"] = f"{tp}/{pos} R {tp / pos:.2f}" if pos else "-"
+        return out
+
+    with ThreadPoolExecutor(max_workers=a.jobs) as ex:
+        res = list(ex.map(one, variants))
+    md = ["| variant | CV exact / ≥2 | CV Brilliant | CV Great | CV Miss | famous 1500 brilliant-kind B / G | "
+          "famous 1500 control B / G | famous 2500 brilliant-kind B / G | famous 2500 control B / G | Chessigma B | "
+          "Pi 5 s/40 mean / worst | worst game on Pi 5 |", "|---|---|---|---|---|---|---|---|---|---|---:|---|"]
+    for r in res:
+        star = "" if r["f1500recheck"] else " (no famous deep: lite)"
+        md.append(f"| {r['name']}{star} | {r['exact']:.1%} / {r['far']} | {fmt_pr(r['cv']['brilliant'])} | "
+                  f"{fmt_pr(r['cv']['great'])} | {fmt_pr(r['cv']['miss'])} | "
+                  f"{fmt_pr(r['f1500brilliant']['brilliant'])} / {fmt_pr(r['f1500brilliant']['great'])} | "
+                  f"{fmt_pr(r['f1500control']['brilliant'])} / {fmt_pr(r['f1500control']['great'])} | "
+                  f"{fmt_pr(r['f2500brilliant']['brilliant'])} / {fmt_pr(r['f2500brilliant']['great'])} | "
+                  f"{fmt_pr(r['f2500control']['brilliant'])} / {fmt_pr(r['f2500control']['great'])} | "
+                  f"{r['chessigma']} | {r['pi5']:.1f} / {r['pi5max']:.1f} | {r['pi5game'][0]:.1f} s "
+                  f"({r['pi5game'][1]}, {(r['pi5game'][2] + 1) // 2} moves) |")
+    text = "\n".join(md)
+    (root / f"{a.name or Path(a.variants).stem}.md").write_text(text + "\n")
+    print(text)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", nargs="?", default="cv", choices=["cv", "stability", "ceiling", "noise", "refs"])
+    ap.add_argument("command", nargs="?", default="cv", choices=["cv", "stability", "ceiling", "noise", "refs", "fplist", "prcurve"])
     ap.add_argument("a", nargs="?", help="stability: first budget")
     ap.add_argument("b", nargs="?", help="stability: second budget")
     ap.add_argument("--dump", default=str(DATA / "evals_labeled"))
@@ -520,6 +731,11 @@ def main():
     ap.add_argument("--name", help="output folder name under target/cv")
     ap.add_argument("--deep", default="deep", help="dump compared with --budget for the unstable/rule split ('' = off)")
     ap.add_argument("--margin", type=float, default=0.01, help="unstable when the win chance loss is this close to a threshold")
+    ap.add_argument("--fp-out", default=str(Path.home() / ".javachess-orchestrator/review-team/notes/fp"),
+                    help="fplist: folder of FP_LIST.csv / FN_LIST.csv")
+    ap.add_argument("--recheck", choices=["second", "full"], help="candidates re-searched deeper, simulated with "
+                    "the --deep dump: 'second' = deep second line when the deep best move is ours, 'full' = deep eval")
+    ap.add_argument("--variants", help="prcurve: JSON list of {name, knobs: {...}, recheck} or a knob grid")
     ap.add_argument("--holdout", action="store_true")
     ap.add_argument("--final", action="store_true")
     ap.add_argument("--no-build", action="store_true", help="skip ./mvnw test-compile")
@@ -527,7 +743,7 @@ def main():
     global LABELS_DIR, FOLDS
     LABELS_DIR = DATA / REFS[a.ref]
     FOLDS = a.folds
-    {"stability": cmd_stability, "ceiling": cmd_ceiling, "noise": cmd_noise, "refs": cmd_refs}.get(a.command, cmd_cv)(a)
+    {"stability": cmd_stability, "ceiling": cmd_ceiling, "noise": cmd_noise, "refs": cmd_refs, "fplist": cmd_fplist, "prcurve": cmd_prcurve}.get(a.command, cmd_cv)(a)
 
 
 if __name__ == "__main__":

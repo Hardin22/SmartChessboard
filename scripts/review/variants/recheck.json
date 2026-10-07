@@ -1,0 +1,5 @@
+[
+ {"name": "v1.9 (dba9618 defaults)", "knobs": {}},
+ {"name": "v1.9 + deep 2nd line for candidates", "knobs": {}, "recheck": "second"},
+ {"name": "v1.9 + deep eval for candidates", "knobs": {}, "recheck": "full"}
+]
