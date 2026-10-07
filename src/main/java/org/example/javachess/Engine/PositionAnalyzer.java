@@ -185,6 +185,16 @@ public final class PositionAnalyzer {
         if (moves.isEmpty()) {
             return CompletableFuture.completedFuture(new SearchResult(null, null, List.of(), 0, 0, 0, false));
         }
+        return interruptingSearch(fen, SearchLimits.nodes(nodes).withMultiPv(moves.size()).withSearchMoves(moves)
+                .withTimeout(capMs));
+    }
+
+    /** Best move/score of {@code fen} with a node budget, interrupting the live analysis like {@link #scoreMoves}. */
+    public CompletableFuture<SearchResult> searchBest(String fen, long nodes, long capMs) {
+        return interruptingSearch(fen, SearchLimits.nodes(nodes).withTimeout(capMs));
+    }
+
+    private CompletableFuture<SearchResult> interruptingSearch(String fen, SearchLimits limits) {
         UciClient.SearchHandle h;
         int g;
         synchronized (this) {
@@ -195,8 +205,6 @@ public final class PositionAnalyzer {
             } catch (RuntimeException e) {
                 return CompletableFuture.failedFuture(e);
             }
-            SearchLimits limits = SearchLimits.nodes(nodes).withMultiPv(moves.size()).withSearchMoves(moves)
-                    .withTimeout(capMs);
             h = client.search(fen, List.of(), limits, null);
             candidateHandle = h;
         }

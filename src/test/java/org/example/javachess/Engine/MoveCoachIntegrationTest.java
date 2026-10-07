@@ -153,6 +153,17 @@ class MoveCoachIntegrationTest {
     }
 
     @Test
+    void instantMoveWithoutPriorAnalysisIsStillJudged() throws Exception {
+        // e.g. first move of a game: no analysis of the position before yet
+        String fen = "r1bqkbnr/pppp1ppp/2n5/4p2Q/4P3/8/PPPP1PPP/RNB1KBNR w KQkq - 2 3";
+        analyzer.analyze(fen, 18, 1, null);
+        coach.onMovePlayed(fen, "h5e5");
+        MoveFeedback fb = awaitFinal("h5e5");
+        assertEquals(MoveQuality.BLUNDER, fb.quality());
+        assertNotNull(fb.bestMoveUci());
+    }
+
+    @Test
     void verdictIsGuaranteedWhenTheGameMovesOnImmediately() throws Exception {
         // PvC with an instant bot (Maia): the analysis jumps to the position after the bot reply within ms.
         String fen = "r1bqkbnr/pppp1ppp/2n5/4p2Q/4P3/8/PPPP1PPP/RNB1KBNR w KQkq - 2 3";

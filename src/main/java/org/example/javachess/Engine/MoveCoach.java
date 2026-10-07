@@ -69,9 +69,9 @@ public final class MoveCoach {
         final String afterKey;
         final String uci;
         final long t0 = System.nanoTime();
-        final Score bestBefore;
-        final String bestMove;
-        final boolean playedIsBest;
+        volatile Score bestBefore;
+        volatile String bestMove;
+        volatile boolean playedIsBest;
         MoveQuality emitted;
         boolean confirmed;
         boolean fallbackStarted;
@@ -267,6 +267,27 @@ public final class MoveCoach {
             emit(p, MoveClassifier.classify(best.score, scored.score(), p.playedIsBest), scored.depth(), true);
         }
 
+        if (best == null || best.depth < b.coachMinDepth() - 2) {
+            // Moved before the analysis of the previous position got anywhere (game start, very fast move):
+            // first get a real "best" for the position before, then follow the new position.
+            analyzer.searchBest(fenBefore, b.candidateNodes(), b.coachCapMs()).whenComplete((r, err) ->
+                    EngineEvents.EXECUTOR.execute(() -> {
+                        if (pending != p) {
+                            return;
+                        }
+                        if (r != null && r.best() != null && (best == null || r.depth() >= best.depth)) {
+                            p.bestBefore = r.best().score();
+                            p.bestMove = r.bestMove();
+                            p.playedIsBest = uci.equals(r.bestMove());
+                        }
+                        startFollowing(p, fenAfter, b);
+                    }));
+        } else {
+            startFollowing(p, fenAfter, b);
+        }
+    }
+
+    private void startFollowing(Pending p, String fenAfter, EngineManager.Budget b) {
         p.capTask = EngineEvents.EXECUTOR.schedule(() -> onCap(p), b.coachCapMs(), TimeUnit.MILLISECONDS);
         p.deadlineTask = EngineEvents.EXECUTOR.schedule(() -> onDeadline(p), HARD_DEADLINE_MS, TimeUnit.MILLISECONDS);
         analyzer.follow(fenAfter);
