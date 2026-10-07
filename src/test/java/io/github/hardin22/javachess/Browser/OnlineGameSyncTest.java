@@ -140,9 +140,9 @@ class OnlineGameSyncTest {
         later(1000);
         see(); // still the start position
         assertEquals(OnlineGameSync.Phase.SENDING, sync.phase());
-        later(2100);
-        assertEquals(List.of("e2e4", "e2e4"), sent, "sent again after 3 s");
-        later(3100);
+        later(OnlineGameSync.CONFIRM_VISION_MS - 900);
+        assertEquals(List.of("e2e4", "e2e4"), sent, "sent again when the page does not show it");
+        later(OnlineGameSync.CONFIRM_VISION_MS + 100);
         assertEquals(OnlineGameSync.Phase.NOT_ACCEPTED, sync.phase());
         assertEquals("e2", sync.state().detail());
         assertTrue(board.calls.get(board.calls.size() - 1).startsWith("position " + PgnCodec.START_FEN),
@@ -160,13 +160,23 @@ class OnlineGameSyncTest {
         startGame(false);
         site.acceptsClicks = false;
         board.move("e2e4");
-        later(3100);
-        later(3100);
+        later(OnlineGameSync.CONFIRM_VISION_MS + 100);
+        later(OnlineGameSync.CONFIRM_VISION_MS + 100);
         assertEquals(OnlineGameSync.Phase.NOT_ACCEPTED, sync.phase());
         site.opponentPlays("e2e4"); // the site finally shows it
         see();
         assertEquals(OnlineGameSync.Phase.REPLICATE, sync.phase(), "the board is asked to show it again");
         assertEquals(List.of("e2e4"), sync.moves());
+    }
+
+    @Test
+    void readingTheMarkupConfirmsSoonerThanVision() {
+        startGame(false);
+        site.acceptsClicks = false;
+        board.move("e2e4");
+        see(BoardWatcher.ReadMode.PAGE, null, true);
+        later(OnlineGameSync.CONFIRM_MS + 100);
+        assertEquals(2, sent.size(), "page mode: sent again after 3 s");
     }
 
     @Test

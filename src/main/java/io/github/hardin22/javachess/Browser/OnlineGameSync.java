@@ -92,6 +92,8 @@ public final class OnlineGameSync {
     }
 
     static final long CONFIRM_MS = 3000;
+    /** Vision needs still frames to read a move (and the opponent may answer at once): wait longer. */
+    static final long CONFIRM_VISION_MS = 5000;
     static final int SEND_ATTEMPTS = 2;
     static final long DISAGREE_MS = 1500;
     static final int UNRESOLVED_BEFORE_RESYNC = 3;
@@ -132,6 +134,7 @@ public final class OnlineGameSync {
     private int unresolvedCount;
     private long disagreeSince = -1;
     private BoardWatcher.PositionUpdate lastUpdate;
+    private BoardWatcher.ReadMode readMode = BoardWatcher.ReadMode.PAGE;
     private State lastState;
     private int pageFallbacks;
 
@@ -267,6 +270,7 @@ public final class OnlineGameSync {
             return;
         }
         lastUpdate = update;
+        readMode = update.mode();
         BoardSnapshot.BoardView view = update.snapshot().board();
         if (mode == Mode.PLAY && view.bottomSide() != mySide && moves.isEmpty()) {
             mySide = view.bottomSide(); // the site turns the board when the game starts
@@ -300,7 +304,8 @@ public final class OnlineGameSync {
             return;
         }
         long now = clock.getAsLong();
-        if (pending != null && now - pendingSince >= CONFIRM_MS) {
+        long confirm = readMode == BoardWatcher.ReadMode.PAGE ? CONFIRM_MS : CONFIRM_VISION_MS;
+        if (pending != null && now - pendingSince >= confirm) {
             if (attempts < SEND_ATTEMPTS) {
                 attempts++;
                 pendingSince = now;

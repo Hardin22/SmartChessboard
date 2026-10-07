@@ -130,14 +130,15 @@ public final class BotGameTrial {
         fixturePly = 0;
         startGame(mine);
         // a fresh game: a legal position (normally the start, or the requested one), no result shown
-        String startFen = System.getProperty("trial.fen");
+        String startFen = trialFen();
         Board startBoard = new Board();
         if (startFen != null) {
             startBoard.loadFromFen(startFen);
         }
         BoardSnapshot first = waitFor(s -> s.board() != null && s.board().placement() != null
                 && "game".equals(s.pageHint()) && s.board().result() == null
-                && SetupPosition.build(s.board().placement(), s.board(), s.page(), Side.WHITE) != null
+                && (startFen != null || SetupPosition.build(s.board().placement(), s.board(), s.page(), Side.WHITE)
+                != null)
                 && (startFen != null ? sameOrNext(startBoard, s.board().placement())
                 : s.board().placement().startsWith("rnbqkbnr/pppppppp")), 60_000, "a new game");
         Side bottom = first.board().bottomSide();
@@ -495,6 +496,12 @@ public final class BotGameTrial {
                 .put("seconds", (System.currentTimeMillis() - started) / 1000);
     }
 
+    /** -Dtrial.fen, with '_' for the spaces (shell-friendly). */
+    private static String trialFen() {
+        String fen = System.getProperty("trial.fen");
+        return fen == null ? null : fen.replace('_', ' ');
+    }
+
     /** True when the placement is the board's, or the board's after one legal move. */
     private static boolean sameOrNext(Board board, String placement) {
         if (SetupPosition.placement(board).equals(placement)) {
@@ -515,7 +522,8 @@ public final class BotGameTrial {
         String promotion = null;
         for (Move m : com.github.bhlangonijr.chesslib.move.MoveGenerator.generateLegalMoves(board)) {
             boolean pawn = board.getPiece(m.getFrom()).getPieceType() == com.github.bhlangonijr.chesslib.PieceType.PAWN;
-            if (pawn && m.getTo() == board.getEnPassantTarget() && board.getEnPassantTarget()
+            // chesslib: getEnPassant() is where the capturing pawn lands, getEnPassantTarget() the captured pawn
+            if (pawn && m.getTo() == board.getEnPassant() && board.getEnPassant()
                     != com.github.bhlangonijr.chesslib.Square.NONE) {
                 return PgnCodec.toUci(m);
             }
@@ -534,8 +542,8 @@ public final class BotGameTrial {
         if (m.getPromotion() != null && m.getPromotion() != com.github.bhlangonijr.chesslib.Piece.NONE) {
             special.add("promotion " + san);
         }
-        if (before.getEnPassantTarget() != com.github.bhlangonijr.chesslib.Square.NONE
-                && m.getTo() == before.getEnPassantTarget() && san.contains("x")
+        if (before.getEnPassant() != com.github.bhlangonijr.chesslib.Square.NONE
+                && m.getTo() == before.getEnPassant() && san.contains("x")
                 && before.getPiece(m.getFrom()).getPieceType() == com.github.bhlangonijr.chesslib.PieceType.PAWN) {
             special.add("en passant " + san);
         }
@@ -625,7 +633,7 @@ public final class BotGameTrial {
     // ------------------------------------------------------------------ starting a game against the computer
 
     private void startGame(Side mine) throws Exception {
-        String fen = System.getProperty("trial.fen");
+        String fen = trialFen();
         if (site.equals("lichess")) {
             navigate(fen == null ? "https://lichess.org/"
                     : "https://lichess.org/?fen=" + java.net.URLEncoder.encode(fen, java.nio.charset.StandardCharsets.UTF_8)

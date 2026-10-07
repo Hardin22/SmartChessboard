@@ -60,7 +60,7 @@ public final class SetupPosition {
             turn = view.turn();
             source = "clock";
         }
-        Board pieces = PgnCodec.boardFromFen(placement + " w - - 0 1");
+        Board pieces = piecesOnly(placement);
         if (pieces == null) {
             return null;
         }
@@ -76,12 +76,35 @@ public final class SetupPosition {
         if (turn == null) {
             turn = defaultTurn == null ? Side.WHITE : defaultTurn;
         }
-        String ep = view == null ? "-" : enPassantSquare(pieces, view.lastMove(), turn);
+        Board board = withTurn(placement, view, turn);
+        if (board == null && (source.equals("default") || source.equals("start"))) {
+            // a guessed turn that makes the position illegal (the other king in check): the other side moves
+            turn = turn.flip();
+            board = withTurn(placement, view, turn);
+            source = "check";
+        }
+        return board == null ? null : new Result(board, board.getFen(), List.of(), source);
+    }
+
+    /** The pieces of a placement on a board, without judging whose turn it could be (null when unreadable). */
+    private static Board piecesOnly(String placement) {
+        if (PgnCodec.boardFromFen(placement + " w - - 0 1") == null
+                && PgnCodec.boardFromFen(placement + " b - - 0 1") == null) {
+            return null; // not a position with either side to move (two kings of a colour, pawns on the edge...)
+        }
+        Board b = new Board();
+        b.loadFromFen(placement + " w - - 0 1");
+        return b;
+    }
+
+    private static Board withTurn(String placement, BoardSnapshot.BoardView view, Side turn) {
+        Board pieces = piecesOnly(placement);
+        String ep = view == null || pieces == null ? "-" : enPassantSquare(pieces, view.lastMove(), turn);
         Board board = PgnCodec.boardFromFen(placement + (turn == Side.WHITE ? " w " : " b ") + "KQkq " + ep + " 0 1");
         if (board == null && !"-".equals(ep)) {
             board = PgnCodec.boardFromFen(placement + (turn == Side.WHITE ? " w " : " b ") + "KQkq - 0 1");
         }
-        return board == null ? null : new Result(board, board.getFen(), List.of(), source);
+        return board;
     }
 
     static final String START_PLACEMENT = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR";

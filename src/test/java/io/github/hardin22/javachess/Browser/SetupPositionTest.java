@@ -89,6 +89,15 @@ class SetupPositionTest {
     }
 
     @Test
+    void aKingInCheckMovesWhenNothingElseTells() {
+        String placement = "6R1/1k1p3P/8/KN2P3/8/5B2/8/8"; // black king in check from the bishop
+        SetupPosition.Result r = SetupPosition.build(placement, view(placement, List.of(), null, null),
+                PageInfo.of(""), Side.WHITE);
+        assertEquals(Side.BLACK, r.board().getSideToMove());
+        assertEquals("check", r.turnSource());
+    }
+
+    @Test
     void impossiblePositionsAreRejected() {
         assertNull(SetupPosition.build("8/8/8/8/8/8/8/8", null, null, Side.WHITE), "no kings");
         assertNull(SetupPosition.build("4k3/8/8/8/8/8/8/3KK3", null, null, Side.WHITE), "two white kings");
