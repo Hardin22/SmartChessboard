@@ -155,6 +155,44 @@ right on every position, with no blocking or warning from the sites, and it cost
 the cross-check and fallback (and for other sites): it is calibrated on the theme in use because the sites' themes
 (every chess.com bot has its own) defeat a generic model.
 
+## Field trials (October 2026)
+
+Run in the Raspberry-Pi-like box (`docker/pi-sim`: Debian arm64, Xvfb 720x1920, off-screen rendering, JCEF 146), as
+an anonymous guest in a separate browser profile, **only against the sites' computer opponents**: lichess "play
+against the computer" level 1 and chess.com's bots (Martin). The trial's own moves were chosen by a deliberately
+weak Stockfish and played by `BotMover` through DevTools; every position was checked against the game replayed
+independently.
+
+| | Games | Plies | Missed moves | Ghost moves | Wrong positions | Own move on the page |
+|---|---|---|---|---|---|---|
+| lichess, page reading | 3 | 140 | 0 | 0 | 0 | 0.32-0.35 s average |
+| chess.com, page reading | 8 | 341 | 0 | 0 | 0 | 0.48-0.54 s average |
+| lichess, `vision-only`, the app's pipeline | 2 | 161 | — | — | 0 setups after the first | — |
+| lichess from a position: promotion h8=Q, en passant exd6# | 2 | 7 | 0 | 0 | 0 | |
+| chess.com from a position: promotion g8=Q+, en passant exd6# | 2 | 60 | 0 | 0 | 0 | |
+
+- No CAPTCHA, warning, refused move or interrupted game on either site with JCEF 146 (with the old Chromium 127
+  chess.com answered 403 with a Cloudflare check, 3 times out of 3).
+- Clicks and typing sent through DevTools reach pages as **trusted** input (`isTrusted`), which a test page that
+  ignores synthetic events confirms; the probe only reads the page and never changes it.
+- chess.com draws a capture by giving the moving piece its destination class (with a transform) while the taken
+  piece is still there; the probe treats this as an animation (found in the trials, fixed, covered by tests).
+- Every chess.com bot has its own board and piece theme ("forest" for Martin): the generic vision model read 0 of
+  42 of those positions, the calibrated reader 42 of 42.
+
+### Vision battery
+
+| Pictures | Calibrated reader (exact boards / squares) | Model alone |
+|---|---|---|
+| lichess live games, default theme (140) | 100% / 100% | 98.6% / 99.98% |
+| lichess, 14 board themes, both orientations (84) | 100% / 100% | 90.5% / 97.8% |
+| chess.com bot theme, live games (42) | 100% / 100% | 0% / 69.7% |
+| chess.com image renderer, 27 themes x 27 piece sets (108) | 88.0% / 99.3% (89.8% fused with the model) | 44.4% / 95.3% |
+| Moves between consecutive real pictures (181) | 181 right, 0 wrong | 139 right |
+
+The remaining errors are extreme renderer themes (black pieces on dark stone, pale pawns on newspaper print). The
+start position is recognised by occupancy alone in 71 of 75 pictures, with no false start in 433 others.
+
 ## Testing
 
 - Unit and integration tests (no browser): `./mvnw test -DskipE2E=true` — page classification, probe answers

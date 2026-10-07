@@ -42,8 +42,9 @@ landscape 1920×720 or a desktop window.
 - **Two players** on the same board, with clocks and increments.
 - **Lichess online** through the official [Board API](https://lichess.org/api#tag/Board): seek a game, play it with the
   physical pieces; the opponent's moves light up on the board for you to replicate.
-- **chess.com and lichess in the integrated browser** (JCEF): the screen is read by an on-device vision model, so the
-  physical board stays in sync with games played on the website.
+- **chess.com and lichess in the integrated browser** (JCEF): the position is read from the page and checked by an
+  on-device vision model that calibrates itself on the site's theme, so the physical board stays in sync with games
+  played on the website; moves made on the board are played on the page. See [docs/browser.md](docs/browser.md).
 - **Puzzles** from the Lichess puzzle database, filtered by theme and rating.
 - **Game review**: accuracy for both sides, move classification (best, excellent, inaccuracy, mistake, blunder...),
   evaluation graph, best-move arrows.
@@ -187,7 +188,9 @@ controls (at least 8 minutes).
 ### chess.com
 
 There is no public API for playing on chess.com: open it from the home screen and log in once in the integrated
-browser. The session is kept in `~/.javachess/jcef-cache`. **Passwords are never stored by javaChess.**
+browser. The session is kept in `~/.javachess/jcef-cache`. If you agree, the login can also be remembered for when
+the session expires: it is kept in the system keyring (macOS Keychain, Secret Service) or in an owner-only file,
+never in `config.properties` or the logs (see [docs/browser.md](docs/browser.md#saved-logins)).
 
 ## Development
 
