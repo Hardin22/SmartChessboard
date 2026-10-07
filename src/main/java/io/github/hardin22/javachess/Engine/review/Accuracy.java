@@ -5,21 +5,23 @@ import java.util.List;
 /**
  * Accuracy of each move and of each player, from the evaluation of every position (best play, not the played lines).
  *
- * <p>Default model, fitted on 81 games reviewed by chess.com with Stockfish 16 at depth 22 (our Stockfish 19 Lite
- * evaluations, nested cross-validation by game): win percent {@code 100 / (1 + exp(-0.0018 * cp))} (cp not clamped,
- * mate = 0/100), move accuracy {@code 100 * exp(-0.12 * winPercentLost)}, player accuracy = power mean of the move
- * accuracies with exponent 0.25. Mean absolute error vs chess.com 2.5 points, 88% within 5 (the previous fit on the
- * public API accuracies gave 2.85 here; the exact Lichess formula is much harsher than chess.com). The Lichess formula ({@code research/SPEC.md} §6) stays available with
+ * <p>Default model, chosen to be no worse than the previous one on any of three chess.com references (our Stockfish
+ * 19 evaluations): win percent {@code 100 / (1 + exp(-0.0016 * cp))} (cp not clamped, mate = 0/100), move accuracy
+ * {@code 100 * exp(-0.14 * winPercentLost)}, player accuracy = power mean of the move accuracies with exponent 0.35.
+ * Mean absolute error vs chess.com: 2.79 (88% within 5 points) on 90 games reviewed with Stockfish 16 depth 22, 2.72
+ * (86%) on the same games reviewed with Torch depth 18, 2.75 (84%) on 384 games of the public API (previous model:
+ * 2.94 / 2.90 / 3.06). chess.com itself moves an accuracy by up to ~3 points between two reviews of a game. The
+ * exact Lichess formula ({@code research/SPEC.md} §6), much harsher than chess.com, stays available with
  * {@code -Djavachess.accuracy=lichess} for comparisons.</p>
  */
 public final class Accuracy {
 
     /** Win percent slope per centipawn of the accuracy model (flatter than the classification curve). */
-    static final double K = 0.0018;
+    static final double K = 0.0016;
     /** Move accuracy decay per win percent point lost. */
-    static final double A = 0.12;
+    static final double A = 0.14;
     /** Exponent of the power mean of the move accuracies. */
-    static final double P = 0.25;
+    static final double P = 0.35;
 
     /** Lichess uses +0.15 for the standard starting position. */
     private static final Eval START_EVAL = Eval.cp(15);
