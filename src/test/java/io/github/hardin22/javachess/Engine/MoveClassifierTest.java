@@ -42,7 +42,7 @@ class MoveClassifierTest {
         assertEquals(GOOD, q(Score.mate(3), Score.mate(6)));           // slower mate still wins
         assertEquals(GOOD, q(Score.mate(2), Score.cp(450)));           // misses mate, still clearly winning (R5)
         assertEquals(MISTAKE, q(Score.mate(2), Score.cp(50)));         // misses mate, about equal (R5)
-        assertEquals(MISTAKE, q(Score.mate(2), Score.cp(0)));          // stalemates / throws the win (R5)
+        assertEquals(BLUNDER, q(Score.mate(2), Score.cp(0)));          // stalemates / throws the win (R5, SPEC v1.3)
         assertEquals(BLUNDER, q(Score.mate(2), Score.cp(-300)));       // throws the win and loses
         assertEquals(BEST, q(Score.mate(-3), Score.mate(-3)));         // lost anyway, best defence
         assertEquals(GOOD, q(Score.mate(-3), Score.mate(-2)));         // lost anyway, mated sooner
