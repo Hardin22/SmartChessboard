@@ -48,7 +48,7 @@ public class ThemeController implements NavigationAware {
             ImageCache cache = ImageCache.getInstance();
             boardPreview.setImage(cache.getImage("/images/Scacchiere/" + currentBoard));
             // Preview a piece (e.g., White King)
-            piecePreview.setImage(cache.getImage("/images/Pieces/" + currentPiece + "/wK.png"));
+            piecePreview.setImage(cache.getImage("/images/Pieces/" + currentPiece + "/wk.png"));
         } catch (Exception e) {
             System.err.println("Error loading previews: " + e.getMessage());
         }
@@ -89,7 +89,7 @@ public class ThemeController implements NavigationAware {
 
         for (String piece : pieces) {
             // Show White King as preview
-            Button btn = createSelectionButton("/images/Pieces/" + piece + "/wK.png", piece, false);
+            Button btn = createSelectionButton("/images/Pieces/" + piece + "/wk.png", piece, false);
             selectionContainer.getChildren().add(btn);
         }
 

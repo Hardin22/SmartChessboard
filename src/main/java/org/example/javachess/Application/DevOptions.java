@@ -61,10 +61,9 @@ public final class DevOptions {
             stage.setHeight(Double.parseDouble(size[1]));
             return false;
         }
-        if (index != 0) {
-            stage.setWidth(bounds.getWidth());
-            stage.setHeight(bounds.getHeight());
-        }
+        // also size the window: full screen needs a window manager, which a bare X server (kiosk, Xvfb) lacks
+        stage.setWidth(bounds.getWidth());
+        stage.setHeight(bounds.getHeight());
         return true;
     }
 

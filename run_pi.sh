@@ -33,7 +33,7 @@ JVM_OPTS=(
   -XX:+UseSerialGC
   -XX:ReservedCodeCacheSize=64m
   -XX:+ExitOnOutOfMemoryError
-  -XX:SharedArchiveFile="$CACHE_DIR/app-cds.jsa" -XX:+AutoCreateSharedArchive
+  -XX:SharedArchiveFile="$CACHE_DIR/app-cds.jsa" -XX:+AutoCreateSharedArchive -Xlog:cds=off -Xlog:cds+dynamic=off
   -Dprism.order="${JAVACHESS_PRISM:-sw}"
   -Djavafx.animation.pulse="${JAVACHESS_FPS:-60}"
   -Djavachess.kiosk=true
