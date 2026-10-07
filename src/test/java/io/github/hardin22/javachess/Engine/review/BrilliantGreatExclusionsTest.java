@@ -154,6 +154,23 @@ class BrilliantGreatExclusionsTest {
     }
 
     @Test
+    void givingUpThePieceToStartAMateIsBrilliantEvenWhenWinning() {
+        // Capablanca - Marshall 1918, 36.Bxf7+! Rxf7 37.b8=Q+ (chess.com Brilliant): +8.75 anyway, but the bishop is
+        // given to force mate in 6
+        String fen = "5rk1/1P3pp1/R6p/3B4/6P1/2B1rQ2/2K3P1/6q1 w - - 1 36";
+        List<PositionEval> ps = new ArrayList<>();
+        ps.add(new PositionEval(fen, Eval.whiteMates(6), List.of(
+                new EngineLine("d5f7", Eval.whiteMates(6), List.of("d5f7", "f8f7", "b7b8q", "e3e8", "b8e8", "g8h7",
+                        "f3e4", "f7f5", "e4f5", "g7g6"), 20),
+                new EngineLine("c3d4", Eval.cp(875), List.of("c3d4"), 20)), 20, 0, false));
+        ps.add(after(fen, "d5f7", Eval.whiteMates(5)));
+        ReviewInput bxf7 = rated(new ReviewInput(fen, List.of("d5f7"), ps, OpeningBook.NONE, RATING, RATING), 2500,
+                2500);
+        assertEquals(MoveClassification.BRILLIANT, label(bxf7, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.BRILLIANT, label(bxf7, Tuning.DEFAULT.with("brilliantMateSacrifice", 0)));
+    }
+
+    @Test
     void realBrilliantStaysBrilliant() {
         // live_146777979394 ply 11, 6.Bxf7+ (chess.com Brilliant with both engines)
         String fen = "r1bqk1nr/pppp1ppp/2n5/2b5/2B1P3/2p2N2/PP3PPP/RNBQK2R w KQkq - 0 6";

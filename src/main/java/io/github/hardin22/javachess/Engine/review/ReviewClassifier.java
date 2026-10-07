@@ -171,6 +171,8 @@ public final class ReviewClassifier {
          * sacrifice although it is worth 1 (Kasparov - Topalov 1999, 33.c3+).
          */
         final boolean brilliantPawnCheckSac;
+        /** v2.5 B+M: the engine's move giving up the moved piece to start a forced mate skips the winning-anyway tests. */
+        final boolean brilliantMateSacrifice;
         /** v2.5 B-E12: a declined offer that would be won back at once and after which the line wins nothing. */
         final boolean brilliantNoEmptyOffer;
         /** v2.5 B-E13: an offer taken back at once by a discovered attack, material level after the line: an exchange. */
@@ -302,6 +304,7 @@ public final class ReviewClassifier {
             brilliantKingMarchPieces = get("brilliantKingMarchPieces", 6);
             brilliantNoCheckingCounter = get("brilliantNoCheckingCounter", 1) != 0;
             brilliantPawnCheckSac = get("brilliantPawnCheckSac", 1) != 0;
+            brilliantMateSacrifice = get("brilliantMateSacrifice", 1) != 0;
             brilliantNoEmptyOffer = get("brilliantNoEmptyOffer", 1) != 0;
             brilliantNoDiscoveredTrade = get("brilliantNoDiscoveredTrade", 1) != 0;
             brilliantNoShamSacrifice = get("brilliantNoShamSacrifice", 1) != 0;
@@ -1283,6 +1286,12 @@ public final class ReviewClassifier {
             Side side = me ? Side.WHITE : Side.BLACK;
             int gained = Tactics.materialAfter(b0.getFen(), line, side, 6) - Tactics.material(b0, side);
             if (gained <= t.brilliantTopRegain) {
+                altTest = false;
+            }
+            if (t.brilliantMateSacrifice && played.isMateFor(me) && !played.isCheckmate()) {
+                // B+M (user principle 22:20, lead OK): giving up the moved piece to start a forced mate is decisive,
+                // not technique in a won position, even when the line then promotes (Capablanca - Marshall 1918
+                // 36.Bxf7+ Rxf7 37.b8=Q+)
                 altTest = false;
             }
         }

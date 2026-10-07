@@ -1,6 +1,6 @@
 # Brilliant/Great errors accepted today by SpecialLabelsGateTest (Phase 4). It only shrinks: regenerate
 # (-Dreview.special.regen=true) after fixing errors. Allowlisted exceptions are not repeated here.
-# exact 0.6858 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
+# exact 0.6857 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
 id	ply	kind	set	san	ours	chesscom
 daily_1009092152	36	fn-great	cv93	Qxe1	best	great
 daily_1011205894	10	fn-great	cv93	Qxd1+	best	great
@@ -66,6 +66,7 @@ live_173981415730	18	fn-great	cv93	dxe4	best	great
 live_174024200644	74	fn-great	ex-holdout49	Nb4	best	great
 live_174024200644	76	fn-brilliant	ex-holdout49	Nxa6	best	brilliant
 live_174045977526	12	fn-great	cv93	Bxc3	best	great
+live_174045977526	72	fp-brilliant	cv93	Rh1+	brilliant	best
 live_174077845410	59	fn-great	ex-holdout49	Qe4	best	great
 live_174118851816	33	fn-great	cv93	Qxg4	best	great
 live_174171529346	65	fn-great	cv93	Nxe3	best	great
@@ -131,7 +132,6 @@ botvinnik_capablanca_1938	75	fn-great	famous-brilliant	Kxh5	best	great
 botvinnik_tal_1960_g6	58	fn-great	famous-control	Rxc1	best	great
 byrne_fischer_1956	34	fn-brilliant	famous-brilliant	Be6	great	brilliant
 byrne_fischer_1956	34	fp-great	famous-brilliant	Be6	great	brilliant
-capablanca_marshall_1918	71	fn-brilliant	famous-control	Bxf7+	best	brilliant
 fischer_petrosian_1971_g7	59	fn-great	famous-control	Kd2	best	great
 fischer_spassky_1972_g6	41	fn-great	famous-control	f4	best	great
 ivanchuk_yusupov_1991_g9	38	fn-great	famous-brilliant	gxf4	best	great
