@@ -4,7 +4,6 @@
 id	ply	kind	set	san	ours	chesscom
 daily_1009092152	36	fn-great	cv93	Qxe1	best	great
 daily_1011205894	10	fn-great	cv93	Qxd1+	best	great
-daily_1011205894	55	fn-great	cv93	Re8	best	great
 daily_1012805338	36	fn-great	cv93	Bg4	best	great
 daily_1012805338	40	fn-great	cv93	Bxd4	best	great
 daily_1014523396	19	fn-great	cv93	Nf5	best	great
@@ -31,7 +30,6 @@ live_127051221683	47	fn-great	cv93	c6	best	great
 live_138986716238	41	fn-brilliant	ex-holdout49	Bb4	excellent	brilliant
 live_138986716238	70	fn-great	ex-holdout49	Rxh5	best	great
 live_140835657241	51	fn-brilliant	ex-holdout49	Bxd4	best	brilliant
-live_140943746238	64	fp-great	ex-holdout49	Nxe4	great	best
 live_140943746238	69	fn-great	ex-holdout49	Rxd1	best	great
 live_141789599574	35	fn-great	cv93	Rxc5	best	great
 live_143542139438	29	fn-great	cv93	Bh7+	excellent	great
@@ -143,7 +141,6 @@ byrne_fischer_1956	24	fp-great	famous-brilliant	Nxc3	great	best
 byrne_fischer_1956	34	fn-brilliant	famous-brilliant	Be6	great	brilliant
 byrne_fischer_1956	34	fp-great	famous-brilliant	Be6	great	brilliant
 capablanca_marshall_1918	71	fn-brilliant	famous-control	Bxf7+	best	brilliant
-deepblue_kasparov_1997_g6	15	fp-brilliant	famous-control	Nxe6	brilliant	book
 fischer_petrosian_1971_g7	59	fn-great	famous-control	Kd2	best	great
 fischer_spassky_1972_g6	41	fn-great	famous-control	f4	best	great
 ivanchuk_yusupov_1991_g9	38	fn-great	famous-brilliant	gxf4	best	great
@@ -189,6 +186,4 @@ topalov_shirov_1998	75	fn-great	famous-brilliant	Rf3	best	great
 topalov_shirov_1998	92	fn-great	famous-brilliant	Ke6	best	great
 topalov_shirov_1998	93	fp-great	famous-brilliant	Kg1	great	best
 topalov_shirov_1998	100	fp-great	famous-brilliant	d4	great	best
-wei_yi_bruzon_2015	57	fn-great	famous-brilliant	Qb3	excellent	great
-zukertort_blackburne_1883	45	fn-great	famous-brilliant	f5	best	great
 zukertort_blackburne_1883	47	fp-great	famous-brilliant	Bxe4	great	best
