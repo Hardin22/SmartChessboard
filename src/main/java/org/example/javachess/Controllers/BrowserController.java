@@ -192,7 +192,9 @@ public class BrowserController implements NavigationAware {
                 org.example.javachess.Utils.ErrorReporter.showError("Browser",
                         "Impossibile avviare il browser integrato: "
                                 + org.example.javachess.Utils.ErrorReporter.userMessage(e)
-                                + "\nAl primo avvio serve Internet per scaricare il browser (~150 MB).");
+                                + (String.valueOf(e.getMessage()).contains("static TLS")
+                                        ? "\nBrowser scaricato: riavvia l'app (run_pi.sh lo carica all'avvio)."
+                                        : "\nAl primo avvio serve Internet per scaricare il browser (~150 MB)."));
                 Platform.runLater(() -> {
                     if (mainController != null) {
                         mainController.navigateTo("HOME");

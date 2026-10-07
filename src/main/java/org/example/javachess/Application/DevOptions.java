@@ -40,6 +40,7 @@ import java.util.function.Consumer;
  *   <li>{@code -Djavachess.demo.sheet=engine|analysis|end} also open that bottom sheet on the game screen</li>
  *   <li>{@code -Djavachess.demo.switchTheme=light|dark|system} switch theme at runtime 1.5 s after start-up</li>
  *   <li>{@code -Djavachess.dev.pvc=...} scripted PvC game, see {@link DevScenario}</li>
+ *   <li>{@code -Djavachess.browserUrl=URL} open the integrated browser (JCEF) on URL</li>
  *   <li>{@code -Djavachess.devgame=pvp} start a player-vs-player game with one-minute clocks</li>
  *   <li>{@code -Djavachess.devgame=pvc} start a game against the bot (player white, lowest level) right away</li>
  *   <li>{@code -Djavachess.board=sim} software chessboard; with {@code -Djavachess.simulator.window=true} its
@@ -68,10 +69,9 @@ public final class DevOptions {
             stage.setHeight(Double.parseDouble(size[1]));
             return false;
         }
-        if (index != 0) {
-            stage.setWidth(bounds.getWidth());
-            stage.setHeight(bounds.getHeight());
-        }
+        // also size the window: full screen needs a window manager, which a bare X server (kiosk, Xvfb) lacks
+        stage.setWidth(bounds.getWidth());
+        stage.setHeight(bounds.getHeight());
         return true;
     }
 
@@ -95,6 +95,15 @@ public final class DevOptions {
         Platform.runLater(() -> DevScenario.startIfRequested(mainController));
         if ("pvc".equalsIgnoreCase(System.getProperty("javachess.devgame")) && mainController != null) {
             Platform.runLater(() -> startBotGame(mainController));
+        }
+        String browserUrl = System.getProperty("javachess.browserUrl");
+        if (browserUrl != null && mainController != null) {
+            Platform.runLater(() -> {
+                mainController.loadView("BROWSER", "/UI/BrowserView.fxml");
+                if (mainController.getController("BROWSER") instanceof org.example.javachess.Controllers.BrowserController b) {
+                    b.loadPage(browserUrl);
+                }
+            });
         }
         if ("pvp".equalsIgnoreCase(System.getProperty("javachess.devgame")) && mainController != null) {
             Platform.runLater(() -> {
