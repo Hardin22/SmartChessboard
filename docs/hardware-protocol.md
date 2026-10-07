@@ -50,6 +50,15 @@ every 3 s; unplugging and replugging the USB cable is handled while the app runs
 `-Djavachess.board=sim -Djavachess.simulator.window=true` starts a software board with a small window:
 click a square to lift/place a piece, LEDs are drawn as they would be on the board.
 
+`firmware/emulator/board_emulator.py` emulates the firmware on a pseudo-terminal (macOS/Linux, plain
+Python 3) to exercise the real serial code without an Arduino:
+`python3 firmware/emulator/board_emulator.py --link /tmp/fakeboard`, then start the app with
+`-Djavachess.board.port=/tmp/fakeboard` (and `board.baud=115200`: macOS refuses non-standard speeds on
+pseudo-terminals). Type `move e2e4`, `-e2`, `+e4` on its stdin; it prints every LED command received.
+`SerialBoardEmulatorTest` uses it for handshake, sensor events, LED acknowledgements and unplug/replug
+(unplug noticed in ~4 s by the missing heartbeat, replug in < 3 s, LEDs restored with a full frame).
+Symlinked ports such as `/dev/serial/by-id/usb-Arduino...` can be used in `board.port`.
+
 ## Protocol v2
 
 ASCII lines terminated by `\n`. Every line ends with `*XX`: XX is the XOR of all bytes before `*`,

@@ -55,6 +55,9 @@ public final class SerialBoard implements BoardHardware {
     private long inFlightSince;
     private boolean frameDirty;
     private int requestedBrightness = -1;
+    private long inFlightSinceNanos;
+    private volatile long maxRoundTripNanos;
+    private volatile long acknowledged;
 
     private volatile SensorListener listener;
     private volatile SerialPort port;
@@ -170,30 +173,46 @@ public final class SerialBoard implements BoardHardware {
     // --- connection / reader -------------------------------------------------------------------------------
 
     private void connectionLoop() {
-        boolean announcedMissing = false;
         while (running) {
-            SerialPort candidatePort = null;
-            for (SerialPort candidate : candidatePorts()) {
-                if (!running) {
-                    return;
-                }
-                if (handshake(candidate)) {
-                    candidatePort = candidate;
-                    break;
-                }
-            }
-            if (candidatePort == null) {
-                if (!announcedMissing) {
-                    log.info("No chessboard found on the serial ports; running without hardware (retrying every {} s)",
-                            RESCAN_DELAY_MS / 1000);
-                    announcedMissing = true;
-                }
+            try {
+                connectOnce();
+            } catch (RuntimeException e) {
+                log.warn("Serial connection error: {}", e.toString());
+                connected = false;
                 sleep(RESCAN_DELAY_MS);
-                continue;
             }
-            announcedMissing = false;
-            onConnected(candidatePort);
+        }
+    }
+
+    private boolean announcedMissing;
+    private String lastOpenFailure;
+
+    /** Finds the board, then reads from it until it goes away. Returns to be called again. */
+    private void connectOnce() {
+        SerialPort candidatePort = null;
+        for (SerialPort candidate : candidatePorts()) {
+            if (!running) {
+                return;
+            }
+            if (handshake(candidate)) {
+                candidatePort = candidate;
+                break;
+            }
+        }
+        if (candidatePort == null) {
+            if (!announcedMissing) {
+                log.info("No chessboard found on the serial ports; running without hardware (retrying every {} s)",
+                        RESCAN_DELAY_MS / 1000);
+                announcedMissing = true;
+            }
+            sleep(RESCAN_DELAY_MS);
+            return;
+        }
+        announcedMissing = false;
+        onConnected(candidatePort);
+        try {
             readUntilDisconnected(candidatePort);
+        } finally {
             onDisconnected(candidatePort);
         }
     }
@@ -220,9 +239,23 @@ public final class SerialBoard implements BoardHardware {
             }
         }
         if (configuredPort != null && result.isEmpty()) {
-            result.add(SerialPort.getCommPort(configuredPort));
+            // not enumerated (pseudo-terminal, udev symlink such as /dev/serial/by-id/...): open it directly
+            try {
+                result.add(SerialPort.getCommPort(resolveSymlink(configuredPort)));
+            } catch (RuntimeException e) {
+                log.debug("Port {} not available: {}", configuredPort, e.toString());
+            }
         }
         return result;
+    }
+
+    private static String resolveSymlink(String port) {
+        try {
+            java.nio.file.Path path = java.nio.file.Path.of(port);
+            return java.nio.file.Files.exists(path) ? path.toRealPath().toString() : port;
+        } catch (java.io.IOException | RuntimeException e) {
+            return port;
+        }
     }
 
     /** Port name, description and path as reported by the OS. */
@@ -253,9 +286,14 @@ public final class SerialBoard implements BoardHardware {
         candidate.setComPortParameters(baudRate, 8, SerialPort.ONE_STOP_BIT, SerialPort.NO_PARITY);
         candidate.setComPortTimeouts(SerialPort.TIMEOUT_READ_SEMI_BLOCKING, 100, 0);
         if (!candidate.openPort()) {
-            log.debug("Cannot open {}", candidate.getSystemPortName());
+            String failure = candidate.getSystemPortName() + " (error " + candidate.getLastErrorCode() + ")";
+            if (!failure.equals(lastOpenFailure)) {
+                log.info("Cannot open {} at {} baud", failure, baudRate);
+                lastOpenFailure = failure;
+            }
             return false;
         }
+        lastOpenFailure = null;
         legacyFirmware = false;
         LineReader reader = new LineReader();
         long start = System.currentTimeMillis();
@@ -377,9 +415,25 @@ public final class SerialBoard implements BoardHardware {
 
     // --- writer --------------------------------------------------------------------------------------------
 
+    /** LED commands acknowledged by the firmware since start. */
+    public long acknowledgedCommands() {
+        return acknowledged;
+    }
+
+    /** Longest write-to-acknowledge time seen, in microseconds (serial transfer + firmware + USB). */
+    public long maxRoundTripMicros() {
+        return maxRoundTripNanos / 1000;
+    }
+
     private void onAck(boolean applied) {
         txLock.lock();
         try {
+            if (inFlightSinceNanos != 0) {
+                long roundTrip = System.nanoTime() - inFlightSinceNanos;
+                maxRoundTripNanos = Math.max(maxRoundTripNanos, roundTrip);
+                inFlightSinceNanos = 0;
+                acknowledged++;
+            }
             if (inFlightFrame != null) {
                 if (applied) {
                     confirmedFrame = inFlightFrame;
@@ -411,6 +465,7 @@ public final class SerialBoard implements BoardHardware {
                         frameDirty = requestedFrame != null;
                         inFlightFrame = null;
                         inFlightSince = 0;
+                        inFlightSinceNanos = 0;
                     }
                 }
                 if (!running) {
@@ -431,6 +486,7 @@ public final class SerialBoard implements BoardHardware {
                     inFlightFrame = frame;
                 }
                 inFlightSince = System.currentTimeMillis();
+                inFlightSinceNanos = System.nanoTime();
             } catch (InterruptedException e) {
                 return;
             } finally {
