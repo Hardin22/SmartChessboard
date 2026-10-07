@@ -189,6 +189,8 @@ public final class ReviewClassifier {
         final boolean greatNoCashIn;
         /** Phase 4: ... also after the mover's own Brilliant (rated 1000+ or unrated). */
         final boolean greatNoCashInBrilliant;
+        /** Phase 4 obvious Great: a pawn push escorted by its king in king and pawns against the bare king. */
+        final boolean greatNoEscortedPush;
         final boolean greatKickedBishop;
         /** Phase 4 (0 = off): R9 also when the opponent's move lost at least this much, whatever the alternative. */
         final double greatStartsMatePunish;
@@ -317,6 +319,7 @@ public final class ReviewClassifier {
             greatKickedBishop = get("greatKickedBishop", 1) != 0;
             greatNoCashIn = get("greatNoCashIn", 1) != 0;
             greatNoCashInBrilliant = get("greatNoCashInBrilliant", 1) != 0;
+            greatNoEscortedPush = get("greatNoEscortedPush", 1) != 0;
             greatStartsMatePunish = get("greatStartsMatePunish", 0.15);
             greatStartsMateInCheck = get("greatStartsMateInCheck", 1) != 0;
             greatStartsMateKing = get("greatStartsMateKing", 1) != 0;
@@ -777,6 +780,9 @@ public final class ReviewClassifier {
                     // after an own Brilliant is chess.com Great); under 1000 chess.com rewards it (Qxf6 live_122947746214)
                     label = plain;
                 }
+                if (label == MoveClassification.GREAT && obviousGreat(board(replay.fens().get(i)), uci, me, t)) {
+                    label = plain;
+                }
             }
             EngineLine bestLine = p0.best();
             out.add(new MoveReview(i, uci, replay.sans().get(i), replay.fens().get(i), me, label, best, played[i],
@@ -1173,6 +1179,44 @@ public final class ReviewClassifier {
     private static boolean movesKing(Board b, String uci) {
         Move m = Tactics.find(b, uci);
         return m == null || b.getPiece(m.getFrom()).getPieceType() == PieceType.KING;
+    }
+
+    /**
+     * Phase 4: moves the engine calls the only good one but no chess player would call a find (CLAIMS 23:00, "obvious"
+     * Great false positives at 1000+), each a narrow board pattern with its own knob.
+     */
+    private static boolean obviousGreat(Board b0, String uci, boolean me, Tuning t) {
+        Move m = Tactics.find(b0, uci);
+        if (m == null) {
+            return false;
+        }
+        Side side = me ? Side.WHITE : Side.BLACK;
+        return t.greatNoEscortedPush && escortedPush(b0, m, side);
+    }
+
+    /**
+     * King and pawns against the bare king: a pawn push to a square next to its own king. The king escorts the pawn
+     * and the push is plain technique; the finds are the king moves (live_170725680910 83.Kh6 and 85.Kh7 chess.com
+     * Great, 84.g7 Best). A push the king does not cover (live_174388155128 63.f4, 65.h4, the pawns defend themselves)
+     * stays a candidate.
+     */
+    private static boolean escortedPush(Board b0, Move m, Side side) {
+        if (b0.getPiece(m.getFrom()).getPieceType() != PieceType.PAWN || b0.getPiece(m.getTo()) != Piece.NONE
+                || m.getPromotion() != Piece.NONE) {
+            return false;
+        }
+        for (Square sq : Square.values()) {
+            Piece p = sq == Square.NONE ? Piece.NONE : b0.getPiece(sq);
+            if (p == Piece.NONE || p.getPieceType() == PieceType.KING) {
+                continue;
+            }
+            if (p.getPieceSide() != side || p.getPieceType() != PieceType.PAWN) {
+                return false; // the opponent has more than the king, or the mover has pieces
+            }
+        }
+        Square king = b0.getKingSquare(side);
+        return Math.abs(king.getFile().ordinal() - m.getTo().getFile().ordinal()) <= 1
+                && Math.abs(king.getRank().ordinal() - m.getTo().getRank().ordinal()) <= 1;
     }
 
     /** 0 losing, 1 about equal, 2 winning (SPEC v2.1). */

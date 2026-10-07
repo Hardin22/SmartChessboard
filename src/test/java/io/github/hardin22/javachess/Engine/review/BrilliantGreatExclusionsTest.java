@@ -788,6 +788,20 @@ class BrilliantGreatExclusionsTest {
         assertEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT.with("greatNoCashInBrilliant", 0)));
     }
 
+    @Test
+    void aPawnPushEscortedByItsKingAgainstTheBareKingIsNotGreat() {
+        // live_170725680910 ply 167: Kh6 g6 against Kg8, 84.g7 wins (mate in 10) and Kg5 draws, but the king covers g7:
+        // plain technique, chess.com Best (its Greats are 83.Kh6 and 85.Kh7)
+        ReviewInput g7 = rated(oneMove("6k1/8/6PK/8/8/8/8/8 w - - 7 84", "g6g7", Eval.whiteMates(10), "g6g7",
+                Eval.cp(0), "h6g5", Eval.whiteMates(9)), 1660, 1652);
+        assertEquals(MoveClassification.BEST, label(g7, Tuning.DEFAULT));
+        assertEquals(MoveClassification.GREAT, label(g7, Tuning.DEFAULT.with("greatNoEscortedPush", 0)));
+        // live_174388155128 ply 125: 63.f4 with the king far away (the pawns must defend themselves): still Great
+        ReviewInput f4 = rated(oneMove("8/8/8/8/7k/K6P/5P2/8 w - - 1 63", "f2f4", Eval.cp(668), "f2f4", Eval.cp(0),
+                "a3b3", Eval.cp(668)), 2009, 1982);
+        assertEquals(MoveClassification.GREAT, label(f4, Tuning.DEFAULT));
+    }
+
     private static ReviewInput rated(ReviewInput in, int white, int black) {
         return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
     }
