@@ -39,10 +39,12 @@ The app uses the whole screen and also works on a landscape 1920x720 or a deskto
 On the Pi, or in the Pi box (section 8), Maven picks the Linux arm64 JavaFX natives by itself. On a
 Mac/PC the dependencies without classifier would bring the *build machine's* JavaFX natives (a jar built
 on a Mac contains `libglass.dylib` and does not start on the Pi): `-Djavafx.platform=linux-aarch64` is
-required there.
+required there, and so is `clean` when switching platform (the shade plugin otherwise merges the previous
+jar: the result carries both natives). `run_pi.sh` refuses a jar without Linux JavaFX libraries with a
+clear message instead of JavaFX's "no suitable pipeline found".
 
 ```bash
-./mvnw -Ppi -Djavafx.platform=linux-aarch64 -DskipTests package
+./mvnw clean -Ppi -Djavafx.platform=linux-aarch64 -DskipTests package
 mkdir -p ~/javachess && cp target/javaChess-1.0-SNAPSHOT.jar run_pi.sh ~/javachess/
 ```
 

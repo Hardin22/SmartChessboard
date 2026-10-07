@@ -19,10 +19,16 @@ export MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2}
 
 JAR=${JAVACHESS_JAR:-$(ls -t javaChess*.jar target/javaChess*.jar 2>/dev/null | grep -v original | head -1 || true)}
 if [ -z "$JAR" ] || [ ! -f "$JAR" ]; then
-  echo "javaChess jar not found (build it with: ./mvnw -Ppi -Djavafx.platform=linux-aarch64 -DskipTests package)" >&2
+  echo "javaChess jar not found (build it with: ./mvnw clean -Ppi -Djavafx.platform=linux-aarch64 -DskipTests package)" >&2
   exit 1
 fi
 JAVA=${JAVA_HOME:+$JAVA_HOME/bin/}java
+# a jar built on a Mac without -Djavafx.platform=linux-aarch64 carries macOS JavaFX natives and cannot start here
+if [ "$(uname -s)" = Linux ] && ! grep -aq 'libglassgtk3.so' "$JAR"; then
+  echo "$JAR has no Linux JavaFX libraries: build it on the Pi, or with" >&2
+  echo "  ./mvnw clean -Ppi -Djavafx.platform=linux-aarch64 -DskipTests package" >&2
+  exit 1
+fi
 
 # Integrated browser (JCEF) on arm64 Linux: libcef.so needs more static TLS than glibc reserves for libraries
 # opened later ("cannot allocate memory in static TLS block"), so it must be preloaded. The bundle is downloaded

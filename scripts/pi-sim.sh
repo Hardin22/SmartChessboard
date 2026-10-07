@@ -57,7 +57,7 @@ case "$cmd" in
     echo "sources copied into $VOLUME:/home/pi/javachess"
     ;;
   package)
-    box -- "cd ~/javachess && ./mvnw -q -Ppi -DskipTests package && ls -l target/javaChess-*.jar"
+    box -- "cd ~/javachess && ./mvnw -q clean -Ppi -DskipTests package && ls -l target/javaChess-*.jar"
     ;;
   test)
     box -- "cd ~/javachess && ./mvnw test $*"

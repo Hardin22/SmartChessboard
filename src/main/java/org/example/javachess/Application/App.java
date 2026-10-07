@@ -137,7 +137,7 @@ public class App extends Application {
         List<String> names = Thread.getAllStackTraces().keySet().stream()
                 .filter(t -> t.isAlive() && !t.isDaemon() && t != Thread.currentThread())
                 .map(Thread::getName)
-                .filter(n -> !n.equals("DestroyJavaVM") && !n.startsWith("JavaFX") && !n.startsWith("QuantumRenderer")
+                .filter(n -> !n.equals("DestroyJavaVM") && !n.equals("main") && !n.startsWith("JavaFX") && !n.startsWith("QuantumRenderer")
                         && !n.startsWith("InvokeLaterDispatcher") && !n.startsWith("AWT-"))
                 .sorted()
                 .toList();
