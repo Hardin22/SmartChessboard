@@ -25,6 +25,8 @@ public final class ErrorReporter {
     private static final long DIALOG_INTERVAL_MS = 5000;
     private static final AtomicLong lastDialog = new AtomicLong();
     private static volatile boolean dialogsEnabled = true;
+    /** Shows errors inside the app (set by the UI); null = a separate Alert window. */
+    private static volatile java.util.function.BiConsumer<String, String> presenter;
 
     private ErrorReporter() {
     }
@@ -54,6 +56,14 @@ public final class ErrorReporter {
         }
     }
 
+    /**
+     * Lets the UI show errors inside the main window (a sheet that turns with the screen) instead of an Alert,
+     * which on the board's touch screen would open as a separate small window. Called on the FX thread.
+     */
+    public static void setPresenter(java.util.function.BiConsumer<String, String> uiPresenter) {
+        presenter = uiPresenter;
+    }
+
     /** Shows an error dialog on the FX thread (rate limited); safe to call from any thread. */
     public static void showError(String title, String message) {
         if (!dialogsEnabled) {
@@ -65,6 +75,15 @@ public final class ErrorReporter {
             return;
         }
         Runnable show = () -> {
+            java.util.function.BiConsumer<String, String> inApp = presenter;
+            if (inApp != null) {
+                try {
+                    inApp.accept(title, message);
+                    return;
+                } catch (RuntimeException e) {
+                    log.warn("Cannot show the error in the app: {}", e.getMessage());
+                }
+            }
             try {
                 Alert alert = new Alert(Alert.AlertType.ERROR, message, ButtonType.OK);
                 alert.setTitle(title);

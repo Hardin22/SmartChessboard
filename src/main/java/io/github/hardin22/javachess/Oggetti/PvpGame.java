@@ -154,6 +154,41 @@ public class PvpGame extends AbstractGame {
         return saveGame;
     }
 
+    private ChessClock.Side pausedSide;
+
+    /** Stops the running clock (pause button of the two-player screen). A move or {@link #resumeClock()} restarts it. */
+    public synchronized void pauseClock() {
+        ChessClock.Side running = chessTimer.clock().running();
+        if (!gameRunning || running == null) {
+            return;
+        }
+        pausedSide = running;
+        if (running == ChessClock.Side.WHITE) {
+            chessTimer.stopWhiteTimer();
+        } else {
+            chessTimer.stopBlackTimer();
+        }
+    }
+
+    /** Restarts the clock stopped by {@link #pauseClock()}. */
+    public synchronized void resumeClock() {
+        ChessClock.Side side = pausedSide;
+        pausedSide = null;
+        if (!gameRunning || side == null || chessTimer.clock().running() != null) {
+            return;
+        }
+        if (side == ChessClock.Side.WHITE) {
+            chessTimer.startWhiteTimer();
+        } else {
+            chessTimer.startBlackTimer();
+        }
+    }
+
+    /** True while the clocks are paused. */
+    public synchronized boolean isClockPaused() {
+        return pausedSide != null && chessTimer.clock().running() == null;
+    }
+
     @Override
     protected String whitePlayerName() {
         return "Bianco";

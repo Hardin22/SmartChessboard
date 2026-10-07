@@ -1,145 +1,392 @@
 package io.github.hardin22.javachess.Controllers;
 
-import com.github.bhlangonijr.chesslib.Side;
-import com.github.bhlangonijr.chesslib.move.Move;
+import com.github.bhlangonijr.chesslib.Board;
 import javafx.application.Platform;
-import javafx.fxml.FXML;
+import javafx.beans.value.ChangeListener;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
+import javafx.scene.Parent;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.ProgressBar;
-import javafx.scene.image.ImageView;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
+import javafx.scene.control.OverrunStyle;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.control.ToggleGroup;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import io.github.hardin22.javachess.Analysis.AnalysisSession;
+import io.github.hardin22.javachess.Analysis.BoardFollower;
+import io.github.hardin22.javachess.Analysis.EngineLines;
+import io.github.hardin22.javachess.Analysis.ReviewInsights;
+import io.github.hardin22.javachess.Components.BoardFrame;
 import io.github.hardin22.javachess.Components.BoardThemes;
 import io.github.hardin22.javachess.Components.I18n;
+import io.github.hardin22.javachess.Components.Icons;
 import io.github.hardin22.javachess.Components.Notation;
-import io.github.hardin22.javachess.Components.MoveListView;
-import io.github.hardin22.javachess.Components.PageHeader;
-import io.github.hardin22.javachess.Oggetti.AnalysisPanel;
+import io.github.hardin22.javachess.Components.ReviewLabels;
+import io.github.hardin22.javachess.Components.ScreenHeader;
+import io.github.hardin22.javachess.Components.Stepper;
+import io.github.hardin22.javachess.Components.Ui;
+import io.github.hardin22.javachess.Engine.review.GameReview;
+import io.github.hardin22.javachess.Oggetti.ArchivedGame;
 import io.github.hardin22.javachess.Oggetti.ChessBoardUI;
 import io.github.hardin22.javachess.Oggetti.EvalBar;
 import io.github.hardin22.javachess.Oggetti.EvaluationGraph;
 import io.github.hardin22.javachess.Oggetti.MoveAnalysis;
-import io.github.hardin22.javachess.Engine.AnalysisUpdate;
-import io.github.hardin22.javachess.Engine.OpeningExplorer;
-import io.github.hardin22.javachess.Engine.PositionAnalyzer;
+import io.github.hardin22.javachess.Oggetti.MoveAnalysis.MoveClassification;
 import io.github.hardin22.javachess.Services.GameAnalyzer;
-import io.github.hardin22.javachess.Utils.ImageCache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 
-/** Review screen: replays an archived game with live engine lines, full-game analysis, accuracy and graph. */
-public class ReviewController implements NavigationAware, GameNavigationListener {
+/**
+ * Review of a game. Accuracy of both players, the board (full width) with the live evaluation, the current move card
+ * ("Cf3 è la mossa migliore", "Mostra la migliore", variations), the computer lines under it, the evaluation graph
+ * with the notable moves, the move list with label tiles, a summary with the phases and the key moments, and huge
+ * navigation buttons; horizontal drags on the board step through the moves and taps on it try other moves.
+ *
+ * <p>Navigation, variations, computer lines, opening name and the physical board follow the
+ * {@link AnalysisSession} view-model (package Analysis); this class only presents it.</p>
+ */
+public class ReviewController implements Screen, GameNavigationListener {
 
     private static final Logger LOG = LoggerFactory.getLogger(ReviewController.class);
     private static final String START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-    private static final int DEBOUNCE_DELAY = 150;
 
     private MainController mainController;
-    @FXML
-    private VBox stockfishControls;
-    @FXML
-    private StockfishControlsController stockfishControlsController;
-    @FXML
-    private PageHeader header;
-    @FXML
-    private io.github.hardin22.javachess.Components.GameLayout reviewView;
-    @FXML
-    private StackPane reviewHbox;
-    @FXML
-    private Label plyLabel;
-    @FXML
-    private VBox analysisContainer;
-    @FXML
-    private MoveListView moveList;
-    @FXML
-    private Button analyzeButton;
-    @FXML
-    private Label analyzeHint;
-    @FXML
-    private HBox analyzeRow;
-    @FXML
-    private StackPane graphContainer;
-    @FXML
-    private VBox progressContainer;
-    @FXML
-    private ProgressBar analysisProgressIndicator;
-    @FXML
-    private Label percentLabel;
-    @FXML
-    private VBox accuracyWrapper;
-    @FXML
-    private HBox accuracyContainer;
-    @FXML
-    private Label whiteAccuracyLabel;
-    @FXML
-    private Label blackAccuracyLabel;
+    private final BorderPane root = new BorderPane();
+    private final ScreenHeader header;
+    private final EvalBar evalBar = new EvalBar(22, 560);
+    private final BoardFrame boardFrame = new BoardFrame(evalBar);
+    private final EvaluationGraph evaluationGraph = new EvaluationGraph(672, 104);
 
-    private int analysisDepth = 18;
-    private int analysisMultiPV = 1;
-    private final boolean analysisEnabled = true;
+    // summary area: analyse button, progress, accuracy
+    private final StackPane summary = new StackPane();
+    private final VBox analyzeBox = new VBox(14);
+    private final VBox progressBox = new VBox(12);
+    private final Region progressFill = new Region();
+    private final Label percentLabel = Ui.label("", "t-body-m");
+    private final HBox accuracyBox = new HBox(14);
+    /** Accuracy texts ("82,5%"), read by the end-to-end tests. */
+    private final Label whiteAccuracyLabel = Ui.label("0%", "accuracy-value");
+    private final Label blackAccuracyLabel = Ui.label("0%", "accuracy-value");
+    private final Button analyzeButton;
+
+    // current move card
+    private final HBox moveCard = new HBox(16);
+    private final StackPane moveBadge = new StackPane();
+    private final Label moveTitle = Ui.wrap("", "move-card-title");
+    private final Label moveSub = Ui.wrap("", "move-card-sub");
+    private final Label liveEval = Ui.label("", "eval-chip");
+    private final HBox moveActions = new HBox(10);
+
+    // computer lines
+    private final VBox linesBox = new VBox(6);
+    private final Label followStatus = Ui.wrap("", "t-small", "t-accent");
+
+    // tabs
+    private final ToggleGroup tabs = new ToggleGroup();
+    private final ListView<Integer> moveList = new ListView<>();
+    private final VBox breakdown = new VBox(8);
+    private final StackPane tabContent = new StackPane();
+
+    // navigation
+    private final Label plyLabel = Ui.label("", "ply-label");
+    private Button prevButton;
+    private Button nextButton;
+    private Button firstButton;
+    private Button lastButton;
 
     private ChessBoardUI reviewChessBoard;
-    private final EvalBar reviewEvalBar = new EvalBar(8, 400);
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread t = new Thread(r, "review-debounce");
-        t.setDaemon(true);
-        return t;
-    });
-    private ScheduledFuture<?> debounceHandle;
+    private AnalysisSession session;
+    private final List<Runnable> unbind = new ArrayList<>();
     private ArduinoController arduinoController;
-    private AnalysisPanel evaluationPanel;
-    private EvaluationGraph evaluationGraph;
+    /** Rows of the review (labels for tiles, graph, list); also read by the end-to-end tests. */
     private List<MoveAnalysis> currentAnalysis;
+    private GameReview currentReview;
     private String currentPgn;
     private String currentInitialFen = START_FEN;
-    /** Players' ratings of the loaded game for the review labels, 0 when unknown. */
+    private List<String> uciMoves = List.of();
+    private List<String> sanMoves = List.of();
     private int currentWhiteRating;
     private int currentBlackRating;
+    private String backTarget = "ARCHIVE";
+    private String gameTitle = "";
+    private String gameDetail = "";
     /** Incremented when another game is loaded: a running full analysis of the previous game is discarded. */
     private final java.util.concurrent.atomic.AtomicInteger analysisGeneration =
             new java.util.concurrent.atomic.AtomicInteger();
     private int[] whiteCounts = new int[0];
     private int[] blackCounts = new int[0];
+    private double dragStartX = Double.NaN;
+    private int shownPly = -1;
+
+    public ReviewController() {
+        header = new ScreenHeader(I18n.t("review.title"), this::back);
+        header.setActions(Ui.iconButton("fth-more-horizontal", I18n.t("game.menu"), this::showMenu));
+        analyzeButton = Ui.wide(I18n.t("review.analyze"), "fth-activity", "btn-primary", "btn-lg");
+        analyzeButton.setOnAction(e -> startFullAnalysis());
+        build();
+    }
 
     @Override
     public void setMainController(MainController mainController) {
         this.mainController = mainController;
+        mainController.facingBlackProperty().addListener((obs, o, n) -> {
+            if (reviewChessBoard != null) {
+                reviewChessBoard.setFlipped(n);
+            }
+        });
     }
 
-    @FXML
-    public void initialize() {
-        if (stockfishControlsController != null) {
-            stockfishControlsController.setOnParamsChanged((depth, multiPv) -> {
-                this.analysisDepth = depth;
-                this.analysisMultiPV = multiPv;
-                triggerAnalysisDebounced();
-            });
+    @Override
+    public Parent getRoot() {
+        return root;
+    }
+
+    // ================================================================== layout
+
+    private void build() {
+        Label analyzeHint = Ui.wrap(I18n.t("review.analyze.hint"), "t-small", "t-muted");
+        analyzeBox.getChildren().addAll(analyzeButton, analyzeHint);
+
+        Region track = new Region();
+        track.getStyleClass().add("progress-track");
+        progressFill.getStyleClass().add("progress-fill");
+        progressFill.setMaxWidth(0);
+        StackPane bar = new StackPane(track, progressFill);
+        StackPane.setAlignment(progressFill, Pos.CENTER_LEFT);
+        bar.widthProperty().addListener((obs, o, n) -> setProgress(lastProgress));
+        progressBox.getChildren().addAll(percentLabel, bar, Ui.wrap(I18n.t("review.analyzing.hint"), "t-small",
+                "t-muted"));
+        progressBox.getStyleClass().add("card");
+
+        accuracyBox.getChildren().addAll(accuracyCard(true, whiteAccuracyLabel), accuracyCard(false,
+                blackAccuracyLabel));
+        for (Node n : accuracyBox.getChildren()) {
+            HBox.setHgrow(n, Priority.ALWAYS);
+            ((Region) n).setMaxWidth(Double.MAX_VALUE);
+            ((Region) n).setPrefWidth(1);
         }
-        evaluationGraph = new EvaluationGraph(600, 132);
-        evaluationGraph.setOnMoveSelected(index -> goTo(index + 1));
-        graphContainer.getChildren().add(evaluationGraph);
+        summary.getChildren().addAll(analyzeBox, progressBox, accuracyBox);
+        showSummary(analyzeBox);
 
-        evaluationPanel = new AnalysisPanel();
-        analysisContainer.getChildren().add(evaluationPanel);
-        reviewView.setEvalBar(reviewEvalBar);
-        moveList.setOnPlySelected(this::goTo);
+        // board: drags step through the moves, taps try moves (variations)
+        boardFrame.setOnMousePressed(e -> dragStartX = e.getX());
+        boardFrame.setOnMouseReleased(e -> {
+            if (!Double.isNaN(dragStartX)) {
+                double dx = e.getX() - dragStartX;
+                if (dx < -70) {
+                    nextMove();
+                } else if (dx > 70) {
+                    previousMove();
+                }
+            }
+            dragStartX = Double.NaN;
+        });
+
+        // current move card
+        moveBadge.setMinSize(56, 56);
+        moveBadge.setMaxSize(56, 56);
+        VBox moveTexts = new VBox(4, moveTitle, moveSub);
+        moveTexts.setMinWidth(0);
+        HBox.setHgrow(moveTexts, Priority.ALWAYS);
+        liveEval.getStyleClass().add("white-adv");
+        liveEval.managedProperty().bind(liveEval.visibleProperty());
+        liveEval.setMinWidth(Region.USE_PREF_SIZE);
+        moveActions.managedProperty().bind(moveActions.visibleProperty());
+        moveActions.setVisible(false);
+        moveActions.setAlignment(Pos.CENTER_RIGHT);
+        moveActions.setMinWidth(Region.USE_PREF_SIZE);
+        // one row: tile, texts, then the actions (or the evaluation when the computer lines are hidden)
+        moveCard.getChildren().addAll(moveBadge, moveTexts, moveActions, liveEval);
+        moveCard.setAlignment(Pos.CENTER_LEFT);
+        moveCard.getStyleClass().add("move-card");
+        moveCard.setMinHeight(Region.USE_PREF_SIZE);
+        linesBox.setMinHeight(Region.USE_PREF_SIZE);
+
+        // computer lines
+        linesBox.managedProperty().bind(linesBox.visibleProperty());
+        followStatus.managedProperty().bind(followStatus.visibleProperty());
+        followStatus.setVisible(false);
+
+        // graph
+        evaluationGraph.setOnMoveSelected(index -> goTo(index + 1));
+        evaluationGraph.setMinHeight(88);
+        evaluationGraph.setPrefHeight(88);
+        evaluationGraph.managedProperty().bind(evaluationGraph.visibleProperty());
+
+        // tabs: moves | summary
+        ToggleButton movesTab = new ToggleButton(I18n.t("review.tab.moves"));
+        ToggleButton summaryTab = new ToggleButton(I18n.t("review.tab.summary"));
+        HBox tabBar = Ui.segmented(tabs, List.of(movesTab, summaryTab));
+        movesTab.setSelected(true);
+        tabs.selectedToggleProperty().addListener((obs, o, n) -> showTab());
+
+        moveList.setCellFactory(list -> new MoveRowCell());
+        moveList.setFixedCellSize(80);
+        moveList.setPrefHeight(160);
+        moveList.setFocusTraversable(false);
+        moveList.setPlaceholder(Ui.label(I18n.t("moves.empty"), "t-body", "t-faint"));
+        tabContent.getChildren().addAll(moveList, Ui.scroll(breakdown));
+        VBox.setVgrow(tabContent, Priority.ALWAYS);
+        tabContent.setMinHeight(120);
+        showTab();
+
+        VBox body = new VBox(12, summary, boardFrame, followStatus, moveCard, linesBox, evaluationGraph, tabBar,
+                tabContent);
+        for (Node n : new Node[] { summary, followStatus, moveCard, linesBox, evaluationGraph, tabBar, tabContent }) {
+            VBox.setMargin(n, new Insets(0, 24, 0, 24));
+        }
+
+        // navigation
+        firstButton = navButton("fth-chevrons-left", I18n.t("review.first"), this::firstMove);
+        prevButton = navButton("fth-chevron-left", I18n.t("review.previous"), this::previousMove);
+        nextButton = navButton("fth-chevron-right", I18n.t("review.next"), this::nextMove);
+        lastButton = navButton("fth-chevrons-right", I18n.t("review.last"), this::lastMove);
+        prevButton.getStyleClass().add("main");
+        nextButton.getStyleClass().add("main");
+        HBox nav = new HBox(12, firstButton, prevButton, nextButton, lastButton);
+        nav.getStyleClass().add("nav-bar");
+        HBox.setHgrow(prevButton, Priority.ALWAYS);
+        HBox.setHgrow(nextButton, Priority.ALWAYS);
+        prevButton.setMaxWidth(Double.MAX_VALUE);
+        nextButton.setMaxWidth(Double.MAX_VALUE);
+        firstButton.setMinWidth(112);
+        lastButton.setMinWidth(112);
+        HBox plyRow = new HBox(plyLabel);
+        plyRow.setAlignment(Pos.CENTER);
+        VBox bottom = new VBox(0, plyRow, nav);
+        bottom.setPadding(new Insets(8, 0, 0, 0));
+
+        this.body = body;
+        this.bottomBar = bottom;
+        this.tabBarNode = tabBar;
+        root.setTop(header);
+        root.setCenter(body);
+        root.setBottom(bottom);
     }
 
-    @FXML
-    private void toggleSettings() {
-        mainController.showSheet(I18n.t("analysis.title"), stockfishControlsController.getRoot());
+    private VBox body;
+    private VBox bottomBar;
+    private Node tabBarNode;
+
+    /** Portrait: everything in one column. Wide: board | card, lines, graph, navigation | moves and summary. */
+    @Override
+    public void setWide(boolean wide) {
+        body.getChildren().clear();
+        // Portrait: the board never shrinks below its full width. Wide: it fits the height instead.
+        boardFrame.setMinHeight(wide ? 64 : Region.USE_PREF_SIZE);
+        if (!wide) {
+            root.setTop(header);
+            body.getChildren().addAll(summary, boardFrame, followStatus, moveCard, linesBox, evaluationGraph,
+                    tabBarNode, tabContent);
+            root.setCenter(body);
+            root.setBottom(bottomBar);
+            return;
+        }
+        root.setBottom(null);
+        root.setTop(null);
+        body.getChildren().addAll(header, summary, moveCard, evaluationGraph, Ui.vgrow(), bottomBar);
+        body.setPrefWidth(620);
+        body.setMinWidth(480);
+        VBox moves = new VBox(12, followStatus, linesBox, tabBarNode, tabContent);
+        moves.setPadding(new Insets(24, 0, 24, 0));
+        moves.setPrefWidth(520);
+        moves.setMinWidth(380);
+        HBox.setHgrow(boardFrame, Priority.ALWAYS);
+        HBox columns = new HBox(8, boardFrame, body, moves);
+        root.setCenter(columns);
+    }
+
+    private VBox accuracyCard(boolean white, Label value) {
+        Region dot = new Region();
+        dot.getStyleClass().addAll("avatar", white ? "white" : "black");
+        dot.setStyle("-fx-min-width: 28; -fx-min-height: 28; -fx-max-width: 28; -fx-max-height: 28;"
+                + " -fx-background-radius: 9; -fx-border-radius: 9;");
+        HBox head = new HBox(10, dot, Ui.label(I18n.t("review.accuracy.of",
+                I18n.t(white ? "review.accuracy.white" : "review.accuracy.black")), "t-small", "t-muted"));
+        head.setAlignment(Pos.CENTER_LEFT);
+        VBox card = new VBox(0, head, value);
+        card.getStyleClass().add("accuracy-card");
+        return card;
+    }
+
+    private Button navButton(String icon, String text, Runnable action) {
+        Button b = new Button();
+        b.setGraphic(Icons.of(icon, 40));
+        b.getStyleClass().setAll("nav-btn");
+        b.setAccessibleText(text);
+        b.setFocusTraversable(false);
+        b.setOnAction(e -> action.run());
+        return b;
+    }
+
+    private void showSummary(Node shown) {
+        for (Node n : summary.getChildren()) {
+            n.setVisible(n == shown);
+            n.setManaged(n == shown);
+        }
+    }
+
+    private double lastProgress;
+
+    private void setProgress(double fraction) {
+        lastProgress = fraction;
+        double width = ((Region) progressFill.getParent()).getWidth();
+        progressFill.setMaxWidth(Math.max(12, width * fraction));
+        progressFill.setMinWidth(Math.max(12, width * fraction));
+    }
+
+    private void showTab() {
+        boolean moves = tabs.getSelectedToggle() == null || tabs.getToggles().indexOf(tabs.getSelectedToggle()) == 0;
+        tabContent.getChildren().get(0).setVisible(moves);
+        tabContent.getChildren().get(1).setVisible(!moves);
+    }
+
+    // ================================================================== opening a game
+
+    /** Opens an archived game in the review screen (back goes to the screen it came from). */
+    public static void open(MainController main, ArchivedGame game) {
+        ReviewController review = (ReviewController) main.getController("REVIEW");
+        review.backTarget = main.getCurrentViewName() == null ? "HOME" : main.getCurrentViewName();
+        main.navigateTo("REVIEW");
+        review.loadGame(game.movesAsUciString(), game.initialFen(), game.whiteRating(), game.blackRating());
+        review.setGameInfo(ArchiveController.describe(game), ArchiveController.outcomeLine(game));
+    }
+
+    /** Opens moves just played (end of a game). */
+    public static void openMoves(MainController main, String uciMoves, String initialFen, String title) {
+        ReviewController review = (ReviewController) main.getController("REVIEW");
+        review.backTarget = "HOME";
+        main.navigateTo("REVIEW");
+        review.loadGame(uciMoves, initialFen);
+        review.setGameInfo(title, "");
+    }
+
+    private void setGameInfo(String title, String detail) {
+        gameTitle = title == null ? "" : title;
+        gameDetail = detail == null ? "" : detail;
+        refreshHeader();
+    }
+
+    private void refreshHeader() {
+        String opening = session == null ? "" : session.openingProperty().get();
+        String sub = gameTitle.isEmpty() ? (opening.isEmpty() ? I18n.t("review.subtitle") : opening)
+                : gameTitle + (gameDetail.isBlank() ? "" : " · " + gameDetail);
+        header.setSubtitle(sub);
     }
 
     public void loadGame(String pgn) {
@@ -156,143 +403,219 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         this.currentBlackRating = blackRating;
         this.currentPgn = pgn;
         analysisGeneration.incrementAndGet();
-        this.currentInitialFen = initialFen == null ? START_FEN : initialFen;
+        this.currentInitialFen = initialFen == null || initialFen.isBlank() ? START_FEN : initialFen;
         if (arduinoController == null) {
             Thread.ofVirtual().start(() -> arduinoController = ArduinoController.getInstance());
         }
+        closeSession();
 
-        reviewChessBoard = new ChessBoardUI(BoardThemes.currentBoard(), BoardThemes.currentPieces(), 80);
+        uciMoves = pgn == null || pgn.isBlank() ? List.of()
+                : Arrays.stream(pgn.trim().split("\\s+")).filter(t -> t.matches("[a-h][1-8][a-h][1-8][qrbnQRBN]?"))
+                        .toList();
+        sanMoves = Notation.toSan(this.currentInitialFen, uciMoves, 2000).stream().map(Notation::italian).toList();
+        if (sanMoves.size() < uciMoves.size()) {
+            uciMoves = uciMoves.subList(0, sanMoves.size()); // stop at the first illegal move
+        }
+
+        reviewChessBoard = new ChessBoardUI(BoardThemes.currentBoard(), BoardThemes.currentPieces(), 70);
         reviewChessBoard.setFitToParent(true);
-        reviewHbox.getChildren().setAll(reviewChessBoard);
-        reviewChessBoard.loadPgn(pgn, this.currentInitialFen);
-        reviewEvalBar.updateEvaluation(0);
+        reviewChessBoard.setOverlaysEnabled(false);
+        reviewChessBoard.setFlipped(mainController != null && mainController.isFacingBlack());
+        boardFrame.setBoard(reviewChessBoard);
+        evalBar.updateEvaluation(0);
 
-        moveList.setMoves(this.currentInitialFen, toMoves(reviewChessBoard.getMoveList(), this.currentInitialFen));
-        header.setSubtitle(I18n.t("review.subtitle"));
-
-        // Reset analysis state
-        progressContainer.setVisible(false);
-        progressContainer.setManaged(false);
-        analyzeRow.setVisible(true);
-        analyzeRow.setManaged(true);
-        analyzeButton.setDisable(false);
-        accuracyWrapper.setVisible(false);
-        accuracyWrapper.setManaged(false);
+        gameTitle = "";
+        gameDetail = "";
         currentAnalysis = null;
+        currentReview = null;
         evaluationGraph.setData(null);
-        evaluationPanel.clear();
+        evaluationGraph.setVisible(false);
+        showSummary(analyzeBox);
+        analyzeButton.setDisable(false);
         whiteAccuracyLabel.setText("0%");
         blackAccuracyLabel.setText("0%");
-
-        handleMoveUpdate();
-    }
-
-    /** UCI strings of a PGN to chesslib moves (for SAN conversion); stops at the first unparsable token. */
-    private static List<Move> toMoves(List<String> uci, String initialFen) {
-        List<Move> result = new ArrayList<>();
-        Side side = initialFen.split(" ").length > 1 && initialFen.split(" ")[1].equals("b") ? Side.BLACK : Side.WHITE;
-        for (String token : uci) {
-            try {
-                result.add(new Move(token, side));
-            } catch (RuntimeException e) {
-                break;
-            }
-            side = side.flip();
+        whiteCounts = new int[MoveClassification.values().length];
+        blackCounts = new int[MoveClassification.values().length];
+        List<Integer> rows = new ArrayList<>();
+        int rowCount = (sanMoves.size() + (blackStarts() ? 2 : 1)) / 2;
+        for (int i = 0; i < rowCount; i++) {
+            rows.add(i);
         }
-        return result;
+        moveList.getItems().setAll(rows);
+        shownPly = -1;
+        openSession();
+        rebuildBreakdown();
     }
 
-    /** Full-game review; its engine budget comes from the engine profile (the sheet only tunes the live lines). */
-    @FXML
+    /** One view-model per game: navigation, variations, computer lines, opening, physical board. */
+    private void openSession() {
+        session = new AnalysisSession(currentInitialFen, uciMoves);
+        AnalysisSession s = session;
+        reviewChessBoard.setMoveInput(new ChessBoardUI.MoveInput() {
+            @Override
+            public Board position() {
+                Board b = new Board();
+                b.loadFromFen(s.fenProperty().get());
+                return b;
+            }
+
+            @Override
+            public boolean enabled() {
+                return s == session;
+            }
+
+            @Override
+            public void play(String uci) {
+                s.play(uci);
+            }
+        });
+        listen(s.positionProperty(), (obs, o, n) -> onPosition(o, n));
+        listen(s.insightProperty(), (obs, o, n) -> {
+            refreshMoveCard();
+            drawArrows();
+        });
+        listen(s.inVariationProperty(), (obs, o, n) -> refreshMoveCard());
+        listen(s.openingProperty(), (obs, o, n) -> {
+            refreshHeader();
+            refreshMoveCard();
+        });
+        EngineLines lines = s.lines();
+        listen(lines.linesProperty(), (obs, o, n) -> refreshLines());
+        listen(lines.statusProperty(), (obs, o, n) -> refreshLines());
+        listen(lines.whitePawnsProperty(), (obs, o, n) -> evalBar.updateEvaluation(n.doubleValue()));
+        listen(lines.evalTextProperty(), (obs, o, n) -> refreshEvalChip());
+        listen(lines.bestMoveProperty(), (obs, o, n) -> drawArrows());
+        BoardFollower follower = s.boardFollower();
+        if (follower != null) {
+            listen(follower.stateProperty(), (obs, o, n) -> refreshFollow());
+            listen(follower.messageProperty(), (obs, o, n) -> refreshFollow());
+        }
+        onPosition(null, s.positionProperty().get());
+        refreshLines();
+        refreshFollow();
+        refreshHeader();
+    }
+
+    private <T> void listen(javafx.beans.value.ObservableValue<T> value, ChangeListener<? super T> listener) {
+        value.addListener(listener);
+        unbind.add(() -> value.removeListener(listener));
+    }
+
+    private void closeSession() {
+        unbind.forEach(Runnable::run);
+        unbind.clear();
+        if (session != null) {
+            session.close();
+            session = null;
+        }
+    }
+
+    private boolean blackStarts() {
+        String[] parts = currentInitialFen.split(" ");
+        return parts.length > 1 && "b".equals(parts[1]);
+    }
+
+    private int firstMoveNumber() {
+        try {
+            return Integer.parseInt(currentInitialFen.split(" ")[5]);
+        } catch (RuntimeException e) {
+            return 1;
+        }
+    }
+
+    // ================================================================== full analysis
+
+    /** Full-game review; its engine budget comes from the engine profile. */
     private void startFullAnalysis() {
         if (currentPgn == null) {
             return;
         }
         analyzeButton.setDisable(true);
-        analyzeRow.setVisible(false);
-        analyzeRow.setManaged(false);
-        progressContainer.setVisible(true);
-        progressContainer.setManaged(true);
-        analysisProgressIndicator.setProgress(0);
+        showSummary(progressBox);
+        setProgress(0);
         percentLabel.setText(I18n.t("review.analyzing", 0));
 
         GameAnalyzer analyzer = new GameAnalyzer();
-        String pgn = currentPgn;
+        String pgn = String.join(" ", uciMoves);
         int generation = analysisGeneration.get();
         String fenToAnalyze = currentInitialFen;
         int whiteRating = currentWhiteRating;
         int blackRating = currentBlackRating;
+        int totalMoves = uciMoves.size();
         Thread.ofPlatform().daemon().name("game-analysis").start(() -> {
             try {
-                int totalMoves = reviewChessBoard.getMoveList().size();
                 analyzer.review(pgn, fenToAnalyze, whiteRating, blackRating, progress -> Platform.runLater(() -> {
-                    if (generation == analysisGeneration.get()) { // progress of an older game is ignored
-                        analysisProgressIndicator.setProgress(progress);
+                    if (generation == analysisGeneration.get()) {
+                        setProgress(progress);
                         percentLabel.setText(I18n.t("review.analyzing", Math.round(progress * 100)));
                     }
                 }), partial -> Platform.runLater(() -> {
                     if (generation == analysisGeneration.get()) {
-                        // provisional labels and graph of the moves reviewed so far
                         currentAnalysis = partial;
+                        evaluationGraph.setVisible(true);
                         evaluationGraph.setData(partial, totalMoves);
-                        updateAnalysisUI();
+                        moveList.refresh();
+                        refreshMoveCard();
                     }
                 }));
                 List<MoveAnalysis> analysis = analyzer.lastAnalysis();
                 if (analysis.isEmpty() && !pgn.isBlank()) {
-                    // GameAnalyzer returns nothing when the engine fails mid-way: report it, do not show 0%
                     throw new IllegalStateException("il motore non ha risposto");
                 }
                 double whiteAccuracy = analyzer.calculateAccuracy(analysis, true);
                 double blackAccuracy = analyzer.calculateAccuracy(analysis, false);
+                GameReview review = analyzer.lastReview();
                 Platform.runLater(() -> {
-                    if (generation == analysisGeneration.get()) { // another game may have been opened meanwhile
-                        showAnalysis(analysis, whiteAccuracy, blackAccuracy);
+                    if (generation == analysisGeneration.get()) {
+                        showAnalysis(analysis, review, whiteAccuracy, blackAccuracy);
                     }
                 });
             } catch (RuntimeException | Error e) {
                 LOG.error("Game analysis failed", e);
                 if (generation != analysisGeneration.get()) {
-                    return; // the user already moved to another game
+                    return;
                 }
                 Platform.runLater(() -> {
-                    progressContainer.setVisible(false);
-                    progressContainer.setManaged(false);
-                    analyzeRow.setVisible(true);
-                    analyzeRow.setManaged(true);
+                    showSummary(analyzeBox);
                     analyzeButton.setDisable(false);
                 });
-                io.github.hardin22.javachess.Utils.ErrorReporter.showError("Analisi",
+                io.github.hardin22.javachess.Utils.ErrorReporter.showError(I18n.t("review.title"),
                         "Analisi non riuscita: " + io.github.hardin22.javachess.Utils.ErrorReporter.userMessage(e)
                                 + "\nControlla che Stockfish sia installato (Impostazioni).");
             }
         });
     }
 
-    private void showAnalysis(List<MoveAnalysis> analysis, double whiteAccuracy, double blackAccuracy) {
+    private void showAnalysis(List<MoveAnalysis> analysis, GameReview review, double whiteAccuracy,
+                              double blackAccuracy) {
         this.currentAnalysis = analysis;
-        progressContainer.setVisible(false);
-        progressContainer.setManaged(false);
-        accuracyWrapper.setVisible(true);
-        accuracyWrapper.setManaged(true);
+        this.currentReview = review;
         whiteAccuracyLabel.setText(String.format(Locale.ITALIAN, "%.1f%%", whiteAccuracy));
         blackAccuracyLabel.setText(String.format(Locale.ITALIAN, "%.1f%%", blackAccuracy));
+        showSummary(accuracyBox);
         countClassifications(analysis);
+        evaluationGraph.setVisible(true);
         evaluationGraph.setData(analysis);
         analyzeButton.setDisable(false);
-        updateAnalysisUI();
+        if (session != null && review != null) {
+            session.attachReview(review);
+        }
+        rebuildBreakdown();
+        moveList.refresh();
+        scrollMoveListToCurrent();
+        refreshMoveCard();
+        drawArrows();
     }
 
     private void countClassifications(List<MoveAnalysis> analysis) {
-        whiteCounts = new int[MoveAnalysis.MoveClassification.values().length];
-        blackCounts = new int[MoveAnalysis.MoveClassification.values().length];
+        whiteCounts = new int[MoveClassification.values().length];
+        blackCounts = new int[MoveClassification.values().length];
         for (MoveAnalysis move : analysis) {
             if (move.getClassification() == null) {
                 continue;
             }
-            boolean isWhite = move.isWhiteMove();
             int ordinal = move.getClassification().ordinal();
-            if (isWhite) {
+            if (move.isWhiteMove()) {
                 whiteCounts[ordinal]++;
             } else {
                 blackCounts[ordinal]++;
@@ -300,71 +623,210 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         }
     }
 
-    /** Breakdown of the move classifications (white | icon + name | black) in a sheet. */
-    @FXML
-    private void toggleBreakdown() {
-        if (currentAnalysis == null) {
+    // ================================================================== summary tab
+
+    /** Label counts (White | label | Black), accuracy by phase and the key moments (tap = go there). */
+    private void rebuildBreakdown() {
+        breakdown.getChildren().clear();
+        if (currentAnalysis == null || whiteCounts.length == 0 || currentReview == null) {
+            breakdown.getChildren().add(Ui.wrap(I18n.t("review.summary.empty"), "t-body", "t-muted"));
             return;
         }
-        GridPane grid = new GridPane();
-        grid.setHgap(16);
-        grid.setVgap(6);
-        Label whiteHead = new Label(I18n.t("review.accuracy.white"));
-        Label blackHead = new Label(I18n.t("review.accuracy.black"));
-        whiteHead.getStyleClass().add("stat-label");
-        blackHead.getStyleClass().add("stat-label");
-        grid.add(whiteHead, 0, 0);
-        grid.add(blackHead, 2, 0);
-        Object[][] rows = {
-                { MoveAnalysis.MoveClassification.BRILLIANT, "brilliant.png", "review.brilliant" },
-                { MoveAnalysis.MoveClassification.GREAT, "great.png", "review.great" },
-                { MoveAnalysis.MoveClassification.BOOK_MOVE, "book.png", "review.book" },
-                { MoveAnalysis.MoveClassification.BEST, "best.png", "review.best" },
-                { MoveAnalysis.MoveClassification.EXCELLENT, "excellent.png", "review.excellent" },
-                { MoveAnalysis.MoveClassification.GOOD, "good.png", "review.good" },
-                { MoveAnalysis.MoveClassification.INACCURACY, "inaccuracy.png", "review.inaccuracy" },
-                { MoveAnalysis.MoveClassification.MISTAKE, "mistake.png", "review.mistake" },
-                { MoveAnalysis.MoveClassification.MISS, "missed_win.png", "review.miss" },
-                { MoveAnalysis.MoveClassification.BLUNDER, "blunder.png", "review.blunder" } };
+        GridPane grid = threeColumns();
+        grid.add(centered(Ui.label(I18n.t("common.white"), "t-caption", "t-muted")), 0, 0);
+        grid.add(centered(Ui.label(I18n.t("common.black"), "t-caption", "t-muted")), 2, 0);
         int r = 1;
-        for (Object[] row : rows) {
-            int ordinal = ((MoveAnalysis.MoveClassification) row[0]).ordinal();
-            Label w = new Label(String.valueOf(whiteCounts[ordinal]));
-            Label b = new Label(String.valueOf(blackCounts[ordinal]));
-            w.getStyleClass().add("breakdown-count");
-            b.getStyleClass().add("breakdown-count");
-            ImageView icon = new ImageView(ImageCache.getInstance().getImage("/images/analysis/" + row[1], 22, 22));
-            Label name = new Label(I18n.t((String) row[2]), icon);
-            name.setGraphicTextGap(10);
-            name.getStyleClass().add("breakdown-name");
-            HBox middle = new HBox(name);
-            middle.setAlignment(Pos.CENTER_LEFT);
-            middle.getStyleClass().add("breakdown-row");
-            grid.add(w, 0, r);
-            grid.add(middle, 1, r);
-            grid.add(b, 2, r);
+        for (MoveClassification c : ReviewLabels.ORDER) {
+            int w = whiteCounts[c.ordinal()];
+            int b = blackCounts[c.ordinal()];
+            if (c == MoveClassification.FORCED && w + b == 0) {
+                continue;
+            }
+            Label wl = Ui.label(String.valueOf(w), "breakdown-count");
+            Label bl = Ui.label(String.valueOf(b), "breakdown-count");
+            if (w == 0) {
+                wl.getStyleClass().add("t-faint");
+            }
+            if (b == 0) {
+                bl.getStyleClass().add("t-faint");
+            }
+            HBox name = new HBox(16, ReviewLabels.tile(c, 40), Ui.label(ReviewLabels.name(c), "t-body-m"));
+            name.getStyleClass().add("breakdown-row");
+            grid.add(centered(wl), 0, r);
+            grid.add(name, 1, r);
+            grid.add(centered(bl), 2, r);
             r++;
         }
-        javafx.scene.layout.ColumnConstraints side = new javafx.scene.layout.ColumnConstraints(64);
-        javafx.scene.layout.ColumnConstraints mid = new javafx.scene.layout.ColumnConstraints();
-        mid.setHgrow(javafx.scene.layout.Priority.ALWAYS);
-        javafx.scene.layout.ColumnConstraints side2 = new javafx.scene.layout.ColumnConstraints(64);
+        breakdown.getChildren().add(grid);
+
+        // accuracy by phase
+        ReviewInsights.PhaseSummary phases = ReviewInsights.phases(currentReview);
+        GridPane phaseGrid = threeColumns();
+        int row = 0;
+        for (ReviewInsights.Phase phase : ReviewInsights.Phase.values()) {
+            ReviewInsights.PhaseScore w = phases.white().stream().filter(p -> p.phase() == phase).findFirst()
+                    .orElse(null);
+            ReviewInsights.PhaseScore b = phases.black().stream().filter(p -> p.phase() == phase).findFirst()
+                    .orElse(null);
+            if (w == null && b == null) {
+                continue;
+            }
+            phaseGrid.add(centered(phaseValue(w)), 0, row);
+            HBox name = new HBox(Ui.label(phase.italian(), "t-body-m"));
+            name.getStyleClass().add("breakdown-row");
+            phaseGrid.add(name, 1, row);
+            phaseGrid.add(centered(phaseValue(b)), 2, row);
+            row++;
+        }
+        breakdown.getChildren().addAll(Ui.sectionLabel(I18n.t("review.phases.title")), phaseGrid);
+
+        // key moments
+        breakdown.getChildren().add(Ui.sectionLabel(I18n.t("review.moments.title")));
+        List<ReviewInsights.KeyMoment> moments = ReviewInsights.keyMoments(currentReview, null);
+        if (moments.isEmpty()) {
+            breakdown.getChildren().add(Ui.wrap(I18n.t("review.moments.empty"), "t-body", "t-muted"));
+        }
+        for (ReviewInsights.KeyMoment m : moments) {
+            Label move = Ui.label(m.moveText(), "review-move-san");
+            Label best = Ui.label(m.bestText().isEmpty() ? ReviewLabels.name(m.label())
+                    : I18n.t("review.moments.best", m.bestText()), "t-small", "t-muted");
+            best.setTextOverrun(OverrunStyle.ELLIPSIS);
+            VBox texts = new VBox(2, move, best);
+            texts.setMinWidth(0);
+            HBox.setHgrow(texts, Priority.ALWAYS);
+            Label swing = Ui.label(m.swingText(), "t-body-m", "t-danger");
+            HBox line = new HBox(16, ReviewLabels.tile(m.label(), 40), texts, swing);
+            line.getStyleClass().add("review-move");
+            line.setMinHeight(80);
+            line.setOnMouseClicked(e -> goTo(m.ply() + 1));
+            breakdown.getChildren().add(line);
+        }
+    }
+
+    private static GridPane threeColumns() {
+        GridPane grid = new GridPane();
+        grid.setVgap(6);
+        ColumnConstraints side = new ColumnConstraints(96);
+        ColumnConstraints mid = new ColumnConstraints();
+        mid.setHgrow(Priority.ALWAYS);
+        ColumnConstraints side2 = new ColumnConstraints(96);
         grid.getColumnConstraints().addAll(side, mid, side2);
-        mainController.showSheet(I18n.t("review.breakdown"), grid);
+        return grid;
+    }
+
+    private static Node phaseValue(ReviewInsights.PhaseScore score) {
+        if (score == null) {
+            return Ui.label("—", "breakdown-count", "t-faint");
+        }
+        Label value = Ui.label(score.accuracyText(), "breakdown-count");
+        switch (score.grade()) {
+            case EXCELLENT -> value.getStyleClass().add("t-ok");
+            case POOR -> value.getStyleClass().add("t-danger");
+            case FAIR -> value.getStyleClass().add("t-warn");
+            default -> {
+            }
+        }
+        return value;
+    }
+
+    private static Node centered(Node node) {
+        HBox box = new HBox(node);
+        box.setAlignment(Pos.CENTER);
+        return box;
+    }
+
+    // ================================================================== menu
+
+    /** "⋯": number of computer lines, lines on/off, physical board, export with variations. */
+    private void showMenu() {
+        if (session == null) {
+            return;
+        }
+        EngineLines lines = session.lines();
+        Stepper count = new Stepper(1, EngineLines.MAX_LINES, 1, lines.lineCountProperty().get());
+        count.format(String::valueOf, I18n.t("analysis.lines.unit"));
+        count.valueProperty().addListener((obs, o, n) -> lines.setLineCount(n.intValue()));
+        ToggleButton show = Ui.toggleSwitch(lines.enabledProperty().get());
+        show.setOnAction(e -> {
+            lines.setEnabled(show.isSelected());
+            refreshLines();
+        });
+        VBox content = new VBox(14,
+                switchRow(I18n.t("analysis.lines.show"), I18n.t("analysis.lines.count.description"), show),
+                Ui.label(I18n.t("analysis.lines.count"), "row-title"), count);
+        BoardFollower follower = session.boardFollower();
+        if (follower != null) {
+            ToggleButton follow = Ui.toggleSwitch(follower.isOn());
+            follow.setOnAction(e -> session.setBoardFollowing(follow.isSelected()));
+            content.getChildren().add(switchRow(I18n.t("analysis.board.follow"),
+                    I18n.t("analysis.board.follow.description"), follow));
+        }
+        if (session.hasVariationsProperty().get()) {
+            Button export = Ui.wide(I18n.t("analysis.export.variations"), "fth-download", "btn-outline");
+            export.setOnAction(e -> {
+                mainController.closeSheet();
+                exportWithVariations();
+            });
+            content.getChildren().add(export);
+        }
+        mainController.showSheet(I18n.t("review.menu"), content);
+    }
+
+    private static HBox switchRow(String title, String description, ToggleButton toggle) {
+        HBox row = new HBox(16, Ui.texts(title, description, "row-title", "row-sub"), toggle);
+        row.setAlignment(Pos.CENTER_LEFT);
+        row.setMinHeight(96);
+        return row;
+    }
+
+    private void exportWithVariations() {
+        String movetext = session == null ? "" : session.movetext();
+        io.github.hardin22.javachess.Utils.AppExecutors.io().execute(() -> {
+            try {
+                java.nio.file.Path file = io.github.hardin22.javachess.Utils.AppPaths.exportDir()
+                        .resolve("javachess-analisi-" + System.currentTimeMillis() + ".pgn");
+                String pgn = "[Event \"javaChess analysis\"]\n"
+                        + (START_FEN.equals(currentInitialFen) ? "" : "[SetUp \"1\"]\n[FEN \"" + currentInitialFen
+                        + "\"]\n") + "\n" + movetext + " *\n";
+                java.nio.file.Files.writeString(file, pgn, java.nio.charset.StandardCharsets.UTF_8);
+                mainController.showToast(I18n.t("archive.exported", file));
+            } catch (java.io.IOException | RuntimeException ex) {
+                io.github.hardin22.javachess.Utils.ErrorReporter.showError(I18n.t("review.title"),
+                        io.github.hardin22.javachess.Utils.ErrorReporter.userMessage(ex));
+            }
+        });
+    }
+
+    // ================================================================== navigation
+
+    private void back() {
+        closeSession();
+        if (arduinoController != null) {
+            arduinoController.getBoardStateManager().stopGameMode();
+        }
+        mainController.navigateTo(backTarget == null || "REVIEW".equals(backTarget) ? "HOME" : backTarget);
+    }
+
+    @Override
+    public boolean onBack() {
+        back();
+        return true;
     }
 
     @Override
     public void onNavigatedFrom() {
-        PositionAnalyzer.get().stop(); // do not keep the engine busy for a screen that is not shown
+        // do not keep the engine (or the physical board) busy for a screen that is not shown
+        if (session != null) {
+            session.lines().stop();
+            session.setBoardFollowing(false);
+        }
     }
 
-    @FXML
-    private void backToArchive() {
-        PositionAnalyzer.get().stop();
-        if (arduinoController != null) {
-            arduinoController.getBoardStateManager().stopGameMode();
+    @Override
+    public void onNavigatedTo() {
+        if (session != null) {
+            session.lines().show(session.fenProperty().get());
         }
-        mainController.navigateTo("ARCHIVE");
     }
 
     @Override
@@ -377,167 +839,284 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         Platform.runLater(this::nextMove);
     }
 
-    @FXML
     private void previousMove() {
-        if (reviewChessBoard != null && reviewChessBoard.hasPreviousMove()) {
-            reviewChessBoard.clearArrows();
-            reviewChessBoard.clearIcons();
-            reviewChessBoard.previousMove();
-            handleMoveUpdate();
+        if (session != null) {
+            session.previous();
         }
     }
 
-    @FXML
     private void nextMove() {
-        if (reviewChessBoard != null && reviewChessBoard.hasNextMove()) {
-            reviewChessBoard.clearArrows();
-            reviewChessBoard.clearIcons();
-            reviewChessBoard.nextMove();
-            handleMoveUpdate();
+        if (session != null) {
+            session.next();
         }
     }
 
-    @FXML
     private void firstMove() {
-        goTo(0);
+        if (session != null) {
+            session.first();
+        }
     }
 
-    @FXML
     private void lastMove() {
-        if (reviewChessBoard != null) {
-            goTo(reviewChessBoard.getMoveCount());
+        if (session != null) {
+            session.last();
         }
     }
 
-    /** Jumps to the position after {@code ply} half-moves. Public for DevOptions. */
+    /** Jumps to the position after {@code ply} half-moves of the game. Public for DevOptions. */
     public void goTo(int ply) {
-        if (reviewChessBoard == null) {
-            return;
+        if (session != null) {
+            session.goToPly(ply);
         }
-        reviewChessBoard.clearArrows();
-        reviewChessBoard.clearIcons();
-        reviewChessBoard.goToMove(ply);
-        handleMoveUpdate();
     }
 
-    /** Runs the full-game analysis (engine budget from the profile). Public for DevOptions. */
+    /** Plays the best line instead of the current move and steps once into it (DevOptions demos). */
+    public void devShowBest() {
+        if (session != null && session.showBestLine()) {
+            session.next();
+        }
+    }
+
+    /** Runs the full-game analysis (engine budget from the profile). Public for DevOptions and tests. */
     public void analyze() {
         startFullAnalysis();
     }
 
-    private void handleMoveUpdate() {
-        int index = reviewChessBoard.getCurrentMoveIndex();
-        int total = reviewChessBoard.getMoveCount();
-        plyLabel.setText(index == 0 ? I18n.t("review.start") : I18n.t("review.ply", index, total));
-        moveList.setCurrentPly(index);
-        triggerAnalysisDebounced();
-        updateAnalysisUI();
-    }
-
-    private void updateAnalysisUI() {
-        if (currentAnalysis == null || reviewChessBoard == null) {
+    /** A new position from the view-model: board (sliding one step forward), list, graph, card, labels. */
+    private void onPosition(AnalysisSession.Position before, AnalysisSession.Position now) {
+        if (now == null || reviewChessBoard == null || session == null) {
             return;
         }
-        int analysisIndex = reviewChessBoard.getCurrentMoveIndex() - 1;
-        evaluationGraph.setHighlightMove(analysisIndex >= -1 && analysisIndex < currentAnalysis.size()
-                ? analysisIndex : -1);
-        if (analysisIndex < 0 || analysisIndex >= currentAnalysis.size()) {
+        boolean oneStepForward = before != null && now.ply() == before.ply() + 1 && now.lastMove() != null;
+        reviewChessBoard.clearArrows();
+        reviewChessBoard.clearIcons();
+        reviewChessBoard.showPosition(now.fen(), now.lastMove(), oneStepForward);
+        int ply = now.mainPly();
+        int total = uciMoves.size();
+        plyLabel.setText(now.inVariation() ? I18n.t("review.ply.variation", ply, total)
+                : ply == 0 ? I18n.t("review.start") : I18n.t("review.ply", ply, total));
+        prevButton.setDisable(!session.canGoBackProperty().get());
+        firstButton.setDisable(!session.canGoBackProperty().get());
+        nextButton.setDisable(!session.canGoForwardProperty().get());
+        lastButton.setDisable(!session.canGoForwardProperty().get() && !now.inVariation());
+        evaluationGraph.setHighlightMove(currentAnalysis != null ? ply - 1 : -1);
+        if (ply != shownPly) {
+            shownPly = ply;
+            moveList.refresh();
+            scrollMoveListToCurrent();
+        }
+        refreshMoveCard();
+        refreshEvalChip();
+        drawArrows();
+    }
+
+    /** Keeps the current move visible in the list (again after layout: the list may not have its height yet). */
+    private void scrollMoveListToCurrent() {
+        if (shownPly <= 0) {
             return;
         }
-        MoveAnalysis analysis = currentAnalysis.get(analysisIndex);
-        String iconName = getIconForClassification(analysis.getClassification());
-        if (iconName != null) {
-            int squareIndex = analysis.getToSquareIndex();
-            reviewChessBoard.drawIconOnSquare(squareIndex % 8, 7 - (squareIndex / 8), iconName);
+        int row = Math.max(0, rowOfPly(shownPly) - 1);
+        moveList.scrollTo(row);
+        Platform.runLater(() -> moveList.scrollTo(row));
+    }
+
+    private int rowOfPly(int ply) {
+        int offset = blackStarts() ? 1 : 0;
+        return (ply - 1 + offset) / 2;
+    }
+
+    /** Label tile on the destination square, and an arrow: the better move after a mistake, else the best one. */
+    private void drawArrows() {
+        if (reviewChessBoard == null || session == null) {
+            return;
         }
-        if (analysis.getClassification() == MoveAnalysis.MoveClassification.BLUNDER
-                || analysis.getClassification() == MoveAnalysis.MoveClassification.MISTAKE
-                || analysis.getClassification() == MoveAnalysis.MoveClassification.MISS) {
-            String best = analysis.getBestMove();
-            if (best != null && best.length() >= 4) {
-                reviewChessBoard.drawArrowOnBoard(best.charAt(0) - 'a', '8' - best.charAt(1), best.charAt(2) - 'a',
-                        '8' - best.charAt(3), javafx.scene.paint.Color.web("#3FB950"));
+        reviewChessBoard.clearArrows();
+        reviewChessBoard.clearIcons();
+        ReviewInsights.MoveInsight insight = session.insightProperty().get();
+        if (insight != null && insight.label() != null) {
+            String played = insight.played();
+            if (played != null && played.length() >= 4) {
+                reviewChessBoard.drawLabelOnSquare(played.charAt(2) - 'a', '8' - played.charAt(3), insight.label());
             }
+        }
+        String arrow = insight != null && insight.showBest() ? insight.best() : session.lines().bestMoveProperty().get();
+        if (arrow != null && arrow.length() >= 4) {
+            reviewChessBoard.drawArrowOnBoard(arrow.charAt(0) - 'a', '8' - arrow.charAt(1), arrow.charAt(2) - 'a',
+                    '8' - arrow.charAt(3), javafx.scene.paint.Color.web("#55B45E"));
         }
     }
 
-    private String getIconForClassification(MoveAnalysis.MoveClassification classification) {
-        if (classification == null) {
-            return null;
+    private void refreshEvalChip() {
+        if (session == null) {
+            return;
         }
-        return switch (classification) {
-            case BRILLIANT -> "brilliant.png";
-            case BEST -> "best.png";
-            case GREAT -> "great.png";
-            case EXCELLENT -> "excellent.png";
-            case BOOK_MOVE -> "book.png";
-            case GOOD -> "good.png";
-            case INACCURACY -> "inaccuracy.png";
-            case MISS -> "missed_win.png";
-            case MISTAKE -> "mistake.png";
-            case BLUNDER -> "blunder.png";
-            case FORCED -> "forced.png";
-            default -> null;
-        };
+        String eval = session.lines().evalTextProperty().get();
+        liveEval.setText(eval == null || eval.isBlank() ? "…" : eval);
+        liveEval.getStyleClass().removeAll("white-adv", "black-adv");
+        liveEval.getStyleClass().add(eval != null && (eval.startsWith("−") || eval.startsWith("-") || eval.equals("0-1"))
+                ? "black-adv" : "white-adv");
     }
 
-    /** Engine event thread: eval bar, best-move arrow and analysis lines for the reviewed position. */
-    private void onReviewAnalysisUpdate(AnalysisUpdate update) {
-        int n = Math.max(1, update.lines().size());
-        String[] lines = new String[n];
-        String[] evals = new String[n];
-        for (int i = 0; i < n; i++) {
-            lines[i] = i < update.lines().size()
-                        ? Notation.line(update.fen(), update.lines().get(i).pv(), 14) : "";
-            evals[i] = update.evalText(i);
+    /** The card under the board: the move and its label, a variation, or the starting position. */
+    private void refreshMoveCard() {
+        if (session == null) {
+            return;
         }
-        String best = update.bestMove();
-        reviewEvalBar.updateEvaluation(update.whitePawns());
-        Platform.runLater(() -> {
-            if (reviewChessBoard == null || !update.fen().equals(reviewChessBoard.getFen())) {
-                return; // the user already moved on
-            }
-            reviewChessBoard.clearArrows();
-            if (best != null && best.length() >= 4) {
-                reviewChessBoard.drawArrowOnBoard(best.charAt(0) - 'a', '8' - best.charAt(1),
-                        best.charAt(2) - 'a', '8' - best.charAt(3), javafx.scene.paint.Color.rgb(156, 204, 101, 0.7));
-            }
-            if (reviewChessBoard.getBoard().isMated()) {
-                evaluationPanel.showResult(reviewChessBoard.getBoard().getSideToMove() == Side.WHITE ? "0-1" : "1-0");
+        moveActions.getChildren().clear();
+        String opening = session.openingProperty().get();
+        if (session.inVariationProperty().get()) {
+            moveBadge.getChildren().setAll(Icons.of("fth-git-branch", 30));
+            moveTitle.setText(I18n.t("analysis.variation"));
+            moveSub.setText(session.variationTextProperty().get());
+            Button back = Ui.button(I18n.t("analysis.variation.back"), "fth-corner-up-left", "btn-inverse", "btn-md");
+            back.setOnAction(e -> session.backToGame());
+            Button delete = Ui.iconButton("fth-trash-2", I18n.t("analysis.variation.delete"),
+                    () -> session.deleteVariation());
+            moveActions.getChildren().addAll(back, delete);
+        } else if (session.mainPlyProperty().get() == 0) {
+            moveBadge.getChildren().setAll(Icons.of("fth-flag", 32));
+            moveTitle.setText(I18n.t("review.start"));
+            moveSub.setText(opening.isEmpty() ? I18n.t("review.start.hint") : opening);
+        } else {
+            ReviewInsights.MoveInsight insight = session.insightProperty().get();
+            int ply = session.mainPlyProperty().get();
+            String title = session.titleProperty().get();
+            if (insight == null || insight.label() == null) {
+                MoveAnalysis partial = currentAnalysis != null && ply - 1 < currentAnalysis.size()
+                        ? currentAnalysis.get(ply - 1) : null;
+                if (partial != null && partial.getClassification() != null) {
+                    moveBadge.getChildren().setAll(ReviewLabels.tile(partial.getClassification(), 56));
+                    moveTitle.setText(ReviewLabels.sentence(partial.getClassification(), title));
+                } else {
+                    moveBadge.getChildren().setAll(Icons.of("fth-circle", 28));
+                    moveTitle.setText(title);
+                }
+                moveSub.setText(session.bookMoveProperty().get() && !opening.isEmpty() ? opening
+                        : currentAnalysis == null ? I18n.t("review.move.analyze") : I18n.t("review.move.pending"));
             } else {
-                for (int i = 0; i < n; i++) {
-                    evaluationPanel.updateAnalysis(i, lines[i], evals[i]);
+                MoveClassification c = insight.label();
+                moveBadge.getChildren().setAll(ReviewLabels.tile(c, 56));
+                // with a button beside it the sentence would not fit on one line: move and label instead
+                moveTitle.setText(insight.showBest() ? insight.moveText() + " · " + ReviewLabels.name(c).toLowerCase(
+                        Locale.ITALIAN) : ReviewLabels.sentence(c, insight.moveText()));
+                if (insight.book() && !opening.isEmpty()) {
+                    moveSub.setText(opening);
+                } else if (!insight.bestText().isEmpty() && ReviewLabels.bad(c)) {
+                    moveSub.setText(I18n.t("analysis.best.was", insight.bestText()));
+                } else {
+                    moveSub.setText(ReviewLabels.name(c));
+                }
+                if (insight.showBest()) {
+                    Button best = Ui.button(I18n.t("analysis.best.show.short"), "fth-eye", "btn-outline", "btn-md");
+                    best.setOnAction(e -> session.showBestLine());
+                    moveActions.getChildren().add(best);
                 }
             }
-        });
+        }
+        moveActions.setVisible(!moveActions.getChildren().isEmpty());
+        liveEval.setVisible(moveActions.getChildren().isEmpty() && !session.lines().enabledProperty().get());
     }
 
-    private void triggerAnalysisDebounced() {
-        if (debounceHandle != null && !debounceHandle.isDone()) {
-            debounceHandle.cancel(false);
-        }
-        if (reviewChessBoard == null) {
+    /** Computer lines: evaluation chip, the line on one row, depth; a tap plays the line as a variation. */
+    private void refreshLines() {
+        if (session == null) {
             return;
         }
-        String currentFen = reviewChessBoard.getFen(); // read on the FX thread, which owns the board
-        debounceHandle = scheduler.schedule(() -> {
-            // Opening name: asynchronous, cached, never blocks.
-            OpeningExplorer.lookup(currentFen).thenAccept(openingName -> Platform.runLater(() -> {
-                if (openingName.isPresent()) {
-                    header.setSubtitle(openingName.get());
-                } else if (reviewChessBoard.getCurrentMoveIndex() <= 1) {
-                    header.setSubtitle(I18n.t("review.subtitle"));
-                }
-            }));
-            Platform.runLater(() -> {
-                if (reviewChessBoard.getBoard().isMated()) {
-                    evaluationPanel.showResult(
-                            reviewChessBoard.getBoard().getSideToMove() == Side.WHITE ? "0-1" : "1-0");
-                }
-            });
-            if (analysisEnabled) {
-                PositionAnalyzer.get().analyze(currentFen, analysisDepth, analysisMultiPV, this::onReviewAnalysisUpdate);
+        EngineLines lines = session.lines();
+        linesBox.getChildren().clear();
+        linesBox.setVisible(lines.enabledProperty().get());
+        List<EngineLines.Line> list = lines.linesProperty().get();
+        EngineLines.Status status = lines.statusProperty().get();
+        if (list == null || list.isEmpty()) {
+            String message = lines.messageProperty().get();
+            Label text = Ui.label(status == EngineLines.Status.SEARCHING || message == null || message.isBlank()
+                    ? I18n.t("analysis.lines.searching") : message, "t-small", "t-muted");
+            HBox placeholder = new HBox(text);
+            placeholder.getStyleClass().add("coach-line");
+            placeholder.setMinHeight(64);
+            linesBox.getChildren().add(placeholder);
+            return;
+        }
+        for (int i = 0; i < list.size(); i++) {
+            EngineLines.Line line = list.get(i);
+            Label eval = Ui.label(line.eval(), "eval-chip", line.whiteBetter() ? "white-adv" : "black-adv");
+            Label text = Ui.label(line.text(), "t-body-m");
+            text.setTextOverrun(OverrunStyle.ELLIPSIS);
+            text.setMinWidth(0);
+            HBox.setHgrow(text, Priority.ALWAYS);
+            text.setMaxWidth(Double.MAX_VALUE);
+            Label depth = Ui.label(I18n.t("analysis.lines.depth", line.depth()), "t-small", "t-faint");
+            depth.setMinWidth(Region.USE_PREF_SIZE);
+            HBox row = new HBox(14, eval, text, depth);
+            row.getStyleClass().addAll("coach-line", "row-press");
+            row.setMinHeight(64);
+            row.setPrefHeight(64);
+            int index = i;
+            row.setOnMouseClicked(e -> session.playLine(index));
+            linesBox.getChildren().add(row);
+        }
+    }
+
+    private void refreshFollow() {
+        BoardFollower follower = session == null ? null : session.boardFollower();
+        boolean on = follower != null && follower.stateProperty().get() != BoardFollower.State.OFF;
+        followStatus.setVisible(on);
+        followStatus.setText(on ? follower.messageProperty().get() : "");
+    }
+
+    // ================================================================== move list
+
+    /** One row: number, White's move, Black's move; each with its label tile once the game is analysed. */
+    private final class MoveRowCell extends ListCell<Integer> {
+        private final Label number = Ui.label("", "move-number", "t-body");
+        private final HBox white = new HBox(10);
+        private final HBox black = new HBox(10);
+        private final HBox row;
+
+        MoveRowCell() {
+            number.setMinWidth(64);
+            for (HBox cell : new HBox[] { white, black }) {
+                cell.getStyleClass().add("review-move");
+                cell.setMaxWidth(Double.MAX_VALUE);
+                HBox.setHgrow(cell, Priority.ALWAYS);
+                cell.setPrefWidth(1);
             }
-        }, DEBOUNCE_DELAY, TimeUnit.MILLISECONDS);
+            row = new HBox(8, number, white, black);
+            row.getStyleClass().add("review-move-row");
+        }
+
+        @Override
+        protected void updateItem(Integer item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || item == null) {
+                setGraphic(null);
+                return;
+            }
+            int offset = blackStarts() ? 1 : 0;
+            int whitePly = item * 2 + 1 - offset;   // 1-based ply of White's move in this row
+            number.setText((firstMoveNumber() + item) + ".");
+            fill(white, whitePly);
+            fill(black, whitePly + 1);
+            setGraphic(row);
+        }
+
+        private void fill(HBox cell, int ply) {
+            cell.getChildren().clear();
+            cell.getStyleClass().remove("current");
+            cell.setOnMouseClicked(null);
+            if (ply < 1 || ply > sanMoves.size()) {
+                return;
+            }
+            MoveAnalysis a = currentAnalysis != null && ply - 1 < currentAnalysis.size()
+                    ? currentAnalysis.get(ply - 1) : null;
+            if (a != null && a.getClassification() != null) {
+                cell.getChildren().add(ReviewLabels.tile(a.getClassification(), 30));
+            }
+            cell.getChildren().add(Ui.label(sanMoves.get(ply - 1), "review-move-san"));
+            if (shownPly == ply) {
+                cell.getStyleClass().add("current");
+            }
+            cell.setOnMouseClicked(e -> goTo(ply));
+        }
     }
 }

@@ -1,364 +1,396 @@
 /*
- * javaChess design system (Geist-inspired).
+ * javaChess v2 — one stylesheet for the whole app (portrait 720x1920 touch screen first).
  *
- * One stylesheet, tokens as JavaFX looked-up colours. The scene root carries .theme-dark or .theme-light
- * (ThemeManager switches it at runtime). Rules below only reference tokens, never raw colours.
+ * Colours are looked-up tokens set on the scene root by ThemeManager (.theme-dark / .theme-light); canvases read
+ * the same values from ThemeManager.palette(). No drop shadows or blurs: on the Raspberry Pi the scene is often
+ * rendered in software, where every effect is paid on each repaint. Depth comes from surfaces and 1-2px lines.
  *
- * Type scale (px):   12 caption · 14 small · 16 body · 18 lead · 20 h3 · 24 h2 · 28 title · 40 display
- * Spacing (px):      4 · 8 · 12 · 16 · 24 · 32 · 48 · 64
- * Radius (px):       6 controls · 8 cards · 12 sheets · 999 pills
- * Touch targets:     >= 48 px (primary actions 56-64 px)
- * Keep in sync with ThemeManager.Palette (canvas colours).
+ * Fonts (one family per weight, as JavaFX sees them): "Geist Light", "Geist", "Geist Medium", "Geist SemiBold",
+ * "Geist Mono Light", "Geist Mono", "Geist Mono Medium", "Geist Mono SemiBold".
  */
 
 /* ------------------------------------------------------------------ tokens */
 
 .theme-dark {
-    -color-bg: #0A0A0A;
-    -color-surface: #111111;
-    -color-surface-2: #1A1A1A;
-    -color-surface-3: #232323;
-    -color-border: #262626;
-    -color-border-strong: #3D3D3D;
-    -color-fg: #EDEDED;
-    -color-fg-strong: #FFFFFF;
-    -color-muted: #A1A1A1;
-    -color-subtle: #8A8A8A;
-    -color-inverse-fg: #0A0A0A;
-    -color-accent: #52A8FF;
-    -color-accent-soft: #0D2847;
-    -color-success: #3FB950;
-    -color-success-soft: #0F2E17;
-    -color-warning: #F5A524;
-    -color-warning-soft: #3A2606;
-    -color-danger: #FF6166;
-    -color-danger-soft: #3C1618;
-    -color-scrim: rgba(0, 0, 0, 0.62);
-    -color-pressed: #2A2A2A;
-    -color-eval-white: #EDEDED;
-    -color-eval-black: #2B2B2B;
-    -color-shadow: rgba(0, 0, 0, 0.45);
-
-    /* Modena base, so un-styled controls follow the theme too */
-    -fx-base: #1A1A1A;
-    -fx-background: #0A0A0A;
-    -fx-control-inner-background: #111111;
-    -fx-control-inner-background-alt: #111111;
-    -fx-text-background-color: #EDEDED;
-    -fx-text-base-color: #EDEDED;
-    -fx-text-inner-color: #EDEDED;
-    -fx-mark-color: #EDEDED;
-    -fx-accent: #52A8FF;
-    -fx-focus-color: #52A8FF;
-    -fx-faint-focus-color: transparent;
-    -fx-selection-bar: #232323;
-    -fx-selection-bar-non-focused: #232323;
-    -fx-selection-bar-text: #FFFFFF;
-    -fx-prompt-text-fill: #8A8A8A;
+    -c-bg: #0C0C0E;
+    -c-s1: #151518;
+    -c-s2: #1D1D21;
+    -c-s3: #26262B;
+    -c-line: #2C2C32;
+    -c-line2: #3E3E46;
+    -c-fg: #F4F4F5;
+    -c-fg2: #ABABB4;
+    -c-fg3: #76767F;
+    -c-accent: #4F9DFF;
+    -c-accent-press: #3D86E6;
+    -c-accent-fg: #06121F;
+    -c-accent-soft: rgba(79, 157, 255, 0.16);
+    -c-ok: #3DD68C;
+    -c-ok-soft: rgba(61, 214, 140, 0.15);
+    -c-warn: #F5B83D;
+    -c-warn-soft: rgba(245, 184, 61, 0.16);
+    -c-danger: #FF5C5F;
+    -c-danger-soft: rgba(255, 92, 95, 0.15);
+    -c-lit: #F4F4F5;
+    -c-lit-fg: #0C0C0E;
+    -c-scrim: rgba(0, 0, 0, 0.62);
+    -c-eval-white: #ECECEE;
+    -c-eval-black: #2A2A30;
+    -c-inverse: #F4F4F5;
+    -c-inverse-fg: #0C0C0E;
 }
 
 .theme-light {
-    -color-bg: #FAFAFA;
-    -color-surface: #FFFFFF;
-    -color-surface-2: #F2F2F2;
-    -color-surface-3: #EBEBEB;
-    -color-border: #E5E5E5;
-    -color-border-strong: #C9C9C9;
-    -color-fg: #171717;
-    -color-fg-strong: #000000;
-    -color-muted: #5E5E5E;
-    -color-subtle: #6E6E6E;
-    -color-inverse-fg: #FFFFFF;
-    -color-accent: #0068D6;
-    -color-accent-soft: #E6F1FE;
-    -color-success: #1A7F37;
-    -color-success-soft: #E9F8EE;
-    -color-warning: #A35200;
-    -color-warning-soft: #FFF4E0;
-    -color-danger: #CB2A2F;
-    -color-danger-soft: #FDECEC;
-    -color-scrim: rgba(0, 0, 0, 0.32);
-    -color-pressed: #E5E5E5;
-    -color-eval-white: #FFFFFF;
-    -color-eval-black: #262626;
-    -color-shadow: rgba(0, 0, 0, 0.10);
-
-    -fx-base: #F2F2F2;
-    -fx-background: #FAFAFA;
-    -fx-control-inner-background: #FFFFFF;
-    -fx-control-inner-background-alt: #FFFFFF;
-    -fx-text-background-color: #171717;
-    -fx-text-base-color: #171717;
-    -fx-text-inner-color: #171717;
-    -fx-mark-color: #171717;
-    -fx-accent: #0068D6;
-    -fx-focus-color: #0068D6;
-    -fx-faint-focus-color: transparent;
-    -fx-selection-bar: #EBEBEB;
-    -fx-selection-bar-non-focused: #EBEBEB;
-    -fx-selection-bar-text: #000000;
-    -fx-prompt-text-fill: #6E6E6E;
+    -c-bg: #F3F2EF;
+    -c-s1: #FFFFFF;
+    -c-s2: #ECEAE6;
+    -c-s3: #E1DED9;
+    -c-line: #DEDBD5;
+    -c-line2: #C4C0B8;
+    -c-fg: #141416;
+    -c-fg2: #55555C;
+    -c-fg3: #85858C;
+    -c-accent: #1A6BE0;
+    -c-accent-press: #1559BD;
+    -c-accent-fg: #FFFFFF;
+    -c-accent-soft: rgba(26, 107, 224, 0.12);
+    -c-ok: #1E8E52;
+    -c-ok-soft: rgba(30, 142, 82, 0.12);
+    -c-warn: #A86500;
+    -c-warn-soft: rgba(168, 101, 0, 0.12);
+    -c-danger: #C9302C;
+    -c-danger-soft: rgba(201, 48, 44, 0.10);
+    -c-lit: #141416;
+    -c-lit-fg: #F3F2EF;
+    -c-scrim: rgba(20, 20, 22, 0.45);
+    -c-eval-white: #FFFFFF;
+    -c-eval-black: #3A3A40;
+    -c-inverse: #141416;
+    -c-inverse-fg: #F3F2EF;
 }
 
 /* ------------------------------------------------------------------ base */
 
 .root {
     -fx-font-family: "Geist";
-    -fx-font-size: 16px;
+    -fx-font-size: 22px;
+    -fx-focus-color: transparent;
+    -fx-faint-focus-color: transparent;
 }
 
 .app-root {
-    -fx-background-color: -color-bg;
+    -fx-background-color: -c-bg;
 }
 
-.view-container {
-    -fx-background-color: -color-bg;
+.view-container, .screen {
+    -fx-background-color: -c-bg;
 }
 
 .label {
-    -fx-text-fill: -color-fg;
+    -fx-text-fill: -c-fg;
 }
 
 .icon {
-    -fx-icon-color: -color-fg;
+    -fx-icon-color: -c-fg;
 }
 
 .icon-muted {
-    -fx-icon-color: -color-muted;
+    -fx-icon-color: -c-fg2;
 }
 
 /* ------------------------------------------------------------------ typography */
 
-.display {
+.t-display {
+    -fx-font-family: "Geist Light";
+    -fx-font-size: 72px;
+}
+
+.t-number {
+    -fx-font-family: "Geist Light";
+    -fx-font-size: 64px;
+}
+
+.t-h1 {
+    -fx-font-family: "Geist SemiBold";
     -fx-font-size: 40px;
+}
+
+.t-h2 {
     -fx-font-family: "Geist SemiBold";
-    -fx-text-fill: -color-fg-strong;
+    -fx-font-size: 32px;
 }
 
-.page-title {
-    -fx-font-size: 28px;
+.t-title {
     -fx-font-family: "Geist SemiBold";
-    -fx-text-fill: -color-fg-strong;
+    -fx-font-size: 27px;
 }
 
-.page-subtitle {
-    -fx-font-size: 15px;
-    -fx-text-fill: -color-muted;
-}
-
-.h2 {
+.t-body {
     -fx-font-size: 24px;
-    -fx-font-family: "Geist SemiBold";
-    -fx-text-fill: -color-fg-strong;
 }
 
-.h3 {
+.t-body-m {
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 24px;
+}
+
+.t-small {
+    -fx-font-size: 22px;
+}
+
+.t-caption {
+    -fx-font-family: "Geist Medium";
     -fx-font-size: 20px;
+}
+
+.t-overline {
     -fx-font-family: "Geist SemiBold";
-    -fx-text-fill: -color-fg-strong;
+    -fx-font-size: 20px;
+    -fx-text-fill: -c-fg3;
 }
 
-.lead {
-    -fx-font-size: 18px;
-    -fx-text-fill: -color-muted;
-}
-
-.body {
-    -fx-font-size: 16px;
-}
-
-.small {
-    -fx-font-size: 14px;
-}
-
-.caption {
-    -fx-font-size: 13px;
-    -fx-text-fill: -color-muted;
-}
-
-.muted {
-    -fx-text-fill: -color-muted;
-}
-
-.strong {
-    -fx-font-family: "Geist SemiBold";
-}
-
-.mono {
+.t-mono {
     -fx-font-family: "Geist Mono";
 }
 
-.section-label {
-    -fx-font-size: 13px;
-    -fx-font-family: "Geist SemiBold";
-    -fx-text-fill: -color-muted;
-    -fx-padding: 0 0 0 4;
+.t-mono-m {
+    -fx-font-family: "Geist Mono Medium";
 }
 
-.danger-text {
-    -fx-text-fill: -color-danger;
+.t-muted {
+    -fx-text-fill: -c-fg2;
 }
 
-.success-text {
-    -fx-text-fill: -color-success;
+.t-faint {
+    -fx-text-fill: -c-fg3;
 }
 
-.warning-text {
-    -fx-text-fill: -color-warning;
+.t-accent {
+    -fx-text-fill: -c-accent;
+}
+
+.t-ok {
+    -fx-text-fill: -c-ok;
+}
+
+.t-warn {
+    -fx-text-fill: -c-warn;
+}
+
+.t-danger {
+    -fx-text-fill: -c-danger;
 }
 
 /* ------------------------------------------------------------------ buttons */
 
 .btn {
-    -fx-font-size: 16px;
-    -fx-font-family: "Geist SemiBold";
-    -fx-min-height: 48px;
-    -fx-padding: 0 20;
-    -fx-background-radius: 8;
-    -fx-border-radius: 8;
-    -fx-border-width: 1;
-    -fx-background-insets: 0;
-    -fx-border-insets: 0;
-    -fx-graphic-text-gap: 10;
+    -fx-background-color: -c-s2;
+    -fx-background-radius: 24px;
+    -fx-border-color: transparent;
+    -fx-text-fill: -c-fg;
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 24px;
+    -fx-padding: 0 28px;
+    -fx-min-height: 88px;
+    -fx-pref-height: 88px;
+    -fx-graphic-text-gap: 14px;
     -fx-cursor: hand;
     -fx-alignment: center;
-    -fx-content-display: left;
+}
+
+.btn:pressed, .btn:selected {
+    -fx-background-color: -c-s3;
+}
+
+.btn:disabled {
+    -fx-opacity: 0.38;
+}
+
+.btn .icon {
+    -fx-icon-color: -c-fg;
 }
 
 .btn-lg {
-    -fx-min-height: 60px;
-    -fx-font-size: 17px;
-    -fx-padding: 0 24;
+    -fx-min-height: 104px;
+    -fx-pref-height: 104px;
+    -fx-background-radius: 28px;
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 28px;
 }
 
-.btn-sm {
-    -fx-min-height: 40px;
-    -fx-font-size: 14px;
-    -fx-padding: 0 14;
+.btn-md {
+    -fx-min-height: 72px;
+    -fx-pref-height: 72px;
+    -fx-background-radius: 20px;
+    -fx-font-size: 22px;
+    -fx-padding: 0 22px;
 }
 
 .btn-primary {
-    -fx-background-color: -color-fg;
-    -fx-border-color: -color-fg;
-    -fx-text-fill: -color-inverse-fg;
+    -fx-background-color: -c-accent;
+    -fx-text-fill: -c-accent-fg;
 }
 
 .btn-primary .icon {
-    -fx-icon-color: -color-inverse-fg;
-}
-
-.btn-primary:hover {
-    -fx-opacity: 0.9;
+    -fx-icon-color: -c-accent-fg;
 }
 
 .btn-primary:pressed {
-    -fx-background-color: -color-subtle;
-    -fx-border-color: -color-subtle;
+    -fx-background-color: -c-accent-press;
 }
 
-.btn-secondary {
-    -fx-background-color: -color-surface;
-    -fx-border-color: -color-border;
-    -fx-text-fill: -color-fg;
+.btn-inverse {
+    -fx-background-color: -c-inverse;
+    -fx-text-fill: -c-inverse-fg;
 }
 
-.btn-secondary:hover {
-    -fx-background-color: -color-surface-2;
-    -fx-border-color: -color-border-strong;
+.btn-inverse .icon {
+    -fx-icon-color: -c-inverse-fg;
 }
 
-.btn-secondary:pressed, .btn-secondary:selected {
-    -fx-background-color: -color-pressed;
-    -fx-border-color: -color-border-strong;
+.btn-inverse:pressed {
+    -fx-background-color: -c-fg2;
 }
 
 .btn-ghost {
     -fx-background-color: transparent;
-    -fx-border-color: transparent;
-    -fx-text-fill: -color-fg;
-}
-
-.btn-ghost:hover {
-    -fx-background-color: -color-surface-2;
 }
 
 .btn-ghost:pressed {
-    -fx-background-color: -color-pressed;
+    -fx-background-color: -c-s2;
+}
+
+.btn-outline {
+    -fx-background-color: transparent;
+    -fx-border-color: -c-line2;
+    -fx-border-width: 2px;
+    -fx-border-radius: 24px;
+}
+
+.btn-outline:pressed {
+    -fx-background-color: -c-s2;
 }
 
 .btn-danger {
-    -fx-background-color: -color-surface;
-    -fx-border-color: -color-border;
-    -fx-text-fill: -color-danger;
+    -fx-background-color: -c-danger-soft;
+    -fx-text-fill: -c-danger;
 }
 
 .btn-danger .icon {
-    -fx-icon-color: -color-danger;
+    -fx-icon-color: -c-danger;
 }
 
-.btn-danger:hover, .btn-danger:pressed {
-    -fx-background-color: -color-danger-soft;
-    -fx-border-color: -color-danger;
+.btn-danger:pressed {
+    -fx-background-color: -c-danger;
+    -fx-text-fill: white;
 }
 
+.btn-danger-solid {
+    -fx-background-color: -c-danger;
+    -fx-text-fill: white;
+}
+
+.btn-danger-solid .icon {
+    -fx-icon-color: white;
+}
+
+/* Square/round icon button: 80x80, the rotate / back / menu buttons. */
 .icon-btn {
-    -fx-min-width: 48px;
-    -fx-min-height: 48px;
-    -fx-pref-width: 48px;
-    -fx-pref-height: 48px;
+    -fx-alignment: center;
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 24px;
+    -fx-border-color: -c-line;
+    -fx-border-radius: 24px;
+    -fx-border-width: 1px;
+    -fx-min-width: 80px;
+    -fx-min-height: 80px;
+    -fx-pref-width: 80px;
+    -fx-pref-height: 80px;
+    -fx-max-width: 80px;
+    -fx-max-height: 80px;
     -fx-padding: 0;
+    -fx-cursor: hand;
 }
 
-.icon-btn-lg {
-    -fx-min-width: 56px;
-    -fx-min-height: 56px;
-    -fx-pref-width: 56px;
-    -fx-pref-height: 56px;
+.icon-btn:pressed {
+    -fx-background-color: -c-s3;
 }
 
-.back-button {
-    -fx-min-width: 52px;
-    -fx-min-height: 52px;
-    -fx-pref-width: 52px;
-    -fx-pref-height: 52px;
-    -fx-border-color: -color-border;
-    -fx-background-color: -color-surface;
+.icon-btn.plain {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
 }
 
-.btn:disabled {
-    -fx-opacity: 0.45;
+/* Toolbar button: icon above a label (game screens). */
+.tool-btn {
+    -fx-alignment: center;
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 24px;
+    -fx-border-color: -c-line;
+    -fx-border-radius: 24px;
+    -fx-text-fill: -c-fg2;
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 20px;
+    -fx-content-display: top;
+    -fx-graphic-text-gap: 8px;
+    -fx-min-height: 112px;
+    -fx-pref-height: 112px;
+    -fx-padding: 12px 8px;
+    -fx-cursor: hand;
 }
 
-.btn:focus-visible, .chip:focus-visible, .option-row:focus-visible, .tile:focus-visible, .switch:focus-visible {
-    -fx-border-color: -color-accent;
+.tool-btn .icon {
+    -fx-icon-color: -c-fg2;
 }
 
-/* ------------------------------------------------------------------ page shell */
-
-.page {
-    -fx-background-color: -color-bg;
+.tool-btn:pressed {
+    -fx-background-color: -c-s3;
 }
 
-.page-header {
-    -fx-min-height: 64px;
-    -fx-padding: 0;
+.tool-btn:selected {
+    -fx-background-color: -c-accent-soft;
+    -fx-border-color: -c-accent;
+    -fx-text-fill: -c-fg;
 }
 
-.page-content {
-    -fx-padding: 8 16 32 16;
-    -fx-spacing: 24;
+.tool-btn:selected .icon {
+    -fx-icon-color: -c-accent;
 }
 
-.page-footer {
-    -fx-padding: 12 16 16 16;
-    -fx-background-color: -color-bg;
-    -fx-border-color: -color-border transparent transparent transparent;
-    -fx-border-width: 1 0 0 0;
+.tool-btn.danger {
+    -fx-text-fill: -c-danger;
+}
+
+.tool-btn.danger .icon {
+    -fx-icon-color: -c-danger;
+}
+
+/* ------------------------------------------------------------------ screen shell */
+
+.screen-header {
+    -fx-padding: 24px 24px 12px 24px;
+    -fx-spacing: 20px;
+    -fx-alignment: center-left;
+    -fx-min-height: 128px;
+}
+
+.header-title {
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 38px;
+}
+
+.header-subtitle {
+    -fx-font-size: 22px;
+    -fx-text-fill: -c-fg2;
+}
+
+.screen-body {
+    -fx-padding: 8px 32px 32px 32px;
+    -fx-spacing: 24px;
 }
 
 .scroll-pane, .scroll-pane > .viewport {
     -fx-background-color: transparent;
-    -fx-background: transparent;
     -fx-background-insets: 0;
     -fx-padding: 0;
 }
@@ -369,26 +401,25 @@
 
 .scroll-bar:vertical, .scroll-bar:horizontal {
     -fx-background-color: transparent;
-    -fx-padding: 2;
+    -fx-padding: 2px;
 }
 
 .scroll-bar:vertical {
-    -fx-pref-width: 8px;
+    -fx-pref-width: 10px;
 }
 
 .scroll-bar:horizontal {
-    -fx-pref-height: 8px;
+    -fx-pref-height: 10px;
 }
 
 .scroll-bar > .thumb {
-    -fx-background-color: -color-border-strong;
-    -fx-background-radius: 999;
-    -fx-background-insets: 0;
+    -fx-background-color: -c-line2;
+    -fx-background-radius: 3px;
+    -fx-background-insets: 1px;
 }
 
 .scroll-bar > .track, .scroll-bar > .track-background {
     -fx-background-color: transparent;
-    -fx-border-color: transparent;
 }
 
 .scroll-bar > .increment-button, .scroll-bar > .decrement-button,
@@ -396,407 +427,1040 @@
     -fx-padding: 0;
     -fx-shape: null;
     -fx-background-color: transparent;
-    -fx-pref-height: 0;
-    -fx-pref-width: 0;
 }
 
-/* ------------------------------------------------------------------ cards & rows */
+/* ------------------------------------------------------------------ surfaces */
 
 .card {
-    -fx-background-color: -color-surface;
-    -fx-background-radius: 8;
-    -fx-border-color: -color-border;
-    -fx-border-radius: 8;
-    -fx-border-width: 1;
-    -fx-padding: 16;
-    -fx-spacing: 12;
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 28px;
+    -fx-border-color: -c-line;
+    -fx-border-radius: 28px;
+    -fx-border-width: 1px;
+    -fx-padding: 28px;
 }
 
-.card-flush {
-    -fx-padding: 0;
-    -fx-spacing: 0;
+.card-flat {
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 28px;
+    -fx-padding: 28px;
 }
 
-.card-title {
-    -fx-font-size: 18px;
-    -fx-font-family: "Geist SemiBold";
-    -fx-text-fill: -color-fg-strong;
-}
-
-.card-description {
-    -fx-font-size: 14px;
-    -fx-text-fill: -color-muted;
-}
-
-/* A row inside a flush card: title + description on the left, control on the right. */
-.setting-row {
-    -fx-padding: 14 16;
-    -fx-spacing: 16;
-    -fx-min-height: 68px;
-    -fx-alignment: center-left;
-    -fx-border-color: -color-border transparent transparent transparent;
-    -fx-border-width: 1 0 0 0;
-}
-
-.setting-row.first {
-    -fx-border-width: 0;
-}
-
-.setting-title {
-    -fx-font-size: 16px;
-    -fx-font-family: "Geist Medium";
-    -fx-text-fill: -color-fg;
-}
-
-.setting-description {
-    -fx-font-size: 14px;
-    -fx-text-fill: -color-muted;
-}
-
-.setting-value {
-    -fx-font-size: 15px;
-    -fx-font-family: "Geist Mono Medium";
-    -fx-text-fill: -color-fg;
-    -fx-min-width: 64px;
-    -fx-alignment: center-right;
-}
-
-.separator .line {
-    -fx-border-color: -color-border;
-    -fx-border-width: 1 0 0 0;
-}
-
-/* Large navigation tile (home). */
-.tile {
-    -fx-background-color: -color-surface;
-    -fx-background-radius: 8;
-    -fx-border-color: -color-border;
-    -fx-border-radius: 8;
-    -fx-border-width: 1;
-    -fx-background-insets: 0;
-    -fx-padding: 0 20;
-    -fx-min-height: 84px;
+.card-press {
     -fx-cursor: hand;
-    -fx-alignment: center-left;
 }
 
-.tile:hover {
-    -fx-border-color: -color-border-strong;
+.card-press:pressed {
+    -fx-background-color: -c-s2;
+}
+
+.hairline {
+    -fx-background-color: -c-line;
+    -fx-min-height: 1px;
+    -fx-pref-height: 1px;
+    -fx-max-height: 1px;
+}
+
+.section-label {
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 20px;
+    -fx-text-fill: -c-fg3;
+    -fx-padding: 16px 4px 0 4px;
+}
+
+/* Home: large tiles. */
+.tile {
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 32px;
+    -fx-border-color: -c-line;
+    -fx-border-radius: 32px;
+    -fx-padding: 28px 32px;
+    -fx-cursor: hand;
 }
 
 .tile:pressed {
-    -fx-background-color: -color-surface-2;
-    -fx-border-color: -color-border-strong;
+    -fx-background-color: -c-s2;
 }
 
-.tile-primary {
-    -fx-background-color: -color-fg;
-    -fx-border-color: -color-fg;
+.tile-hero {
+    -fx-background-color: -c-inverse;
+    -fx-border-color: transparent;
 }
 
-.tile-primary:hover {
-    -fx-border-color: -color-fg;
+.tile-hero:pressed {
+    -fx-background-color: -c-fg2;
 }
 
-.tile-primary:pressed {
-    -fx-opacity: 0.85;
+.tile-hero .label, .tile-hero .tile-title {
+    -fx-text-fill: -c-inverse-fg;
 }
 
-.tile-primary .tile-title, .tile-primary .tile-description {
-    -fx-text-fill: -color-inverse-fg;
+.tile-hero .tile-sub {
+    -fx-text-fill: -c-inverse-fg;
+    -fx-opacity: 0.7;
 }
 
-.tile-primary .icon {
-    -fx-icon-color: -color-inverse-fg;
-}
-
-.tile-primary .tile-icon {
-    -fx-border-color: -color-inverse-fg;
-    -fx-opacity: 0.9;
+.tile-hero .icon {
+    -fx-icon-color: -c-inverse-fg;
 }
 
 .tile-title {
-    -fx-font-size: 18px;
     -fx-font-family: "Geist SemiBold";
-    -fx-text-fill: -color-fg-strong;
+    -fx-font-size: 32px;
 }
 
-.tile-description {
-    -fx-font-size: 14px;
-    -fx-text-fill: -color-muted;
+.tile-sub {
+    -fx-font-size: 22px;
+    -fx-text-fill: -c-fg2;
 }
 
 .tile-icon {
-    -fx-min-width: 44px;
-    -fx-min-height: 44px;
-    -fx-max-width: 44px;
-    -fx-max-height: 44px;
-    -fx-alignment: center;
-    -fx-border-color: -color-border;
-    -fx-border-radius: 8;
-    -fx-border-width: 1;
+    -fx-background-color: -c-s2;
+    -fx-background-radius: 22px;
+    -fx-min-width: 72px;
+    -fx-min-height: 72px;
+    -fx-max-width: 72px;
+    -fx-max-height: 72px;
 }
 
-.tile-small {
-    -fx-min-height: 64px;
+.tile-hero .tile-icon {
+    -fx-background-color: rgba(128, 128, 128, 0.18);
 }
 
-.tile-small .tile-title {
-    -fx-font-size: 16px;
+.tile-value {
+    -fx-font-family: "Geist Light";
+    -fx-font-size: 44px;
 }
 
-/* ------------------------------------------------------------------ chips, segmented, option list */
+/* ------------------------------------------------------------------ chips, segments, steppers */
 
 .chip {
-    -fx-background-color: -color-surface;
-    -fx-border-color: -color-border;
-    -fx-background-radius: 999;
-    -fx-border-radius: 999;
-    -fx-border-width: 1;
-    -fx-background-insets: 0;
-    -fx-padding: 0 16;
-    -fx-min-height: 48px;
-    -fx-font-size: 15px;
+    -fx-alignment: center;
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 999px;
+    -fx-border-color: -c-line2;
+    -fx-border-radius: 999px;
+    -fx-border-width: 1.5px;
+    -fx-text-fill: -c-fg;
     -fx-font-family: "Geist Medium";
-    -fx-text-fill: -color-fg;
+    -fx-font-size: 22px;
+    -fx-min-height: 68px;
+    -fx-pref-height: 68px;
+    -fx-padding: 0 26px;
     -fx-cursor: hand;
 }
 
-.chip:hover {
-    -fx-border-color: -color-border-strong;
+.chip:pressed {
+    -fx-background-color: -c-s3;
 }
 
 .chip:selected {
-    -fx-background-color: -color-fg;
-    -fx-border-color: -color-fg;
-    -fx-text-fill: -color-inverse-fg;
+    -fx-background-color: -c-inverse;
+    -fx-border-color: -c-inverse;
+    -fx-text-fill: -c-inverse-fg;
 }
 
 .chip:selected .icon {
-    -fx-icon-color: -color-inverse-fg;
+    -fx-icon-color: -c-inverse-fg;
 }
 
-/* Segmented control: an HBox.segmented of ToggleButtons. */
 .segmented {
-    -fx-background-color: -color-surface-2;
-    -fx-background-radius: 8;
-    -fx-border-color: -color-border;
-    -fx-border-radius: 8;
-    -fx-border-width: 1;
-    -fx-padding: 3;
-    -fx-spacing: 3;
+    -fx-background-color: -c-s2;
+    -fx-background-radius: 28px;
+    -fx-padding: 6px;
+    -fx-spacing: 6px;
 }
 
-.segmented > .toggle-button, .segmented > .button {
+.segment {
+    -fx-alignment: center;
     -fx-background-color: transparent;
-    -fx-background-radius: 6;
-    -fx-border-color: transparent;
-    -fx-border-radius: 6;
-    -fx-border-width: 1;
-    -fx-background-insets: 0;
-    -fx-min-height: 46px;
-    -fx-padding: 0 12;
-    -fx-font-size: 15px;
+    -fx-background-radius: 22px;
+    -fx-text-fill: -c-fg2;
     -fx-font-family: "Geist Medium";
-    -fx-text-fill: -color-muted;
-    -fx-graphic-text-gap: 8;
+    -fx-font-size: 24px;
+    -fx-min-height: 84px;
+    -fx-pref-height: 84px;
+    -fx-graphic-text-gap: 12px;
     -fx-cursor: hand;
 }
 
-.segmented > .toggle-button .icon {
-    -fx-icon-color: -color-muted;
+.segment .icon {
+    -fx-icon-color: -c-fg2;
 }
 
-.segmented > .toggle-button:selected {
-    -fx-background-color: -color-surface;
-    -fx-border-color: -color-border-strong;
-    -fx-text-fill: -color-fg-strong;
+.segment:selected {
+    -fx-background-color: -c-s1;
+    -fx-text-fill: -c-fg;
+    -fx-border-color: -c-line2;
+    -fx-border-radius: 22px;
 }
 
-.segmented > .toggle-button:selected .icon {
-    -fx-icon-color: -color-fg-strong;
+.segment:selected .icon {
+    -fx-icon-color: -c-fg;
 }
 
-.segmented > .toggle-button:pressed {
-    -fx-background-color: -color-pressed;
+.stepper {
+    -fx-background-color: -c-s2;
+    -fx-background-radius: 28px;
+    -fx-padding: 6px;
+    -fx-spacing: 6px;
+    -fx-alignment: center;
 }
 
-.option-list {
-    -fx-spacing: 8;
-}
-
-.option-row {
-    -fx-background-color: -color-surface;
-    -fx-background-radius: 8;
-    -fx-border-color: -color-border;
-    -fx-border-radius: 8;
-    -fx-border-width: 1;
-    -fx-background-insets: 0;
-    -fx-padding: 14 16;
-    -fx-min-height: 64px;
-    -fx-alignment: center-left;
+.stepper-btn {
+    -fx-alignment: center;
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 22px;
+    -fx-min-width: 88px;
+    -fx-min-height: 88px;
+    -fx-max-width: 88px;
+    -fx-max-height: 88px;
+    -fx-padding: 0;
     -fx-cursor: hand;
 }
 
-.option-row:hover {
-    -fx-border-color: -color-border-strong;
+.stepper-btn:pressed {
+    -fx-background-color: -c-s3;
 }
 
-.option-row:pressed {
-    -fx-background-color: -color-surface-2;
+.stepper-btn:disabled {
+    -fx-opacity: 0.35;
 }
 
-.option-row:selected {
-    -fx-border-color: -color-fg;
-    -fx-border-width: 1.5;
+.stepper-value {
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 40px;
+    -fx-alignment: center;
 }
 
-.option-row:disabled {
-    -fx-opacity: 0.55;
+.stepper-unit {
+    -fx-font-size: 20px;
+    -fx-text-fill: -c-fg2;
+}
+
+/* Selectable option card (opponent, colour, time control). */
+.option {
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 26px;
+    -fx-border-color: -c-line;
+    -fx-border-radius: 26px;
+    -fx-border-width: 2px;
+    -fx-padding: 22px 24px;
+    -fx-cursor: hand;
+}
+
+.option:pressed {
+    -fx-background-color: -c-s2;
+}
+
+.option:selected {
+    -fx-border-color: -c-accent;
+    -fx-background-color: -c-accent-soft;
+}
+
+.option:disabled {
+    -fx-opacity: 0.45;
 }
 
 .option-title {
-    -fx-font-size: 16px;
     -fx-font-family: "Geist SemiBold";
-    -fx-text-fill: -color-fg-strong;
+    -fx-font-size: 26px;
 }
 
-.option-description {
-    -fx-font-size: 14px;
-    -fx-text-fill: -color-muted;
+.option-sub {
+    -fx-font-size: 21px;
+    -fx-text-fill: -c-fg2;
 }
 
-.radio-mark {
-    -fx-min-width: 22px;
-    -fx-min-height: 22px;
-    -fx-max-width: 22px;
-    -fx-max-height: 22px;
-    -fx-background-color: transparent;
-    -fx-background-radius: 999;
-    -fx-border-color: -color-border-strong;
-    -fx-border-radius: 999;
-    -fx-border-width: 1.5;
+.option-big {
+    -fx-font-family: "Geist Light";
+    -fx-font-size: 46px;
 }
 
-.option-row:selected .radio-mark {
-    -fx-background-color: -color-fg, -color-surface, -color-fg;
-    -fx-background-insets: 0, 4, 7;
-    -fx-border-color: -color-fg;
+.check-dot {
+    -fx-min-width: 36px;
+    -fx-min-height: 36px;
+    -fx-max-width: 36px;
+    -fx-max-height: 36px;
+    -fx-background-radius: 18px;
+    -fx-border-radius: 18px;
+    -fx-border-color: -c-line2;
+    -fx-border-width: 2.5px;
+}
+
+.option:selected .check-dot {
+    -fx-background-color: -c-accent;
+    -fx-border-color: -c-accent;
 }
 
 /* ------------------------------------------------------------------ switch */
 
 .switch {
     -fx-background-color: transparent;
-    -fx-background-insets: 0;
-    -fx-padding: 8;
+    -fx-padding: 0;
     -fx-cursor: hand;
-    -fx-border-color: transparent;
-    -fx-border-radius: 999;
-}
-
-.switch-graphic {
-    -fx-min-width: 52px;
-    -fx-max-width: 52px;
-    -fx-min-height: 32px;
-    -fx-max-height: 32px;
-    -fx-padding: 3;
 }
 
 .switch-track {
-    -fx-background-color: -color-surface-3;
-    -fx-background-radius: 999;
-    -fx-border-color: -color-border-strong;
-    -fx-border-radius: 999;
-    -fx-border-width: 1;
+    -fx-background-color: -c-s3;
+    -fx-background-radius: 26px;
+    -fx-min-width: 92px;
+    -fx-min-height: 52px;
+    -fx-max-width: 92px;
+    -fx-max-height: 52px;
 }
 
 .switch-knob {
-    -fx-min-width: 26px;
-    -fx-min-height: 26px;
-    -fx-max-width: 26px;
-    -fx-max-height: 26px;
-    -fx-background-color: -color-muted;
-    -fx-background-radius: 999;
+    -fx-background-color: -c-fg2;
+    -fx-background-radius: 20px;
+    -fx-min-width: 40px;
+    -fx-min-height: 40px;
+    -fx-max-width: 40px;
+    -fx-max-height: 40px;
 }
 
 .switch:selected .switch-track {
-    -fx-background-color: -color-fg;
-    -fx-border-color: -color-fg;
+    -fx-background-color: -c-accent;
 }
 
 .switch:selected .switch-knob {
-    -fx-background-color: -color-bg;
+    -fx-background-color: white;
+}
+
+/* Settings row: title + description left, control right. */
+.row {
+    -fx-padding: 22px 28px;
+    -fx-spacing: 20px;
+    -fx-alignment: center-left;
+    -fx-min-height: 112px;
+}
+
+.row-press {
+    -fx-cursor: hand;
+}
+
+.row-press:pressed {
+    -fx-background-color: -c-s2;
+}
+
+.row-title {
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 25px;
+}
+
+.row-sub {
+    -fx-font-size: 21px;
+    -fx-text-fill: -c-fg2;
+}
+
+.row-value {
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 24px;
+    -fx-text-fill: -c-fg2;
+}
+
+.group {
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 28px;
+    -fx-border-color: -c-line;
+    -fx-border-radius: 28px;
 }
 
 /* ------------------------------------------------------------------ inputs */
 
 .text-field, .password-field {
-    -fx-background-color: -color-surface;
-    -fx-background-radius: 6;
-    -fx-border-color: -color-border;
-    -fx-border-radius: 6;
-    -fx-border-width: 1;
-    -fx-background-insets: 0;
-    -fx-min-height: 48px;
-    -fx-padding: 0 14;
-    -fx-font-size: 16px;
-    -fx-text-fill: -color-fg;
-    -fx-prompt-text-fill: -color-subtle;
-    -fx-highlight-fill: -color-accent-soft;
-    -fx-highlight-text-fill: -color-fg;
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 24px;
+    -fx-border-color: -c-line2;
+    -fx-border-radius: 24px;
+    -fx-border-width: 1.5px;
+    -fx-text-fill: -c-fg;
+    -fx-prompt-text-fill: -c-fg3;
+    -fx-highlight-fill: -c-accent;
+    -fx-font-size: 24px;
+    -fx-padding: 0 24px;
+    -fx-min-height: 80px;
+    -fx-pref-height: 80px;
 }
 
 .text-field:focused, .password-field:focused {
-    -fx-border-color: -color-accent;
+    -fx-border-color: -c-accent;
 }
 
-.field-label {
-    -fx-font-size: 14px;
+.search-box {
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 999px;
+    -fx-border-color: -c-line2;
+    -fx-border-radius: 999px;
+    -fx-border-width: 1.5px;
+    -fx-min-height: 80px;
+    -fx-pref-height: 80px;
+    -fx-padding: 0 12px 0 28px;
+    -fx-spacing: 16px;
+    -fx-alignment: center-left;
+    -fx-cursor: hand;
+}
+
+.search-box.active {
+    -fx-border-color: -c-accent;
+}
+
+.search-text {
+    -fx-font-size: 24px;
+}
+
+/* On-screen keyboard */
+.keyboard {
+    -fx-background-color: -c-s1;
+    -fx-padding: 16px 10px 20px 10px;
+    -fx-spacing: 10px;
+}
+
+.key {
+    -fx-alignment: center;
+    -fx-background-color: -c-s2;
+    -fx-background-radius: 16px;
+    -fx-text-fill: -c-fg;
     -fx-font-family: "Geist Medium";
-    -fx-text-fill: -color-muted;
-}
-
-/* Slider: 1px-ish track, filled part via track background, big thumb for touch. */
-.slider {
-    -fx-padding: 8 0;
-}
-
-.slider .track {
-    -fx-background-color: -color-surface-3;
-    -fx-background-radius: 3;
-    -fx-background-insets: 0;
-    -fx-pref-height: 6px;
+    -fx-font-size: 28px;
+    -fx-min-height: 88px;
+    -fx-pref-height: 88px;
     -fx-padding: 0;
 }
 
-.slider .thumb {
-    -fx-background-color: -color-fg;
-    -fx-background-radius: 999;
-    -fx-background-insets: 0;
-    -fx-padding: 12;
-    -fx-effect: null;
+.key:pressed {
+    -fx-background-color: -c-line2;
 }
 
-.slider:pressed .thumb, .slider .thumb:pressed {
-    -fx-background-color: -color-muted;
+.key-wide {
+    -fx-font-size: 22px;
 }
 
-.slider .axis {
-    -fx-tick-label-fill: -color-subtle;
-    -fx-tick-length: 0;
-    -fx-minor-tick-length: 0;
+.key-accent {
+    -fx-background-color: -c-accent;
+    -fx-text-fill: -c-accent-fg;
 }
 
-.slider .axis .axis-tick-mark, .slider .axis .axis-minor-tick-mark {
-    -fx-stroke: transparent;
+.key-accent .icon {
+    -fx-icon-color: -c-accent-fg;
 }
 
-.slider:disabled {
-    -fx-opacity: 0.4;
+/* ------------------------------------------------------------------ status pills & badges */
+
+.status-chip {
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 999px;
+    -fx-border-color: -c-line;
+    -fx-border-radius: 999px;
+    -fx-padding: 10px 20px 10px 16px;
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 20px;
+    -fx-text-fill: -c-fg2;
 }
 
-/* ------------------------------------------------------------------ lists */
+.status-dot {
+    -fx-min-width: 14px;
+    -fx-min-height: 14px;
+    -fx-max-width: 14px;
+    -fx-max-height: 14px;
+    -fx-background-radius: 7px;
+    -fx-background-color: -c-fg3;
+}
+
+.status-chip:ok .status-dot {
+    -fx-background-color: -c-ok;
+}
+
+.status-chip:warn .status-dot {
+    -fx-background-color: -c-warn;
+}
+
+.status-chip:busy .status-dot {
+    -fx-background-color: -c-accent;
+}
+
+.pill {
+    -fx-background-color: -c-s2;
+    -fx-background-radius: 999px;
+    -fx-padding: 8px 18px;
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 20px;
+    -fx-text-fill: -c-fg2;
+}
+
+.pill-accent {
+    -fx-background-color: -c-accent-soft;
+    -fx-text-fill: -c-accent;
+}
+
+.result-tile {
+    -fx-background-radius: 18px;
+    -fx-min-width: 108px;
+    -fx-pref-width: 108px;
+    -fx-min-height: 56px;
+    -fx-alignment: center;
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 21px;
+    -fx-background-color: -c-s2;
+    -fx-text-fill: -c-fg2;
+}
+
+.result-tile.win {
+    -fx-background-color: -c-ok-soft;
+    -fx-text-fill: -c-ok;
+}
+
+.result-tile.loss {
+    -fx-background-color: -c-danger-soft;
+    -fx-text-fill: -c-danger;
+}
+
+.result-tile.draw {
+    -fx-background-color: -c-warn-soft;
+    -fx-text-fill: -c-warn;
+}
+
+.result-tile.score {
+    -fx-font-family: "Geist SemiBold";
+    -fx-text-fill: -c-fg;
+}
+
+/* ------------------------------------------------------------------ overlays */
+
+.sheet-layer {
+    -fx-background-color: -c-scrim;
+}
+
+.sheet {
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 36px 36px 0 0;
+    -fx-border-color: -c-line;
+    -fx-border-radius: 36px 36px 0 0;
+    -fx-border-width: 1px 0 0 0;
+    -fx-padding: 16px 32px 40px 32px;
+    -fx-spacing: 24px;
+}
+
+.sheet-center {
+    -fx-background-radius: 36px;
+    -fx-border-radius: 36px;
+    -fx-border-width: 1px;
+    -fx-padding: 32px;
+}
+
+.sheet-grip {
+    -fx-background-color: -c-line2;
+    -fx-background-radius: 3px;
+    -fx-min-width: 72px;
+    -fx-max-width: 72px;
+    -fx-min-height: 6px;
+    -fx-max-height: 6px;
+}
+
+.sheet-title {
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 34px;
+}
+
+.toast-layer {
+    -fx-padding: 0 32px 200px 32px;
+}
+
+.toast {
+    -fx-background-color: -c-inverse;
+    -fx-background-radius: 26px;
+    -fx-text-fill: -c-inverse-fg;
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 24px;
+    -fx-padding: 24px 32px;
+}
+
+/* ------------------------------------------------------------------ board & evaluation */
+
+.board-frame {
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 20px;
+    -fx-padding: 0;
+}
+
+.board-overlay {
+    -fx-background-color: rgba(12, 12, 14, 0.42);
+}
+
+.board-overlay-card {
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 28px;
+    -fx-border-color: -c-line2;
+    -fx-border-radius: 28px;
+    -fx-padding: 28px 44px;
+}
+
+.board-overlay-title {
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 40px;
+}
+
+.board-overlay-subtitle {
+    -fx-font-size: 24px;
+    -fx-text-fill: -c-fg2;
+}
+
+.eval-bar {
+    -fx-background-color: -c-line;
+    -fx-padding: 1px;
+}
+
+.eval-white {
+    -fx-background-color: -c-eval-white;
+}
+
+.eval-black {
+    -fx-background-color: -c-eval-black;
+}
+
+.eval-score {
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 16px;
+    -fx-text-fill: #ECECEE;
+}
+
+.eval-score:on-white {
+    -fx-text-fill: #1D1D21;
+}
+
+.eval-graph {
+    -fx-background-radius: 20px;
+    -fx-cursor: hand;
+}
+
+/* ------------------------------------------------------------------ game: player rows, status card */
+
+.player-row {
+    -fx-spacing: 16px;
+    -fx-alignment: center-left;
+    -fx-padding: 6px 4px;
+    -fx-min-height: 84px;
+}
+
+.avatar {
+    -fx-background-radius: 20px;
+    -fx-min-width: 64px;
+    -fx-min-height: 64px;
+    -fx-max-width: 64px;
+    -fx-max-height: 64px;
+    -fx-border-radius: 20px;
+    -fx-border-width: 2px;
+    -fx-border-color: -c-line2;
+}
+
+.avatar.white {
+    -fx-background-color: #F4F4F5;
+}
+
+.avatar.black {
+    -fx-background-color: #202024;
+}
+
+.player-name {
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 28px;
+}
+
+.player-meta {
+    -fx-font-size: 21px;
+    -fx-text-fill: -c-fg2;
+}
+
+.material {
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 24px;
+    -fx-text-fill: -c-fg2;
+}
+
+.status-card {
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 32px;
+    -fx-border-color: -c-line;
+    -fx-border-radius: 32px;
+    -fx-padding: 28px 32px;
+    -fx-spacing: 10px;
+}
+
+.status-card.turn {
+    -fx-background-color: -c-inverse;
+    -fx-border-color: -c-inverse;
+}
+
+.status-card.turn .label {
+    -fx-text-fill: -c-inverse-fg;
+}
+
+.status-card.action {
+    -fx-background-color: -c-accent-soft;
+    -fx-border-color: -c-accent;
+    -fx-border-width: 2px;
+}
+
+.status-card.error {
+    -fx-background-color: -c-danger-soft;
+    -fx-border-color: -c-danger;
+    -fx-border-width: 2px;
+}
+
+.status-card.done {
+    -fx-background-color: -c-ok-soft;
+    -fx-border-color: -c-ok;
+    -fx-border-width: 2px;
+}
+
+.status-kicker {
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 21px;
+    -fx-text-fill: -c-fg2;
+}
+
+.status-title {
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 40px;
+}
+
+.status-move {
+    -fx-font-family: "Geist Light";
+    -fx-font-size: 76px;
+}
+
+.status-detail {
+    -fx-font-size: 23px;
+    -fx-text-fill: -c-fg2;
+}
+
+.coach-line {
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 24px;
+    -fx-padding: 18px 24px;
+    -fx-spacing: 18px;
+    -fx-alignment: center-left;
+    -fx-min-height: 92px;
+}
+
+.eval-chip {
+    -fx-background-radius: 14px;
+    -fx-padding: 8px 14px;
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 22px;
+    -fx-min-width: 104px;
+    -fx-alignment: center;
+}
+
+.eval-chip.white-adv {
+    -fx-background-color: #ECECEE;
+    -fx-text-fill: #141416;
+}
+
+.eval-chip.black-adv {
+    -fx-background-color: #26262B;
+    -fx-text-fill: #F4F4F5;
+    -fx-border-color: -c-line2;
+    -fx-border-radius: 14px;
+}
+
+.move-strip {
+    -fx-spacing: 10px;
+    -fx-alignment: center-left;
+}
+
+.move-chip {
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 16px;
+    -fx-padding: 12px 18px;
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 23px;
+    -fx-text-fill: -c-fg2;
+}
+
+.move-chip.last {
+    -fx-background-color: -c-inverse;
+    -fx-text-fill: -c-inverse-fg;
+}
+
+.move-number {
+    -fx-font-family: "Geist";
+    -fx-text-fill: -c-fg3;
+}
+
+/* ------------------------------------------------------------------ two-player clock halves */
+
+.half {
+    -fx-padding: 24px 28px 28px 28px;
+    -fx-spacing: 18px;
+}
+
+.clock-face {
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 40px;
+    -fx-border-color: -c-line;
+    -fx-border-radius: 40px;
+    -fx-border-width: 2px;
+    -fx-padding: 8px 24px;
+}
+
+.clock-face .clock-digits {
+    -fx-text-fill: -c-fg3;
+}
+
+.clock-face.active {
+    -fx-background-color: -c-lit;
+    -fx-border-color: -c-lit;
+}
+
+.clock-face.active .clock-digits {
+    -fx-text-fill: -c-lit-fg;
+}
+
+.clock-face.low {
+    -fx-background-color: -c-danger;
+    -fx-border-color: -c-danger;
+}
+
+.clock-face.low .clock-digits {
+    -fx-text-fill: white;
+}
+
+.clock-face.paused {
+    -fx-opacity: 0.55;
+}
+
+.clock-digits {
+    -fx-font-family: "Geist Light";
+}
+
+.half-name {
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 30px;
+}
+
+.half-state {
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 24px;
+    -fx-text-fill: -c-fg2;
+}
+
+.half-state.turn {
+    -fx-text-fill: -c-accent;
+}
+
+.half-btn {
+    -fx-alignment: center;
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 24px;
+    -fx-border-color: -c-line;
+    -fx-border-radius: 24px;
+    -fx-text-fill: -c-fg;
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 21px;
+    -fx-content-display: top;
+    -fx-graphic-text-gap: 6px;
+    -fx-min-height: 104px;
+    -fx-pref-height: 104px;
+    -fx-cursor: hand;
+}
+
+.half-btn:pressed {
+    -fx-background-color: -c-s3;
+}
+
+.half-btn .icon {
+    -fx-icon-color: -c-fg2;
+}
+
+.half-btn.danger {
+    -fx-text-fill: -c-danger;
+}
+
+.half-btn.danger .icon {
+    -fx-icon-color: -c-danger;
+}
+
+.half-panel {
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 32px;
+    -fx-border-color: -c-line2;
+    -fx-border-radius: 32px;
+    -fx-border-width: 2px;
+    -fx-padding: 24px;
+    -fx-spacing: 18px;
+}
+
+.half-panel.accent {
+    -fx-border-color: -c-accent;
+}
+
+.center-band {
+    -fx-alignment: center;
+    -fx-spacing: 14px;
+}
+
+.pause-veil {
+    -fx-background-color: -c-scrim;
+}
+
+.pause-card {
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 32px;
+    -fx-border-color: -c-line2;
+    -fx-border-radius: 32px;
+    -fx-padding: 28px 40px;
+    -fx-spacing: 8px;
+    -fx-alignment: center;
+}
+
+/* ------------------------------------------------------------------ review */
+
+.accuracy-card {
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 26px;
+    -fx-border-color: -c-line;
+    -fx-border-radius: 26px;
+    -fx-padding: 14px 22px;
+    -fx-spacing: 14px;
+    -fx-alignment: center-left;
+}
+
+.accuracy-value {
+    -fx-font-family: "Geist Light";
+    -fx-font-size: 52px;
+}
+
+.move-card {
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 28px;
+    -fx-border-color: -c-line;
+    -fx-border-radius: 28px;
+    -fx-padding: 18px 24px;
+    -fx-spacing: 20px;
+    -fx-alignment: center-left;
+    -fx-min-height: 112px;
+}
+
+.move-card-title {
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 28px;
+}
+
+.move-card-sub {
+    -fx-font-size: 22px;
+    -fx-text-fill: -c-fg2;
+}
+
+.nav-bar {
+    -fx-spacing: 12px;
+    -fx-padding: 10px 24px 24px 24px;
+    -fx-alignment: center;
+}
+
+.nav-btn {
+    -fx-alignment: center;
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 28px;
+    -fx-border-color: -c-line;
+    -fx-border-radius: 28px;
+    -fx-min-height: 100px;
+    -fx-pref-height: 100px;
+    -fx-cursor: hand;
+}
+
+.nav-btn:pressed {
+    -fx-background-color: -c-s3;
+}
+
+.nav-btn.main {
+    -fx-background-color: -c-inverse;
+    -fx-border-color: -c-inverse;
+}
+
+.nav-btn.main .icon {
+    -fx-icon-color: -c-inverse-fg;
+}
+
+.nav-btn.main:pressed {
+    -fx-background-color: -c-fg2;
+}
+
+.nav-btn:disabled {
+    -fx-opacity: 0.35;
+}
+
+.ply-label {
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 22px;
+    -fx-text-fill: -c-fg2;
+}
+
+.tabs {
+    -fx-spacing: 8px;
+}
+
+.review-move-row {
+    -fx-padding: 0 12px;
+    -fx-spacing: 8px;
+    -fx-alignment: center-left;
+    -fx-min-height: 76px;
+}
+
+.review-move {
+    -fx-background-radius: 16px;
+    -fx-padding: 10px 14px;
+    -fx-spacing: 10px;
+    -fx-alignment: center-left;
+    -fx-cursor: hand;
+}
+
+.review-move:pressed {
+    -fx-background-color: -c-s2;
+}
+
+.review-move.current {
+    -fx-background-color: -c-inverse;
+}
+
+.review-move.current .label {
+    -fx-text-fill: -c-inverse-fg;
+}
+
+.review-move-san {
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 25px;
+}
+
+.progress-track {
+    -fx-background-color: -c-s3;
+    -fx-background-radius: 6px;
+    -fx-min-height: 12px;
+    -fx-max-height: 12px;
+}
+
+.progress-fill {
+    -fx-background-color: -c-accent;
+    -fx-background-radius: 6px;
+    -fx-min-height: 12px;
+    -fx-max-height: 12px;
+}
+
+.breakdown-row {
+    -fx-min-height: 68px;
+    -fx-alignment: center-left;
+    -fx-spacing: 16px;
+    -fx-padding: 0 8px;
+}
+
+.breakdown-count {
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 28px;
+    -fx-min-width: 72px;
+    -fx-alignment: center;
+}
+
+/* ------------------------------------------------------------------ lists (archive, move list) */
 
 .list-view {
     -fx-background-color: transparent;
@@ -805,603 +1469,138 @@
     -fx-border-width: 0;
 }
 
-.list-view .list-cell {
+.list-view > .virtual-flow > .clipped-container > .sheet > .list-cell,
+.list-cell {
     -fx-background-color: transparent;
     -fx-padding: 0;
-    -fx-text-fill: -color-fg;
+    -fx-text-fill: -c-fg;
 }
 
-.list-view .placeholder .label {
-    -fx-text-fill: -color-muted;
+.list-cell:filled:selected, .list-cell:filled:focused:selected, .list-cell:filled:hover {
+    -fx-background-color: transparent;
 }
 
-/* Archive rows */
+.archive-day {
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 22px;
+    -fx-text-fill: -c-fg2;
+    -fx-padding: 28px 8px 12px 8px;
+}
+
 .archive-row {
-    -fx-background-color: -color-surface;
-    -fx-background-radius: 8;
-    -fx-border-color: -color-border;
-    -fx-border-radius: 8;
-    -fx-border-width: 1;
-    -fx-padding: 12 16 12 12;
-    -fx-spacing: 16;
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 28px;
+    -fx-border-color: -c-line;
+    -fx-border-radius: 28px;
+    -fx-padding: 14px 18px 14px 14px;
+    -fx-spacing: 20px;
     -fx-alignment: center-left;
+    -fx-min-height: 140px;
+    -fx-pref-height: 140px;
+    -fx-max-height: 140px;
     -fx-cursor: hand;
 }
 
-.archive-row:hover {
-    -fx-border-color: -color-border-strong;
-}
-
 .archive-row:pressed {
-    -fx-background-color: -color-surface-2;
-}
-
-.archive-cell {
-    -fx-padding: 0 0 8 0;
+    -fx-background-color: -c-s2;
 }
 
 .archive-title {
-    -fx-font-size: 16px;
     -fx-font-family: "Geist SemiBold";
-    -fx-text-fill: -color-fg-strong;
+    -fx-font-size: 26px;
 }
 
 .archive-meta {
-    -fx-font-size: 14px;
-    -fx-text-fill: -color-muted;
+    -fx-font-family: "Geist";
+    -fx-font-size: 21px;
+    -fx-text-fill: -c-fg2;
 }
 
-/* Move list */
-.move-list {
-    -fx-background-color: transparent;
-    -fx-fixed-cell-size: 44px;
+.archive-opening {
+    -fx-font-size: 21px;
+    -fx-text-fill: -c-fg3;
 }
 
-.move-list .move-row {
-    -fx-padding: 0 4;
+.empty-state {
+    -fx-alignment: center;
+    -fx-spacing: 18px;
+    -fx-padding: 80px 40px;
 }
 
-.move-list .move-row:filled:odd {
-    -fx-background-color: -color-surface-2;
-    -fx-background-radius: 6;
-}
-
-.move-number {
-    -fx-font-family: "Geist Mono";
-    -fx-font-size: 15px;
-    -fx-text-fill: -color-subtle;
-    -fx-min-width: 48px;
-    -fx-pref-width: 48px;
-    -fx-padding: 0 0 0 8;
-}
-
-.move-san {
-    -fx-font-size: 17px;
-    -fx-font-family: "Geist Medium";
-    -fx-text-fill: -color-fg;
-    -fx-padding: 6 10;
-    -fx-background-radius: 6;
-    -fx-min-height: 38px;
-}
-
-.move-san:current {
-    -fx-background-color: -color-fg;
-    -fx-text-fill: -color-inverse-fg;
-}
-
-/* ------------------------------------------------------------------ badges & status */
-
-.badge {
-    -fx-font-size: 12px;
+.empty-title {
     -fx-font-family: "Geist SemiBold";
-    -fx-padding: 3 8;
-    -fx-background-radius: 999;
-    -fx-border-radius: 999;
-    -fx-border-width: 1;
-    -fx-background-color: -color-surface-2;
-    -fx-border-color: -color-border;
-    -fx-text-fill: -color-muted;
+    -fx-font-size: 32px;
 }
 
-.badge-success {
-    -fx-background-color: -color-success-soft;
-    -fx-border-color: transparent;
-    -fx-text-fill: -color-success;
+.empty-sub {
+    -fx-font-size: 23px;
+    -fx-text-fill: -c-fg2;
+    -fx-text-alignment: center;
 }
 
-.badge-danger {
-    -fx-background-color: -color-danger-soft;
-    -fx-border-color: transparent;
-    -fx-text-fill: -color-danger;
+/* ------------------------------------------------------------------ home */
+
+.brand {
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 44px;
 }
 
-.badge-warning {
-    -fx-background-color: -color-warning-soft;
-    -fx-border-color: transparent;
-    -fx-text-fill: -color-warning;
+.brand-sub {
+    -fx-font-size: 22px;
+    -fx-text-fill: -c-fg2;
 }
 
-.status-chip {
-    -fx-font-size: 13px;
-    -fx-font-family: "Geist Medium";
-    -fx-text-fill: -color-muted;
-    -fx-padding: 6 12;
-    -fx-background-color: -color-surface;
-    -fx-background-radius: 999;
-    -fx-border-color: -color-border;
-    -fx-border-radius: 999;
-    -fx-border-width: 1;
-}
-
-.status-dot {
-    -fx-min-width: 8px;
-    -fx-min-height: 8px;
-    -fx-max-width: 8px;
-    -fx-max-height: 8px;
-    -fx-background-radius: 999;
-    -fx-background-color: -color-subtle;
-}
-
-.status-chip:ok .status-dot {
-    -fx-background-color: -color-success;
-}
-
-.status-chip:warn .status-dot {
-    -fx-background-color: -color-warning;
-}
-
-.status-chip:busy .status-dot {
-    -fx-background-color: -color-accent;
+.hello {
+    -fx-font-family: "Geist Light";
+    -fx-font-size: 64px;
 }
 
 /* ------------------------------------------------------------------ logo */
 
 .logo-tile {
-    -fx-fill: -color-fg;
+    -fx-fill: -c-inverse;
 }
 
 .logo-cut {
-    -fx-fill: -color-bg;
+    -fx-fill: -c-bg;
 }
 
 .logo-led {
-    -fx-fill: -color-accent;
+    -fx-fill: -c-accent;
 }
 
-.wordmark {
-    -fx-font-size: 34px;
-    -fx-font-weight: 700;
-    -fx-text-fill: -color-fg-strong;
-}
-
-/* ------------------------------------------------------------------ game screen */
-
-.player-bar {
-    -fx-background-color: -color-surface;
-    -fx-background-radius: 8;
-    -fx-border-color: -color-border;
-    -fx-border-radius: 8;
-    -fx-border-width: 1;
-    -fx-padding: 8 8 8 16;
-    -fx-spacing: 12;
-    -fx-alignment: center-left;
-    -fx-min-height: 64px;
-}
-
-.player-name {
-    -fx-font-size: 17px;
-    -fx-font-family: "Geist SemiBold";
-    -fx-text-fill: -color-fg-strong;
-}
-
-.player-meta {
-    -fx-font-size: 13px;
-    -fx-text-fill: -color-muted;
-}
-
-.player-avatar {
-    -fx-min-width: 32px;
-    -fx-min-height: 32px;
-    -fx-max-width: 32px;
-    -fx-max-height: 32px;
-    -fx-background-radius: 6;
-    -fx-border-radius: 6;
-    -fx-border-width: 1;
-    -fx-border-color: -color-border-strong;
-}
-
-.player-avatar.white {
-    -fx-background-color: #F4F4F5;
-}
-
-.player-avatar.black {
-    -fx-background-color: #18181B;
-}
-
-.clock {
-    -fx-font-size: 34px;
-    -fx-font-family: "Geist Mono Medium";
-    -fx-text-fill: -color-muted;
-    -fx-padding: 2 14;
-    -fx-background-color: -color-surface-2;
-    -fx-background-radius: 6;
-    -fx-min-width: 132px;
-    -fx-alignment: center;
-}
-
-/* ChessTimer adds stopwatch-active to the running clock. */
-.clock.stopwatch-active {
-    -fx-background-color: -color-fg;
-    -fx-text-fill: -color-inverse-fg;
-}
-
-.clock-idle {
-    -fx-font-size: 20px;
-    -fx-min-width: 0;
-}
-
-.eval-bar {
-    -fx-background-color: -color-border-strong;
-    -fx-background-radius: 2;
-    -fx-padding: 1;
-}
-
-.eval-white {
-    -fx-background-color: -color-eval-white;
-}
-
-.eval-black {
-    -fx-background-color: -color-eval-black;
-}
-
-.eval-score {
-    -fx-font-size: 11px;
-    -fx-font-family: "Geist Mono SemiBold";
-    -fx-text-fill: #EDEDED;
-}
-
-.eval-score:on-white {
-    -fx-text-fill: #171717;
-}
-
-.board-frame {
-    -fx-background-color: -color-border;
-    -fx-background-radius: 4;
-}
-
-.board-overlay {
-    -fx-background-color: -color-scrim;
-}
-
-.board-overlay-card {
-    -fx-background-color: -color-surface;
-    -fx-background-radius: 12;
-    -fx-border-color: -color-border-strong;
-    -fx-border-radius: 12;
-    -fx-border-width: 1;
-    -fx-padding: 24 32;
-}
-
-.board-overlay-title {
-    -fx-font-size: 28px;
-    -fx-font-weight: 700;
-    -fx-text-fill: -color-fg-strong;
-}
-
-.board-overlay-subtitle {
-    -fx-font-size: 16px;
-    -fx-text-fill: -color-muted;
-}
-
-/* Analysis lines under the board */
-.analysis-panel {
-    -fx-spacing: 6;
-}
-
-.analysis-line {
-    -fx-spacing: 12;
-    -fx-alignment: center-left;
-    -fx-padding: 8 12;
-    -fx-min-height: 44px;
-    -fx-background-color: -color-surface;
-    -fx-background-radius: 6;
-    -fx-border-color: -color-border;
-    -fx-border-radius: 6;
-    -fx-border-width: 1;
-}
-
-.analysis-status {
-    -fx-font-size: 14px;
-    -fx-text-fill: -color-muted;
-    -fx-padding: 0 2;
-}
-
-.eval-badge {
-    -fx-font-size: 15px;
-    -fx-font-family: "Geist Mono SemiBold";
-    -fx-padding: 4 10;
-    -fx-background-radius: 4;
-    -fx-pref-width: 80px;
-    -fx-alignment: center;
-}
-
-.eval-badge.white-adv {
-    -fx-background-color: #F4F4F5;
-    -fx-text-fill: #18181B;
-    -fx-border-color: -color-border-strong;
-    -fx-border-radius: 4;
-    -fx-border-width: 1;
-}
-
-.eval-badge.black-adv {
-    -fx-background-color: #18181B;
-    -fx-text-fill: #F4F4F5;
-    -fx-border-color: #3D3D3D;
-    -fx-border-radius: 4;
-    -fx-border-width: 1;
-}
-
-.analysis-moves {
-    -fx-font-family: "Geist";
-    -fx-font-size: 16px;
-    -fx-text-fill: -color-fg;
-}
-
-.result-badge {
-    -fx-font-size: 22px;
-    -fx-font-family: "Geist Mono SemiBold";
-}
-
-/* Toolbar of the game / review screen */
-.toolbar {
-    -fx-spacing: 8;
-    -fx-alignment: center;
-}
-
-.toolbar > .button, .toolbar > .toggle-button {
-    -fx-min-height: 56px;
-}
-
-.toggle-button.btn-secondary:selected {
-    -fx-background-color: -color-surface-3;
-    -fx-border-color: -color-fg;
-}
-
-/* ------------------------------------------------------------------ review */
-
-.stat-block {
-    -fx-background-color: -color-surface;
-    -fx-background-radius: 8;
-    -fx-border-color: -color-border;
-    -fx-border-radius: 8;
-    -fx-border-width: 1;
-    -fx-padding: 12 16;
-    -fx-spacing: 2;
-}
-
-.stat-label {
-    -fx-font-size: 13px;
-    -fx-font-family: "Geist Medium";
-    -fx-text-fill: -color-muted;
-}
-
-.stat-value {
-    -fx-font-size: 30px;
-    -fx-font-family: "Geist Mono SemiBold";
-    -fx-text-fill: -color-fg-strong;
-}
-
-.breakdown-row {
-    -fx-spacing: 12;
-    -fx-alignment: center-left;
-    -fx-min-height: 34px;
-}
-
-.breakdown-count {
-    -fx-font-family: "Geist Mono";
-    -fx-font-size: 15px;
-    -fx-text-fill: -color-fg;
-    -fx-min-width: 32px;
-    -fx-alignment: center;
-}
-
-.breakdown-name {
-    -fx-font-size: 14px;
-    -fx-text-fill: -color-muted;
-}
-
-.graph-box {
-    -fx-background-color: -color-surface;
-    -fx-background-radius: 8;
-    -fx-border-color: -color-border;
-    -fx-border-radius: 8;
-    -fx-border-width: 1;
-    -fx-padding: 1;
-}
-
-.progress-bar {
-    -fx-pref-height: 6px;
-}
-
-.progress-bar > .track {
-    -fx-background-color: -color-surface-3;
-    -fx-background-radius: 999;
-    -fx-background-insets: 0;
-}
-
-.progress-bar > .bar {
-    -fx-background-color: -color-fg;
-    -fx-background-radius: 999;
-    -fx-background-insets: 0;
-    -fx-padding: 3;
-}
-
-.progress-indicator {
-    -fx-progress-color: -color-fg;
-}
-
-/* ------------------------------------------------------------------ theme picker */
-
-.preview-card {
-    -fx-background-color: -color-surface;
-    -fx-background-radius: 8;
-    -fx-border-color: -color-border;
-    -fx-border-radius: 8;
-    -fx-border-width: 1;
-    -fx-background-insets: 0;
-    -fx-padding: 10;
-    -fx-cursor: hand;
-    -fx-content-display: top;
-    -fx-graphic-text-gap: 8;
-    -fx-font-size: 14px;
-    -fx-font-family: "Geist Medium";
-    -fx-text-fill: -color-fg;
-}
-
-.preview-card:hover {
-    -fx-border-color: -color-border-strong;
-}
-
-.preview-card:selected {
-    -fx-border-color: -color-fg;
-    -fx-border-width: 2;
-    -fx-padding: 9;
-}
-
-/* ------------------------------------------------------------------ overlays */
-
-.sheet-layer {
-    -fx-background-color: -color-scrim;
-}
-
-.sheet {
-    -fx-background-color: -color-surface;
-    -fx-background-radius: 12;
-    -fx-border-color: -color-border-strong;
-    -fx-border-radius: 12;
-    -fx-border-width: 1;
-    -fx-padding: 16 20 24 20;
-}
-
-.sheet-bottom {
-    -fx-background-radius: 12 12 0 0;
-    -fx-border-radius: 12 12 0 0;
-    -fx-border-width: 1 1 0 1;
-    -fx-padding: 16 20 32 20;
-}
-
-.sheet-title {
-    -fx-font-size: 20px;
-    -fx-font-family: "Geist SemiBold";
-    -fx-text-fill: -color-fg-strong;
-}
-
-.toast-layer {
-    -fx-padding: 0 16 40 16;
-}
-
-.toast {
-    -fx-background-color: -color-fg;
-    -fx-text-fill: -color-inverse-fg;
-    -fx-background-radius: 8;
-    -fx-padding: 14 18;
-    -fx-font-size: 15px;
-    -fx-font-family: "Geist Medium";
-}
-
-/* ------------------------------------------------------------------ misc */
-
-.empty-state {
-    -fx-spacing: 8;
-    -fx-alignment: center;
-    -fx-padding: 48 16;
-}
-
-.empty-state .icon {
-    -fx-icon-color: -color-subtle;
-}
-
-.kbd {
-    -fx-font-family: "Geist Mono";
-    -fx-font-size: 13px;
-    -fx-padding: 2 6;
-    -fx-background-color: -color-surface-2;
-    -fx-border-color: -color-border;
-    -fx-border-radius: 4;
-    -fx-background-radius: 4;
-    -fx-text-fill: -color-muted;
-}
-
-/* Compact icon-over-label buttons (game toolbar) */
-.tool-btn {
-    -fx-font-size: 13px;
-    -fx-padding: 8 4;
-    -fx-min-height: 68px;
-    -fx-graphic-text-gap: 6;
-    -fx-content-display: top;
-}
-
-.home-hero .wordmark {
-    -fx-font-size: 44px;
-}
-
-.tile VBox, .option-row VBox, .setting-row HBox > VBox {
-    -fx-alignment: center-left;
-}
-
-.board-holder {
-    -fx-border-color: -color-border-strong;
-    -fx-border-width: 1;
-    -fx-border-insets: -1;
-}
-
-/* ------------------------------------------------------------------ dialogs (ErrorReporter alerts) */
+/* ------------------------------------------------------------------ dialogs (ErrorReporter fallback) */
 
 .dialog-pane {
-    -fx-background-color: -color-surface;
-    -fx-font-family: "Geist";
-    -fx-min-width: 420px;
+    -fx-background-color: -c-s1;
+    -fx-padding: 24px;
 }
 
 .dialog-pane > .header-panel {
-    -fx-background-color: -color-surface;
-    -fx-border-color: transparent transparent -color-border transparent;
-    -fx-border-width: 0 0 1 0;
-    -fx-padding: 20 24 16 24;
+    -fx-background-color: transparent;
 }
 
 .dialog-pane > .header-panel .label {
     -fx-font-family: "Geist SemiBold";
-    -fx-font-size: 18px;
-    -fx-text-fill: -color-fg-strong;
+    -fx-font-size: 28px;
 }
 
 .dialog-pane > .content.label {
-    -fx-font-size: 15px;
-    -fx-text-fill: -color-fg;
-    -fx-padding: 16 24;
-    -fx-wrap-text: true;
-}
-
-.dialog-pane > .button-bar > .container {
-    -fx-padding: 8 24 20 24;
+    -fx-font-size: 22px;
+    -fx-text-fill: -c-fg2;
 }
 
 .dialog-pane .button {
-    -fx-background-color: -color-fg;
-    -fx-text-fill: -color-inverse-fg;
-    -fx-background-radius: 8;
-    -fx-background-insets: 0;
-    -fx-font-family: "Geist SemiBold";
-    -fx-font-size: 15px;
-    -fx-min-height: 48px;
-    -fx-min-width: 120px;
+    -fx-background-color: -c-accent;
+    -fx-text-fill: -c-accent-fg;
+    -fx-background-radius: 20px;
+    -fx-min-height: 64px;
+    -fx-font-size: 22px;
+    -fx-padding: 0 28px;
 }
 
-.home-hero.hero-tall .wordmark {
-    -fx-font-size: 56px;
-}
+/* ------------------------------------------------------------------ landscape / desktop tweaks */
 
-.home-hero.hero-tall .lead {
-    -fx-font-size: 20px;
+.wide .screen-body {
+    -fx-padding: 8px 48px 32px 48px;
 }

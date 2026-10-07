@@ -344,6 +344,16 @@ public abstract class AbstractGame {
         return board;
     }
 
+    /** True from {@link #startGame()} until the game ends (mate, draw, flag, resignation, interruption). */
+    public boolean isRunning() {
+        return gameRunning;
+    }
+
+    /** Starting position of the game (FEN). */
+    public String getInitialFen() {
+        return initialFen;
+    }
+
     // --- LED VISUALIZATION METHODS ---
     // Check, setup and opponent moves are shown by BoardStateManager from the position itself.
 

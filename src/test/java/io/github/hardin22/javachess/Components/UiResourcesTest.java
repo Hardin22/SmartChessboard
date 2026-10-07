@@ -46,6 +46,25 @@ class UiResourcesTest {
         assertEquals(List.of(), missing);
     }
 
+    /**
+     * FXMLLoader reads a capitalised package segment ("Components") as a class name, so a single-class import such as
+     * {@code io.github.hardin22.javachess.Components.ScreenHeader} fails at run time: app classes need wildcards.
+     */
+    @Test
+    void fxmlImportsOfAppClassesUseWildcards() throws Exception {
+        Pattern imp = Pattern.compile("<\\?import (io\\.github\\.hardin22\\.javachess\\.[\\w.]+)\\?>");
+        List<String> bad = new ArrayList<>();
+        for (Path fxml : fxmlFiles()) {
+            Matcher m = imp.matcher(Files.readString(fxml, StandardCharsets.UTF_8));
+            while (m.find()) {
+                if (!m.group(1).endsWith(".*")) {
+                    bad.add(fxml.getFileName() + ": " + m.group(1));
+                }
+            }
+        }
+        assertEquals(List.of(), bad);
+    }
+
     @Test
     void everyIconLiteralIsAFeatherIcon() throws Exception {
         Set<String> known = Arrays.stream(Feather.values()).map(Feather::getDescription).collect(Collectors.toSet());

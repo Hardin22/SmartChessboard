@@ -1,19 +1,41 @@
 package io.github.hardin22.javachess.Application;
 
+import com.github.bhlangonijr.chesslib.Board;
+import com.github.bhlangonijr.chesslib.move.Move;
+import com.github.bhlangonijr.chesslib.move.MoveList;
+import javafx.animation.PauseTransition;
 import javafx.application.Platform;
+import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.util.Duration;
 import io.github.hardin22.javachess.Controllers.ActiveGameController;
 import io.github.hardin22.javachess.Controllers.MainController;
 import io.github.hardin22.javachess.Controllers.PuzzleController;
 import io.github.hardin22.javachess.Controllers.ReviewController;
+import io.github.hardin22.javachess.Oggetti.ArchivedGame;
+import io.github.hardin22.javachess.Oggetti.Puzzle;
+import io.github.hardin22.javachess.Services.EngineService;
+import io.github.hardin22.javachess.Services.GameArchiveService;
 import io.github.hardin22.javachess.Services.PuzzleService;
+import io.github.hardin22.javachess.Utils.AppPaths;
+import io.github.hardin22.javachess.Utils.PgnCodec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
 
-/** Developer demos used by {@link DevOptions} to reach screens that need state (game in progress, review...). */
+/**
+ * Developer demos used by {@link DevOptions} ({@code -Djavachess.demo=NAME}) to reach every screen in a realistic
+ * state for screenshots. Demo runs never write the user's settings or archive (except {@code demo.seed}, which only
+ * works in a data folder given with {@code -Djavachess.home}).
+ */
 final class DevDemos {
 
     private static final Logger LOG = LoggerFactory.getLogger(DevDemos.class);
@@ -24,80 +46,149 @@ final class DevDemos {
 
     static void run(MainController main, String demo) {
         try {
+            seedArchiveIfAsked();
             switch (demo) {
-                case "game" -> game(main);
+                case "game", "pvp" -> pvp(main, null);
+                case "pvp-draw" -> pvp(main, game -> game.offerDraw(com.github.bhlangonijr.chesslib.Side.WHITE));
+                case "pvp-resign" -> pvp(main, game -> game.requestResign(com.github.bhlangonijr.chesslib.Side.BLACK));
+                case "pvp-pause" -> pvp(main, ActiveGameController::togglePause);
+                case "pvp-end" -> pvp(main, game -> game.devResign(com.github.bhlangonijr.chesslib.Side.BLACK));
+                case "pvp-menu" -> pvp(main, game -> game.showDuelMenu(com.github.bhlangonijr.chesslib.Side.BLACK));
+                case "pvc" -> pvc(main, true, null);
+                case "pvc-black" -> pvc(main, false, null);
+                case "pvc-replicate" -> pvc(main, true, game ->
+                        game.devStatus("Muovi l'avversario: solleva da F8 posiziona su C5"));
+                case "pvc-setup" -> pvc(main, true, game -> game.devStatus("Posiziona i pezzi: mancano 6"));
+                case "pvc-error" -> pvc(main, true, game -> game.devStatus("ERRORE: Controlla E4"));
+                case "pvc-menu" -> pvc(main, true, game -> lookupFire(main, "game-menu"));
+                case "pvc-select" -> pvc(main, true, game -> tapSquare(main, System.getProperty("javachess.demo.square", "f1")));
                 case "review" -> review(main);
                 case "puzzle" -> puzzle(main);
+                case "online" -> {
+                    main.navigateTo("HOME");
+                    later(1, () -> lookupFire(main, "home-online"));
+                }
+                case "archive-preview" -> {
+                    main.navigateTo("ARCHIVE");
+                    later(1.2, () -> lookupFire(main, "archive-row"));
+                }
+                case "archive-search" -> {
+                    main.navigateTo("ARCHIVE");
+                    later(1.2, () -> lookupFire(main, "archive-search"));
+                }
                 case "settings-advanced" -> {
                     main.navigateTo("SETTINGS");
-                    ((io.github.hardin22.javachess.Controllers.SettingsController) main.getController("SETTINGS")).openAdvanced();
+                    ((io.github.hardin22.javachess.Controllers.SettingsController) main.getController("SETTINGS"))
+                            .openAdvanced();
                 }
-                default -> LOG.warn("Unknown demo {}", demo);
+                default -> main.navigateTo(demo.toUpperCase());
             }
         } catch (RuntimeException e) {
             LOG.error("Demo {} failed", demo, e);
         }
     }
 
-    private static void game(MainController main) {
+    private static void later(double seconds, Runnable action) {
+        PauseTransition pause = new PauseTransition(Duration.seconds(seconds));
+        pause.setOnFinished(e -> action.run());
+        pause.play();
+    }
+
+    /** Fires the node with this id (buttons) or simulates a tap on it. */
+    private static void lookupFire(MainController main, String id) {
+        Node node = main.getMainContainer().getScene().lookup("#" + id);
+        if (node instanceof Button b) {
+            b.fire();
+        } else if (node != null) {
+            node.fireEvent(new javafx.scene.input.MouseEvent(javafx.scene.input.MouseEvent.MOUSE_CLICKED, 0, 0, 0, 0,
+                    javafx.scene.input.MouseButton.PRIMARY, 1, false, false, false, false, true, false, false, true,
+                    false, false, null));
+        } else {
+            LOG.warn("No node #{} for the demo", id);
+        }
+    }
+
+    /** Simulates a finger on a square of the board shown on the screen (scene coordinates, flip-aware). */
+    private static void tapSquare(MainController main, String square) {
+        if (!(main.getMainContainer().lookup(".chess-board")
+                instanceof io.github.hardin22.javachess.Oggetti.ChessBoardUI board)) {
+            LOG.warn("No board on screen for the demo");
+            return;
+        }
+        int file = square.charAt(0) - 'a';
+        int rank = square.charAt(1) - '1';
+        double tile = board.getTileSize();
+        int col = board.isFlipped() ? 7 - file : file;
+        int row = board.isFlipped() ? rank : 7 - rank;
+        javafx.geometry.Point2D p = board.localToScene((col + 0.5) * tile, (row + 0.5) * tile);
+        board.fireEvent(new javafx.scene.input.MouseEvent(javafx.scene.input.MouseEvent.MOUSE_CLICKED, p.getX(),
+                p.getY(), 0, 0, javafx.scene.input.MouseButton.PRIMARY, 1, false, false, false, false, true, false,
+                false, true, false, false, null));
+    }
+
+    private static List<String> demoMoves() {
+        return Arrays.asList(System.getProperty("javachess.demo.moves", DEFAULT_MOVES).trim().split("\\s+"));
+    }
+
+    private static void pvp(MainController main, java.util.function.Consumer<ActiveGameController> then) {
         ActiveGameController game = (ActiveGameController) main.getController("GAME");
         main.navigateTo("GAME");
-        game.startPvP(10, 5);
-        List<String> moves = Arrays.asList(System.getProperty("javachess.demo.moves", DEFAULT_MOVES).trim().split("\\s+"));
+        game.startPvP(Integer.getInteger("javachess.demo.minutes", 10), 5);
+        List<String> moves = demoMoves();
         game.devPlayMoves(moves, 120);
-        if (Boolean.getBoolean("javachess.demo.overlay")) {
-            javafx.animation.PauseTransition later = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(3));
-            later.setOnFinished(e -> {
-                if (main.getMainContainer().lookup(".chess-board") instanceof io.github.hardin22.javachess.Oggetti.ChessBoardUI b) {
-                    b.showVictoryAnimation("SCACCO MATTO", "IL BIANCO VINCE");
-                }
-            });
-            later.play();
+        if (then != null) {
+            later(0.2 + moves.size() * 0.13, () -> then.accept(game));
         }
-        String sheet = System.getProperty("javachess.demo.sheet");
-        if (sheet != null) {
-            // Open the sheet once the moves are in, through the same buttons a user would tap.
-            Thread.ofVirtual().start(() -> {
-                try {
-                    Thread.sleep(120L * moves.size() + 600);
-                } catch (InterruptedException e) {
-                    return;
-                }
-                Platform.runLater(() -> {
-                    String id = switch (sheet) {
-                        case "engine" -> "#engineButton";
-                        case "analysis" -> "#settingsButton";
-                        default -> "#endButton";
-                    };
-                    if (main.getMainContainer().lookup(id) instanceof Button button) {
-                        button.fire();
-                    }
-                });
-            });
+    }
+
+    private static void pvc(MainController main, boolean white, java.util.function.Consumer<ActiveGameController> then) {
+        ActiveGameController game = (ActiveGameController) main.getController("GAME");
+        main.navigateTo("GAME");
+        game.startPvC(Integer.getInteger("javachess.demo.level", 10), white, EngineService.EngineType.STOCKFISH);
+        List<String> moves = demoMoves();
+        // Against the computer only the human moves are played; the engine answers.
+        if (Boolean.parseBoolean(System.getProperty("javachess.demo.autoplay", "true"))) {
+            game.devPlayHumanMoves(moves, white, 900);
+        }
+        if (then != null) {
+            later(Double.parseDouble(System.getProperty("javachess.demo.thenAfter", "2.5")), () -> then.accept(game));
         }
     }
 
     private static void review(MainController main) {
-        var archive = io.github.hardin22.javachess.Services.GameArchiveService.getInstance();
+        var archive = GameArchiveService.getInstance();
         int wanted = Integer.getInteger("javachess.demo.game", -1);
         var chosen = wanted >= 0 ? archive.get(wanted)
                 : archive.list().stream()
                         .filter(g -> !"*".equals(g.result()) && g.movesUci().size() >= 40)
                         .findFirst();
-        ReviewController review = (ReviewController) main.getController("REVIEW");
-        main.navigateTo("REVIEW");
-        if (chosen.isPresent()) {
-            review.loadGame(chosen.get().movesAsUciString(), chosen.get().initialFen());
-            review.goTo(Integer.getInteger("javachess.demo.ply", 20));
-            if (Boolean.getBoolean("javachess.demo.analyze")) {
-                review.analyze();
-            }
-        } else {
+        if (chosen.isEmpty()) {
             LOG.warn("No archived game for the review demo");
+            main.navigateTo("REVIEW");
+            return;
+        }
+        ReviewController.open(main, chosen.get());
+        ReviewController review = (ReviewController) main.getController("REVIEW");
+        review.goTo(Integer.getInteger("javachess.demo.ply", 20));
+        if (Boolean.getBoolean("javachess.demo.analyze")) {
+            review.analyze();
+        }
+        double variationAfter = Double.parseDouble(System.getProperty("javachess.demo.variationAfter", "0"));
+        if (variationAfter > 0) {
+            later(variationAfter, review::devShowBest);
         }
     }
 
     private static void puzzle(MainController main) {
+        if (!Boolean.getBoolean("javachess.demo.puzzledb")) {
+            // A fixed back-rank puzzle when there is no puzzle database (or one is asked for).
+            Puzzle puzzle = new Puzzle("demo", "6k1/r4ppp/8/8/8/8/5PPP/3R2K1 b - - 0 1", List.of("a7a6", "d1d8"),
+                    1520, 80, 90, 100, List.of("mateIn1", "backRankMate", "short"), "", "");
+            PuzzleController controller = (PuzzleController) main.getController("PUZZLE_GAME");
+            main.navigateTo("PUZZLE_GAME");
+            controller.setPuzzle(puzzle, 1500, List.of("Tutti"));
+            return;
+        }
         PuzzleService.getInstance().findPuzzleAsync(1500, 200, List.of("Tutti")).thenAccept(puzzle ->
                 Platform.runLater(() -> {
                     PuzzleController controller = (PuzzleController) main.getController("PUZZLE_GAME");
@@ -106,5 +197,141 @@ final class DevDemos {
                         controller.setPuzzle(puzzle, 1500, List.of("Tutti"));
                     }
                 }));
+    }
+
+    // ================================================================== demo archive
+
+    private static final String[][] LICHESS_NAMES = { { "anna_rossi", "1640" }, { "TorreNera", "1820" },
+            { "marco_b", "1490" }, { "Gambetto87", "1710" }, { "lucia.scacchi", "1580" } };
+
+    /**
+     * {@code -Djavachess.demo.seed=N}: fills an empty archive with N games made from public-domain game scores, with
+     * every mode, result and a date spread over the last months. Only in a data folder chosen with
+     * {@code -Djavachess.home} (never in the user's real archive).
+     */
+    private static void seedArchiveIfAsked() {
+        int count = Integer.getInteger("javachess.demo.seed", 0);
+        if (count <= 0) {
+            return;
+        }
+        if (System.getProperty("javachess.home") == null && System.getenv("JAVACHESS_HOME") == null) {
+            LOG.warn("javachess.demo.seed ignored: pass -Djavachess.home=<empty folder> (data folder {})",
+                    AppPaths.dataDir());
+            return;
+        }
+        GameArchiveService archive = GameArchiveService.getInstance();
+        if (archive.size() > 0) {
+            return;
+        }
+        List<String[]> scores = readScores();
+        if (scores.isEmpty()) {
+            return;
+        }
+        Random rnd = new Random(42);
+        LocalDateTime when = LocalDateTime.now().withSecond(0).withNano(0).minusMinutes(20);
+        for (int i = 0; i < count; i++) {
+            String[] score = scores.get(i % scores.size());
+            List<String> uci = toUci(score[4]);
+            if (uci.isEmpty()) {
+                continue;
+            }
+            String result = score[3];
+            int kind = i % 10;
+            boolean unfinished = kind == 7;
+            if (unfinished) {
+                uci = uci.subList(0, Math.max(6, uci.size() * 2 / 3));
+                result = "*";
+            }
+            ArchivedGame.GameMode mode;
+            String label;
+            String white;
+            String black;
+            String termination = "*".equals(result) ? "Interrotta" : terminationOf(uci, result, rnd);
+            String time = "";
+            if (kind <= 3) {
+                mode = ArchivedGame.GameMode.PVC;
+                int level = new int[] { 5, 8, 10, 12, 15, 20 }[rnd.nextInt(6)];
+                String bot = kind == 3 ? "Maia " + new int[] { 1100, 1500, 1900 }[rnd.nextInt(3)]
+                        : "Stockfish livello " + level;
+                label = "Player vs " + bot;
+                boolean humanWhite = rnd.nextBoolean();
+                white = humanWhite ? "Giocatore" : bot;
+                black = humanWhite ? bot : "Giocatore";
+            } else if (kind <= 6) {
+                mode = ArchivedGame.GameMode.PVP;
+                label = "Player vs Player";
+                white = "Bianco";
+                black = "Nero";
+                time = new String[] { "10+5", "5+3", "15+10", "3+2" }[rnd.nextInt(4)];
+            } else if (kind == 8) {
+                mode = ArchivedGame.GameMode.LICHESS;
+                String[] a = LICHESS_NAMES[rnd.nextInt(LICHESS_NAMES.length)];
+                String[] b = LICHESS_NAMES[(rnd.nextInt(LICHESS_NAMES.length - 1) + 1) % LICHESS_NAMES.length];
+                label = "";
+                white = a[0];
+                black = b[0].equals(a[0]) ? "scacco_matto99" : b[0];
+                time = "10+0";
+            } else {
+                mode = ArchivedGame.GameMode.BROWSER;
+                label = "Online";
+                white = "?";
+                black = "?";
+            }
+            Board board = new Board();
+            for (String m : uci) {
+                board.doMove(new Move(m, board.getSideToMove()));
+            }
+            archive.add(new ArchivedGame(0, mode, label, white, black, result, termination, "", time, when,
+                    PgnCodec.START_FEN, board.getFen(), uci));
+            when = when.minusMinutes(25 + rnd.nextInt(50));
+            if (rnd.nextInt(3) == 0) {
+                when = when.minusDays(1 + rnd.nextInt(3)).withHour(15 + rnd.nextInt(6));
+            }
+        }
+        LOG.info("Demo archive: {} games", archive.size());
+    }
+
+    private static String terminationOf(List<String> uci, String result, Random rnd) {
+        Board board = new Board();
+        for (String m : uci) {
+            board.doMove(new Move(m, board.getSideToMove()));
+        }
+        if (board.isMated()) {
+            return "Scaccomatto";
+        }
+        if ("1/2-1/2".equals(result)) {
+            return "Patta";
+        }
+        return rnd.nextInt(4) == 0 ? "Tempo" : "Abbandono";
+    }
+
+    private static List<String[]> readScores() {
+        List<String[]> out = new ArrayList<>();
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(
+                DevDemos.class.getResourceAsStream("/demo/famous-games.tsv"), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                if (!line.startsWith("#") && !line.isBlank()) {
+                    String[] parts = line.split("\t");
+                    if (parts.length == 5) {
+                        out.add(parts);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOG.warn("Demo games not readable: {}", e.toString());
+        }
+        return out;
+    }
+
+    private static List<String> toUci(String san) {
+        try {
+            MoveList list = new MoveList();
+            list.loadFromSan(san.replaceAll("\\d+\\.", " ").replaceAll("\\s+", " ").trim());
+            return list.stream().map(Move::toString).toList();
+        } catch (Exception e) {
+            LOG.warn("Demo game not parsed: {}", e.toString());
+            return List.of();
+        }
     }
 }
