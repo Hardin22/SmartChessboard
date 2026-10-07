@@ -110,6 +110,8 @@ public class ReviewController implements NavigationAware, GameNavigationListener
     /** Incremented when another game is loaded: a running full analysis of the previous game is discarded. */
     private final java.util.concurrent.atomic.AtomicInteger analysisGeneration =
             new java.util.concurrent.atomic.AtomicInteger();
+    /** Thread of the running full-game review: interrupted when the screen is left or another game is loaded. */
+    private volatile Thread analysisThread;
     private int[] whiteCounts = new int[0];
     private int[] blackCounts = new int[0];
 
@@ -155,6 +157,7 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         this.currentWhiteRating = whiteRating;
         this.currentBlackRating = blackRating;
         this.currentPgn = pgn;
+        cancelFullAnalysis(); // the review of the previous game would keep six engines busy for nothing
         analysisGeneration.incrementAndGet();
         this.currentInitialFen = initialFen == null ? START_FEN : initialFen;
         if (arduinoController == null) {
@@ -222,7 +225,8 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         String fenToAnalyze = currentInitialFen;
         int whiteRating = currentWhiteRating;
         int blackRating = currentBlackRating;
-        Thread.ofPlatform().daemon().name("game-analysis").start(() -> {
+        cancelFullAnalysis();
+        analysisThread = Thread.ofPlatform().daemon().name("game-analysis").start(() -> {
             try {
                 int totalMoves = reviewChessBoard.getMoveList().size();
                 analyzer.review(pgn, fenToAnalyze, whiteRating, blackRating, progress -> Platform.runLater(() -> {
@@ -239,6 +243,9 @@ public class ReviewController implements NavigationAware, GameNavigationListener
                     }
                 }));
                 List<MoveAnalysis> analysis = analyzer.lastAnalysis();
+                if (Thread.currentThread().isInterrupted() || generation != analysisGeneration.get()) {
+                    return; // cancelled: the screen was left or another game was opened
+                }
                 if (analysis.isEmpty() && !pgn.isBlank()) {
                     // GameAnalyzer returns nothing when the engine fails mid-way: report it, do not show 0%
                     throw new IllegalStateException("il motore non ha risposto");
@@ -356,6 +363,25 @@ public class ReviewController implements NavigationAware, GameNavigationListener
     @Override
     public void onNavigatedFrom() {
         PositionAnalyzer.get().stop(); // do not keep the engine busy for a screen that is not shown
+        if (cancelFullAnalysis()) {
+            analysisGeneration.incrementAndGet(); // its results are no longer wanted
+            progressContainer.setVisible(false);
+            progressContainer.setManaged(false);
+            analyzeRow.setVisible(true);
+            analyzeRow.setManaged(true);
+            analyzeButton.setDisable(false);
+        }
+    }
+
+    /** Stops the running full-game review, if any (its engines are closed). True when one was running. */
+    private boolean cancelFullAnalysis() {
+        Thread running = analysisThread;
+        analysisThread = null;
+        if (running != null && running.isAlive()) {
+            running.interrupt();
+            return true;
+        }
+        return false;
     }
 
     @FXML

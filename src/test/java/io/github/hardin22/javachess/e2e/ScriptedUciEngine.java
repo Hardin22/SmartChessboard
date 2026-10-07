@@ -22,7 +22,7 @@ import java.util.List;
  * (centipawns, side to move) for every MultiPV line, so the review and the coach get plausible numbers.
  * Answers {@code uci}, {@code isready}, {@code position}, {@code go} (any limits), {@code stop}, {@code quit};
  * other commands ({@code setoption}, {@code ucinewgame}) are accepted silently. A script line {@code !crash} makes the
- * process exit on the next {@code go}, {@code !hang} makes it never answer.</p>
+ * process exit on the next {@code go}, {@code !hang} makes it never answer, {@code !slow} answers after 800 ms.</p>
  */
 public final class ScriptedUciEngine {
 
@@ -53,6 +53,9 @@ public final class ScriptedUciEngine {
                 List<String> script = readScript(scriptFile); // re-read: tests change it between games
                 if (script.contains("!crash")) {
                     System.exit(3); // the engine process dies in the middle of a search
+                }
+                if (script.contains("!slow")) {
+                    Thread.sleep(800); // a slow machine: every search takes a while
                 }
                 if (!script.contains("!hang")) { // "!hang": never answers (a stuck engine)
                     search(board, multiPv, script);

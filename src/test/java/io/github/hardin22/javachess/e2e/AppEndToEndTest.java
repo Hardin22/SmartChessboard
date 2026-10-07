@@ -334,6 +334,47 @@ class AppEndToEndTest {
         });
     }
 
+    @Test
+    @Order(8)
+    void leavingTheReviewStopsTheFullAnalysisAndItsEngines() throws Exception {
+        Files.writeString(script, "!slow\n");
+        long baseline = liveChildProcesses();
+        ArchivedGame game = archive().add(new ArchivedGame(0, ArchivedGame.GameMode.PVP, "Player vs Player",
+                "Bianco", "Nero", "*", "", "", "", LocalDateTime.now(), PgnCodec.START_FEN, "",
+                List.of("e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1g1", "f8e7", "f1e1",
+                        "b7b5", "a4b3", "d7d6", "c2c3", "e8g8", "h2h3", "c6b8", "d2d4", "b8d7", "c3c4", "c7c6",
+                        "c4b5", "a6b5", "b1c3", "c8b7", "c1g5", "b5b4", "c3b1", "h7h6", "g5h4", "c6c5",
+                        "d4e5", "f6e4", "h4e7", "d8e7", "b1d2", "d7e5", "d2e4", "b7e4")));
+        // 40 plies at 0.8 s per search: the review alone would need well over 5 s
+        ReviewController review = fx(() -> {
+            ReviewController r = (ReviewController) main.getController("REVIEW");
+            main.navigateTo("REVIEW");
+            r.loadGame(game.movesAsUciString(), game.initialFen());
+            r.analyze();
+            return r;
+        });
+        waitFor("review engines started", () -> liveChildProcesses() > baseline);
+        Thread.sleep(500);
+        long left = System.currentTimeMillis();
+        fx(() -> {
+            main.navigateTo("HOME");
+            return null;
+        });
+        waitFor("review engines closed after leaving", () -> liveChildProcesses() <= baseline);
+        long closedAfter = System.currentTimeMillis() - left;
+        assertTrue(closedAfter < 3000, "engines closed " + closedAfter + " ms after leaving the review");
+        Thread analysis = (Thread) field(review, "analysisThread");
+        assertTrue(analysis == null || !analysis.isAlive(), "the review thread stopped");
+        Thread.sleep(1000);
+        assertFalse(fxGet(() -> ((javafx.scene.Node) field(review, "accuracyWrapper")).isVisible()),
+                "no final results (nor error) from a cancelled review");
+        Files.writeString(script, "");
+    }
+
+    private static long liveChildProcesses() {
+        return ProcessHandle.current().descendants().filter(ProcessHandle::isAlive).count();
+    }
+
     // ================================================================== helpers
 
     private static ActiveGameController startPvc(boolean white) throws Exception {
