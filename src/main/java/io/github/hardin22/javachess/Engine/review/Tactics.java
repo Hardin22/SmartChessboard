@@ -8,7 +8,9 @@ import com.github.bhlangonijr.chesslib.Square;
 import com.github.bhlangonijr.chesslib.move.Move;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Static board tactics for Brilliant / Great / Blunder: static exchange evaluation, piece safety, trapped pieces and
@@ -93,6 +95,37 @@ final class Tactics {
         Board c = b.clone();
         c.doNullMove();
         return see(c, sq) <= 0;
+    }
+
+    /**
+     * Pieces of {@code color} (no pawns or king) the opponent wins material on by static exchange if it were its move,
+     * with that gain (pawns). (SPEC v1.8 §5.2: "hanging")
+     */
+    static Map<Square, Integer> hanging(Board b, Side color) {
+        Board o = b;
+        if (b.getSideToMove() == color) {
+            String[] f = b.getFen().split(" ");
+            f[1] = color == Side.WHITE ? "b" : "w";
+            f[3] = "-";
+            o = new Board();
+            o.loadFromFen(String.join(" ", f));
+        }
+        Map<Square, Integer> out = new LinkedHashMap<>();
+        for (Square sq : Square.values()) {
+            if (sq == Square.NONE) {
+                continue;
+            }
+            Piece p = o.getPiece(sq);
+            if (p == Piece.NONE || p.getPieceSide() != color || p.getPieceType() == PieceType.PAWN
+                    || p.getPieceType() == PieceType.KING) {
+                continue;
+            }
+            int g = see(o, sq);
+            if (g > 0) {
+                out.put(sq, g);
+            }
+        }
+        return out;
     }
 
     /** Pieces of {@code color} (no pawns or king) worth more than {@code minValue} that are not safe. */
