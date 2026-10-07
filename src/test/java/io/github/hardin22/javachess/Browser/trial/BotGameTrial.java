@@ -461,21 +461,28 @@ public final class BotGameTrial {
                 }
                 boolean settled = st.phase() == io.github.hardin22.javachess.Browser.OnlineGameSync.Phase.OPPONENT_TURN
                         && truth.board() != null && !truth.board().animating() && truth.board().placement() != null;
-                if (settled) {
-                    // two reads apart: the watcher needs a few polls to see a new position
-                    Thread.sleep(1200);
-                    BoardSnapshot again = probe();
-                    io.github.hardin22.javachess.Browser.OnlineGameSync.State st2 = owner.submit(sync::state).get();
-                    String followedNow = SetupPosition.placement(owner.submit(sync::position).get());
-                    if (again.board() != null && again.board().placement() != null && st2.plies() == st.plies()
-                            && again.board().placement().equals(truth.board().placement())) {
-                        checks++;
-                        if (!followedNow.equals(again.board().placement())) {
-                            diverged++;
-                            anomalies.add("ply " + st2.plies() + ": followed " + followedNow + " page "
-                                    + again.board().placement() + " phase " + st2.phase());
+                if (settled && !SetupPosition.placement(followed).equals(truth.board().placement())) {
+                    // the page moved on: vision needs still frames to see it; give the pipeline 4 s to catch up
+                    String page = truth.board().placement();
+                    String followedNow = SetupPosition.placement(followed);
+                    long until = System.currentTimeMillis() + 4000;
+                    while (System.currentTimeMillis() < until && !followedNow.equals(page)) {
+                        Thread.sleep(200);
+                        followedNow = SetupPosition.placement(owner.submit(sync::position).get());
+                        BoardSnapshot again = probe();
+                        if (again.board() != null && again.board().placement() != null
+                                && !again.board().placement().equals(page)) {
+                            page = again.board().placement(); // the page moved again (our move): start over
+                            until = System.currentTimeMillis() + 4000;
                         }
                     }
+                    checks++;
+                    if (!followedNow.equals(page)) {
+                        diverged++;
+                        anomalies.add("ply " + st.plies() + ": followed " + followedNow + " page " + page);
+                    }
+                } else if (settled) {
+                    checks++;
                 }
             }
         } finally {

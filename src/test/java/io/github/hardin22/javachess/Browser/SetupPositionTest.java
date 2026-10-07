@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -95,6 +96,15 @@ class SetupPositionTest {
                 PageInfo.of(""), Side.WHITE);
         assertEquals(Side.BLACK, r.board().getSideToMove());
         assertEquals("check", r.turnSource());
+    }
+
+    @Test
+    void misreadingsWithImpossibleMaterialAreRejected() {
+        // what an uncalibrated model read on the chess.com bot theme: four white bishops with eight pawns
+        assertNull(SetupPosition.build("knbq1bnq/pppp1ppp/3P4/4p2P/8/1PPP3P/3PB1BP/BNBQKBNQ", null, null, Side.WHITE));
+        assertTrue(SetupPosition.plausibleMaterial("q3k2q/8/8/8/8/8/8/Q3K2Q"), "promoted queens without pawns");
+        assertTrue(SetupPosition.plausibleMaterial(SetupPosition.START_PLACEMENT));
+        assertFalse(SetupPosition.plausibleMaterial("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNQ"), "two queens, 8 pawns");
     }
 
     @Test

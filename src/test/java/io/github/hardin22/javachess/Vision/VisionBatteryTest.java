@@ -314,6 +314,39 @@ class VisionBatteryTest {
         assertTrue(falseStarts == 0, "never a false start: " + misses);
     }
 
+    /** Opening positions (up to two plies) recognised by occupancy: right when found, never a wrong one. */
+    @Test
+    void openingPositionsRecognised() throws Exception {
+        List<Fixture> all = new ArrayList<>(loadCore());
+        all.addAll(loadExtended());
+        assumeTrue(!all.isEmpty(), "no pictures");
+        int found = 0;
+        int wrong = 0;
+        int openings = 0;
+        List<String> problems = new ArrayList<>();
+        for (Fixture f : all) {
+            String seen = TemplateReader.recogniseOpening(f.image(), f.flipped());
+            boolean isOpening = f.meta().optInt("ply", 99) <= 2 && f.meta().has("game");
+            openings += isOpening ? 1 : 0;
+            if (seen != null) {
+                if (seen.equals(f.placement())) {
+                    found++;
+                } else {
+                    wrong++;
+                    problems.add(f.group() + "/" + f.file() + " read as " + seen);
+                }
+            } else if (isOpening) {
+                problems.add("missed " + f.group() + "/" + f.file());
+            }
+        }
+        String report = String.format("Opening positions by occupancy: %d recognised (%d opening pictures in"
+                + " live games), %d wrong in %d pictures%n%s", found, openings, wrong, all.size(),
+                String.join("\n", problems));
+        System.out.println(report);
+        write("report-openings.md", report);
+        assertTrue(wrong == 0, report);
+    }
+
     /**
      * The calibrated reader ({@link TemplateReader}) against the model on the same pictures: per group (one theme
      * and piece set), it learns from the picture marked "calibration" (the start position) and reads the others.

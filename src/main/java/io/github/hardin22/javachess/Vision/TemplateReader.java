@@ -268,6 +268,86 @@ public final class TemplateReader {
         return whiteAtBottom != flipped;
     }
 
+    /**
+     * The opening position the picture shows, recognised by occupancy (any theme): the start position or a position
+     * one or two plies after it (a bot that moves at once). The occupied squares must match exactly one candidate
+     * and the two armies must be where {@code flipped} says. Null when unsure.
+     */
+    public static String recogniseOpening(BufferedImage board, boolean flipped) {
+        boolean[] occupied = new boolean[64]; // by screen position, row * 8 + col
+        double textureLevel = 0;
+        int[][] cells = new int[64][];
+        for (int row = 0; row < 8; row++) {
+            for (int col = 0; col < 8; col++) {
+                cells[row * 8 + col] = cell(board, col, row);
+            }
+        }
+        // the middle rows are empty but for at most two pawns: their 75th percentile is the texture of empty squares
+        double[] levels = new double[16];
+        int k = 0;
+        for (int row = 3; row <= 4; row++) {
+            for (int col = 0; col < 8; col++) {
+                levels[k++] = textureLevel(cells[row * 8 + col]);
+            }
+        }
+        java.util.Arrays.sort(levels);
+        textureLevel = levels[11];
+        int threshold = (int) Math.max(PIECE_THRESHOLD, textureLevel * 1.15);
+        long seen = 0;
+        double top = 0;
+        double bottom = 0;
+        int topN = 0;
+        int bottomN = 0;
+        for (int i = 0; i < 64; i++) {
+            boolean[] mask = keepBlobs(pieceMask(cells[i], threshold));
+            occupied[i] = count(mask) > N * N / 12;
+            if (occupied[i]) {
+                int row = i / 8;
+                int col = i % 8;
+                int file = flipped ? 7 - col : col;
+                int rank = flipped ? row : 7 - row;
+                seen |= 1L << (rank * 8 + file);
+                if (row <= 1) {
+                    top += meanLuminance(cells[i], mask);
+                    topN++;
+                } else if (row >= 6) {
+                    bottom += meanLuminance(cells[i], mask);
+                    bottomN++;
+                }
+            }
+        }
+        if (topN < 12 || bottomN < 12 || Math.abs(top / topN - bottom / bottomN) < 20
+                || (bottom / bottomN > top / topN) == flipped) {
+            return null; // not two armies on their home rows, or the other way round
+        }
+        java.util.Map<Long, String> byOccupancy = new java.util.HashMap<>();
+        java.util.Set<Long> ambiguous = new java.util.HashSet<>();
+        com.github.bhlangonijr.chesslib.Board start = new com.github.bhlangonijr.chesslib.Board();
+        java.util.ArrayDeque<com.github.bhlangonijr.chesslib.Board> frontier = new java.util.ArrayDeque<>();
+        frontier.add(start);
+        for (int ply = 0; ply <= 2; ply++) {
+            java.util.ArrayDeque<com.github.bhlangonijr.chesslib.Board> next = new java.util.ArrayDeque<>();
+            for (com.github.bhlangonijr.chesslib.Board b : frontier) {
+                long occ = b.getBitboard();
+                String placement = b.getFen().split(" ")[0];
+                String known = byOccupancy.putIfAbsent(occ, placement);
+                if (known != null && !known.equals(placement)) {
+                    ambiguous.add(occ);
+                }
+                if (ply < 2) {
+                    for (com.github.bhlangonijr.chesslib.move.Move m
+                            : com.github.bhlangonijr.chesslib.move.MoveGenerator.generateLegalMoves(b)) {
+                        com.github.bhlangonijr.chesslib.Board c = b.clone();
+                        c.doMove(m);
+                        next.add(c);
+                    }
+                }
+            }
+            frontier = next;
+        }
+        return ambiguous.contains(seen) ? null : byOccupancy.get(seen);
+    }
+
     private static double meanLuminance(int[] rgb, boolean[] mask) {
         double sum = 0;
         int n = 0;

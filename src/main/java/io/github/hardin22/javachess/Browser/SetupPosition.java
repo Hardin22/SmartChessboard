@@ -35,9 +35,12 @@ public final class SetupPosition {
     private SetupPosition() {
     }
 
-    /** Null when the placement is not a legal chess position (two white kings, pawn on the first rank...). */
+    /**
+     * Null when the placement is not a legal chess position (two white kings, pawn on the first rank...) or not one a
+     * game can reach (more pieces than promotions allow: typically a misreading).
+     */
     public static Result build(String placement, BoardSnapshot.BoardView view, PageInfo page, Side defaultTurn) {
-        if (placement == null) {
+        if (placement == null || !plausibleMaterial(placement)) {
             return null;
         }
         List<String> listed = view == null ? null : view.moves();
@@ -108,6 +111,28 @@ public final class SetupPosition {
     }
 
     static final String START_PLACEMENT = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR";
+
+    /**
+     * True when each side has at most 16 pieces and no more extra queens, rooks, bishops and knights than its
+     * missing pawns could have become.
+     */
+    static boolean plausibleMaterial(String placement) {
+        for (String side : new String[]{"PNBRQ", "pnbrq"}) {
+            int[] n = new int[5];
+            for (char c : placement.toCharArray()) {
+                int i = side.indexOf(c);
+                if (i >= 0) {
+                    n[i]++;
+                }
+            }
+            int pawns = n[0];
+            int extra = Math.max(0, n[1] - 2) + Math.max(0, n[2] - 2) + Math.max(0, n[3] - 2) + Math.max(0, n[4] - 1);
+            if (pawns > 8 || extra > 8 - pawns || pawns + n[1] + n[2] + n[3] + n[4] > 15) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     /** FEN placement of a board. */
     public static String placement(Board board) {
