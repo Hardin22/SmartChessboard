@@ -167,7 +167,8 @@ independently.
 |---|---|---|---|---|---|---|
 | lichess, page reading | 3 | 140 | 0 | 0 | 0 | 0.32-0.35 s average |
 | chess.com, page reading | 8 | 341 | 0 | 0 | 0 | 0.48-0.54 s average |
-| lichess, `vision-only`, the app's pipeline | 2 | 161 | — | — | 0 setups after the first | — |
+| lichess, `vision-only`, the app's whole pipeline, White and Black | 2 | 161 | 0 | 0 | 0 (once more than 4 s late) | |
+| chess.com, `vision-only`, the app's whole pipeline, White and Black (flipped) | 2 | 125 | 0 | 0 | 0 | |
 | lichess from a position: promotion h8=Q, en passant exd6# | 2 | 7 | 0 | 0 | 0 | |
 | chess.com from a position: promotion g8=Q+, en passant exd6# | 2 | 60 | 0 | 0 | 0 | |
 
@@ -177,6 +178,11 @@ independently.
   ignores synthetic events confirms; the probe only reads the page and never changes it.
 - chess.com draws a capture by giving the moving piece its destination class (with a transform) while the taken
   piece is still there; the probe treats this as an animation (found in the trials, fixed, covered by tests).
+- `vision-only` games ran through the app's own pipeline (vision → synchronisation → `BotMover`), the page markup
+  used only by the trial to check. All 290 reads came from the reader calibrated on the board in use (none from
+  the generic model), each game needed a single setup, and no move was reported twice. The lichess games ran before
+  the confirmation window for vision was raised to 5 s and had one false "not accepted"; the chess.com games,
+  after it, had none.
 - Every chess.com bot has its own board and piece theme ("forest" for Martin): the generic vision model read 0 of
   42 of those positions, the calibrated reader 42 of 42.
 
