@@ -86,12 +86,14 @@ public final class ReviewClassifier {
         /** v2.2 (greatCaptureRule 2): taking free material is Great only for players under this rating. */
         final double greatFreeMaterialRating;
         /**
-         * Phase 4 (0 = off): a checkmate right after the opponent's move lost at least this much win chance is Great for
-         * a player under {@link #greatFreeMaterialRating}.
+         * Phase 4 beginner Great (one rule for players under {@link #greatFreeMaterialRating}): the engine's move by a
+         * mover winning (above {@link #greatBeginnerMinEp}) that punishes the opponent's Blunder, or takes what an
+         * opponent's move losing at least {@link #greatBeginnerPunishLoss} left en prise, or is a capture with gap
+         * {@link #greatCaptureGapLow}.
          */
-        final double greatMatePunish;
-        /** Phase 4: a capture by a player under {@link #greatFreeMaterialRating} with the capture gap is Great. */
-        final boolean greatBeginnerCapture;
+        final boolean greatBeginner;
+        final double greatBeginnerMinEp;
+        final double greatBeginnerPunishLoss;
         /** Phase 4: a capture collecting what the previous own check won (a fork) is never Great. */
         final boolean greatNoCollect;
         /** v2.1: a piece or the exchange given for pawns counts as a sacrifice of 2 (Brilliant). */
@@ -125,18 +127,6 @@ public final class ReviewClassifier {
         final boolean greatStartsMate;
         /** ... when the second best move is at most this many centipawns (v2.3: 150; v2.5: 200, Rh6+ +1.78 Great). */
         final double greatStartsMateAltCp;
-        /**
-         * Phase 4: a player under this rating (0 = off) who punishes the opponent's Blunder with the engine's move, not a
-         * recapture, and stands winning (win chance above {@link #greatPunishMinEp}) gets Great (the mates in one are
-         * {@link #greatMatePunish}).
-         */
-        final double greatPunishRating;
-        final double greatPunishMinEp;
-        /**
-         * ... also after an opponent's Mistake or Miss losing at least this much win chance (0 = off) when the engine's
-         * move takes the material it left en prise (a capture winning material by static exchange).
-         */
-        final double greatPunishCaptureLoss;
         /** v2.3: the 'winning anyway' tests of Brilliant only for a move that is not the engine's choice. */
         final boolean brilliantAltNonTopOnly;
         /** v2.3: players under this rating get Great for a capture from {@link #greatCaptureGapLow}. */
@@ -266,9 +256,6 @@ public final class ReviewClassifier {
             brilliantAltNonTopOnly = get("brilliantAltNonTopOnly", 0) != 0;
             greatStartsMate = get("greatStartsMate", 1) != 0;
             greatStartsMateAltCp = get("greatStartsMateAltCp", 200);
-            greatPunishRating = get("greatPunishRating", 1000);
-            greatPunishMinEp = get("greatPunishMinEp", 0.60);
-            greatPunishCaptureLoss = get("greatPunishCaptureLoss", 0.20);
             brilliantTopException = get("brilliantTopException", 1) != 0;
             brilliantNoLiquidation = get("brilliantNoLiquidation", 1) != 0;
             brilliantRecaptureNet = get("brilliantRecaptureNet", 1) != 0;
@@ -299,9 +286,10 @@ public final class ReviewClassifier {
             greatCaptureOppLoss = get("greatCaptureOppLoss", 0.10);
             greatCaptureGap = get("greatCaptureGap", 0.30);
             greatFreeMaterialRating = get("greatFreeMaterialRating", 1000);
-            greatBeginnerCapture = get("greatBeginnerCapture", 1) != 0;
+            greatBeginner = get("greatBeginner", 1) != 0;
+            greatBeginnerMinEp = get("greatBeginnerMinEp", 0.60);
+            greatBeginnerPunishLoss = get("greatBeginnerPunishLoss", 0.20);
             greatNoCollect = get("greatNoCollect", 1) != 0;
-            greatMatePunish = get("greatMatePunish", 0.20);
             greatCaptureRule = (int) get("greatCaptureRule", 2);
             brilliantWinningCp = get("brilliantWinningCp", 700);
             brilliantMinCpAfter = get("brilliantMinCpAfter", -15);
@@ -719,13 +707,6 @@ public final class ReviewClassifier {
                 boolean fromTheory = t.noSpecialInTheory && i > 0 && i - 1 <= theoryEnd
                         && (!t.theoryNeedsBookMove || out.get(i - 1).label() == MoveClassification.BOOK_MOVE);
                 int rating = me ? in.whiteRating() : in.blackRating();
-                if (mates && label == MoveClassification.BEST && !fromTheory && t.greatMatePunish > 0 && i > 0
-                        && (rating > 0 ? rating : t.defaultRating) < t.greatFreeMaterialRating
-                        && epBefore[i - 1] - epAfter[i - 1] >= t.greatMatePunish) {
-                    // chess.com is "more generous with new players": under 1000 the mate that punishes the opponent's
-                    // blunder is Great (177 games: 6 of 6 mates after an error >= 0.20, 0 of 14 other mates under 1000)
-                    label = MoveClassification.GREAT;
-                }
                 MoveClassification plain = label;
                 if (nearBest && !mates && !fromTheory) {
                     double oppLoss = i > 0 ? Math.max(0, epBefore[i - 1] - epAfter[i - 1]) : 0;
@@ -736,8 +717,8 @@ public final class ReviewClassifier {
                         label = special;
                     }
                 }
-                if (label == MoveClassification.BEST && isTop && !mates && !fromTheory
-                        && punishesBlunder(i, replay, out, epBefore[i], me ? in.whiteRating() : in.blackRating(), t)) {
+                if (label == MoveClassification.BEST && (isTop || mates) && !fromTheory
+                        && beginnerGreat(i, replay, out, p0, epBefore, epAfter, me, rating, t, me ? kWhite : kBlack)) {
                     label = MoveClassification.GREAT;
                 }
                 if (label == MoveClassification.GREAT && t.greatNoCashIn && i >= 2
@@ -971,11 +952,6 @@ public final class ReviewClassifier {
             if (punishing) {
                 return true;
             }
-            if (t.greatBeginnerCapture && r < t.greatFreeMaterialRating) {
-                // Phase 4: under 1000 a capture the second best move cannot replace is Great even in a won position
-                // (Rxf3 live_123574758978, Qxf3 x2, Rxg8+, Nxg7+...)
-                return true;
-            }
         }
         if (t.greatPawnEscapeGap > 0 && !capture && pawnEnPrise(b0, uci, me) && gap < t.greatPawnEscapeGap) {
             // Phase 4: taking an attacked pawn out of the attack is routine unless it is the only move by a wide margin
@@ -1038,34 +1014,41 @@ public final class ReviewClassifier {
     }
 
     /**
-     * Phase 4: chess.com calls Great a beginner's engine move that punishes the opponent's Blunder (177 games, players
-     * under 1000, not a recapture, mover winning, not mate: 8 of 10 Great; the other is an engine tie and the one
-     * excluded below). Taking back what was just taken is routine at any level (9 Best of 12 recaptures), and an
-     * opponent's Blunder that only fails to punish the mover's own Blunder is a Miss for chess.com: recovering from it
-     * is Best (live_180008683178 8.Qxg7 after 7.Qc3?? Be7?).
+     * Phase 4 beginner Great: chess.com is "more generous with new players". Under {@link
+     * Tuning#greatFreeMaterialRating} the engine's move (or a mate), not a recapture and not collecting what the own
+     * check won, by a mover who stands winning (above {@link Tuning#greatBeginnerMinEp}) and did not blunder with the
+     * previous move, is Great when it
+     * <ul>
+     *   <li>punishes the opponent's Blunder (6 mates: Qxf7# live_184334494256...; Rgf1 live_180019739292), or takes,
+     *   winning material by static exchange, what an opponent's move losing at least {@link
+     *   Tuning#greatBeginnerPunishLoss} left en prise (Nxg7+ and Bxb7 live_138986716238, Qxb1 live_141789599574), or</li>
+     *   <li>is a capture the second best move cannot replace (gap at least {@link Tuning#greatCaptureGapLow}): Rxf3
+     *   live_123574758978, Rxg8+ live_142024938210, Nxd4 live_180008683178.</li>
+     * </ul>
+     * 177 games, players under 1000: 21 more chess.com Great and one engine tie (Bxg4 live_184510489798, allowlisted);
+     * the 15 mates that punish nothing stay Best. A Blunder that only fails to punish the mover's own Blunder is a Miss
+     * for chess.com: recovering from it is Best (live_180008683178 8.Qxg7 after 7.Qc3?? Be7?).
      */
-    private static boolean punishesBlunder(int i, GameReplay replay, List<MoveReview> out, double epBefore,
-                                           int rating, Tuning t) {
-        return t.greatPunishRating > 0 && rating > 0 && Math.max(rating, t.ratingFloor) < t.greatPunishRating
-                && i > 0 && (out.get(i - 1).label() == MoveClassification.BLUNDER || takesWhatTheErrorLeft(i, replay,
-                out.get(i - 1), t)) && !isRecapture(replay, i)
-                && (i < 2 || out.get(i - 2).label() != MoveClassification.BLUNDER) && epBefore > t.greatPunishMinEp;
-    }
-
-    /**
-     * The opponent's move lost at least {@link Tuning#greatPunishCaptureLoss} without being labelled Blunder (a
-     * Mistake, or a Miss of its own chance) and move i takes the material it left en prise: 16.Nxg7+ after 15...Ke6
-     * and 43.Bxb7 after 42...Ke5 (live_138986716238, 445), 31.Qxb1 after 30...Ke6 (live_141789599574, 682), all
-     * chess.com Great, SF16 d22 rank 1.
-     */
-    private static boolean takesWhatTheErrorLeft(int i, GameReplay replay, MoveReview previous, Tuning t) {
-        if (t.greatPunishCaptureLoss <= 0 || previous.winLoss() < t.greatPunishCaptureLoss) {
+    private static boolean beginnerGreat(int i, GameReplay replay, List<MoveReview> out, PositionEval p0,
+                                         double[] epBefore, double[] epAfter, boolean me, int rating, Tuning t,
+                                         double k) {
+        if (!t.greatBeginner || rating <= 0 || rating >= t.greatFreeMaterialRating || i == 0
+                || epBefore[i] <= t.greatBeginnerMinEp || isRecapture(replay, i)
+                || (t.greatNoCollect && collectsAfterCheck(replay, i, out.get(i - 1).label()))
+                || (i >= 2 && out.get(i - 2).label() == MoveClassification.BLUNDER)) {
             return false;
         }
         Board b0 = board(replay.fens().get(i));
         String uci = replay.uci().get(i);
         Move m = Tactics.find(b0, uci);
-        return m != null && Tactics.isCapture(b0, uci) && Tactics.see(b0, m.getTo()) > 0;
+        boolean capture = m != null && Tactics.isCapture(b0, uci);
+        boolean winsMaterial = capture && Tactics.see(b0, m.getTo()) > 0;
+        boolean punishes = out.get(i - 1).label() == MoveClassification.BLUNDER
+                || (winsMaterial && epBefore[i - 1] - epAfter[i - 1] >= t.greatBeginnerPunishLoss);
+        EngineLine second = p0.secondBest();
+        boolean irreplaceable = capture && second != null
+                && epBefore[i] - ep(second.eval(), me, k) >= t.greatCaptureGapLow;
+        return punishes || irreplaceable;
     }
 
     /**

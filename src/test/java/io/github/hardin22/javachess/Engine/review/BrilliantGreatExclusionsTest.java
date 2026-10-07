@@ -226,7 +226,7 @@ class BrilliantGreatExclusionsTest {
                 Eval.cp(-315), "d8d4", "d4c5", Eval.cp(453), "d4c5", Eval.cp(-85), "d4d5", Eval.cp(453)), 459, 482);
         assertEquals(MoveClassification.GREAT, label(dxc5, Tuning.DEFAULT));
         assertNotEquals(MoveClassification.GREAT, label(dxc5, Tuning.DEFAULT.with("greatFreeMaterialRating", 0)
-                .with("greatPunishRating", 0))); // the punished blunder alone makes it Great too
+                .with("greatBeginner", 0))); // the punished blunder alone makes it Great too
     }
 
     @Test
@@ -388,7 +388,7 @@ class BrilliantGreatExclusionsTest {
                 PositionEval.terminal(play(fen1, "f3f7"), Eval.whiteMates(0)));
         ReviewInput qxf7 = new ReviewInput(fen0, List.of("d7d6", "f3f7"), ps, OpeningBook.NONE, 648, 777);
         assertEquals(MoveClassification.GREAT, label(qxf7, Tuning.DEFAULT));
-        assertEquals(MoveClassification.BEST, label(qxf7, Tuning.DEFAULT.with("greatMatePunish", 0)));
+        assertEquals(MoveClassification.BEST, label(qxf7, Tuning.DEFAULT.with("greatBeginner", 0)));
         // the same mate between stronger players stays Best (live_184180120868 ply 7, 2660: 4.Qxf7# after a blunder)
         assertEquals(MoveClassification.BEST, label(rated(qxf7, 1500, 1500), Tuning.DEFAULT));
     }
@@ -422,7 +422,7 @@ class BrilliantGreatExclusionsTest {
         ReviewInput bxg4 = game("rnb1kbnr/ppp1pppp/8/8/3qN3/8/PPPP1PPP/R1BQKBNR w KQkq - 1 4", 600, 604,
                 List.of("d1g4", "c8g4"), List.of(Eval.cp(69), Eval.cp(-956), Eval.cp(-889)), List.of("e4c3", "c8g4"));
         assertEquals(MoveClassification.GREAT, label(bxg4, Tuning.DEFAULT));
-        assertNotEquals(MoveClassification.GREAT, label(bxg4, Tuning.DEFAULT.with("greatPunishRating", 0)));
+        assertNotEquals(MoveClassification.GREAT, label(bxg4, Tuning.DEFAULT.with("greatBeginner", 0)));
         // the same move by a 1500 player is Best
         assertEquals(MoveClassification.BEST, label(rated(bxg4, 1500, 1500), Tuning.DEFAULT));
     }
@@ -434,7 +434,7 @@ class BrilliantGreatExclusionsTest {
         ReviewInput qxb1 = rated(twoMoves("b7/p4k1Q/1p3p2/8/2nP4/2P1P1PK/P4P1P/1q6 b - - 1 30", "f7e6",
                 Eval.blackMates(4), "b1h7", "h7b1", Eval.cp(737), "h7b1", Eval.cp(684), "d4d5", Eval.cp(733)), 682, 616);
         assertEquals(MoveClassification.GREAT, label(qxb1, Tuning.DEFAULT));
-        assertNotEquals(MoveClassification.GREAT, label(qxb1, Tuning.DEFAULT.with("greatPunishCaptureLoss", 0)));
+        assertNotEquals(MoveClassification.GREAT, label(qxb1, Tuning.DEFAULT.with("greatBeginner", 0)));
         assertEquals(MoveClassification.BEST, label(rated(qxb1, 1100, 1100), Tuning.DEFAULT));
     }
 
@@ -455,7 +455,7 @@ class BrilliantGreatExclusionsTest {
         ReviewInput rxf3 = rated(twoMoves("5rk1/1p3ppp/p7/3p4/4n1P1/PPr1KB2/5P1P/R6R w - - 2 21", "e3d4", Eval.cp(-602),
                 "e3e2", "c3f3", Eval.cp(-794), "c3f3", Eval.cp(-328), "c3b3", Eval.cp(-794)), 934, 929);
         assertEquals(MoveClassification.GREAT, label(rxf3, Tuning.DEFAULT));
-        assertEquals(MoveClassification.BEST, label(rxf3, Tuning.DEFAULT.with("greatBeginnerCapture", 0)));
+        assertEquals(MoveClassification.BEST, label(rxf3, Tuning.DEFAULT.with("greatBeginner", 0)));
         // live_174367977638 ply 36: 17...Nxe3+ 18.Kf2 (no error) Nxd1+ only collects the queen the fork won: Best
         ReviewInput nxd1 = withSecond(game("r2qk1r1/1pp2p2/p1np3p/4p3/2B1P1n1/2PPBNP1/PP4K1/R2Q3R b q - 0 17", 763, 756,
                 List.of("g4e3", "g2f2", "e3d1"), List.of(Eval.cp(-773), Eval.cp(-802), Eval.cp(-818), Eval.cp(-810)),
