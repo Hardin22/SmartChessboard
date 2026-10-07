@@ -46,6 +46,16 @@ class MoveClassifierTest {
         assertEquals(BLUNDER, q(Score.mate(2), Score.cp(-300)));       // throws the win and loses
         assertEquals(BEST, q(Score.mate(-3), Score.mate(-3)));         // lost anyway, best defence
         assertEquals(GOOD, q(Score.mate(-3), Score.mate(-2)));         // lost anyway, mated sooner
+        assertEquals(INACCURACY, q(Score.mate(-7), Score.mate(-2)));   // mated much sooner (review v1.9)
+        assertEquals(GOOD, q(Score.mate(-7), Score.mate(-4)));
+    }
+
+    @Test
+    void sameCurveAsTheReview() {
+        // the review's calibrated win chance curve for an unknown rating (slope 0.0035, review v1.9), not the
+        // Lichess one of the evaluation bar: if the review is recalibrated, re-run LedDepthStudyTest
+        double loss = 0.5 - 1 / (1 + Math.exp(0.0035 * 100));
+        assertEquals(loss, MoveClassifier.classify(Score.cp(0), Score.cp(-100), false).winLoss(), 1e-9);
     }
 
     @Test

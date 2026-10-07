@@ -9,9 +9,11 @@ import io.github.hardin22.javachess.Engine.review.WinModel;
  * Move classification for the LED coach: the "fast" verdict of the game review core
  * ({@link ReviewClassifier#fast}), fed with UCI scores from the mover's point of view.
  *
- * <p>Same win model and thresholds as the review (no MultiPV, no history, so never Brilliant/Great/Miss/Book);
- * the mate rules come with it: a move that mates is BEST, a move that allows a forced mate the best move avoided is
- * a BLUNDER, a slower forced mate is still a good move.</p>
+ * <p>Same win chance curve (the review's, for an unknown rating), thresholds and mate rules as the review (no
+ * MultiPV, no history, so never Brilliant/Great/Miss/Book): a move that mates is BEST, a move that allows a forced
+ * mate the best move avoided is an error, a slower forced mate is still a good move. The review's history rules
+ * (lost-position Mistake, Miss) are left out: at LED depths they turned correct moves into errors (LED study).
+ * {@link #winProbability} is the evaluation bar's Lichess curve, not the classification's.</p>
  */
 public final class MoveClassifier {
 
