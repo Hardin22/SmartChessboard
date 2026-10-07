@@ -144,6 +144,9 @@ class SpecialLabelsGateTest {
         }
 
         OpeningBook book = OpeningBook.standard();
+        // after-capture searches of the "threat ignored" candidates (Phase 4)
+        Map<String, Map<Integer, io.github.hardin22.javachess.Engine.review.EngineLine>> captures =
+                CaptureEvals.load(CaptureEvals.FILE);
         List<Error> errors = new ArrayList<>();
         Map<String, Tally> tallies = new TreeMap<>();
         Tally labelled142 = new Tally();
@@ -161,6 +164,7 @@ class SpecialLabelsGateTest {
             // real ratings where known; unrated (famous PGNs) get the product's default rating
             ReviewInput in = new ReviewInput(base.initialFen(), base.uciMoves(), base.positions(), base.book(),
                     DEFAULT_RATING_ALL ? 0 : x.game.whiteRating(), DEFAULT_RATING_ALL ? 0 : x.game.blackRating());
+            in = CaptureEvals.attach(in, x.game.id(), captures);
             GameReview r = ReviewClassifier.classifyGame(in);
             Tally t = tallies.computeIfAbsent(x.set, k -> new Tally());
             for (int i = 0; i < r.moves().size(); i++) {

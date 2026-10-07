@@ -64,6 +64,9 @@ public final class ReviewCv {
             games.addAll(EvalDump.load(dumpDir.resolve("holdout"), budget));
         }
         OpeningBook book = OpeningBook.standard();
+        // after-capture searches of the "threat ignored" candidates (Phase 4)
+        Map<String, Map<Integer, io.github.hardin22.javachess.Engine.review.EngineLine>> captures =
+                CaptureEvals.load(CaptureEvals.FILE);
         String recheck = a.get("recheck");
         String deepBudget = a.getOrDefault("deepBudget", "deep");
         Map<String, EvalDump.Game> deepGames = new HashMap<>();
@@ -110,8 +113,8 @@ public final class ReviewCv {
             // the players' ratings (chess.com judges a loss of win chance by the player's level)
             // cv.py -D ratings=none: every player unknown, as for a local game in the app
             boolean ratings = !"none".equals(System.getProperty("javachess.review.ratings"));
-            ReviewInput in = new ReviewInput(base.initialFen(), base.uciMoves(), base.positions(), base.book(),
-                    ratings ? g.whiteRating() : 0, ratings ? g.blackRating() : 0);
+            ReviewInput in = CaptureEvals.attach(new ReviewInput(base.initialFen(), base.uciMoves(), base.positions(),
+                    base.book(), ratings ? g.whiteRating() : 0, ratings ? g.blackRating() : 0), d.id(), captures);
             GameReview r = ReviewClassifier.classifyGame(in);
             int second = 0;
             for (int i = 0; i < r.moves().size(); i++) {
