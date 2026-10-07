@@ -174,10 +174,10 @@ public final class ReviewClassifier {
      * @param playedIsBest true when the played move is the engine's best move
      */
     public static FastVerdict fast(Eval best, Eval played, boolean whiteMoved, boolean playedIsBest) {
-        double wb = best.winChance(whiteMoved);
-        double wa = played.winChance(whiteMoved);
-        return new FastVerdict(baseLabel(best, played, whiteMoved, playedIsBest, false, Tuning.DEFAULT,
-                WinModel.SLOPE), wb, wa,
+        double k = Tuning.DEFAULT.slope(0); // the review's curve for unknown ratings
+        double wb = ep(best, whiteMoved, k);
+        double wa = ep(played, whiteMoved, k);
+        return new FastVerdict(baseLabel(best, played, whiteMoved, playedIsBest, false, Tuning.DEFAULT, k), wb, wa,
                 Math.max(0, wb - wa));
     }
 
@@ -197,7 +197,7 @@ public final class ReviewClassifier {
      * full classification.
      */
     static MoveClassification baseLabel(Eval best, Eval played, boolean me, boolean isTop) {
-        return baseLabel(best, played, me, isTop, false, Tuning.DEFAULT, WinModel.SLOPE);
+        return baseLabel(best, played, me, isTop, false, Tuning.DEFAULT, Tuning.DEFAULT.slope(0));
     }
 
     /**
