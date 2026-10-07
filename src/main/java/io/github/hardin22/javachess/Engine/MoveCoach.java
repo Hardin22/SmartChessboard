@@ -344,7 +344,7 @@ public final class MoveCoach {
         EngineManager.Budget b = budget.get();
         Score playedForMover;
         if (u.terminalScore() != null) {
-            playedForMover = u.terminalScore().mate() ? Score.mate(1) : Score.cp(0); // we mated / stalemated
+            playedForMover = u.terminalScore().negate(); // we mated (mate delivered) or stalemated (0)
         } else if (u.depth() >= b.coachMinDepth() || u.finished()) {
             playedForMover = u.score().negate();
         } else {

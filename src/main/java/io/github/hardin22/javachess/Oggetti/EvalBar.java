@@ -100,31 +100,51 @@ public class EvalBar extends Region {
         }
     }
 
-    /** Score in pawns from white's point of view; values beyond +-900 encode mate (1000 - n = mate in n). */
+    /** What the bar shows for a score: white share (0..1) and text ("+0.4", "M3", "1-0"...). */
+    record Display(double whiteShare, String text) {
+    }
+
+    /**
+     * Maps a score in pawns from White's point of view to the bar. Values beyond +-900 encode mate
+     * (1000 - n = White mates in n, exactly 1000 = White has mated; negative for Black), infinities too.
+     */
+    static Display display(double score) {
+        if (Double.isNaN(score)) {
+            return new Display(0.5, "0.0");
+        }
+        if (score == Double.POSITIVE_INFINITY || score > 900) {
+            int mateIn = score == Double.POSITIVE_INFINITY ? 0 : (int) Math.round(1000 - score);
+            return new Display(1, mateIn <= 0 ? "1-0" : "M" + mateIn);
+        }
+        if (score == Double.NEGATIVE_INFINITY || score < -900) {
+            int mateIn = score == Double.NEGATIVE_INFINITY ? 0 : (int) Math.round(1000 + score);
+            return new Display(0, mateIn <= 0 ? "0-1" : "-M" + mateIn);
+        }
+        // Soft clamp: +-1 pawn already moves the bar noticeably, +-6 is almost full.
+        double normalized = Math.tanh(score / 3.5);
+        String text = String.format(Locale.US, "%+.1f", score).replace("+0.0", "0.0").replace("-0.0", "0.0");
+        return new Display((1 + normalized) / 2, text);
+    }
+
+    /** Label inside the bar: the magnitude only (the side is shown by where it sits), results as they are. */
+    static String label(String text) {
+        if (text.equals("1-0") || text.equals("0-1")) {
+            return text;
+        }
+        return text.startsWith("+") ? text.substring(1) : text.replace("-", "");
+    }
+
+    /** Score in pawns from white's point of view; see {@link #display(double)} for the mate encoding. */
     public void updateEvaluation(double score) {
         if (!Platform.isFxApplicationThread()) {
             Platform.runLater(() -> updateEvaluation(score));
             return;
         }
-        double target;
-        String text;
-        if (score == Double.POSITIVE_INFINITY || score > 900) {
-            int mateIn = score == Double.POSITIVE_INFINITY ? 0 : (int) (1000 - score);
-            target = 1;
-            text = mateIn == 0 ? "1-0" : "M" + mateIn;
-        } else if (score == Double.NEGATIVE_INFINITY || score < -900) {
-            int mateIn = score == Double.NEGATIVE_INFINITY ? 0 : (int) (1000 + score);
-            target = 0;
-            text = mateIn == 0 ? "0-1" : "-M" + mateIn;
-        } else {
-            // Soft clamp: +-1 pawn already moves the bar noticeably, +-6 is almost full.
-            double normalized = Math.tanh(score / 3.5);
-            target = (1 + normalized) / 2;
-            text = String.format(Locale.US, "%+.1f", score).replace("+0.0", "0.0").replace("-0.0", "0.0");
-        }
+        Display d = display(score);
+        String text = d.text();
         scoreText.set(text);
-        scoreLabel.setText(text.startsWith("+") ? text.substring(1) : text.replace("-", ""));
-        animateTo(target);
+        scoreLabel.setText(label(text));
+        animateTo(d.whiteShare());
     }
 
     private void animateTo(double target) {
