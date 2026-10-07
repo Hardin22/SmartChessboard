@@ -122,6 +122,11 @@ public final class ReviewClassifier {
         final double greatInCheckGap;
         /** ... from at most this win chance. */
         final double greatInCheckMaxEp;
+        /**
+         * v2.5: a king move out of check is Great when the second best move is another king move at least this much
+         * worse (picking the one safe flight square; 0 = off).
+         */
+        final double greatKingFlightGap;
         /** v1.9: no capture is Great (G-E1). */
         final boolean greatNoCapture;
         /**
@@ -228,6 +233,7 @@ public final class ReviewClassifier {
             greatQuietGap = get("greatQuietGap", 0.10);
             greatQuietCpFloor = get("greatQuietCpFloor", 150);
             greatInCheckMaxEp = get("greatInCheckMaxEp", 0.90);
+            greatKingFlightGap = get("greatKingFlightGap", 0.17);
             pieceSacrifice = get("pieceSacrifice", 1) != 0;
             outcomeLow = get("outcomeLow", 0.40);
             outcomeHigh = get("outcomeHigh", 0.60);
@@ -825,11 +831,16 @@ public final class ReviewClassifier {
         double r = rating > 0 ? rating : t.defaultRating;
         boolean recapture = i > 0 && isRecapture(replay, i);
         if (b0.isKingAttacked()) {
-            // v2.3: an answer to check that does not move the king (interposition, taking the checker) can be Great;
-            // king escapes are Great and Best alike for chess.com
+            // v2.3: an answer to check that does not move the king (interposition, taking the checker) can be Great
             Move m = Tactics.find(b0, uci);
-            return t.greatInCheck && m != null && b0.getPiece(m.getFrom()).getPieceType() != PieceType.KING
-                    && !recapture && gap >= t.greatInCheckGap && epBefore <= t.greatInCheckMaxEp;
+            if (m != null && b0.getPiece(m.getFrom()).getPieceType() == PieceType.KING) {
+                // v2.5: choosing the one good flight square is Great (the second best move is another king move);
+                // escaping when the alternative is an interposition that gives material away is just Best
+                return t.greatKingFlightGap > 0 && !Tactics.isCapture(b0, uci)
+                        && second.move().startsWith(uci.substring(0, 2)) && gap >= t.greatKingFlightGap;
+            }
+            return t.greatInCheck && m != null && !recapture && gap >= t.greatInCheckGap
+                    && epBefore <= t.greatInCheckMaxEp;
         }
         boolean capture = Tactics.isCapture(b0, uci);
         if (capture) {

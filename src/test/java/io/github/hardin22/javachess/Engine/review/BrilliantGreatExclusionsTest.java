@@ -281,6 +281,16 @@ class BrilliantGreatExclusionsTest {
     }
 
     @Test
+    void pickingTheOneGoodFlightSquareIsGreat() {
+        // Anderssen - Kieseritzky 1851, 20.Ke2 after 19...Qxa1+ (chess.com Great): the second best move is another
+        // king move, 20.Kg2 -1.50 (the Kh8 above is Best: its alternative is an interposition)
+        ReviewInput ke2 = rated(oneMove("rnb1k1nr/p2p1ppp/3B4/1p1NPN1P/6P1/3P1Q2/P1P5/q4Kb1 w kq - 0 20", "f1e2",
+                Eval.cp(204), "f1e2", Eval.cp(-150), "f1g2", Eval.cp(203)), 2500, 2500);
+        assertEquals(MoveClassification.GREAT, label(ke2, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.GREAT, label(ke2, Tuning.DEFAULT.with("greatKingFlightGap", 0)));
+    }
+
+    @Test
     void aQuietMoveKeepingTheBalanceIsGreatWhenTheAlternativeIsAPawnWorse() {
         // live_145773198260 ply 33, 17.Qd2 (chess.com Great): the second best move is -1.29, a quiet only-move
         ReviewInput qd2 = rated(oneMove("r4rk1/pp3qpp/2pR4/2Pp2B1/3n4/8/PP2QPPP/RN4K1 w - - 0 17", "e2d2",
