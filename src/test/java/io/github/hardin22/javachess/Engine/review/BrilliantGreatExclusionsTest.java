@@ -183,6 +183,40 @@ class BrilliantGreatExclusionsTest {
         assertEquals(MoveClassification.GOOD, label(g3, Tuning.DEFAULT));
     }
 
+    // ------------------------------------------------------------------ recall round (PHASE3 §16, notes/fn)
+
+    @Test
+    void brilliantRecoveredByTheFinerExclusions() {
+        // live_145692245792 ply 33, 17.Rxf6: wins back 3 at once if taken, less than sacrifice + 4 (chess.com Brilliant)
+        ReviewInput rxf6 = rated(oneMove("r1b1k3/ppp2Npr/4pn1p/3q4/8/P1P5/1PQB1RPP/R5K1 w q - 3 17", "f2f6",
+                Eval.cp(565), "f2f6", Eval.cp(533), "a1e1", Eval.cp(565)), 1117, 1096);
+        assertEquals(MoveClassification.BRILLIANT, label(rxf6, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.BRILLIANT, label(rxf6, Tuning.DEFAULT.with("fakeRegain", 2)));
+        // live_164828037706 ply 23, 12.Bg5: not the engine's move but loses less than 0.03 (chess.com Brilliant)
+        ReviewInput bg5 = rated(oneMove("r2q1rk1/pb1nbppp/1p6/2pp3n/3P1B2/P1N1PN2/1P2BPPP/2RQ1RK1 w - - 4 12", "f4g5",
+                Eval.cp(13), "f4e5", Eval.cp(10), "f4g3", Eval.cp(4)), 2238, 2245);
+        assertEquals(MoveClassification.BRILLIANT, label(bg5, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.BRILLIANT, label(bg5, Tuning.DEFAULT.with("brilliantNonTopLoss", 0.01)));
+    }
+
+    @Test
+    void greatAtTheLowerGap() {
+        // live_145773198260 ply 33, 17.Qd2: the second best move is ~0.15 worse (chess.com Great)
+        ReviewInput qd2 = rated(oneMove("r4rk1/pp3qpp/2pR4/2Pp2B1/3n4/8/PP2QPPP/RN4K1 w - - 0 17", "e2d2",
+                Eval.cp(88), "e2d2", Eval.cp(-129), "e2f1", Eval.cp(88)), 1103, 1109);
+        assertEquals(MoveClassification.GREAT, label(qd2, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.GREAT, label(qd2, Tuning.DEFAULT.with("greatGap", 0.25)));
+        // daily_1011205894 ply 56, 28...Rd2 (chess.com Great)
+        ReviewInput rd2 = rated(oneMove("2kbR3/1pp2N1p/p5p1/5p2/1P6/1KP2P2/P5rP/8 b - - 1 28", "g2d2", Eval.cp(0),
+                "g2d2", Eval.cp(228), "c8d7", Eval.cp(0)), 1301, 1202);
+        assertEquals(MoveClassification.GREAT, label(rd2, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.GREAT, label(rd2, Tuning.DEFAULT.with("greatGap", 0.25)));
+    }
+
+    private static ReviewInput rated(ReviewInput in, int white, int black) {
+        return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static void assertFake(String fen, String uci, boolean white) {
