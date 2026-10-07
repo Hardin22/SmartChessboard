@@ -60,6 +60,8 @@ public final class ReviewClassifier {
         final double greatOpponentLoss;
         /** Miss: the opponent's previous move lost at least this much. */
         final double missOpponentLoss;
+        /** Miss whatever the move gives away (but mate) after an opponent's error losing at least this much. */
+        final double missAnyway;
         /** Miss: the mover ends no worse than before the opponent's error, within this tolerance. */
         final double missNoWorse;
         /** From this win chance loss a move is a Blunder even without losing material (chess.com labels). */
@@ -106,6 +108,7 @@ public final class ReviewClassifier {
             missOpponentLoss = get("missOpponentLoss", 0.08);
             greatOpponentLoss = get("greatOpponentLoss", 0.05);
             missNoWorse = get("missNoWorse", 0.10);
+            missAnyway = get("missAnyway", 0.20);
             blunderAnywayLoss = get("blunderAnyway", 0.30);
             blunderMaterial = get("blunderMaterial", 2);
             giveAwayDrawEp = get("giveAwayDrawEp", 0.6);
@@ -433,7 +436,12 @@ public final class ReviewClassifier {
                 if (label == MoveClassification.MISTAKE || label == MoveClassification.BLUNDER) {
                     boolean gives = givesSomethingAway(replay.fens().get(i), uci, p0, pos.get(i + 1), played[i], me,
                             epBefore[i], t);
+                    double oppLoss = i > 0 ? Math.max(0, epBefore[i - 1] - epAfter[i - 1]) : 0;
                     if (!gives && missOpportunity(i, pos, played, epBefore, epAfter, me, t, me ? kWhite : kBlack)) {
+                        label = MoveClassification.MISS;
+                    } else if (oppLoss >= t.missAnyway && !played[i].isMateAgainst(me)) {
+                        // after a big error of the opponent chess.com calls the failure to punish it a Miss, even
+                        // when the move also gives material away
                         label = MoveClassification.MISS;
                     } else if (label == MoveClassification.BLUNDER && !gives
                             && epBefore[i] - epAfter[i] < t.blunderAnywayLoss) {
