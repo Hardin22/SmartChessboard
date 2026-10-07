@@ -25,9 +25,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Writes the evaluation dump of the chess.com-labelled games ({@link EvalDump} format). Opt-in (engine minutes):
@@ -100,9 +99,7 @@ class EvalDumpTest {
         }
         ex.shutdown();
         System.out.printf(Locale.ROOT, "eval dump %s done in %.0fs%n", budget, (System.nanoTime() - t0) / 1e9);
-        try (Stream<Path> files = Files.list(cvOut)) {
-            assertTrue(files.count() > 0, "nothing dumped in " + cvOut);
-        }
+        assertEquals(games.size(), done.get(), "games dumped");
     }
 
     private static void dump(LabelledGame g, String budget, ReviewSettings s, long mpv3Nodes, Path out)
