@@ -48,7 +48,12 @@ class SpecialLabelsGateTest {
     static final Path RESOURCES = Path.of("src/test/resources/review");
     static final Path BASELINE = RESOURCES.resolve("special-baseline.tsv");
     static final Path ALLOWLIST = RESOURCES.resolve("special-allowlist.tsv");
-    static final Path OUT = Path.of("target/special");
+    /**
+     * {@code -Dreview.special.defaultRatingAll=true}: every game as if unrated (the product's default rating), to see
+     * what is lost without ratings. Report only (target/special-default/), never fails, never touches the baseline.
+     */
+    static final boolean DEFAULT_RATING_ALL = Boolean.getBoolean("review.special.defaultRatingAll");
+    static final Path OUT = Path.of(DEFAULT_RATING_ALL ? "target/special-default" : "target/special");
     /** Largest allowed drop of the exact agreement on the 142 labelled games (fraction). */
     static final double EXACT_TOLERANCE = 0.003;
 
@@ -140,7 +145,7 @@ class SpecialLabelsGateTest {
             ReviewInput base = x.dump.input(EvalDump.Mode.PRODUCT, book);
             // real ratings where known; unrated (famous PGNs) get the product's default rating
             ReviewInput in = new ReviewInput(base.initialFen(), base.uciMoves(), base.positions(), base.book(),
-                    x.game.whiteRating(), x.game.blackRating());
+                    DEFAULT_RATING_ALL ? 0 : x.game.whiteRating(), DEFAULT_RATING_ALL ? 0 : x.game.blackRating());
             GameReview r = ReviewClassifier.classifyGame(in);
             Tally t = tallies.computeIfAbsent(x.set, k -> new Tally());
             for (int i = 0; i < r.moves().size(); i++) {
@@ -181,6 +186,11 @@ class SpecialLabelsGateTest {
         Files.writeString(OUT.resolve("report.md"), report(tallies, labelled142, errors, fresh, fixed, baseline, allow,
                 shard, exact), StandardCharsets.UTF_8);
 
+        if (DEFAULT_RATING_ALL) {
+            System.out.printf(Locale.ROOT, "special labels with the default rating for all games: %d errors, exact on "
+                    + "142 %.4f -> %s%n", errors.size(), exact, OUT.resolve("report.md").toAbsolutePath());
+            return;
+        }
         if (Boolean.getBoolean("review.special.regen")) {
             if (!fresh.isEmpty() && !Boolean.getBoolean("review.special.regenForce")) {
                 throw new AssertionError("refusing to regenerate the baseline: " + fresh.size()
@@ -288,7 +298,8 @@ class SpecialLabelsGateTest {
     private static String report(Map<String, Tally> tallies, Tally labelled142, List<Error> errors, List<Error> fresh,
                                  List<String> fixed, Baseline baseline, Map<String, String> allow,
                                  Map<String, Integer> shard, double exact) {
-        StringBuilder sb = new StringBuilder("# Special labels gate (Brilliant / Great vs chess.com SF16 d22)\n\n");
+        StringBuilder sb = new StringBuilder("# Special labels gate (Brilliant / Great vs chess.com SF16 d22)"
+                + (DEFAULT_RATING_ALL ? " — ALL GAMES AT THE DEFAULT RATING (report only)" : "") + "\n\n");
         sb.append(String.format(Locale.ROOT, "Errors %d: **%d NEW**, %d in baseline, %d allowlisted; %d fixed since "
                         + "the baseline (regenerate it). Exact on the 142 labelled games %.2f%% (baseline %.2f%%), "
                         + "within 1 level %.2f%%, cases >=2 levels %d.%n%n", errors.size(), fresh.size(),
