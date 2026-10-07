@@ -65,6 +65,8 @@ public final class ReviewClassifier {
         /** Great only from about equal to clearly better positions (chess.com: 10th-90th percentile 0.49-0.94). */
         final double greatMinEp;
         final double greatMaxEp;
+        /** Great also for a move out of check (the only good answer to a check). */
+        final boolean greatInCheck;
         /** Not Great: taking a hanging piece, a plain recapture. */
         final boolean greatFilters;
         /** ... but taking the piece the opponent just blundered (its move lost at least this) can be Great. */
@@ -128,11 +130,12 @@ public final class ReviewClassifier {
             brilliantMaxLoss = get("brilliantMaxLoss", 0.03);
             brilliantMinEpAfter = get("brilliantMinEpAfter", 0.48);
             brilliantMaxAlt = get("brilliantMaxAlt", 0.97);
-            greatGap = get("greatGap", 0.15);
-            greatPunishGap = get("greatPunishGap", 0.07);
+            greatGap = get("greatGap", 0.12);
+            greatPunishGap = get("greatPunishGap", 0.10);
             greatMinEp = get("greatMinEp", 0.35);
             greatMaxEp = get("greatMaxEp", 0.95);
             greatFilters = get("greatFilters", 1) != 0;
+            greatInCheck = get("greatInCheck", 1) != 0;
             greatTakesBlunder = get("greatTakesBlunder", 0.10);
             missOpponentLoss = get("missOpponentLoss", 0.08);
             greatOpponentLoss = get("greatOpponentLoss", 0.03);
@@ -375,7 +378,7 @@ public final class ReviewClassifier {
                 need.set(i); // a sacrifice: Brilliant unless the second best move was as good (also in check)
                 continue;
             }
-            if (b.isKingAttacked() || uci.endsWith("q")) {
+            if ((b.isKingAttacked() && !Tuning.DEFAULT.greatInCheck) || uci.endsWith("q")) {
                 continue;
             }
             double ep = before.eval().winChance(me);
@@ -638,7 +641,7 @@ public final class ReviewClassifier {
     /** Shared precondition of Brilliant and Great (WintrChess "critical candidate"). */
     private static boolean candidate(Board b0, String uci, Eval alternative, double epAfter, boolean me,
                                      Tuning t) {
-        if (b0.isKingAttacked() || uci.endsWith("q")) {
+        if ((b0.isKingAttacked() && !t.greatInCheck) || uci.endsWith("q")) {
             return false;
         }
         if (alternative.isMateFor(me) || (!alternative.isMate() && alternative.cpFor(me) >= t.winningAnywayCp)) {
