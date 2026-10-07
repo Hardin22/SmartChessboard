@@ -75,6 +75,8 @@ public final class ReviewClassifier {
         /** A move that loses at least {@code lostDrop} cp (0 = off) from {@code lostEval} cp or worse is a Mistake. */
         final double lostDrop;
         final double lostEval;
+        /** Book also covers the unnamed positions on the way to a named opening. */
+        final boolean bookTheory;
         /** Book also covers this many plies after the last named position when each loses less than ... */
         final int bookExtend;
         /** ... this win chance. */
@@ -107,11 +109,12 @@ public final class ReviewClassifier {
             blunderAnywayLoss = get("blunderAnyway", 0.30);
             blunderMaterial = get("blunderMaterial", 2);
             giveAwayDrawEp = get("giveAwayDrawEp", 0.6);
-            bookMaxGap = (int) get("bookMaxGap", 4);
+            bookMaxGap = (int) get("bookMaxGap", 6);
             bookMaxPly = (int) get("bookMaxPly", 20);
             lostDrop = get("lostDrop", 150);
             lostEval = get("lostEval", 400);
-            bookExtend = (int) get("bookExtend", 2);
+            bookTheory = get("bookTheory", 1) != 0;
+            bookExtend = (int) get("bookExtend", 3);
             bookExtendLoss = get("bookExtendLoss", 0.02);
             slope = get("slope", 0.0035);
             slopeRating = get("slopeRating", 0.5);
@@ -372,15 +375,18 @@ public final class ReviewClassifier {
         int bookEnd = -1;
         String opening = null;
         for (int i = 0; i < Math.min(n, t.bookMaxPly); i++) {
-            String name = in.book().nameAfter(replay.fens().get(i + 1)).orElse(null);
+            String fen = replay.fens().get(i + 1);
+            String name = in.book().nameAfter(fen).orElse(null);
             if (name != null) {
-                bookEnd = i;
                 opening = name;
+            }
+            if (name != null || (t.bookTheory && in.book().isTheory(fen))) {
+                bookEnd = i;
             } else if (i - bookEnd > t.bookMaxGap) {
                 break;
             }
         }
-        // chess.com's book is larger than the named openings: the few accurate moves right after the last named
+        // chess.com's book is larger than the lichess openings: the few accurate moves right after the last book
         // position are theory too (43 labelled games: Book ends 1-4 plies after ours in 30 of them)
         int theoryEnd = bookEnd;
         while (bookEnd >= 0 && theoryEnd + 1 < Math.min(n, t.bookMaxPly) && theoryEnd - bookEnd < t.bookExtend
