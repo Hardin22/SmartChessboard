@@ -98,6 +98,8 @@ public final class ReviewClassifier {
         final double lostEval;
         /** Book also covers the unnamed positions on the way to a named opening. */
         final boolean bookTheory;
+        /** Book also covers positions reached by at least this many games of 2000+ players (0 = off). */
+        final double bookPopular;
         /** Book also covers this many plies after the last named position when each loses less than ... */
         final int bookExtend;
         /** ... this win chance. */
@@ -142,12 +144,13 @@ public final class ReviewClassifier {
             blunderAnywayLoss = get("blunderAnyway", 0.30);
             blunderMaterial = get("blunderMaterial", 2);
             giveAwayDrawEp = get("giveAwayDrawEp", 0.6);
-            bookMaxGap = (int) get("bookMaxGap", 6);
+            bookMaxGap = (int) get("bookMaxGap", 4);
             bookMaxPly = (int) get("bookMaxPly", 20);
             lostDrop = get("lostDrop", 150);
             lostEval = get("lostEval", 400);
             bookTheory = get("bookTheory", 1) != 0;
-            bookExtend = (int) get("bookExtend", 3);
+            bookExtend = (int) get("bookExtend", 0);
+            bookPopular = get("bookPopular", 300);
             bookExtendLoss = get("bookExtendLoss", 0.02);
             slope = get("slope", 0.0035);
             slopeRating = get("slopeRating", 0.5);
@@ -420,7 +423,8 @@ public final class ReviewClassifier {
             if (name != null) {
                 opening = name;
             }
-            if (name != null || (t.bookTheory && in.book().isTheory(fen))) {
+            if (name != null || (t.bookTheory && in.book().isTheory(fen))
+                    || (t.bookPopular > 0 && in.book().popularity(fen) >= t.bookPopular)) {
                 bookEnd = i;
             } else if (i - bookEnd > t.bookMaxGap) {
                 break;

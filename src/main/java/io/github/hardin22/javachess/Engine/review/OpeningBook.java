@@ -29,18 +29,25 @@ public final class OpeningBook {
 
     private final Map<String, String> names;
     private final Set<String> theory;
+    private final Map<String, Integer> popularity;
 
     public OpeningBook(Map<String, String> namesByKey) {
         this(namesByKey, Set.of());
     }
 
+    public OpeningBook(Map<String, String> namesByKey, Set<String> theoryKeys) {
+        this(namesByKey, theoryKeys, Map.of());
+    }
+
     /**
      * @param namesByKey     named opening positions ({@link #key})
      * @param theoryKeys     unnamed positions on the way to a named one (also book moves)
+     * @param gamesByKey     how many games of players rated 2000+ reached the position (popularity)
      */
-    public OpeningBook(Map<String, String> namesByKey, Set<String> theoryKeys) {
+    public OpeningBook(Map<String, String> namesByKey, Set<String> theoryKeys, Map<String, Integer> gamesByKey) {
         this.names = Map.copyOf(namesByKey);
         this.theory = Set.copyOf(theoryKeys);
+        this.popularity = Map.copyOf(gamesByKey);
     }
 
     /** The bundled book (loaded once). */
@@ -94,7 +101,26 @@ public final class OpeningBook {
         } catch (Exception e) {
             log.warn("opening theory not loaded: {}", e.toString());
         }
-        return new OpeningBook(m, t);
+        // popular positions: lichess open database (CC0), first 20 plies of 3M rated games, games with an average
+        // rating of 2000+ (research/book/make_popular.sh)
+        Map<String, Integer> pop = new HashMap<>(8_192);
+        try (InputStream in = OpeningBook.class.getResourceAsStream("/review/popular.tsv")) {
+            if (in != null) {
+                BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+                String line;
+                while ((line = r.readLine()) != null) {
+                    if (!line.isEmpty() && !line.startsWith("#")) {
+                        String[] f = line.split("\t");
+                        if (f.length >= 4) {
+                            pop.put(f[0], Integer.parseInt(f[3].trim()));
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("opening popularity not loaded: {}", e.toString());
+        }
+        return new OpeningBook(m, t, pop);
     }
 
     /** "ECO Name" ("C50 Italian Game") of the position, if it is a named opening position. */
@@ -105,6 +131,11 @@ public final class OpeningBook {
     /** True when {@code fen} is a named opening position. */
     public boolean contains(String fen) {
         return names.containsKey(key(fen));
+    }
+
+    /** Games of 2000+ players that reached {@code fen} in the popularity sample (0 when rare or unknown). */
+    public int popularity(String fen) {
+        return popularity.getOrDefault(key(fen), 0);
     }
 
     /** True when {@code fen} is a named opening position or on the way to one (a book move leads there). */
