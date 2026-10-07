@@ -477,6 +477,9 @@ public class BrowserController implements NavigationAware {
                 log.info("Immediate move detected during setup, switching to game mode");
                 updateStatus("GAME SYNCED (MOVE DETECTED)", java.awt.Color.GREEN);
                 isSetupPhase = false;
+                if (initialFen.isEmpty()) {
+                    initialFen = internalBoard.getFen(); // the game is archived from this position
+                }
                 org.example.javachess.Controllers.ArduinoController.getInstance().getBoardStateManager()
                         .startGameMode();
                 // fall through to the game logic below
