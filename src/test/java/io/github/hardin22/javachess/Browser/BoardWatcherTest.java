@@ -157,15 +157,25 @@ class BoardWatcherTest {
     }
 
     @Test
-    void aBoardOutOfViewIsReportedForVision() throws Exception {
+    void aBoardOutOfViewIsScrolledBackForVision() throws Exception {
         site.rect = new BoardSnapshot.Rect(0, -300, 720, 720);
         BoardWatcher w = new BoardWatcher(site, new VisionService(detector), executor, listener,
                 BoardWatcher.ReadMode.VISION_ONLY);
-        poll(w, 2);
-        assertEquals(List.of(BoardWatcher.Problem.BOARD_OUT_OF_VIEW), problems);
-        site.rect = new BoardSnapshot.Rect(0, 100, 720, 720);
-        poll(w, 2);
-        assertNull(problems.get(problems.size() - 1), "problem cleared");
+        poll(w, 1);
+        assertEquals(1, site.scrolls, "scrolled back into view");
+        assertTrue(problems.isEmpty(), "not reported when scrolling works");
+        poll(w, 3);
+        assertEquals(1, w.autoScrolls());
+        assertTrue(updates.size() >= 1, "read once visible");
+
+        FakeSite fixed = new FakeSite();
+        fixed.rect = new BoardSnapshot.Rect(0, -300, 720, 720);
+        fixed.scrollable = false;
+        BoardWatcher stuck = new BoardWatcher(fixed, new VisionService(detector), executor, listener,
+                BoardWatcher.ReadMode.VISION_ONLY);
+        problems.clear();
+        poll(stuck, 2);
+        assertEquals(List.of(BoardWatcher.Problem.BOARD_OUT_OF_VIEW), problems, "told when it stays out of view");
     }
 
     @Test

@@ -44,6 +44,8 @@ public final class TemplateReader {
     }
 
     private final Map<Parity, List<Example>>[] examples;
+    /** Colour distance that the texture of empty squares reaches (per parity), learned; the piece threshold is above. */
+    private final double[] texture = new double[2];
     private int boardWidth;
     private int boardHeight;
     private double lastQuality;
@@ -98,12 +100,17 @@ public final class TemplateReader {
                 int file = flipped ? 7 - col : col;
                 int rank = flipped ? row : 7 - row;
                 char symbol = grid[file][rank];
+                int[] rgb = cell(board, col, row);
                 if (symbol == BoardReading.EMPTY) {
+                    // the background's own texture (wood, marble, patterns): pieces must stand out more than this
+                    Parity p = parity(file, rank);
+                    texture[p.ordinal()] = Math.max(texture[p.ordinal()], 0.9 * texture[p.ordinal()]
+                            + 0.1 * textureLevel(rgb));
+                    texture[p.ordinal()] = Math.max(texture[p.ordinal()], textureLevel(rgb) * 0.8);
                     continue;
                 }
                 int s = BoardReading.SYMBOLS.indexOf(symbol);
-                int[] rgb = cell(board, col, row);
-                boolean[] mask = pieceMask(rgb);
+                boolean[] mask = pieceMask(rgb, threshold(parity(file, rank)));
                 int area = count(mask);
                 if (area < N * N / 25) {
                     continue; // nothing visible there (covered, or a bad crop): not a useful example
@@ -122,6 +129,8 @@ public final class TemplateReader {
         for (Map<Parity, List<Example>> e : examples) {
             e.clear();
         }
+        texture[0] = 0;
+        texture[1] = 0;
         boardWidth = 0;
         boardHeight = 0;
     }
@@ -142,7 +151,7 @@ public final class TemplateReader {
                 int file = flipped ? 7 - col : col;
                 int rank = flipped ? row : 7 - row;
                 int[] rgb = cell(board, col, row);
-                boolean[] mask = pieceMask(rgb);
+                boolean[] mask = pieceMask(rgb, threshold(parity(file, rank)));
                 int area = count(mask);
                 double[] score = new double[n];
                 double best = Double.MAX_VALUE;
@@ -177,6 +186,32 @@ public final class TemplateReader {
         return new BoardReading(probs, true, 0);
     }
 
+    /**
+     * Combines a calibrated reading with the model's: geometric mean of the probabilities, square by square. Where
+     * the calibrated reader is sure it decides; where it hesitates (a piece that barely stands out from a textured
+     * square) the model's view weighs in.
+     */
+    public static BoardReading fuse(BoardReading calibrated, BoardReading model) {
+        float[][][] a = calibrated.probabilities();
+        float[][][] b = model.probabilities();
+        int n = BoardReading.SYMBOLS.length();
+        float[][][] out = new float[8][8][n];
+        for (int f = 0; f < 8; f++) {
+            for (int r = 0; r < 8; r++) {
+                double sum = 0;
+                for (int s = 0; s < n; s++) {
+                    double v = Math.pow(Math.max(1e-4, a[f][r][s]), 0.65) * Math.pow(Math.max(1e-4, b[f][r][s]), 0.35);
+                    out[f][r][s] = (float) v;
+                    sum += v;
+                }
+                for (int s = 0; s < n; s++) {
+                    out[f][r][s] = (float) (out[f][r][s] / sum);
+                }
+            }
+        }
+        return new BoardReading(out, true, model.inferenceMs());
+    }
+
     /** Dissimilarity of a square with an example: shape (1 - overlap) plus colour difference on the overlap. */
     private static double score(int[] rgb, boolean[] mask, int area, Example e) {
         int inter = 0;
@@ -191,6 +226,21 @@ public final class TemplateReader {
         double iou = union == 0 ? 1 : inter / (double) union;
         double colourDiff = inter == 0 ? 1 : colour / (inter * 765.0);
         return (1 - iou) + 2.0 * colourDiff;
+    }
+
+    private int threshold(Parity p) {
+        return (int) Math.max(PIECE_THRESHOLD, Math.round(texture[p.ordinal()] * 1.15));
+    }
+
+    /** 95th percentile of the colour distance from the square's border colour: how textured an empty square is. */
+    static double textureLevel(int[] rgb) {
+        int bg = background(rgb);
+        int[] d = new int[rgb.length];
+        for (int i = 0; i < rgb.length; i++) {
+            d[i] = distance(rgb[i], bg);
+        }
+        java.util.Arrays.sort(d);
+        return d[(int) (d.length * 0.95)];
     }
 
     private static Parity parity(int file, int rank) {
@@ -214,8 +264,18 @@ public final class TemplateReader {
         return out.getRGB(0, 0, N, N, null, 0, N);
     }
 
-    /** Pixels that differ from the square's background (median colour of its border ring). */
-    static boolean[] pieceMask(int[] rgb) {
+    /** Pixels that differ from the square's background (median colour of its border ring) by more than threshold. */
+    static boolean[] pieceMask(int[] rgb, int threshold) {
+        int bg = background(rgb);
+        boolean[] mask = new boolean[N * N];
+        for (int i = 0; i < mask.length; i++) {
+            mask[i] = distance(rgb[i], bg) > threshold;
+        }
+        return mask;
+    }
+
+    /** Median colour of the border ring of a normalised square. */
+    static int background(int[] rgb) {
         int ring = 4 * (N - 1);
         int[] r = new int[ring];
         int[] g = new int[ring];
@@ -232,12 +292,7 @@ public final class TemplateReader {
                 }
             }
         }
-        int bg = (median(r) << 16) | (median(g) << 8) | median(b);
-        boolean[] mask = new boolean[N * N];
-        for (int i = 0; i < mask.length; i++) {
-            mask[i] = distance(rgb[i], bg) > PIECE_THRESHOLD;
-        }
-        return mask;
+        return (median(r) << 16) | (median(g) << 8) | median(b);
     }
 
     private static int median(int[] v) {

@@ -58,6 +58,10 @@ public final class BatteryDownload {
         Files.createDirectories(dir);
         HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20))
                 .followRedirects(HttpClient.Redirect.NORMAL).build();
+        if (args.length > 1 && args[1].equals("calibration")) {
+            calibrationSet(http, dir.resolveSibling("calibration"));
+            return;
+        }
         JSONArray manifest = new JSONArray();
         Random rnd = new Random(7);
         int n = 0;

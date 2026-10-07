@@ -111,6 +111,7 @@ public final class BoardWatcher {
     }
 
     private static final int STABLE_POLLS = 2;
+    private static final long AUTO_SCROLL_EVERY_MS = 2000;
 
     private final PageDriver page;
     private final VisionService vision;
@@ -130,6 +131,8 @@ public final class BoardWatcher {
     private String reportedPage;
     private Problem problem;
     private long polls;
+    private long lastAutoScroll;
+    private int autoScrolls;
 
     /**
      * @param vision vision model, or null when vision cannot be used at all
@@ -189,6 +192,11 @@ public final class BoardWatcher {
 
     public long polls() {
         return polls;
+    }
+
+    /** Times the board was scrolled back into view for vision. */
+    public int autoScrolls() {
+        return autoScrolls;
     }
 
     private void forgetAll() {
@@ -254,7 +262,16 @@ public final class BoardWatcher {
             return CompletableFuture.completedFuture(null);
         }
         if (board != null && !board.rect().inside(snapshot.viewportWidth(), snapshot.viewportHeight())) {
-            report(Problem.BOARD_OUT_OF_VIEW);
+            long now = System.currentTimeMillis();
+            if (now - lastAutoScroll > AUTO_SCROLL_EVERY_MS) {
+                // vision needs to see the board, and so does the user: some pages scroll it away (chess.com
+                // follows its move list). Bring it back; tell the user only if that does not work.
+                lastAutoScroll = now;
+                autoScrolls++;
+                page.evaluate(io.github.hardin22.javachess.Vision.BotMover.SCROLL_BOARD_INTO_VIEW);
+            } else {
+                report(Problem.BOARD_OUT_OF_VIEW);
+            }
             publish(snapshot);
             return CompletableFuture.completedFuture(null);
         }
@@ -297,6 +314,7 @@ public final class BoardWatcher {
         vision.setFlipped(board != null && board.flipped());
         vision.setBoardHint(board != null ? new Rectangle(0, 0, image.getWidth(), image.getHeight()) : null);
         VisionTracker.Result result = vision.accept(image);
+        calibrate(board, image, result);
         switch (result.status()) {
             case NEW_POSITION, STABLE -> {
                 report(null);
@@ -311,6 +329,29 @@ public final class BoardWatcher {
             default -> report(null);
         }
     }
+
+    /**
+     * Teaches vision this board's pieces from the page's markup: a picture taken while the page shows a stable,
+     * known position is a labelled example. Done until vision knows every piece, and again whenever it disagrees
+     * with the page (theme changed, zoom...). Never in {@link ReadMode#VISION_ONLY}.
+     */
+    private void calibrate(BoardSnapshot.BoardView board, BufferedImage image, VisionTracker.Result result) {
+        if (!mode.usesPage() || board == null || board.animating() || board.placement() == null
+                || !board.placement().equals(pageStable)) {
+            return;
+        }
+        boolean disagrees = result.reading() != null && !result.reading().placement().equals(board.placement());
+        if (!vision.isCalibrated() || disagrees) {
+            vision.learn(image, board.placement(), board.flipped());
+            learned++;
+            if (learned == 1 || disagrees) {
+                log.info("Vision learned this board's pieces from the page ({}{})", vision.isCalibrated()
+                        ? "complete" : "partial", disagrees ? ", after a disagreement" : "");
+            }
+        }
+    }
+
+    private int learned;
 
     /** Sends an update when one of the stable readings changed since the last update. */
     private void publish(BoardSnapshot snapshot) {

@@ -3,6 +3,7 @@ package io.github.hardin22.javachess.Services;
 import io.github.hardin22.javachess.Utils.AppPaths;
 import io.github.hardin22.javachess.Vision.BoardReading;
 import io.github.hardin22.javachess.Vision.PieceClassifier;
+import io.github.hardin22.javachess.Vision.TemplateReader;
 import io.github.hardin22.javachess.Vision.VisionTracker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,8 +17,16 @@ import java.nio.file.Path;
  * (taken by Chromium itself, see {@code Browser/CdpPageDriver}), so it works whatever covers the window and needs
  * no screen-recording permission.
  *
- * <p>It owns the ONNX model ({@link PieceClassifier}, loaded on first use: ~12 MB and a few hundred ms) and a
- * {@link VisionTracker} that locates the board, skips moving frames and reports each stable position once.
+ * <p>Two readers:</p>
+ * <ul>
+ *   <li>the ONNX model ({@link PieceClassifier}, loaded on first use: ~12 MB and a few hundred ms), which knows
+ *       many board themes and piece sets but not all of them;</li>
+ *   <li>a reader calibrated on the board being watched ({@link TemplateReader}): it learns the site's own pieces
+ *       from pictures whose position is known for sure ({@link #learn}: the page's markup, or the start position
+ *       recognised by the model) and then reads any theme and piece set, cheaply (a few ms on the Pi). When it is
+ *       unsure the model's reading is combined with it.</li>
+ * </ul>
+ * <p>A {@link VisionTracker} locates the board, skips moving frames and reports each stable position once.
  * Not thread-safe: use it from one worker thread, never from the JavaFX thread.</p>
  *
  * <p>Debug pictures with the detections are written with {@code -Djavachess.vision.debug=true} to
@@ -33,6 +42,13 @@ public class VisionService implements AutoCloseable {
     private String unavailable;
     private VisionTracker tracker;
     private long frame;
+    private final TemplateReader templates = new TemplateReader();
+    private int calibratedReads;
+    private int modelReads;
+
+    private static final String START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR";
+    /** Below this best-match quality the calibrated reading is trusted alone (no model inference). */
+    private static final double TRUSTED_QUALITY = 0.45;
 
     /** Uses the bundled model, loaded on first use. */
     public VisionService() {
@@ -139,9 +155,73 @@ public class VisionService implements AutoCloseable {
 
             @Override
             public BoardReading read(BufferedImage board, boolean flipped) throws Exception {
-                return pc.read(board, flipped, debug ? debugFile() : null);
+                return readBoardPicture(board, flipped, () -> pc.read(board, flipped, debug ? debugFile() : null));
             }
         };
+    }
+
+    /** Reads with the calibrated reader when it can, with the model otherwise or when the former is unsure. */
+    private BoardReading readBoardPicture(BufferedImage board, boolean flipped, ModelRead model) throws Exception {
+        if (templates.knownSymbols() >= 10 && templates.fits(board)) {
+            BoardReading t = templates.read(board, flipped);
+            if (templates.lastQuality() <= TRUSTED_QUALITY && minBest(t) >= 0.7f) {
+                calibratedReads++;
+                return t;
+            }
+            modelReads++;
+            return TemplateReader.fuse(t, model.read());
+        }
+        modelReads++;
+        BoardReading m = model.read();
+        if (autoCalibrate && START.equals(m.withPlacementRules().placement()) && m.minConfidence() >= 0.4f) {
+            // the start position recognised by the model: a known position to learn this board's pieces from
+            log.info("Vision calibrated on the start position");
+            templates.learn(board, START, flipped);
+        }
+        return m;
+    }
+
+    private interface ModelRead {
+        BoardReading read() throws Exception;
+    }
+
+    /** Lowest, over the squares, of the probability of the most likely symbol. */
+    private static float minBest(BoardReading r) {
+        float min = 1f;
+        for (int f = 0; f < 8; f++) {
+            for (int k = 0; k < 8; k++) {
+                min = Math.min(min, r.confidence(f, k));
+            }
+        }
+        return min;
+    }
+
+    private volatile boolean autoCalibrate = true;
+
+    /** Learns from the start position recognised by the model (on by default). */
+    public void setAutoCalibrate(boolean enabled) {
+        this.autoCalibrate = enabled;
+    }
+
+    /**
+     * Teaches the calibrated reader the look of this board's pieces from a picture whose position is known for sure
+     * (the page's markup at the same moment, or a position confirmed by the game).
+     */
+    public void learn(BufferedImage board, String placement, boolean flipped) {
+        if (templates.boardWidth() > 0 && !templates.fits(board)) {
+            templates.clear(); // the board changed size (zoom, window): learn it again
+        }
+        templates.learn(board, placement, flipped);
+    }
+
+    /** True once every piece of the watched board has been learned. */
+    public boolean isCalibrated() {
+        return templates.isComplete();
+    }
+
+    /** Readings made by the calibrated reader alone and with the model, for the logs and tests. */
+    public int[] readerStats() {
+        return new int[]{calibratedReads, modelReads};
     }
 
     private String debugFile() {

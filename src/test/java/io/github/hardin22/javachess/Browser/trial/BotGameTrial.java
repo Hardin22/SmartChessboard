@@ -126,8 +126,12 @@ public final class BotGameTrial {
         gameIndex = index;
         fixturePly = 0;
         startGame(mine);
+        // a fresh game: a legal position (normally the start), no result shown
         BoardSnapshot first = waitFor(s -> s.board() != null && s.board().placement() != null
-                && "game".equals(s.pageHint()), 60_000, "a game board");
+                && "game".equals(s.pageHint()) && s.board().result() == null
+                && SetupPosition.build(s.board().placement(), s.board(), s.page(), Side.WHITE) != null
+                && (s.board().placement().equals(SetupPosition.placement(new Board()))
+                || s.board().placement().startsWith("rnbqkbnr/pppppppp")), 60_000, "a new game");
         Side bottom = first.board().bottomSide();
         System.out.println("Game " + index + " at " + first.url() + ", playing " + bottom);
         Board known = new Board();
@@ -210,10 +214,24 @@ public final class BotGameTrial {
                             plies++;
                         }
                     } else {
+                        SetupPosition.Result rebuilt = SetupPosition.build(placement, s.board(), s.page(),
+                                known.getSideToMove().flip());
+                        if (rebuilt == null) {
+                            // not a legal position: e.g. the "Checkmate" badge chess.com draws over the mated king
+                            anomalies.add("illegal position shown at ply " + plies + ": " + placement);
+                            dumpPieces("illegal ply " + plies + " known " + known.getFen() + " lastMove "
+                                    + s.board().lastMove());
+                            if (PgnCodec.resultOf(known) == null && System.currentTimeMillis() - lastChange > 10_000) {
+                                break;
+                            }
+                            Thread.sleep(300);
+                            continue;
+                        }
                         ghosts++;
                         anomalies.add("unexplained position at ply " + plies + ": " + placement);
-                        known = SetupPosition.build(placement, s.board(), s.page(), known.getSideToMove().flip())
-                                .board();
+                        dumpPieces("unexplained ply " + plies + " known " + known.getFen() + " lastMove "
+                                + s.board().lastMove() + " animating " + s.board().animating());
+                        known = rebuilt.board();
                     }
                 }
                 lastPlacement = placement;
@@ -284,6 +302,19 @@ public final class BotGameTrial {
             Thread.sleep(100);
         }
         screenshot("end-" + site + "-" + index);
+        try {
+            // how the site shows the end of the game (for the probe's result detection)
+            String end = page.evaluate("(() => { const b = document.querySelector('wc-chess-board, cg-board');"
+                    + " const inBoard = b ? [...b.querySelectorAll('*')].filter(e => !e.classList.contains('piece')"
+                    + " && !/^(square|piece)$/i.test(e.tagName)).slice(0, 25).map(e => e.tagName + '.' + e.className"
+                    + " + ':' + (e.textContent || '').trim().slice(0, 20)) : [];"
+                    + " const texts = [...document.querySelectorAll('[class*=game-over], [class*=result], .status')]"
+                    + ".slice(0, 15).map(e => e.className + ':' + (e.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 60));"
+                    + " return {inBoard, texts}; })()").get(10, TimeUnit.SECONDS);
+            System.out.println("END DOM " + site + " " + index + " " + end);
+        } catch (Exception e) {
+            System.out.println("END DOM failed " + e);
+        }
         return stats.put("plies", plies).put("ownMoves", ownMoves).put("botMoves", botMoves).put("missed", missed)
                 .put("ghosts", ghosts).put("placementMismatches", wrongPlacement).put("result", String.valueOf(result))
                 .put("ownMoveShownMsAvg", ownMoves == 0 ? 0 : ownLatencyTotal / ownMoves)
@@ -310,7 +341,16 @@ public final class BotGameTrial {
     private void checkVision(BoardSnapshot s, Board known, JSONObject stats) {
         try {
             BoardSnapshot.BoardView b = s.board();
-            if (b == null || !b.rect().inside(s.viewportWidth(), s.viewportHeight())) {
+            if (b != null && !b.rect().inside(s.viewportWidth(), s.viewportHeight())) {
+                // the page scrolled the board away (chess.com follows the move list): bring it back, like the app
+                page.evaluate(BotMover.SCROLL_BOARD_INTO_VIEW).get(5, TimeUnit.SECONDS);
+                Thread.sleep(400);
+                s = BoardProbe.read(page).get(10, TimeUnit.SECONDS);
+                b = s.board();
+                stats.put("scrolledBack", stats.optInt("scrolledBack") + 1);
+            }
+            if (b == null || !b.rect().inside(s.viewportWidth(), s.viewportHeight())
+                    || !SetupPosition.placement(known).equals(b.placement())) {
                 stats.put("visionSkipped", stats.optInt("visionSkipped") + 1);
                 return;
             }
@@ -337,6 +377,20 @@ public final class BotGameTrial {
             Files.writeString(out.resolve("fixtures").resolve("manifest.json"), manifest.toString(1));
         } catch (Exception e) {
             stats.put("visionErrors", stats.optInt("visionErrors") + 1);
+            stats.put("visionLastError", e.toString());
+        }
+    }
+
+    /** Logs the board's piece elements (class, inline style) to understand transient readings. */
+    private void dumpPieces(String what) {
+        try {
+            String dom = page.evaluate("(() => { const b = document.querySelector('wc-chess-board, cg-board');"
+                    + " if (!b) return 'no board'; return [...b.children].map(e => e.tagName + '.' + e.className"
+                    + " + (e.getAttribute('style') ? '{' + e.getAttribute('style') + '}' : '')).join(' | '); })()")
+                    .get(5, TimeUnit.SECONDS);
+            System.out.println("DOM " + what + " :: " + dom);
+        } catch (Exception e) {
+            System.out.println("DOM dump failed " + e);
         }
     }
 
@@ -361,8 +415,13 @@ public final class BotGameTrial {
         }
         navigate("https://www.chess.com/play/computer");
         for (int attempt = 0; attempt < 40; attempt++) {
-            String r = page.evaluate(CHESSCOM_START.replace("COLOUR", mine == Side.WHITE ? "white" : "black"))
-                    .get(10, TimeUnit.SECONDS);
+            String r;
+            try {
+                r = page.evaluate(CHESSCOM_START.replace("COLOUR", mine == Side.WHITE ? "white" : "black"))
+                        .get(10, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                r = "no answer: " + e;
+            }
             System.out.println("chess.com start: " + r);
             if (r.contains("started")) {
                 return;
@@ -405,6 +464,8 @@ public final class BotGameTrial {
             + " if (reject) { reject.click(); return 'cookies rejected'; }"
             + " const start = byText(/^(start|inizia)$/i);"
             + " if (start) { start.click(); return 'intro closed'; }"
+            + " const fresh = byText(/^(new game|nuova partita|rematch|rivincita)$/i);"
+            + " if (fresh && /game over|checkmate|wins|vince|draw|patta/i.test(document.body.innerText || '')) { fresh.click(); return 'new game'; }"
             + " const play = document.querySelector('.bot-selection-cta-button-button') || byText(/^(play|gioca)$/i);"
             + " if (play && visible(play)) { play.click(); return 'pressed play'; }"
             + " const ingame = [...document.querySelectorAll('button')].filter(visible).some(b => /resign|abbandon/i.test((b.getAttribute('aria-label') || '') + (b.title || '')))"

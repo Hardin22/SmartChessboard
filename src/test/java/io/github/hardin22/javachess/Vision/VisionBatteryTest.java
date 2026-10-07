@@ -264,6 +264,8 @@ class VisionBatteryTest {
         assumeTrue(!groups.isEmpty(), "no calibration groups");
         List<Outcome> model = new ArrayList<>();
         List<Outcome> calibrated = new ArrayList<>();
+        List<Outcome> fused = new ArrayList<>();
+        int skipped = 0;
         for (List<Fixture> g : groups.values()) {
             Fixture cal = g.stream().filter(f -> f.meta().optBoolean("calibration")).findFirst().orElse(null);
             if (cal == null) {
@@ -275,11 +277,20 @@ class VisionBatteryTest {
                 if (f == cal) {
                     continue;
                 }
-                model.add(read(f));
-                calibrated.add(compare(f, reader.read(f.image(), f.flipped()).withPlacementRules()));
+                if (!reader.fits(f.image())) {
+                    skipped++; // another board size: the app learns again in that case
+                    continue;
+                }
+                BoardReading m = classifier.read(f.image(), f.flipped(), null);
+                BoardReading t = reader.read(f.image(), f.flipped());
+                model.add(compare(f, m.withPlacementRules()));
+                calibrated.add(compare(f, t.withPlacementRules()));
+                fused.add(compare(f, TemplateReader.fuse(t, m).withPlacementRules()));
             }
         }
-        String report = report("Model on calibration groups", model) + "\n" + report("Calibrated reader", calibrated);
+        String report = report("Model on calibration groups", model) + "\n" + report("Calibrated reader", calibrated)
+                + "\n" + report("Calibrated reader fused with the model", fused)
+                + "\nPictures of another size than their calibration (skipped): " + skipped + "\n";
         System.out.println(report);
         write("report-calibrated.md", report);
         assertTrue(squareAccuracy(calibrated) >= squareAccuracy(model),

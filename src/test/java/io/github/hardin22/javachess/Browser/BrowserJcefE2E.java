@@ -157,23 +157,33 @@ class BrowserJcefE2E {
     @Test
     void visionReadsTheScreenshotOfTheBoard() throws Exception {
         PieceClassifier classifier = new PieceClassifier(PieceClassifier.DEFAULT_MODEL);
+        VisionService vision = new VisionService();
         try {
             for (boolean black : List.of(false, true)) {
+                String orientation = "&orientation=" + (black ? "black" : "white");
+                // calibration: the start position, known for sure
+                BoardSnapshot start = open("?site=lichess" + orientation);
+                vision.learn(page.screenshot(start.board().rect()).get(10, TimeUnit.SECONDS),
+                        start.board().placement(), black);
+                assertTrue(vision.isCalibrated());
+
                 String fen = "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R";
-                BoardSnapshot s = open("?site=lichess&orientation=" + (black ? "black" : "white") + "&fen=" + fen);
+                BoardSnapshot s = open("?site=lichess" + orientation + "&fen=" + fen);
                 BufferedImage img = page.screenshot(s.board().rect()).get(10, TimeUnit.SECONDS);
                 assertTrue(img.getWidth() >= 640, "device pixels: " + img.getWidth());
                 java.io.File dir = new java.io.File("target/jcef-e2e");
                 dir.mkdirs();
                 javax.imageio.ImageIO.write(img, "png", new java.io.File(dir, "board-" + black + ".png"));
-                BoardReading r = classifier.read(img, black, new java.io.File(dir, "board-" + black + "-debug.png")
-                        .getPath()).withPlacementRules();
-                System.out.printf("[jcef-e2e] vision black=%s: %s (min confidence %.2f)%n", black, r.placement(),
-                        r.minConfidence());
-                assertEquals(fen, r.placement(), "vision on Chromium's own picture, black=" + black);
+                BoardReading model = classifier.read(img, black, new java.io.File(dir, "board-" + black
+                        + "-debug.png").getPath()).withPlacementRules();
+                BoardReading calibrated = vision.readBoard(img, black);
+                System.out.printf("[jcef-e2e] black=%s model %s, calibrated %s%n", black, model.placement(),
+                        calibrated.placement());
+                assertEquals(fen, calibrated.placement(), "calibrated vision on Chromium's picture, black=" + black);
             }
         } finally {
             classifier.close();
+            vision.close();
         }
     }
 

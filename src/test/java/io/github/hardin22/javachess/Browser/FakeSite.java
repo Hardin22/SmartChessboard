@@ -47,6 +47,7 @@ public final class FakeSite implements PageDriver {
     final List<double[]> clicks = new CopyOnWriteArrayList<>();
     final List<String> played = new CopyOnWriteArrayList<>();
     volatile int scrolls;
+    volatile boolean scrollable = true;
     volatile int probes;
 
     private String selected;
@@ -95,6 +96,9 @@ public final class FakeSite implements PageDriver {
         }
         if (BotMover.SCROLL_BOARD_INTO_VIEW.equals(expression)) {
             scrolls++;
+            if (!scrollable) {
+                return CompletableFuture.completedFuture("false");
+            }
             rect = new BoardSnapshot.Rect(rect.x(), Math.max(0, (viewportHeight - rect.h()) / 2), rect.w(), rect.h());
             return CompletableFuture.completedFuture("true");
         }
