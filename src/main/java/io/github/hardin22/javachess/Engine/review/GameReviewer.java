@@ -107,19 +107,25 @@ public final class GameReviewer implements AutoCloseable {
                 jobs.add(pool.submit(() -> {
                     int start;
                     while ((start = nextBlock.getAndAdd(BLOCK)) <= n) {
-                        for (int idx = start; idx < Math.min(n + 1, start + BLOCK); idx++) {
-                            if (Thread.currentThread().isInterrupted()) {
-                                throw new InterruptedException();
+                        // one engine and one hash history per block: the evaluations do not depend on scheduling
+                        evaluator.startBlock();
+                        try {
+                            for (int idx = start; idx < Math.min(n + 1, start + BLOCK); idx++) {
+                                if (Thread.currentThread().isInterrupted()) {
+                                    throw new InterruptedException();
+                                }
+                                PositionEval p = terminal(replay, idx);
+                                if (p == null) {
+                                    p = evaluator.evaluate(replay.fens().get(idx), 1, settings.nodes());
+                                }
+                                positions[idx] = p;
+                                nodes.addAndGet(p.nodes());
+                                l.onPosition(idx, p);
+                                l.onProgress(0.9 * done.incrementAndGet() / (n + 1));
+                                progressive.evaluated();
                             }
-                            PositionEval p = terminal(replay, idx);
-                            if (p == null) {
-                                p = evaluator.evaluate(replay.fens().get(idx), 1, settings.nodes());
-                            }
-                            positions[idx] = p;
-                            nodes.addAndGet(p.nodes());
-                            l.onPosition(idx, p);
-                            l.onProgress(0.9 * done.incrementAndGet() / (n + 1));
-                            progressive.evaluated();
+                        } finally {
+                            evaluator.endBlock();
                         }
                     }
                     return null;
@@ -162,8 +168,8 @@ public final class GameReviewer implements AutoCloseable {
         }
     }
 
-    /** Positions per block handed to one engine. */
-    private static final int BLOCK = 4;
+    /** Consecutive positions per block handed to one engine (its hash is cleared at the start of each block). */
+    private static final int BLOCK = 8;
 
     /**
      * Publishes provisional labels of the evaluated prefix of the game (without Great/Brilliant, which need the

@@ -44,6 +44,16 @@ public final class CachingEvaluator implements PositionEvaluator {
     }
 
     @Override
+    public void startBlock() throws Exception {
+        engine.startBlock();
+    }
+
+    @Override
+    public void endBlock() {
+        engine.endBlock();
+    }
+
+    @Override
     public void newGame() {
         engine.newGame();
     }
