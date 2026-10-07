@@ -74,6 +74,43 @@ class EngineEmulationStudyTest {
         }
         System.out.println(table);
         Files.writeString(OUT.resolve("study.md"), table.toString(), StandardCharsets.UTF_8);
+        Files.writeString(OUT.resolve("plies.csv"), plies(games, dumps), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * One row per ply: chess.com's label and ours with every variant, plus how many variants are 2+ levels away (a
+     * case far with every engine is a rule problem, one far with some engines only is engine noise).
+     */
+    private static String plies(List<ChessComDataset.Game> games, Map<String, Dump> dumps) {
+        List<List<GameReview>> reviews = new ArrayList<>();
+        for (Dump d : dumps.values()) {
+            List<GameReview> rs = new ArrayList<>();
+            for (int g = 0; g < games.size(); g++) {
+                rs.add(ReviewClassifier.classifyGame(new ReviewInput(null, games.get(g).uci(), d.positions.get(g),
+                        OpeningBook.standard())));
+            }
+            reviews.add(rs);
+        }
+        StringBuilder sb = new StringBuilder("game,ply,san,chesscom," + String.join(",", dumps.keySet())
+                + ",far_variants,loss_first\n");
+        for (int g = 0; g < games.size(); g++) {
+            ChessComDataset.Game game = games.get(g);
+            for (int i = 0; i < game.plies(); i++) {
+                ReviewLabel cc = game.labels().get(i);
+                sb.append(game.id()).append(',').append(i + 1).append(',').append(game.san().get(i)).append(',')
+                        .append(cc.abbrev());
+                int far = 0;
+                for (List<GameReview> rs : reviews) {
+                    ReviewLabel ours = ReviewLabel.of(rs.get(g).moves().get(i).label());
+                    far += Math.abs(level(ours) - level(cc)) >= 2 ? 1 : 0;
+                    sb.append(',').append(ours.abbrev());
+                }
+                MoveReview m = reviews.get(0).get(g).moves().get(i);
+                sb.append(',').append(far).append(',').append(String.format(Locale.ROOT, "%.4f",
+                        m.winBefore() - m.winAfter())).append('\n');
+            }
+        }
+        return sb.toString();
     }
 
     // ------------------------------------------------------------------------------------------
