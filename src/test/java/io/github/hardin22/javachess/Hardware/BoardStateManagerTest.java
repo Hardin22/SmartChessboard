@@ -376,4 +376,90 @@ class BoardStateManagerTest {
         assertEquals(LedColors.CHECK, ledAt("e8"));
         assertNotNull(manager.logicalFen());
     }
+
+    // --- disconnection / reconnection during a game --------------------------------------------------------
+
+    @Test
+    void opponentMoveMadeWhileOfflineIsReproducedAfterReconnection() throws InterruptedException {
+        play(new Board().getFen());
+        sim.lift("e2");
+        sim.place("e4");
+        settle();
+        sim.setConnected(false);
+        settle();
+        Board afterBot = new Board();
+        afterBot.doMove(new Move(Square.E2, Square.E4));
+        afterBot.doMove(new Move(Square.E7, Square.E5));
+        manager.setLogicalBoard(afterBot);
+        manager.startBotMoveReplication("E7", "E5");
+        settle();
+        assertTrue(events.contains("replicated"), "offline: nothing to reproduce");
+        events.clear();
+
+        sim.setConnected(true);
+        settle();
+        assertEquals(BoardStateManager.Mode.RESYNC, manager.mode());
+        assertEquals(LedColors.MISSING, ledAt("e5"));
+        assertEquals(LedColors.WRONG, ledAt("e7"));
+        assertTrue(events.stream().anyMatch(e -> e.startsWith("progress Rimetti i pezzi come sullo schermo")),
+                events.toString());
+        assertTrue(moves().isEmpty());
+
+        sim.lift("e7");
+        sim.place("e5");
+        settle();
+        assertEquals(BoardStateManager.Mode.PLAY, manager.mode());
+        assertTrue(events.contains("progress Scacchiera allineata"), events.toString());
+        assertEquals(LedColors.OFF, ledAt("e5"));
+        sim.lift("g1");
+        sim.place("f3");
+        settle();
+        assertEquals(List.of("move G1F3"), moves());
+    }
+
+    @Test
+    void moveMadeWhileOfflineIsTakenOnReconnection() throws InterruptedException {
+        play(new Board().getFen());
+        sim.setConnected(false);
+        settle();
+        sim.lift("e2");
+        sim.place("e4");
+        settle();
+        assertTrue(moves().isEmpty(), "the app cannot see an unplugged board");
+        sim.setConnected(true);
+        settle();
+        assertEquals(List.of("move E2E4"), moves());
+        assertEquals(BoardStateManager.Mode.PLAY, manager.mode());
+    }
+
+    @Test
+    void reconnectionWithTheBoardInSyncChangesNothing() throws InterruptedException {
+        play(new Board().getFen());
+        sim.setConnected(false);
+        settle();
+        sim.setConnected(true);
+        settle(ERROR_SETTLE * 2);
+        assertEquals(BoardStateManager.Mode.PLAY, manager.mode());
+        assertTrue(moves().isEmpty());
+        assertFalse(events.stream().anyMatch(e -> e.startsWith("error") || e.startsWith("progress")),
+                events.toString());
+    }
+
+    @Test
+    void takebackIsReproducedThroughTheResync() throws InterruptedException {
+        play(new Board().getFen());
+        sim.lift("e2");
+        sim.place("e4");
+        settle();
+        manager.setLogicalBoard(new Board()); // e.g. the move was taken back on the screen
+        manager.resyncToLogical();
+        settle();
+        assertEquals(BoardStateManager.Mode.RESYNC, manager.mode());
+        assertEquals(LedColors.MISSING, ledAt("e2"));
+        sim.lift("e4");
+        sim.place("e2");
+        settle();
+        assertEquals(BoardStateManager.Mode.PLAY, manager.mode());
+        assertEquals(List.of("move E2E4"), moves(), "the taken-back move is not detected again");
+    }
 }

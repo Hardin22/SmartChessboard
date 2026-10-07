@@ -284,8 +284,9 @@ public class ArchiveController implements NavigationAware {
                         game.initialFen().isEmpty() ? START_FEN : game.initialFen(), game.whiteRating(),
                         game.blackRating()));
             }
-            if (archive.getLoadProblem() != null) {
-                ErrorReporter.showError("Archivio", archive.getLoadProblem());
+            String problem = archive.takeLoadProblemNotice(); // once, not at every visit
+            if (problem != null) {
+                ErrorReporter.showError("Archivio", problem);
             }
         } catch (RuntimeException e) {
             LOG.warn("Cannot read the archive", e);

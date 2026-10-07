@@ -59,7 +59,9 @@ public class PvpGame extends AbstractGame {
 
             @Override
             public void onSetupProgress(String message) {
-                updateStatus(message);
+                if (gameRunning) { // after the end the result stays on screen (the LEDs still guide)
+                    updateStatus(message);
+                }
             }
 
             @Override
@@ -71,7 +73,9 @@ public class PvpGame extends AbstractGame {
                 }
                 if (errorSquare != null) {
                     chessBoardUI.highlightErrorSquare(errorSquare);
-                    updateStatus("ERRORE: Controlla " + errorSquare);
+                    if (gameRunning) {
+                        updateStatus("ERRORE: Controlla " + errorSquare);
+                    }
                 }
             }
 

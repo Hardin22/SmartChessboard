@@ -1,0 +1,129 @@
+package io.github.hardin22.javachess.e2e;
+
+import com.github.bhlangonijr.chesslib.Board;
+import com.github.bhlangonijr.chesslib.Piece;
+import com.github.bhlangonijr.chesslib.move.Move;
+import io.github.hardin22.javachess.Controllers.ActiveGameController;
+import io.github.hardin22.javachess.Services.BoardStateManager;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+
+import java.lang.management.ManagementFactory;
+import java.util.List;
+import java.util.Random;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
+
+import static io.github.hardin22.javachess.e2e.E2eHarness.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Long run: {@code javachess.e2e.longrun.games} (default 20) games against the bot in a row on the simulated
+ * board, the "human" playing random legal moves on the sensors and reproducing the bot's moves. Looks for what a
+ * day of use on the Raspberry Pi would accumulate: threads, engine processes, heap after GC, board state.
+ */
+class LongRunEndToEndTest {
+
+    private static final int MAX_PLIES = 120;
+    private static E2eHarness app;
+
+    @BeforeAll
+    static void startApp() throws Exception {
+        app = E2eHarness.start("sim");
+        boardState().setTimings(15, 300, 150);
+    }
+
+    @AfterAll
+    static void stopApp() throws Exception {
+        if (app != null) {
+            app.stop();
+        }
+    }
+
+    private record Usage(int threads, int nonDaemon, long processes, long heapMb, TreeMap<String, Long> byName) {
+        static Usage now() throws InterruptedException {
+            for (int i = 0; i < 3; i++) {
+                System.gc();
+                Thread.sleep(200);
+            }
+            var threads = Thread.getAllStackTraces().keySet();
+            TreeMap<String, Long> byName = threads.stream().collect(Collectors.groupingBy(
+                    t -> t.getName().replaceAll("[-#]?\\d+$", ""), TreeMap::new, Collectors.counting()));
+            long heap = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getUsed() / (1024 * 1024);
+            return new Usage(threads.size(), (int) threads.stream().filter(t -> !t.isDaemon()).count(),
+                    ProcessHandle.current().descendants().filter(ProcessHandle::isAlive).count(), heap, byName);
+        }
+    }
+
+    @Test
+    void twentyGamesInARowLeaveNoThreadsProcessesOrMemoryBehind() throws Exception {
+        int games = Integer.getInteger("javachess.e2e.longrun.games", 20);
+        Random random = new Random(11);
+        app.bot(); // empty script: the scripted engine plays the best one-ply material move
+        int archivedBefore = archive().size();
+        Usage baseline = null;
+        int finished = 0;
+        long start = System.currentTimeMillis();
+        for (int g = 0; g < games; g++) {
+            if (g == 2) {
+                baseline = Usage.now(); // after the first games: views, engines and pools are warm
+            }
+            sim().setOccupancy(0xFFFF_0000_0000_FFFFL);
+            ActiveGameController game = app.startPvc(g % 2 == 0);
+            if (playUntilTheEnd(game, random)) {
+                finished++;
+            }
+            fx(() -> {
+                app.main.navigateTo("HOME"); // unfinished games are archived as interrupted
+                return null;
+            });
+            waitForMode(BoardStateManager.Mode.IDLE);
+        }
+        long seconds = (System.currentTimeMillis() - start) / 1000;
+        waitFor("every game archived", () -> archive().size() == archivedBefore + games);
+        Usage after = Usage.now();
+        String report = String.format("%d games (%d finished) in %d s; threads %d -> %d, non-daemon %d -> %d, "
+                        + "child processes %d -> %d, heap after GC %d MB -> %d MB%nthreads before %s%nthreads after  %s",
+                games, finished, seconds, baseline.threads(), after.threads(), baseline.nonDaemon(), after.nonDaemon(),
+                baseline.processes(), after.processes(), baseline.heapMb(), after.heapMb(), baseline.byName(),
+                after.byName());
+        System.out.println("[long run] " + report);
+        assertTrue(after.threads() - baseline.threads() <= 6, "threads grow: " + report);
+        assertTrue(after.nonDaemon() <= baseline.nonDaemon(), "non-daemon threads grow: " + report);
+        assertTrue(after.processes() <= baseline.processes(), "engine processes pile up: " + report);
+        assertTrue(after.heapMb() - baseline.heapMb() <= 48, "heap grows: " + report);
+    }
+
+    /** Plays random moves on the board until mate/draw or {@link #MAX_PLIES}; true when the game ended. */
+    private static boolean playUntilTheEnd(ActiveGameController game, Random random) throws Exception {
+        while (plies(game) < MAX_PLIES) {
+            waitFor("next step of the game", () -> over(game) || boardState().mode() == BoardStateManager.Mode.REPLICATE
+                    || (boardState().mode() == BoardStateManager.Mode.PLAY && fxGet(() -> game(game).isAwaitingHumanMove())));
+            if (boardState().mode() == BoardStateManager.Mode.REPLICATE) {
+                reproduceLastMove(game); // also the bot's mating move
+                continue;
+            }
+            if (over(game)) {
+                return true;
+            }
+            Board logical = new Board();
+            logical.loadFromFen(boardState().logicalFen());
+            List<Move> legal = logical.legalMoves();
+            List<Move> captures = legal.stream().filter(m -> logical.getPiece(m.getTo()) != Piece.NONE).toList();
+            List<Move> pool = !captures.isEmpty() && random.nextBoolean() ? captures : legal;
+            Move move = pool.get(random.nextInt(pool.size()));
+            int before = plies(game);
+            physicalMove(move.toString());
+            waitFor("move " + move + " taken", () -> plies(game) > before);
+        }
+        return over(game);
+    }
+
+    private static boolean over(ActiveGameController game) {
+        return fxGet(() -> {
+            Board b = game(game).getBoard();
+            return b.isMated() || b.isDraw();
+        });
+    }
+}

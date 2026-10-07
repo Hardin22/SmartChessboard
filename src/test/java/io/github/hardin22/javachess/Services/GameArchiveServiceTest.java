@@ -124,6 +124,9 @@ class GameArchiveServiceTest {
         GameArchiveService s = service();
         assertEquals(0, s.size());
         assertNotNull(s.getLoadProblem());
+        assertEquals(s.getLoadProblem(), s.takeLoadProblemNotice());
+        assertNull(s.takeLoadProblemNotice(), "the user is told once per session, not at every visit");
+        assertNotNull(s.getLoadProblem());
         try (Stream<Path> files = Files.list(dir.resolve("data/backups"))) {
             Path moved = files.filter(p -> p.getFileName().toString().contains("corrupt")).findFirst().orElseThrow();
             assertEquals("{ this is not json", Files.readString(moved));

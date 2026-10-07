@@ -112,7 +112,6 @@ class GameFeaturesTest {
         assertEquals(List.of("e2e4", "e7e5"), g.getMovesUci());
         assertEquals("1. e2e4 e7e5", g.pgnText());
         assertEquals(afterTwo, g.getBoard().getFen());
-        assertTrue(g.resyncing, "the board is asked to put the pieces back");
         assertFalse(g.undo(3), "not enough moves");
         g.handleMoveInput("f1c4");
         assertEquals("1. e2e4 e7e5 2. f1c4", g.pgnText());
