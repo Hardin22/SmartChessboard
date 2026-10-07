@@ -32,6 +32,7 @@ import java.util.function.Consumer;
  *   <li>{@code -Djavachess.view=NAME} navigate to a view after start-up (MainController view name, e.g. SETTINGS)</li>
  *   <li>{@code -Djavachess.snapshot=out.png} write a PNG of the scene after {@code javachess.snapshot.delayMs} (default 3000)</li>
  *   <li>{@code -Djavachess.snapshot.exit=true} quit after writing the snapshot</li>
+ *   <li>{@code -Djavachess.exitAfterMs=N} quit normally (as with Cmd+Q: a game in progress is archived) after N ms</li>
  *   <li>{@code -Djavachess.theme=dark|light|system} start with that theme (not persisted)</li>
  *   <li>{@code -Djavachess.demo=game|review|puzzle} open a screen in a realistic state for screenshots:
  *       a two-player game with {@code javachess.demo.moves} (UCI, space separated) played; the review of an archived
@@ -127,15 +128,36 @@ public final class DevOptions {
         if (review != null && mainController != null) {
             Platform.runLater(() -> openReview(mainController, review));
         }
+        long exitAfter = Long.getLong("javachess.exitAfterMs", 0L);
+        if (exitAfter > 0) {
+            PauseTransition quit = new PauseTransition(Duration.millis(exitAfter));
+            quit.setOnFinished(e -> Platform.exit());
+            quit.play();
+        }
         String snapshot = System.getProperty("javachess.snapshot");
         if (snapshot != null) {
-            long delay = Long.getLong("javachess.snapshot.delayMs", 3000L);
-            PauseTransition pause = new PauseTransition(Duration.millis(delay));
-            pause.setOnFinished(e -> writeSnapshot(stage.getScene(), new File(snapshot), ok -> {
-                if (Boolean.getBoolean("javachess.snapshot.exit")) {
-                    Platform.exit();
+            // The snapshot window opens on a screen someone may be using: their typing and clicks must not drive it.
+            stage.getScene().addEventFilter(javafx.scene.input.KeyEvent.ANY, javafx.event.Event::consume);
+            stage.getScene().addEventFilter(javafx.scene.input.MouseEvent.ANY, e -> {
+                if (e.getScreenX() != 0 || e.getScreenY() != 0) {
+                    e.consume();
                 }
-            }));
+            });
+            long delay = Long.getLong("javachess.snapshot.delayMs", 3000L);
+            String size = System.getProperty("javachess.snapshot.size");
+            PauseTransition pause = new PauseTransition(Duration.millis(delay));
+            pause.setOnFinished(e -> {
+                java.util.function.Consumer<Scene> shoot = scene -> writeSnapshot(scene, new File(snapshot), ok -> {
+                    if (Boolean.getBoolean("javachess.snapshot.exit")) {
+                        Platform.exit();
+                    }
+                });
+                if (size != null && size.matches("\\d+x\\d+")) {
+                    offscreen(stage.getScene(), size, shoot);
+                } else {
+                    shoot.accept(stage.getScene());
+                }
+            });
             pause.play();
         }
     }
@@ -180,6 +202,34 @@ public final class DevOptions {
             review.loadGame(game.get().movesAsUciString(), game.get().initialFen());
             mainController.navigateTo("REVIEW");
         }
+    }
+
+    /**
+     * {@code -Djavachess.snapshot.size=1920x720}: moves the interface into an off-screen scene of that size and
+     * photographs it there (a window cannot be larger than the monitor it is on), e.g. to check the landscape layout
+     * from the portrait monitor.
+     */
+    private static void offscreen(Scene scene, String size, Consumer<Scene> shoot) {
+        String[] wh = size.split("x");
+        javafx.scene.Parent root = scene.getRoot();
+        scene.setRoot(new javafx.scene.layout.Region());
+        Scene off = new Scene(root, Double.parseDouble(wh[0]), Double.parseDouble(wh[1]));
+        off.getStylesheets().setAll(scene.getStylesheets());
+        off.setFill(scene.getFill());
+        // An off-screen scene gets no pulses: size the root now, so the screens see the new proportions at once.
+        root.resize(off.getWidth(), off.getHeight());
+        root.applyCss();
+        root.layout();
+        // A few layout passes spread over time, as pulses would do: screens rebuild for the new proportions.
+        javafx.animation.Timeline settle = new javafx.animation.Timeline(new javafx.animation.KeyFrame(
+                Duration.millis(150), e -> {
+                    root.resize(off.getWidth(), off.getHeight());
+                    root.applyCss();
+                    root.layout();
+                }));
+        settle.setCycleCount(6);
+        settle.setOnFinished(e -> shoot.accept(off));
+        settle.play();
     }
 
     private static void writeSnapshot(Scene scene, File out, Consumer<Boolean> done) {

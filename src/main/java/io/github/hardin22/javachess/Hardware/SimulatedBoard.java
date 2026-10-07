@@ -33,6 +33,7 @@ public final class SimulatedBoard implements BoardHardware {
     private volatile SensorListener listener;
     private volatile long occupancy;
     private volatile int brightness = 255;
+    private volatile boolean connected = true;
 
     /** Starts with the standard initial position on the board. */
     public SimulatedBoard() {
@@ -46,8 +47,10 @@ public final class SimulatedBoard implements BoardHardware {
     @Override
     public void start(SensorListener listener) {
         this.listener = listener;
-        listener.onConnectionChanged(true, description());
-        listener.onOccupancy(occupancy);
+        listener.onConnectionChanged(connected, description());
+        if (connected) {
+            listener.onOccupancy(occupancy);
+        }
     }
 
     @Override
@@ -76,7 +79,25 @@ public final class SimulatedBoard implements BoardHardware {
 
     @Override
     public boolean isConnected() {
-        return true;
+        return connected;
+    }
+
+    /**
+     * Unplugs or plugs the simulated cable. While unplugged the pieces can still be moved but the app is not told;
+     * on reconnection it gets a full occupancy snapshot, as from the real firmware.
+     */
+    public void setConnected(boolean value) {
+        if (connected == value) {
+            return;
+        }
+        connected = value;
+        SensorListener l = listener;
+        if (l != null) {
+            l.onConnectionChanged(value, description());
+            if (value) {
+                l.onOccupancy(occupancy);
+            }
+        }
     }
 
     @Override
@@ -124,7 +145,7 @@ public final class SimulatedBoard implements BoardHardware {
     public void setOccupancy(long bits) {
         occupancy = bits;
         SensorListener l = listener;
-        if (l != null) {
+        if (l != null && connected) {
             l.onOccupancy(bits);
         }
     }
@@ -138,7 +159,7 @@ public final class SimulatedBoard implements BoardHardware {
         }
         occupancy = after;
         SensorListener l = listener;
-        if (l != null) {
+        if (l != null && connected) {
             l.onSquareChanged(square, occupied);
         }
     }

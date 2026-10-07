@@ -21,7 +21,8 @@ import java.util.List;
  * position, otherwise the move with the best one-ply material score. Info lines carry that material score
  * (centipawns, side to move) for every MultiPV line, so the review and the coach get plausible numbers.
  * Answers {@code uci}, {@code isready}, {@code position}, {@code go} (any limits), {@code stop}, {@code quit};
- * other commands ({@code setoption}, {@code ucinewgame}) are accepted silently.</p>
+ * other commands ({@code setoption}, {@code ucinewgame}) are accepted silently. A script line {@code !crash} makes the
+ * process exit on the next {@code go}, {@code !hang} makes it never answer, {@code !slow} answers after 800 ms.</p>
  */
 public final class ScriptedUciEngine {
 
@@ -49,7 +50,16 @@ public final class ScriptedUciEngine {
             } else if (line.startsWith("position")) {
                 board = parsePosition(line);
             } else if (line.startsWith("go")) {
-                search(board, multiPv, readScript(scriptFile)); // re-read: tests change it between games
+                List<String> script = readScript(scriptFile); // re-read: tests change it between games
+                if (script.contains("!crash")) {
+                    System.exit(3); // the engine process dies in the middle of a search
+                }
+                if (script.contains("!slow")) {
+                    Thread.sleep(800); // a slow machine: every search takes a while
+                }
+                if (!script.contains("!hang")) { // "!hang": never answers (a stuck engine)
+                    search(board, multiPv, script);
+                }
             } else if (line.equals("quit")) {
                 return;
             }

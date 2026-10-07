@@ -47,7 +47,7 @@ public final class SimulatorAutoplay {
                 BoardStateManager.Mode mode = manager.mode();
                 Board logical = new Board();
                 logical.loadFromFen(manager.logicalFen());
-                if (mode == BoardStateManager.Mode.REPLICATE) {
+                if (mode == BoardStateManager.Mode.REPLICATE || mode == BoardStateManager.Mode.RESYNC) {
                     replicate(lastSeen, logical);
                 } else if (mode == BoardStateManager.Mode.PLAY && logical.getSideToMove() == side
                         && BoardStateManager.occupancy(logical) == sim.occupancy()) {

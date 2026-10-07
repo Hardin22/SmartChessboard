@@ -77,6 +77,7 @@ public class GameArchiveService {
     private boolean readOnly;
     private boolean backedUpThisSession;
     private String loadProblem;
+    private boolean loadProblemNoticed;
 
     /** Shared archive in the user data folder (migrates the working-directory archive of old versions). */
     public static GameArchiveService getInstance() {
@@ -129,6 +130,18 @@ public class GameArchiveService {
         return loadProblem;
     }
 
+    /**
+     * The load problem to tell the user about, once per session: the first call returns it, later calls return
+     * null (the archive screen asks every time it opens). {@link #getLoadProblem()} keeps returning it.
+     */
+    public synchronized String takeLoadProblemNotice() {
+        if (loadProblem == null || loadProblemNoticed) {
+            return null;
+        }
+        loadProblemNoticed = true;
+        return loadProblem;
+    }
+
     public Path getFile() {
         return file;
     }
@@ -151,6 +164,24 @@ public class GameArchiveService {
         persist();
         log.info("Archived game #{} ({}, {} moves, {})", stored.id(), stored.mode(), stored.movesUci().size(),
                 stored.result());
+        return stored;
+    }
+
+    /** Adds several games with a single write (imports). Returns them with their ids. */
+    public synchronized List<ArchivedGame> addAll(List<ArchivedGame> drafts) {
+        List<ArchivedGame> stored = new ArrayList<>();
+        for (ArchivedGame draft : drafts) {
+            ArchivedGame g = sanitize(draft).withId(nextId++);
+            games.add(g);
+            stored.add(g);
+            if (readOnly) {
+                saveAside(g);
+            }
+        }
+        if (!stored.isEmpty()) {
+            persist();
+            log.info("Archived {} games", stored.size());
+        }
         return stored;
     }
 
@@ -344,6 +375,7 @@ public class GameArchiveService {
         nextId = 1;
         readOnly = false;
         loadProblem = null;
+        loadProblemNoticed = false;
         try {
             if (Files.exists(file)) {
                 loadFile(file, false);

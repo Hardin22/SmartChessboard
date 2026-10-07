@@ -18,37 +18,45 @@
 
 javaChess is a JavaFX application that runs on a Raspberry Pi built into a chessboard. 64 Hall-effect sensors read
 where the pieces are, 64 RGB LEDs show moves, hints and the opponent's replies, and a tall touch screen beside the
-board shows the clocks, the evaluation and the controls. It also runs on a normal desktop (macOS, Linux) without any
-hardware, which is how most development happens.
+board shows the clocks, the evaluation and the controls. The interface is designed for that screen: read from the
+chair, used with the fingers, and turned towards whoever is playing — in a two-player game each player gets the
+half of the screen that faces them. It also runs on a normal desktop (macOS, Linux) without any hardware, which is
+how most development happens.
 
 <p align="center">
   <img src="docs/screenshots/home.png" width="19%" alt="Home">
-  <img src="docs/screenshots/game.png" width="19%" alt="Game">
+  <img src="docs/screenshots/pvp.png" width="19%" alt="Two players, one half of the screen each">
+  <img src="docs/screenshots/pvc-replicate.png" width="19%" alt="Against the computer: the move to make on the board">
   <img src="docs/screenshots/review.png" width="19%" alt="Game review">
-  <img src="docs/screenshots/puzzles.png" width="19%" alt="Puzzles">
   <img src="docs/screenshots/archive.png" width="19%" alt="Archive">
 </p>
 <p align="center">
-  <img src="docs/screenshots/game-landscape.png" width="80%" alt="Game on a 1920x720 landscape display">
+  <img src="docs/screenshots/pvp-landscape.png" width="80%" alt="Two players on a 1920x720 landscape display">
 </p>
 
 Dark and light themes (`*-light.png` in [docs/screenshots](docs/screenshots)), portrait 720×1920 board monitor,
-landscape 1920×720 or a desktop window.
+landscape 1920×720 or a desktop window. The screenshots use a demo archive made of public-domain historical games;
+accuracy and move labels are computed by the real review engine. Design principles and choices:
+[docs/design/UX.md](docs/design/UX.md) and [docs/design/SUMMARY.md](docs/design/SUMMARY.md).
 
 ## Features
 
 - **Play the computer**: Stockfish (skill 0–20, adjustable thinking time) or the human-like
   [Maia](https://maiachess.com) networks (1100, 1500, 1900 Elo) through lc0.
-- **Two players** on the same board, with clocks and increments.
-- **Lichess online** through the official [Board API](https://lichess.org/api#tag/Board): seek a game, play it with the
-  physical pieces; the opponent's moves light up on the board for you to replicate.
+- **Two players** on the same board: one half of the screen per player, turned towards them, with a tournament
+  clock (increments, pause), draw offers and resignation confirmed in the player's own half.
 - **chess.com and lichess in the integrated browser** (JCEF): the position is read from the page and checked by an
   on-device vision model that calibrates itself on the site's theme, so the physical board stays in sync with games
   played on the website; moves made on the board are played on the page. See [docs/browser.md](docs/browser.md).
+- **Lichess through the [Board API](https://lichess.org/api#tag/Board)** (Settings → Advanced): seek a game and play
+  it with the physical pieces; the opponent's moves light up on the board for you to replicate.
 - **Puzzles** from the Lichess puzzle database, filtered by theme and rating.
-- **Game review**: accuracy for both sides, move classification (best, excellent, inaccuracy, mistake, blunder...),
-  evaluation graph, best-move arrows.
-- **Archive** of every game with result and termination, exportable to and importable from standard PGN.
+- **Game review**: accuracy for both sides, move labels (Geniale, Grande, Migliore … Errore grave) drawn as the app's
+  own tiles, evaluation graph with the notable moves, best-move arrows, big step-through buttons and board drags.
+- **Archive** of every game, grouped by day, with search (on-screen keyboard), filters by mode, result and period,
+  and a preview to review, export (PGN) or delete a game.
+- **Touch-first interface**: large type and 80 px+ targets, a rotate button in every screen (and a two-finger twist),
+  automatic orientation towards the player, moves on the screen when no board is connected.
 - **LED coaching**: legal moves when a piece is lifted, quality of the destination squares, check and mate effects.
 - **Themes**: light/dark interface, several board and piece sets; Italian UI (strings in
   `src/main/resources/i18n/messages.properties`, ready for translations).
@@ -177,11 +185,11 @@ Most settings are changed from the *Settings* screen. Useful keys:
 
 ### Lichess
 
-Use *Settings → Lichess → Connect account*: the app opens the Lichess authorization page (OAuth with PKCE, no
+Use *Settings → Advanced → Lichess → Connect account*: the app opens the Lichess authorization page (OAuth with PKCE, no
 password involved) and stores the resulting token. Alternatively, create a personal API token with the
 **`board:play`** scope at
 <https://lichess.org/account/oauth/token/create?scopes[]=board:play&description=javaChess> and paste it in
-*Settings → Lichess*. It is stored only in `~/.javachess/config.properties` (owner-only permissions) and never logged.
+*Settings → Advanced*. It is stored only in `~/.javachess/config.properties` (owner-only permissions) and never logged.
 For development you can also export `JAVACHESS_LICHESS_TOKEN`. The Board API only allows rapid and classical time
 controls (at least 8 minutes).
 
@@ -218,6 +226,11 @@ display: CI runs everything under `xvfb-run`; on a machine without a display the
 | `-Djavachess.windowed=WxH` | Window of the given size instead of full screen |
 | `-Djavachess.view=NAME` | Start on a view (HOME, PVC_SETUP, GAME, REVIEW, ARCHIVE, SETTINGS, ...) |
 | `-Djavachess.snapshot=file.png` | Save a screenshot of the window after `javachess.snapshot.delayMs` ms |
+| `-Djavachess.snapshot.size=1920x720` | Take that screenshot in an off-screen scene of the given size |
+| `-Djavachess.demo=NAME` | Open a screen in a given state: `pvp`, `pvp-draw`, `pvp-end`, `pvc`, `pvc-black`, `pvc-replicate`, `review` (`-Djavachess.demo.analyze=true`), `archive-preview`, `puzzle`, ... (see `DevDemos`) |
+| `-Djavachess.demo.seed=N` | With `-Djavachess.home=<empty dir>`: fill the archive with N demo games |
+| `-Djavachess.rotated=true` | Start as if the monitor were mounted upside down |
+| `-Djavachess.animations=off` | No screen transitions (for very slow software rendering) |
 | `-Djavachess.home=DIR` | Use another data folder (handy to test the first-start migration) |
 | `-Djavachess.log.level=DEBUG` | More logging |
 | `-Djavachess.vision.debug=true` | Write annotated vision frames to `~/.javachess/vision-debug/` |
@@ -232,10 +245,10 @@ display: CI runs everything under `xvfb-run`; on a machine without a display the
 io.github.hardin22.javachess
 ├── Application   entry point (App, Main), start-up (Bootstrap), lazy native libraries (NativeLibraries),
 │                 developer switches and scripted scenarios (DevOptions, DevScenario, DevDemos), StartupMetrics
-├── Components    UI building blocks and theming: ThemeManager (light/dark), I18n, GameLayout, MoveListView,
-│                 PageHeader, StatusChip, HardwareStatus, BoardThemes, Icons, Logo
-├── Controllers   JavaFX controllers, one per FXML view in src/main/resources/UI;
-│                 ArduinoController (compatibility facade over Hardware)
+├── Components    the design system: Ui (building blocks and sizes), ScreenHeader, RotateButton, StatusCard,
+│                 ClockFace, Stepper, TouchKeyboard, BoardFrame, ReviewLabels, ThemeManager (light/dark), I18n
+├── Controllers   one Screen per view, built in code (MainController: navigation, orientation, sheets);
+│                 GameSoloView / GameDuelView (game layouts); ArduinoController (facade over Hardware)
 ├── Engine        everything that talks to chess engines: EngineManager (owns the Stockfish/lc0 processes,
 │                 profiles), UciClient (asynchronous UCI), PositionAnalyzer (live analysis), MoveCoach and
 │                 MoveClassifier (move quality for the LEDs and the review), OpeningExplorer, EngineLocator

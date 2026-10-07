@@ -52,6 +52,8 @@ public final class ReviewClassifier {
         final double fakeRegain;
         /** v1.9: no Brilliant or Great right after a book position (G-E4). */
         final boolean noSpecialInTheory;
+        /** Phase 4: G-E4 only when the opponent's move into that position was a Book move itself (not an error). */
+        final boolean theoryNeedsBookMove;
         /** v1.9 G+1: a quiet forcing check in a won attack is Great ... */
         final boolean greatForcingCheck;
         /** ... from at least this win chance ... */
@@ -83,6 +85,17 @@ public final class ReviewClassifier {
         final double greatCaptureGap;
         /** v2.2 (greatCaptureRule 2): taking free material is Great only for players under this rating. */
         final double greatFreeMaterialRating;
+        /**
+         * Phase 4 beginner Great (one rule for players under {@link #greatFreeMaterialRating}): the engine's move by a
+         * mover winning (above {@link #greatBeginnerMinEp}) that punishes the opponent's Blunder, or takes what an
+         * opponent's move losing at least {@link #greatBeginnerPunishLoss} left en prise, or is a capture with gap
+         * {@link #greatCaptureGapLow}.
+         */
+        final boolean greatBeginner;
+        final double greatBeginnerMinEp;
+        final double greatBeginnerPunishLoss;
+        /** Phase 4: a capture collecting what the previous own check won (a fork) is never Great. */
+        final boolean greatNoCollect;
         /** v2.1: a piece or the exchange given for pawns counts as a sacrifice of 2 (Brilliant). */
         final boolean pieceSacrifice;
         /**
@@ -90,9 +103,42 @@ public final class ReviewClassifier {
          * moved piece and the played line wins back at most {@link #brilliantTopRegain} pawns within 6 plies.
          */
         final boolean brilliantTopException;
+        /**
+         * Phase 4 B-E9: giving up the last piece on the board for a king and pawn ending is liquidation (counting the
+         * pawn race), not Brilliant.
+         */
+        final boolean brilliantNoLiquidation;
+        /** Phase 4 B-E10: a recapture is a sacrifice only when the recapturing piece is lost for at least sacMin. */
+        final boolean brilliantRecaptureNet;
+        /**
+         * Phase 4 G-E5: no Great for moving an attacked piece to its only safe square (a forced retreat, like a single
+         * legal move).
+         */
+        final boolean greatNoOnlyEscape;
+        /**
+         * Phase 4: an exchange (not free material from 1000, not a recapture) right after an opponent's move losing at
+         * least this much (0 = off) is Great from {@link #greatCaptureGapLow}, without the outcome tests.
+         */
+        final double greatCapturePunishLoss;
+        /** Phase 4: moving an attacked pawn out of the attack is Great only from this gap (0 = off). */
+        final double greatPawnEscapeGap;
+        /** Phase 4: R9 also for an answer to check that does not move the king. */
+        final boolean greatStartsMateInCheck;
+        /** Phase 4: R9 also for a king escape from check that is not a recapture. */
+        final boolean greatStartsMateKing;
+        /**
+         * Phase 4 B-TI (threat ignored, user 22:30): a quiet move leaving en prise an already attacked rook or queen,
+         * heavier than the moved piece, not taken by the reply and without a counter-threat as big, offers it.
+         * Replaces brilliantRenewed (shard-1), which it covers.
+         */
+        final boolean brilliantHeavyLeft;
+        /** Phase 4: no Great for a capture by an en prise piece when the position stays within this many cp of 0. */
+        final double greatForcedTradeCp;
         final double brilliantTopRegain;
         /** v2.3 R9: a quiet move starting a forced mate is Great when the alternative does not win. */
         final boolean greatStartsMate;
+        /** ... when the second best move is at most this many centipawns (v2.3: 150; v2.5: 200, Rh6+ +1.78 Great). */
+        final double greatStartsMateAltCp;
         /** v2.3: the 'winning anyway' tests of Brilliant only for a move that is not the engine's choice. */
         final boolean brilliantAltNonTopOnly;
         /** v2.3: players under this rating get Great for a capture from {@link #greatCaptureGapLow}. */
@@ -108,6 +154,54 @@ public final class ReviewClassifier {
         final double greatInCheckGap;
         /** ... from at most this win chance. */
         final double greatInCheckMaxEp;
+        /**
+         * v2.5: a king move out of check is Great when the second best move is another king move at least this much
+         * worse (picking the one safe flight square; 0 = off).
+         */
+        final double greatKingFlightGap;
+        /** v2.5: pushing again the passed pawn moved on the mover's previous turn is not Great (the plan goes on). */
+        final boolean greatPawnFollowUp;
+        /** v2.5: second line also for a quiet top move in a won position (above the MultiPV range). */
+        final boolean greatWonQuiet;
+        /** v2.5: a pawn taking a pawn is Great only after an opponent's move losing at least this much (0 = off). */
+        final double greatPawnTradeOppLoss;
+        /** v2.5 B+K: a king march is Brilliant with at least this many pieces (no pawns, no kings) on the board (0 = off). */
+        final double brilliantKingMarchPieces;
+        /** v2.5 B-E11: no Brilliant when the opponent's best answer is a capture elsewhere with check. */
+        final boolean brilliantNoCheckingCounter;
+        /**
+         * v2.5 B+P: a pawn given with check to drag the king out, from a position not yet won into a winning one, is a
+         * sacrifice although it is worth 1 (Kasparov - Topalov 1999, 33.c3+).
+         */
+        final boolean brilliantPawnCheckSac;
+        /** v2.5 B+M: the engine's move giving up the moved piece to start a forced mate skips the winning-anyway tests. */
+        final boolean brilliantMateSacrifice;
+        /** v2.5 B-E12: a declined offer that would be won back at once and after which the line wins nothing. */
+        final boolean brilliantNoEmptyOffer;
+        /** v2.5 B-E13: an offer taken back at once by a discovered attack, material level after the line: an exchange. */
+        final boolean brilliantNoDiscoveredTrade;
+        /** Phase 4 TI: the reviewer runs the after-capture searches of {@link #afterCaptureRequest} (cost runs: 0 = off). */
+        final boolean afterCaptureSearch;
+        /** v2.5 B-E14: accepting loses more material at once and the line ends about level: a sham sacrifice. */
+        final boolean brilliantNoShamSacrifice;
+        /** v2.5 B-TI+: a capture leaving a piece en prise whose capture (after-capture search) is mated. */
+        final boolean brilliantCaptureIntoMate;
+        /** Phase 4: an answer to check taking free material (SEE > 0) follows the free material rule of captures. */
+        final boolean greatInCheckFreeMaterial;
+        /** Phase 4: no Great for a bishop retreating from the pawn that has just advanced against it. */
+        /** Phase 4: no Great for a capture right after the mover's own Great (cashing in). */
+        final boolean greatNoCashIn;
+        /** Phase 4: ... also after the mover's own Brilliant (rated 1000+ or unrated). */
+        final boolean greatNoCashInBrilliant;
+        /** Phase 4 obvious Great: a pawn push escorted by its king in king and pawns against the bare king. */
+        final boolean greatNoEscortedPush;
+        /** Phase 4 obvious Great: taking the piece just moved to attack the queen, in a position already won. */
+        final boolean greatNoQueenAttackerTaken;
+        /** Phase 4 obvious Great: a quiet bishop move in a bishop against pawns ending. */
+        final boolean greatNoBishopEndingMove;
+        final boolean greatKickedBishop;
+        /** Phase 4 (0 = off): R9 also when the opponent's move lost at least this much, whatever the alternative. */
+        final double greatStartsMatePunish;
         /** v1.9: no capture is Great (G-E1). */
         final boolean greatNoCapture;
         /**
@@ -196,13 +290,19 @@ public final class ReviewClassifier {
             criticalMinEp = get("criticalMinEp", 0.40);
             brilliantFromGood = get("brilliantFromGood", 1) != 0;
             brilliantRule = (int) get("brilliantRule", 2);
-            brilliantNonTopLoss = get("brilliantNonTopLoss", 0.03);
+            brilliantNonTopLoss = get("brilliantNonTopLoss", 0.04);
             fakeRegain = get("fakeRegain", 5);
             greatNoCapture = get("greatNoCapture", 1) != 0;
             greatRule = (int) get("greatRule", 2);
             brilliantAltNonTopOnly = get("brilliantAltNonTopOnly", 0) != 0;
             greatStartsMate = get("greatStartsMate", 1) != 0;
+            greatStartsMateAltCp = get("greatStartsMateAltCp", 200);
             brilliantTopException = get("brilliantTopException", 1) != 0;
+            brilliantNoLiquidation = get("brilliantNoLiquidation", 1) != 0;
+            brilliantRecaptureNet = get("brilliantRecaptureNet", 1) != 0;
+            greatNoOnlyEscape = get("greatNoOnlyEscape", 1) != 0;
+            greatCapturePunishLoss = get("greatCapturePunishLoss", 0.10);
+            greatPawnEscapeGap = get("greatPawnEscapeGap", 0.25);
             brilliantTopRegain = get("brilliantTopRegain", 1);
             greatInCheckGap = get("greatInCheckGap", 0.10);
             greatLowRating = get("greatLowRating", 1500);
@@ -212,6 +312,31 @@ public final class ReviewClassifier {
             greatQuietGap = get("greatQuietGap", 0.10);
             greatQuietCpFloor = get("greatQuietCpFloor", 150);
             greatInCheckMaxEp = get("greatInCheckMaxEp", 0.90);
+            greatKingFlightGap = get("greatKingFlightGap", 0.17);
+            greatPawnFollowUp = get("greatPawnFollowUp", 1) != 0;
+            greatWonQuiet = get("greatWonQuiet", 1) != 0;
+            greatPawnTradeOppLoss = get("greatPawnTradeOppLoss", 0.15);
+            brilliantKingMarchPieces = get("brilliantKingMarchPieces", 6);
+            brilliantNoCheckingCounter = get("brilliantNoCheckingCounter", 1) != 0;
+            brilliantPawnCheckSac = get("brilliantPawnCheckSac", 1) != 0;
+            brilliantMateSacrifice = get("brilliantMateSacrifice", 1) != 0;
+            brilliantNoEmptyOffer = get("brilliantNoEmptyOffer", 1) != 0;
+            brilliantNoDiscoveredTrade = get("brilliantNoDiscoveredTrade", 1) != 0;
+            afterCaptureSearch = get("afterCaptureSearch", 1) != 0;
+            brilliantNoShamSacrifice = get("brilliantNoShamSacrifice", 1) != 0;
+            brilliantCaptureIntoMate = get("brilliantCaptureIntoMate", 1) != 0;
+            greatInCheckFreeMaterial = get("greatInCheckFreeMaterial", 1) != 0;
+            greatKickedBishop = get("greatKickedBishop", 1) != 0;
+            greatNoCashIn = get("greatNoCashIn", 1) != 0;
+            greatNoCashInBrilliant = get("greatNoCashInBrilliant", 1) != 0;
+            greatNoEscortedPush = get("greatNoEscortedPush", 1) != 0;
+            greatNoQueenAttackerTaken = get("greatNoQueenAttackerTaken", 1) != 0;
+            greatNoBishopEndingMove = get("greatNoBishopEndingMove", 1) != 0;
+            greatStartsMatePunish = get("greatStartsMatePunish", 0.15);
+            greatStartsMateInCheck = get("greatStartsMateInCheck", 1) != 0;
+            greatStartsMateKing = get("greatStartsMateKing", 1) != 0;
+            brilliantHeavyLeft = get("brilliantHeavyLeft", 1) != 0;
+            greatForcedTradeCp = get("greatForcedTradeCp", 15);
             pieceSacrifice = get("pieceSacrifice", 1) != 0;
             outcomeLow = get("outcomeLow", 0.40);
             outcomeHigh = get("outcomeHigh", 0.60);
@@ -219,6 +344,10 @@ public final class ReviewClassifier {
             greatCaptureOppLoss = get("greatCaptureOppLoss", 0.10);
             greatCaptureGap = get("greatCaptureGap", 0.30);
             greatFreeMaterialRating = get("greatFreeMaterialRating", 1000);
+            greatBeginner = get("greatBeginner", 1) != 0;
+            greatBeginnerMinEp = get("greatBeginnerMinEp", 0.60);
+            greatBeginnerPunishLoss = get("greatBeginnerPunishLoss", 0.20);
+            greatNoCollect = get("greatNoCollect", 1) != 0;
             greatCaptureRule = (int) get("greatCaptureRule", 2);
             brilliantWinningCp = get("brilliantWinningCp", 700);
             brilliantMinCpAfter = get("brilliantMinCpAfter", -15);
@@ -227,8 +356,9 @@ public final class ReviewClassifier {
             forcingCheckGap = get("forcingCheckGap", 0.25);
             ratingFloor = get("ratingFloor", 800);
             noSpecialInTheory = get("noSpecialInTheory", 1) != 0;
+            theoryNeedsBookMove = get("theoryNeedsBookMove", 1) != 0;
             sacMin = get("sacMin", 2);
-            brilliantMaxLoss = get("brilliantMaxLoss", 0.03);
+            brilliantMaxLoss = get("brilliantMaxLoss", 0.04);
             brilliantMinEpAfter = get("brilliantMinEpAfter", 0.48);
             brilliantMaxAlt = get("brilliantMaxAlt", 0.97);
             greatGap = get("greatGap", 0.25);
@@ -496,13 +626,74 @@ public final class ReviewClassifier {
             boolean greatRange = ep >= SECOND_LINE_MIN_EP && ep <= SECOND_LINE_MAX_EP && !before.eval().isMate();
             // R9: a quiet move starting a forced mate is Great only if the second best move does not win
             boolean startsMate = Tuning.DEFAULT.greatStartsMate && before.eval().isMateFor(me)
-                    && before.eval().mateIn() > 1 && !b.isKingAttacked() && !Tactics.isCapture(b, uci);
+                    && before.eval().mateIn() > 1 && (b.isKingAttacked() ? Tuning.DEFAULT.greatStartsMateInCheck
+                    && (!movesKing(b, uci) || (Tuning.DEFAULT.greatStartsMateKing
+                    && !(i > 0 && isRecapture(replay, i)))) : !Tactics.isCapture(b, uci));
+            // v2.5: in a won position a quiet piece move can still be the only one keeping the win (Wei Yi - Bruzon
+            // 31.Qd3, Carlsen - Ernst 27.Qe5+, the alternatives only draw): the second line tells. Pushing a pawn
+            // there is the natural plan (chess.com Best: 42...d3 live_171977517802, the alternative draws as well)
+            boolean wonQuiet = Tuning.DEFAULT.greatWonQuiet && ep > SECOND_LINE_MAX_EP && !before.eval().isMate()
+                    && !b.isKingAttacked() && !Tactics.isCapture(b, uci) && !isPawnMove(b, uci);
             // a sacrifice can be Brilliant even when it mates: only the second line tells if it was needed
-            if (greatRange || startsMate || (!before.eval().isMateAgainst(me) && brilliant(b, uci, me))) {
+            if (greatRange || startsMate || wonQuiet || (!before.eval().isMateAgainst(me) && brilliant(b, uci, me))) {
                 need.set(i);
             }
         }
         return need;
+    }
+
+    /**
+     * The after-capture searches the reviewer runs for the TI rules ({@link ReviewInput#afterCapture}), one per move
+     * index: {@link #afterCaptureRequest} for every move of the game. Key = move index, value = the capture (UCI); the
+     * reviewer searches the position after move i and that capture.
+     */
+    public static Map<Integer, String> afterCaptureRequests(ReviewInput in) {
+        GameReplay replay = GameReplay.of(in.initialFen(), in.uciMoves());
+        Map<Integer, String> out = new TreeMap<>();
+        for (int i = 0; i < replay.uci().size(); i++) {
+            String capture = afterCaptureRequest(replay.fens().get(i), replay.uci().get(i), in.positions().get(i));
+            if (capture != null) {
+                out.put(i, capture);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * The capture (UCI) to search after move {@code uci} from {@code fenBefore}, or null: when the move is our engine's
+     * best move ({@code before} = our MultiPV-1 evaluation of {@code fenBefore}), is not an answer to check, the mover
+     * is not being mated, and the move leaves en prise (2+ by static exchange) a piece that was already en prise
+     * before it (not the moved piece), the opponent's cheapest capture of the most valuable such piece.
+     */
+    public static String afterCaptureRequest(String fenBefore, String uci, PositionEval before) {
+        if (before == null || before.terminal() || !uci.equals(before.bestMove())
+                || before.eval().isMateAgainst(before.whiteToMove())) {
+            return null;
+        }
+        boolean me = before.whiteToMove();
+        Board b0 = board(fenBefore);
+        Move m = Tactics.find(b0, uci);
+        if (m == null || b0.isKingAttacked()) {
+            return null;
+        }
+        Side side = me ? Side.WHITE : Side.BLACK;
+        Map<Square, Integer> was = Tactics.hanging(b0, side);
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        if (b1.isMated()) {
+            return null;
+        }
+        Square target = null;
+        int best = 0;
+        for (Map.Entry<Square, Integer> e : Tactics.hanging(b1, side).entrySet()) {
+            Square sq = e.getKey();
+            if (sq != m.getTo() && was.containsKey(sq) && e.getValue() >= 2 && Tactics.value(b1.getPiece(sq)) > best) {
+                best = Tactics.value(b1.getPiece(sq));
+                target = sq;
+            }
+        }
+        Move take = target == null ? null : Tactics.leastValuableCapture(b1, target);
+        return take == null ? null : take.toString();
     }
 
     /** Classifies every move of the game and computes the accuracy of both players. */
@@ -625,15 +816,39 @@ public final class ReviewClassifier {
                 boolean nearBest = label == MoveClassification.BEST || label == MoveClassification.EXCELLENT
                         || (t.brilliantFromGood && label == MoveClassification.GOOD);
                 // G-E4: a move played from an opening book position is known theory, never Brilliant or Great
-                boolean fromTheory = t.noSpecialInTheory && i > 0 && i - 1 <= theoryEnd;
+                // (Phase 4) ... unless the opponent left the book with an error: punishing it is not theory
+                // (daily_1017137676 3...e6? 4.d5: chess.com Great)
+                boolean fromTheory = t.noSpecialInTheory && i > 0 && i - 1 <= theoryEnd
+                        && (!t.theoryNeedsBookMove || out.get(i - 1).label() == MoveClassification.BOOK_MOVE);
+                int rating = me ? in.whiteRating() : in.blackRating();
+                MoveClassification plain = label;
                 if (nearBest && !mates && !fromTheory) {
                     double oppLoss = i > 0 ? Math.max(0, epBefore[i - 1] - epAfter[i - 1]) : 0;
                     MoveClassification special = special(label, isTop, i, replay, p0, pos.get(i + 1), played[i],
                             epBefore[i], epAfter[i], me, oppLoss, t, me ? kWhite : kBlack,
-                            me ? in.whiteRating() : in.blackRating());
+                            rating, i > 0 ? out.get(i - 1).label() : null, in.afterCapture().get(i));
                     if (special != null) {
                         label = special;
                     }
+                }
+                if (label == MoveClassification.BEST && (isTop || mates) && !fromTheory
+                        && beginnerGreat(i, replay, out, p0, epBefore, epAfter, me, rating, t, me ? kWhite : kBlack)) {
+                    label = MoveClassification.GREAT;
+                }
+                if (label == MoveClassification.GREAT && t.greatNoCashIn && i >= 2
+                        && (out.get(i - 2).label() == MoveClassification.GREAT
+                        || (t.greatNoCashInBrilliant && out.get(i - 2).label() == MoveClassification.BRILLIANT
+                        && (rating <= 0 || rating >= t.greatFreeMaterialRating)))
+                        && Tactics.isCapture(board(replay.fens().get(i)), uci)) {
+                    // Phase 4: a capture right after the mover's own Great cashes in the idea already rewarded
+                    // (177 games: 3 of 3 chess.com Best, no Great). After the mover's own Brilliant too, from 1000
+                    // (12...Nxc3 after 11...Na4!! Byrne - Fischer 1956: chess.com Best; at 1000+ no capture right
+                    // after an own Brilliant is chess.com Great); under 1000 chess.com rewards it (Qxf6 live_122947746214)
+                    label = plain;
+                }
+                if (label == MoveClassification.GREAT && obviousGreat(board(replay.fens().get(i)), uci, me, t,
+                        i > 0 ? replay.uci().get(i - 1) : null, epBefore[i])) {
+                    label = plain;
                 }
             }
             EngineLine bestLine = p0.best();
@@ -715,13 +930,18 @@ public final class ReviewClassifier {
     private static MoveClassification special(MoveClassification label, boolean isTop, int i, GameReplay replay,
                                               PositionEval p0, PositionEval p1, Eval played, double epBefore,
                                               double epAfter, boolean me, double oppLoss,
-                                              Tuning t, double k, int rating) {
+                                              Tuning t, double k, int rating, MoveClassification prevLabel,
+                                              EngineLine capture) {
         EngineLine second = p0.secondBest();
         Eval alternative = isTop ? (second == null ? null : second.eval()) : p0.eval();
         Board b0 = board(replay.fens().get(i));
         String uci = replay.uci().get(i);
         if (t.brilliantRule == 2 && brilliantV19(b0, uci, me, isTop, alternative, played, epBefore, epAfter, t, k,
-                playedLine(uci, p0, p1))) {
+                playedLine(uci, p0, p1), capture) && !(t.brilliantRecaptureNet && i > 0 && isRecapture(replay, i)
+                && Sacrifice.of(b0, uci, me).movedNet() < t.sacMin)) {
+            // B-E10: taking back on the square of the opponent's capture is a sacrifice only when the recapturing
+            // piece itself is lost for at least sacMin (live_173981415730 19...Nxd4 cxd4 Rxd4: a knight for two pawns
+            // at +7.8, chess.com Best; Nxe6+ and Carlsen's Rxh6+ give up 2 and 4: Brilliant)
             return MoveClassification.BRILLIANT;
         }
         if (t.brilliantRule == 1 && brilliantBySee(b0, uci, me, alternative, played, epBefore, epAfter, t, k)) {
@@ -733,10 +953,14 @@ public final class ReviewClassifier {
         if (!candidate(b0, uci, alternative, epAfter, me, t)) {
             return null;
         }
+        if (t.greatNoOnlyEscape && onlyEscape(b0, uci, me)) {
+            return null; // G-E5: the attacked piece's only safe square is a forced retreat
+        }
         if (t.brilliantRule == 0 && brilliant(b0, uci, me)) {
             return MoveClassification.BRILLIANT;
         }
-        if (t.greatStartsMate && label == MoveClassification.BEST && isTop && startsMate(b0, uci, played, second, me)) {
+        if (t.greatStartsMate && label == MoveClassification.BEST && isTop
+                && startsMate(b0, uci, played, second, me, oppLoss, i > 0 && isRecapture(replay, i), t)) {
             return MoveClassification.GREAT; // R9
         }
         if (label != MoveClassification.BEST || !isTop || played.isMateFor(me)) {
@@ -746,7 +970,7 @@ public final class ReviewClassifier {
             return MoveClassification.GREAT; // G+1
         }
         if (t.greatRule == 2) {
-            return greatV21(b0, uci, i, replay, p0.eval(), second, epBefore, me, oppLoss, t, k, rating)
+            return greatV21(b0, uci, i, replay, p0.eval(), second, epBefore, me, oppLoss, t, k, rating, prevLabel)
                     ? MoveClassification.GREAT : null;
         }
         if (epBefore < t.greatMinEp || epBefore > t.greatMaxEp) {
@@ -782,7 +1006,8 @@ public final class ReviewClassifier {
      * keeping the material is routine.
      */
     private static boolean greatV21(Board b0, String uci, int i, GameReplay replay, Eval best, EngineLine second,
-                                    double epBefore, boolean me, double oppLoss, Tuning t, double k, int rating) {
+                                    double epBefore, boolean me, double oppLoss, Tuning t, double k, int rating,
+                                    MoveClassification prevLabel) {
         if (second == null || epBefore < t.greatMinEp) {
             return false;
         }
@@ -792,17 +1017,55 @@ public final class ReviewClassifier {
         double r = rating > 0 ? rating : t.defaultRating;
         boolean recapture = i > 0 && isRecapture(replay, i);
         if (b0.isKingAttacked()) {
-            // v2.3: an answer to check that does not move the king (interposition, taking the checker) can be Great;
-            // king escapes are Great and Best alike for chess.com
+            // v2.3: an answer to check that does not move the king (interposition, taking the checker) can be Great
             Move m = Tactics.find(b0, uci);
-            return t.greatInCheck && m != null && b0.getPiece(m.getFrom()).getPieceType() != PieceType.KING
-                    && !recapture && gap >= t.greatInCheckGap && epBefore <= t.greatInCheckMaxEp;
+            if (m != null && b0.getPiece(m.getFrom()).getPieceType() == PieceType.KING) {
+                // v2.5: choosing the one good flight square is Great (the second best move is another king move);
+                // escaping when the alternative is an interposition that gives material away is just Best
+                return t.greatKingFlightGap > 0 && !Tactics.isCapture(b0, uci)
+                        && second.move().startsWith(uci.substring(0, 2)) && gap >= t.greatKingFlightGap;
+            }
+            // Phase 4: taking a checking piece that is simply en prise is free material, routine like any other
+            // capture of free material from 1000 (177 games: 4 of 4 Best, 75...Rxe8 live_170725680910)
+            boolean freeChecker = t.greatInCheckFreeMaterial && m != null && b0.getPiece(m.getTo()) != Piece.NONE
+                    && Tactics.see(b0, m.getTo()) > 0 && r >= t.greatFreeMaterialRating;
+            return t.greatInCheck && m != null && !recapture && !freeChecker && gap >= t.greatInCheckGap
+                    && epBefore <= t.greatInCheckMaxEp;
         }
         boolean capture = Tactics.isCapture(b0, uci);
+        if (t.greatPawnFollowUp && !capture && i >= 2 && pushesPassedPawnAgain(b0, uci, replay.uci().get(i - 2))) {
+            // v2.5: in a pawn race the find is the first push (chess.com Great), the next pushes of the same passed pawn
+            // only carry the plan on (Best), however bad the alternatives
+            return false;
+        }
+        if (t.greatKickedBishop && !capture && i > 0 && kickedBishop(b0, uci, replay, i, me)) {
+            // Phase 4: the bishop driven back by a pawn push (g4 against Bh5, g5 against Bh4, b5 against Bc4) has to
+            // retreat, however much the other moves lose: chess.com Best (177 games: 5 of 5, no Great)
+            return false;
+        }
+        if (capture && t.greatForcedTradeCp > 0 && !best.isMate() && Math.abs(best.cpFor(me)) <= t.greatForcedTradeCp) {
+            // Phase 4: the attacked piece trades itself off and the position is just level: a forced trade to hold
+            // the balance, not a find (Rxd7 live_184567962764 ply 85, Rxc5 live_184566976354 ply 94, Nxe4
+            // live_183990190310 ply 9: chess.com Best; no Great in the 177 games fits)
+            Move fm = Tactics.find(b0, uci);
+            if (fm != null && Tactics.hanging(b0, me ? Side.WHITE : Side.BLACK).containsKey(fm.getFrom())) {
+                return false;
+            }
+        }
         if (capture) {
-            // v2.3: players under 1500 get Great for a capture from a smaller gap
-            double capGap = r < t.greatLowRating ? t.greatCaptureGapLow : t.greatCaptureGap;
+            // v2.3: players under 1500 get Great for a capture from a smaller gap; Phase 4: so does an exchange that
+            // punishes the opponent's error, unless the capturing piece was en prise itself (trading it off is the
+            // way out: 6.Bxe6 live_184435729088, Bc4 attacked by Be6, chess.com Best)
+            Move cm = Tactics.find(b0, uci);
+            boolean punishing = t.greatCapturePunishLoss > 0 && oppLoss >= t.greatCapturePunishLoss && cm != null
+                    && !Tactics.hanging(b0, me ? Side.WHITE : Side.BLACK).containsKey(cm.getFrom());
+            double capGap = r < t.greatLowRating || punishing ? t.greatCaptureGapLow : t.greatCaptureGap;
             if (recapture || gap < capGap) {
+                return false;
+            }
+            if (Tactics.isPawnTakesPawn(b0, uci) && oppLoss < t.greatPawnTradeOppLoss) {
+                // v2.5: a pawn exchange is Great only when it punishes the opponent's error (177 games: 7 of 7 Great
+                // after an error >= 0.15; fxg6, dxc5, hxg4 Best after a sound move, however bad the alternatives)
                 return false;
             }
             if (t.greatCaptureRule == 2) {
@@ -815,6 +1078,17 @@ public final class ReviewClassifier {
             } else if (oppLoss < t.greatCaptureOppLoss) {
                 return false;
             }
+            if (t.greatNoCollect && collectsAfterCheck(replay, i, prevLabel)) {
+                return false;
+            }
+            if (punishing) {
+                return true;
+            }
+        }
+        if (t.greatPawnEscapeGap > 0 && !capture && pawnEnPrise(b0, uci, me) && gap < t.greatPawnEscapeGap) {
+            // Phase 4: taking an attacked pawn out of the attack is routine unless it is the only move by a wide margin
+            // (177 games, attacked pawns moved by the engine: Great from gap 0.30 3 of 3, Best below 0.25 5 of 5)
+            return false;
         }
         boolean changesOutcome = outcomeClass(epBefore, t) > outcomeClass(epBefore - gap, t) && gap >= t.greatClassGap
                 && cpGap >= t.greatClassCp;
@@ -826,16 +1100,249 @@ public final class ReviewClassifier {
 
     /**
      * SPEC v2.3 R9: a quiet move or a check without capture that starts a forced mate (not mate at once) when the
-     * second best move does not win (at most +150 cp, or loses to mate) is Great: chess.com 8 of 8 (Anderssen -
-     * Dufresne 22.Bf5+, Wei Yi - Bruzon...). Finding a mate is not "critical" only when the alternative wins anyway.
+     * second best move does not win (at most {@link Tuning#greatStartsMateAltCp} cp, or loses to mate) is Great:
+     * chess.com 8 of 8 (Anderssen - Dufresne 22.Bf5+, Wei Yi - Bruzon...). Finding a mate is not "critical" only when
+     * the alternative wins anyway.
      */
-    private static boolean startsMate(Board b0, String uci, Eval played, EngineLine second, boolean me) {
-        if (second == null || !played.isMateFor(me) || played.isCheckmate() || b0.isKingAttacked()
-                || Tactics.isCapture(b0, uci) || uci.length() > 4) {
+    private static boolean startsMate(Board b0, String uci, Eval played, EngineLine second, boolean me,
+                                      double oppLoss, boolean recapture, Tuning t) {
+        // Phase 4: out of check, an answer that does not move the king (taking the checker, interposing) and starts
+        // the mate counts too (live_174024200644 60...Qxb8+ mates in 11, king moves only draw: chess.com Great)
+        // and, with greatStartsMateKing, a king escape that is not a recapture (Botvinnik - Capablanca 38.Kxh5: mate in
+        // 13, Kg5 only draws, chess.com Great; taking back the checker, Kxf7 / Kxc2, stays Best)
+        boolean answersCheck = b0.isKingAttacked() && t.greatStartsMateInCheck
+                && (!movesKing(b0, uci) || (t.greatStartsMateKing && !recapture));
+        if (second == null || !played.isMateFor(me) || played.isCheckmate() || (b0.isKingAttacked() && !answersCheck)
+                || (Tactics.isCapture(b0, uci) && !answersCheck) || uci.length() > 4) {
             return false;
         }
         Eval alt = second.eval();
-        return alt.isMateAgainst(me) || (!alt.isMate() && alt.cpFor(me) <= 150);
+        // Phase 4: right after the opponent's error, finding the mate is the punishment even when the alternative
+        // also wins (candidate() still excludes alternatives at +700 or more)
+        boolean punishes = t.greatStartsMatePunish > 0 && oppLoss >= t.greatStartsMatePunish;
+        return alt.isMateAgainst(me) || (!alt.isMate() && (alt.cpFor(me) <= t.greatStartsMateAltCp || punishes));
+    }
+
+    /** True when {@code uci} moves a pawn. */
+    private static boolean isPawnMove(Board b, String uci) {
+        Move m = Tactics.find(b, uci);
+        return m != null && b.getPiece(m.getFrom()).getPieceType() == PieceType.PAWN;
+    }
+
+    /** Move i moves a bishop the opponent's last move, a pawn push, attacks. */
+    private static boolean kickedBishop(Board b0, String uci, GameReplay replay, int i, boolean me) {
+        Move m = Tactics.find(b0, uci);
+        Board bp = board(replay.fens().get(i - 1));
+        Move pm = Tactics.find(bp, replay.uci().get(i - 1));
+        if (m == null || pm == null || b0.getPiece(m.getFrom()).getPieceType() != PieceType.BISHOP
+                || bp.getPiece(pm.getFrom()).getPieceType() != PieceType.PAWN
+                || pm.getFrom().getFile() != pm.getTo().getFile()) {
+            return false;
+        }
+        int files = Math.abs(m.getFrom().getFile().ordinal() - pm.getTo().getFile().ordinal());
+        int ranks = m.getFrom().getRank().ordinal() - pm.getTo().getRank().ordinal();
+        return files == 1 && ranks == (me ? -1 : 1);
+    }
+
+    /** True when {@code uci} pushes a passed pawn that arrived on its square with the mover's previous move. */
+    private static boolean pushesPassedPawnAgain(Board b0, String uci, String previousOwn) {
+        Move m = Tactics.find(b0, uci);
+        return m != null && b0.getPiece(m.getFrom()).getPieceType() == PieceType.PAWN
+                && previousOwn.substring(2, 4).equals(uci.substring(0, 2)) && Tactics.isPassedPawn(b0, m.getFrom());
+    }
+
+    /**
+     * Phase 4 beginner Great: chess.com is "more generous with new players". Under {@link
+     * Tuning#greatFreeMaterialRating} the engine's move (or a mate), not a recapture and not collecting what the own
+     * check won, by a mover who stands winning (above {@link Tuning#greatBeginnerMinEp}) and did not blunder with the
+     * previous move, is Great when it
+     * <ul>
+     *   <li>punishes the opponent's Blunder (6 mates: Qxf7# live_184334494256...; Rgf1 live_180019739292), or takes,
+     *   winning material by static exchange, what an opponent's move losing at least {@link
+     *   Tuning#greatBeginnerPunishLoss} left en prise (Nxg7+ and Bxb7 live_138986716238, Qxb1 live_141789599574), or</li>
+     *   <li>is a capture the second best move cannot replace (gap at least {@link Tuning#greatCaptureGapLow}): Rxf3
+     *   live_123574758978, Rxg8+ live_142024938210, Nxd4 live_180008683178.</li>
+     * </ul>
+     * 177 games, players under 1000: 21 more chess.com Great and one engine tie (Bxg4 live_184510489798, allowlisted);
+     * the 15 mates that punish nothing stay Best. A Blunder that only fails to punish the mover's own Blunder is a Miss
+     * for chess.com: recovering from it is Best (live_180008683178 8.Qxg7 after 7.Qc3?? Be7?).
+     */
+    private static boolean beginnerGreat(int i, GameReplay replay, List<MoveReview> out, PositionEval p0,
+                                         double[] epBefore, double[] epAfter, boolean me, int rating, Tuning t,
+                                         double k) {
+        if (!t.greatBeginner || rating <= 0 || rating >= t.greatFreeMaterialRating || i == 0
+                || epBefore[i] <= t.greatBeginnerMinEp || isRecapture(replay, i)
+                || (t.greatNoCollect && collectsAfterCheck(replay, i, out.get(i - 1).label()))
+                || (i >= 2 && out.get(i - 2).label() == MoveClassification.BLUNDER)) {
+            return false;
+        }
+        Board b0 = board(replay.fens().get(i));
+        String uci = replay.uci().get(i);
+        Move m = Tactics.find(b0, uci);
+        boolean capture = m != null && Tactics.isCapture(b0, uci);
+        boolean winsMaterial = capture && Tactics.see(b0, m.getTo()) > 0;
+        boolean punishes = out.get(i - 1).label() == MoveClassification.BLUNDER
+                || (winsMaterial && epBefore[i - 1] - epAfter[i - 1] >= t.greatBeginnerPunishLoss);
+        EngineLine second = p0.secondBest();
+        boolean irreplaceable = capture && second != null
+                && epBefore[i] - ep(second.eval(), me, k) >= t.greatCaptureGapLow;
+        return punishes || irreplaceable;
+    }
+
+    /**
+     * Phase 4: the capture collects what the previous own move won with check: the same piece gave check (a fork) and
+     * the opponent answered it without a real error (at worst an Inaccuracy). The Great belongs to the check, not to
+     * taking the piece (Nxc2+ Ke2 Nxa1 live_174290567620, Nxe3+ Kf2 Nxd1+ live_174367977638: chess.com Best; Rc3+ Kd4?
+     * Rxf3 live_123574758978: the answer was a Mistake, Great).
+     */
+    private static boolean collectsAfterCheck(GameReplay replay, int i, MoveClassification prevLabel) {
+        if (i < 2 || prevLabel == null || severity(prevLabel) > severity(MoveClassification.INACCURACY)
+                || !board(replay.fens().get(i - 1)).isKingAttacked()) {
+            return false;
+        }
+        return replay.uci().get(i - 2).substring(2, 4).equals(replay.uci().get(i).substring(0, 2));
+    }
+
+    /**
+     * Phase 4 G-E5: the move takes a piece the opponent was winning by static exchange to the only square where it is
+     * not (captures and answers to check aside), like a single legal move: chess.com Best 5 of 5 in the 177 games (Ba7
+     * live_174024200644 ply 28, Nh6 live_174521739268 ply 18, Rg1 live_180019739292 ply 19, Nb6 live_184567962764 ply
+     * 25, Nf4 live_184308204442 ply 66), while every Great retreat of an attacked piece had a choice of safe squares.
+     */
+    private static boolean onlyEscape(Board b0, String uci, boolean me) {
+        Move m = Tactics.find(b0, uci);
+        Side side = me ? Side.WHITE : Side.BLACK;
+        if (m == null || b0.isKingAttacked() || Tactics.isCapture(b0, uci)
+                || !Tactics.hanging(b0, side).containsKey(m.getFrom())) {
+            return false;
+        }
+        int safe = 0;
+        for (Move o : b0.legalMoves()) {
+            if (o.getFrom() != m.getFrom()) {
+                continue;
+            }
+            Board b1 = b0.clone();
+            b1.doMove(o);
+            if (!Tactics.hanging(b1, side).containsKey(o.getTo()) && ++safe > 1) {
+                return false;
+            }
+        }
+        return safe == 1;
+    }
+
+    /** True when move {@code uci} moves a pawn the opponent could win by static exchange where it stood. */
+    private static boolean pawnEnPrise(Board b0, String uci, boolean me) {
+        Move m = Tactics.find(b0, uci);
+        if (m == null || b0.getPiece(m.getFrom()).getPieceType() != PieceType.PAWN) {
+            return false;
+        }
+        String[] f = b0.getFen().split(" ");
+        f[1] = me ? "b" : "w";
+        f[3] = "-";
+        Board o = new Board();
+        o.loadFromFen(String.join(" ", f));
+        return Tactics.see(o, m.getFrom()) > 0;
+    }
+
+    private static boolean movesKing(Board b, String uci) {
+        Move m = Tactics.find(b, uci);
+        return m == null || b.getPiece(m.getFrom()).getPieceType() == PieceType.KING;
+    }
+
+    /**
+     * Phase 4: moves the engine calls the only good one but no chess player would call a find (CLAIMS 23:00, "obvious"
+     * Great false positives at 1000+), each a narrow board pattern with its own knob.
+     */
+    private static boolean obviousGreat(Board b0, String uci, boolean me, Tuning t, String previous,
+                                        double epBefore) {
+        Move m = Tactics.find(b0, uci);
+        if (m == null) {
+            return false;
+        }
+        Side side = me ? Side.WHITE : Side.BLACK;
+        return (t.greatNoEscortedPush && escortedPush(b0, m, side))
+                || (t.greatNoQueenAttackerTaken && epBefore > t.greatInCheckMaxEp && !b0.isKingAttacked()
+                && takesQueenAttacker(b0, m, side, previous))
+                || (t.greatNoBishopEndingMove && epBefore > t.forcingCheckMinEp && bishopEndingMove(b0, m, side));
+    }
+
+    /**
+     * Bishop against pawns: a quiet move of the mover's only piece, a bishop, when the opponent has no piece. The bishop
+     * holds a diagonal from several equivalent squares, so the move is not a find even when our short second line says
+     * so (Spassky - Fischer 1972 g1, 44.Bf2 and 46.Bg5: SF16 d22 has Bc1/Bd2/Bg5 = Bf2 + 31 cp and Be1 = Bg5, chess.com
+     * Best). On the 177 games no such move is chess.com Great. Only in a position already won (win chance above
+     * {@link Tuning#forcingCheckMinEp}, the "won attack" level of G+1): a bishop that is the last stopper of two passed
+     * pawns in a balanced ending can have a real only move.
+     */
+    private static boolean bishopEndingMove(Board b0, Move m, Side side) {
+        if (b0.getPiece(m.getFrom()).getPieceType() != PieceType.BISHOP || b0.getPiece(m.getTo()) != Piece.NONE) {
+            return false;
+        }
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        if (b1.isKingAttacked()) {
+            return false;
+        }
+        int mine = 0;
+        for (Square sq : Square.values()) {
+            Piece p = sq == Square.NONE ? Piece.NONE : b0.getPiece(sq);
+            if (p == Piece.NONE || p.getPieceType() == PieceType.KING || p.getPieceType() == PieceType.PAWN) {
+                continue;
+            }
+            if (p.getPieceSide() != side) {
+                return false; // the opponent has a piece
+            }
+            mine++;
+        }
+        return mine == 1;
+    }
+
+    /**
+     * The capture takes the piece the opponent has just moved to attack the mover's queen (24.Bxe4 Zukertort -
+     * Blackburne 1883, 23...Nf6-e4 hitting Qd2: chess.com Best). In a position already won (win chance above
+     * {@link Tuning#greatInCheckMaxEp}, the same cap as the answers to check) removing the attacker is the reflex
+     * answer to a threat, not a find; the queen trades and knight forks met earlier stay candidates (Qxh3
+     * live_173888395572 57, Bxe3 Spassky - Bronstein 1960 11.Bxe3: chess.com Great at win chance 0.84 and 0.53).
+     */
+    private static boolean takesQueenAttacker(Board b0, Move m, Side side, String previous) {
+        if (previous == null || !previous.substring(2, 4).equalsIgnoreCase(m.getTo().toString())
+                || b0.getPiece(m.getTo()) == Piece.NONE) {
+            return false;
+        }
+        Board probe = b0.clone();
+        probe.doNullMove(); // the attacker's side to move: does it attack the queen?
+        for (Move o : probe.legalMoves()) {
+            if (o.getFrom() == m.getTo() && probe.getPiece(o.getTo()).getPieceType() == PieceType.QUEEN
+                    && probe.getPiece(o.getTo()).getPieceSide() == side) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * King and pawns against the bare king: a pawn push to a square next to its own king. The king escorts the pawn
+     * and the push is plain technique; the finds are the king moves (live_170725680910 83.Kh6 and 85.Kh7 chess.com
+     * Great, 84.g7 Best). A push the king does not cover (live_174388155128 63.f4, 65.h4, the pawns defend themselves)
+     * stays a candidate.
+     */
+    private static boolean escortedPush(Board b0, Move m, Side side) {
+        if (b0.getPiece(m.getFrom()).getPieceType() != PieceType.PAWN || b0.getPiece(m.getTo()) != Piece.NONE
+                || m.getPromotion() != Piece.NONE) {
+            return false;
+        }
+        for (Square sq : Square.values()) {
+            Piece p = sq == Square.NONE ? Piece.NONE : b0.getPiece(sq);
+            if (p == Piece.NONE || p.getPieceType() == PieceType.KING) {
+                continue;
+            }
+            if (p.getPieceSide() != side || p.getPieceType() != PieceType.PAWN) {
+                return false; // the opponent has more than the king, or the mover has pieces
+            }
+        }
+        Square king = b0.getKingSquare(side);
+        return Math.abs(king.getFile().ordinal() - m.getTo().getFile().ordinal()) <= 1
+                && Math.abs(king.getRank().ordinal() - m.getTo().getRank().ordinal()) <= 1;
     }
 
     /** 0 losing, 1 about equal, 2 winning (SPEC v2.1). */
@@ -909,9 +1416,13 @@ public final class ReviewClassifier {
      */
     private static boolean brilliantV19(Board b0, String uci, boolean me, boolean isTop, Eval alternative,
                                         Eval played, double epBefore, double epAfter, Tuning t, double k,
-                                        List<String> line) {
+                                        List<String> line, EngineLine capture) {
         Move m = Tactics.find(b0, uci);
-        if (m == null || m.getPromotion() != Piece.NONE || b0.getPiece(m.getFrom()).getPieceType() == PieceType.KING) {
+        if (m == null || m.getPromotion() != Piece.NONE) {
+            return false;
+        }
+        boolean kingMarch = b0.getPiece(m.getFrom()).getPieceType() == PieceType.KING;
+        if (kingMarch && !kingMarch(b0, m, isTop, t)) {
             return false;
         }
         double loss = epBefore - epAfter;
@@ -929,6 +1440,12 @@ public final class ReviewClassifier {
             if (gained <= t.brilliantTopRegain) {
                 altTest = false;
             }
+            if (t.brilliantMateSacrifice && played.isMateFor(me) && !played.isCheckmate()) {
+                // B+M (user principle 22:20, lead OK): giving up the moved piece to start a forced mate is decisive,
+                // not technique in a won position, even when the line then promotes (Capablanca - Marshall 1918
+                // 36.Bxf7+ Rxf7 37.b8=Q+)
+                altTest = false;
+            }
         }
         if (altTest && ep(alternative, me, k) > t.brilliantMaxAlt) {
             return false; // B-E2: winning anyway, also when the move mates
@@ -942,10 +1459,285 @@ public final class ReviewClassifier {
         if (!played.isMate() && played.cpFor(me) < t.brilliantMinCpAfter) {
             return false;
         }
-        if (sac.value() < t.sacMin) {
+        if (kingMarch) {
+            return true; // the king itself is what is offered
+        }
+        if (sac.value() < t.sacMin && !leavesHeavyPiece(b0, m, me, line, t) && !capturedIntoMate(b0, m, me, capture, t) && !(t.brilliantPawnCheckSac && pawnCheckSacrifice(b0, m, line, epBefore,
+                played, me))) {
             return false; // B-E1: nothing new is offered
         }
+        if (t.brilliantNoEmptyOffer && isTop && alternative != null && epBefore - ep(alternative, me, k) >= t.greatGap
+                && sac.regain() >= sac.offered() && !acceptedInLine(b0, m, line)
+                && lineGain(b0, line, me ? Side.WHITE : Side.BLACK, 8) <= 0) {
+            // B-E12: the only good move (second line at least greatGap worse) offers a piece the opponent declines,
+            // that would be won back at once if taken, and the line wins nothing: its merit is being the only move,
+            // not a sacrifice (Topalov - Shirov 1998, 26...Nb4: chess.com Great). Offers that are not only moves keep
+            // the Brilliant (4 chess.com-certified Brilliants of the Chessigma benchmark, e.g. live_123248465216 15...Ne4)
+            return false;
+        }
+        if (t.brilliantNoShamSacrifice && !played.isMate() && shamSacrifice(b0, m, line)) {
+            // B-E14 (user, 22:20): taking the piece loses more material at once (Deep Blue - Kasparov 1997 g6, 17.Bf5
+            // exf5 18.Rxe7: the queen for the bishop), and the line ends about level in material: a tactic winning
+            // material, not a sacrifice (chess.com Excellent)
+            return false;
+        }
+        if (t.brilliantNoDiscoveredTrade && discoveredTrade(b0, m, line)) {
+            // B-E13 (user, 22:20): accepting only lets the mover take back as much at once on a piece the move itself
+            // uncovered, and the line ends level: an exchange by discovered attack, not a sacrifice (live_184350007554
+            // 20...Nc3 Qxc3 Qxf3: never Brilliant)
+            return false;
+        }
+        if (t.brilliantNoCheckingCounter && checkingCounter(b0, m, line)) {
+            // B-E11: the opponent's best answer leaves the piece and captures something else with check (Spassky -
+            // Bronstein 16.Nxf7 exf1=Q+, live_174521739268 24.Ndxb5 gxf4+): the move did not really offer the piece,
+            // it allowed a forcing counter-attack. chess.com Great / Best (177 games: 2 of 2, no Brilliant)
+            return false;
+        }
+        if (t.brilliantNoLiquidation && lastPieceOnTheBoard(b0, m)) {
+            // B-E9: live_174388155128 60.Nxf4 (+6.6) Kxf4 and the king and pawn ending is won: chess.com Best
+            return false;
+        }
         return sac.regain() < 0 || sac.regain() < sac.offered() + t.fakeRegain; // B-E4
+    }
+
+    /**
+     * Phase 4 B-TI ("threat ignored", user 22:30: a piece left en prise is a sacrifice when taking it costs the
+     * opponent): the move, quiet and not a king move, leaves en prise a rook or queen that was already attacked, worth
+     * more than the moved piece; the reply of the line does not take it and the move creates no threat as big (that
+     * would be an exchange of threats). Byrne - Fischer 17...Be6 (queen b6), Karpov - Kasparov 1985/16 37...Rc1
+     * (queen e3), Aronian - Anand 13...Ng4 (rook f8), live_145773198260 16.c5 (rook d6), Bai - Ding 21...h5 (rook d4):
+     * chess.com Brilliant. Not: 24.Qe3 Tal - Larsen (the queen is heavier than the rook left), 15.c4 daily_1011391210
+     * and 20.Bc3 Nezhmetdinov - Chernikov (they attack the queen).
+     */
+    private static boolean leavesHeavyPiece(Board b0, Move m, boolean me, List<String> line, Tuning t) {
+        if (!t.brilliantHeavyLeft || b0.getPiece(m.getTo()) != Piece.NONE || b0.isKingAttacked()
+                || b0.getPiece(m.getFrom()).getPieceType() == PieceType.KING) {
+            return false;
+        }
+        Side side = me ? Side.WHITE : Side.BLACK;
+        Map<Square, Integer> before = Tactics.hanging(b0, side);
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        Map<Square, Integer> after = Tactics.hanging(b1, side);
+        String reply = line.size() > 1 ? line.get(1) : "";
+        // a counter-threat at least as big as the piece left is an exchange of threats, not an offer
+        Map<Square, Integer> oppBefore = Tactics.hanging(b0, side.flip());
+        int threat = 0;
+        for (Map.Entry<Square, Integer> e : Tactics.hanging(b1, side.flip()).entrySet()) {
+            if (!oppBefore.containsKey(e.getKey())) {
+                threat = Math.max(threat, e.getValue());
+            }
+        }
+        for (Map.Entry<Square, Integer> e : before.entrySet()) {
+            Square sq = e.getKey();
+            if (sq != m.getFrom() && after.containsKey(sq) && after.get(sq) >= t.sacMin
+                    && Tactics.value(b0.getPiece(sq)) >= 5 && threat < Tactics.value(b0.getPiece(sq))
+                    && Tactics.value(b0.getPiece(m.getFrom())) < Tactics.value(b0.getPiece(sq))
+                    && !(reply.length() >= 4 && reply.substring(2, 4).equals(sq.value().toLowerCase(java.util.Locale.ROOT)))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** True when, after move {@code m}, the moved piece is the only piece (not pawn, not king) on the board. */
+    private static boolean lastPieceOnTheBoard(Board b0, Move m) {
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        for (Square sq : Square.values()) {
+            Piece p = sq == Square.NONE ? Piece.NONE : b1.getPiece(sq);
+            if (p != Piece.NONE && sq != m.getTo() && p.getPieceType() != PieceType.PAWN
+                    && p.getPieceType() != PieceType.KING) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * v2.5 B+P: a pawn pushed with check onto a square where the king takes it (the engine's line accepts), from a
+     * position not yet won (EP < 0.70) into a winning one (+2 or more): Kasparov - Topalov 1999, 33.c3+. On the 177
+     * games the other pawn sacrifices are Great or Best for chess.com (10 / 13) and none of them is taken by the king.
+     */
+    private static boolean pawnCheckSacrifice(Board b0, Move m, List<String> line, double epBefore, Eval played,
+                                              boolean me) {
+        if (b0.getPiece(m.getFrom()).getPieceType() != PieceType.PAWN || b0.getPiece(m.getTo()) != Piece.NONE
+                || line.size() < 2 || !line.get(0).equals(m.toString()) || epBefore >= 0.70
+                || (!played.isMateFor(me) && (played.isMate() || played.cpFor(me) < 200))) {
+            return false;
+        }
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        Move reply = Tactics.find(b1, line.get(1));
+        return b1.isKingAttacked() && reply != null && reply.getTo() == m.getTo()
+                && b1.getPiece(reply.getFrom()).getPieceType() == PieceType.KING;
+    }
+
+    /** Material the side wins along the first {@code plies} moves of {@code line} (all of them, quiet or not). */
+    private static int lineGain(Board b0, List<String> line, Side side, int plies) {
+        Board b = b0.clone();
+        for (int i = 0; i < Math.min(plies, line.size()); i++) {
+            Move mv = Tactics.find(b, line.get(i));
+            if (mv == null) {
+                break;
+            }
+            b.doMove(mv);
+        }
+        return Tactics.material(b, side) - Tactics.material(b0, side);
+    }
+
+    /**
+     * True when the line accepts the offered piece, the mover's next move wins back more than the piece (the capture
+     * is the point of the "sacrifice"), and 10 plies later the mover is at most a pawn up.
+     */
+    private static boolean shamSacrifice(Board b0, Move m, List<String> line) {
+        if (line.size() < 3 || !acceptedInLine(b0, m, line)) {
+            return false;
+        }
+        Side side = b0.getSideToMove();
+        int afterMove = lineGain(b0, line, side, 1);
+        return lineGain(b0, line, side, 3) > afterMove && lineGain(b0, line, side, 10) <= 1;
+    }
+
+    /**
+     * True when the line accepts the offered piece and the mover's next move takes back at least as much on a square
+     * that the moved piece was screening (a discovered attack), and the material is level 10 plies later.
+     */
+    private static boolean discoveredTrade(Board b0, Move m, List<String> line) {
+        if (line.size() < 3 || !acceptedInLine(b0, m, line)) {
+            return false;
+        }
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        Move accept = Tactics.find(b1, line.get(1));
+        int lost = Tactics.value(b1.getPiece(m.getTo()));
+        b1.doMove(accept);
+        Move back = Tactics.find(b1, line.get(2));
+        if (back == null || b1.getPiece(back.getTo()) == Piece.NONE || Tactics.value(b1.getPiece(back.getTo())) < lost) {
+            return false;
+        }
+        // the capturing piece's way to the target passed through the square the moved piece left
+        Side side = b0.getSideToMove();
+        return between(back.getFrom(), back.getTo(), m.getFrom()) && lineGain(b0, line, side, 10) <= 0;
+    }
+
+    /** True when {@code sq} lies strictly between {@code a} and {@code b} on a rank, file or diagonal. */
+    private static boolean between(Square a, Square b, Square sq) {
+        int af = a.getFile().ordinal(), ar = a.getRank().ordinal();
+        int bf = b.getFile().ordinal(), br = b.getRank().ordinal();
+        int df = Integer.signum(bf - af), dr = Integer.signum(br - ar);
+        if (!(af == bf || ar == br || Math.abs(bf - af) == Math.abs(br - ar))) {
+            return false;
+        }
+        for (int f = af + df, r = ar + dr; f != bf || r != br; f += df, r += dr) {
+            if (f == sq.getFile().ordinal() && r == sq.getRank().ordinal()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** True when the opponent's answer in {@code line} captures on the square the move went to. */
+    private static boolean acceptedInLine(Board b0, Move m, List<String> line) {
+        if (line.size() < 2 || !line.get(0).equals(m.toString())) {
+            return false;
+        }
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        Move reply = Tactics.find(b1, line.get(1));
+        return reply != null && reply.getTo() == m.getTo();
+    }
+
+    /**
+     * v2.5 B-TI+ (narrow TI with the product's after-capture search, user 22:30): a capture leaves en prise a piece at
+     * least as valuable as the capturing one, and our engine's eval after the opponent takes that piece is a mate for
+     * the mover: taking it loses at once (Bai Jinshi - Ding Liren 29...Rxf2 30.Qxa8?? Ng3+, live_170651071526 20.Nxf7
+     * 21.Qxe4?? Qh8#). The search only exists for the TI candidates the reviewer chose ({@link ReviewInput#afterCapture}).
+     */
+    private static boolean capturedIntoMate(Board b0, Move m, boolean me, EngineLine capture, Tuning t) {
+        if (!t.brilliantCaptureIntoMate || capture == null || b0.getPiece(m.getTo()) == Piece.NONE
+                || !capture.eval().isMateFor(me)) {
+            return false;
+        }
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        Move take = Tactics.find(b1, capture.move());
+        if (take == null || take.getTo() == m.getTo()) {
+            return false;
+        }
+        Piece left = b1.getPiece(take.getTo());
+        Side side = me ? Side.WHITE : Side.BLACK;
+        return left != Piece.NONE && left.getPieceSide() == side
+                && Tactics.value(left) >= Tactics.value(b0.getPiece(m.getFrom()));
+    }
+
+    /** True when the second move of {@code line} (the opponent's answer) is a capture elsewhere that gives check. */
+    private static boolean checkingCounter(Board b0, Move m, List<String> line) {
+        if (line.size() < 2 || !line.get(0).equals(m.toString())) {
+            return false;
+        }
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        Move reply = Tactics.find(b1, line.get(1));
+        if (reply == null || reply.getTo() == m.getTo() || !Tactics.isCapture(b1, line.get(1))) {
+            return false;
+        }
+        b1.doMove(reply);
+        return b1.isKingAttacked();
+    }
+
+    /**
+     * v2.5 B+K: the engine's king move walking into the opponent's half of a board still full of pieces, next to squares
+     * the opponent attacks (Short - Timman 1991, 34.Kg5!!): the king's safety is the sacrifice. Endgame king marches
+     * (few pieces) are technique: chess.com Best on the 177 games (30 of 30 forward king moves with at most 3 pieces).
+     */
+    private static boolean kingMarch(Board b0, Move m, boolean isTop, Tuning t) {
+        if (t.brilliantKingMarchPieces <= 0 || !isTop || b0.isKingAttacked() || b0.getPiece(m.getTo()) != Piece.NONE) {
+            return false;
+        }
+        boolean white = b0.getSideToMove() == Side.WHITE;
+        int from = m.getFrom().getRank().ordinal();
+        int to = m.getTo().getRank().ordinal();
+        int ahead = white ? to : 7 - to;
+        if (ahead < 4 || (white ? to <= from : to >= from)) {
+            return false;
+        }
+        int pieces = 0;
+        for (Square sq : Square.values()) {
+            Piece p = sq == Square.NONE ? Piece.NONE : b0.getPiece(sq);
+            if (p != Piece.NONE && p.getPieceType() != PieceType.PAWN && p.getPieceType() != PieceType.KING) {
+                pieces++;
+            }
+        }
+        if (pieces < t.brilliantKingMarchPieces) {
+            return false;
+        }
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        Side opponent = white ? Side.BLACK : Side.WHITE;
+        for (Square sq : kingZone(m.getTo())) {
+            if (b1.squareAttackedBy(sq, opponent) != 0L) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The squares a king on {@code sq} attacks. */
+    private static List<Square> kingZone(Square sq) {
+        List<Square> out = new ArrayList<>();
+        int f = sq.getFile().ordinal();
+        int r = sq.getRank().ordinal();
+        for (int df = -1; df <= 1; df++) {
+            for (int dr = -1; dr <= 1; dr++) {
+                int nf = f + df;
+                int nr = r + dr;
+                if ((df != 0 || dr != 0) && nf >= 0 && nf < 8 && nr >= 0 && nr < 8) {
+                    out.add(Square.squareAt(nr * 8 + nf));
+                }
+            }
+        }
+        return out;
     }
 
     /**

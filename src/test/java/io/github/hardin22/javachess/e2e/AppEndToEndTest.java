@@ -128,6 +128,12 @@ class AppEndToEndTest {
         EngineManager.get().shutdown();
     }
 
+    /** Saves are asynchronous (storage thread): the game a previous test left must be stored before counting. */
+    @org.junit.jupiter.api.BeforeEach
+    void storedGamesSettled() throws Exception {
+        E2eHarness.awaitStorage();
+    }
+
     // ================================================================== scenarios
 
     @Test
@@ -243,8 +249,10 @@ class AppEndToEndTest {
             return r;
         });
         waitFor("full analysis", () -> fxGet(() -> {
+            // the provisional results of the moves reviewed so far come first: wait for the accuracy as well
             List<?> analysis = (List<?>) field(review, "currentAnalysis");
-            return analysis != null && analysis.size() == 7;
+            return analysis != null && analysis.size() == 7
+                    && field(review, "currentReview") != null; // set with the accuracy when the review is done
         }));
         String white = fxGet(() -> ((Label) field(review, "whiteAccuracyLabel")).getText());
         String black = fxGet(() -> ((Label) field(review, "blackAccuracyLabel")).getText());
@@ -293,6 +301,134 @@ class AppEndToEndTest {
         fireButton(I18n.t("archive.delete"));   // confirms
         waitFor("deleted", () -> archive().get(first.id()).isEmpty());
         waitFor("list refreshed", () -> fxGet(() -> list.getItems().size()) == stored - 1);
+    }
+
+    @Test
+    @Order(7)
+    void botMoveIsRetriedWhenTheEngineCrashesOrHangs() throws Exception {
+        for (String failure : List.of("!crash", "!hang")) {
+            if (failure.equals("!hang")) {
+                // a new bot process for the second case: the crashes above used up the restart budget
+                fx(() -> {
+                    EngineSelection.get().select(EngineManager.STOCKFISH_LITE);
+                    return null;
+                });
+                waitFor("lite profile", () -> EngineManager.STOCKFISH_LITE.equals(EngineManager.get().activeProfile().id()));
+            }
+            Files.writeString(script, failure + "\n");
+            ActiveGameController game = startPvc(true);
+            fx(() -> {
+                currentGame(game).handleMoveInput("e2e4");
+                return null;
+            });
+            waitFor("engine failure reported (" + failure + ")",
+                    () -> fxGet(() -> currentGame(game).lastStatus()).startsWith("Motore non disponibile"));
+            assertEquals(1, (int) fxGet(() -> currentGame(game).getBoard().getHistory().size() - 1));
+            assertFalse(fxGet(() -> currentGame(game).isAwaitingHumanMove()), "still the bot's turn");
+            Files.writeString(script, "e7e5\n"); // the engine works again
+            waitFor("bot move after the retry (" + failure + ")",
+                    () -> fxGet(() -> currentGame(game).getBoard().getHistory().size() - 1) >= 2);
+            assertTrue(fxGet(() -> currentGame(game).isAwaitingHumanMove()));
+            fx(() -> {
+                main.navigateTo("HOME");
+                return null;
+            });
+        }
+        fx(() -> {
+            EngineSelection.get().select(EngineManager.STOCKFISH);
+            return null;
+        });
+    }
+
+    @Test
+    @Order(8)
+    void leavingTheReviewStopsTheFullAnalysisAndItsEngines() throws Exception {
+        Files.writeString(script, "!slow\n");
+        long baseline = liveChildProcesses();
+        ArchivedGame game = archive().add(new ArchivedGame(0, ArchivedGame.GameMode.PVP, "Player vs Player",
+                "Bianco", "Nero", "*", "", "", "", LocalDateTime.now(), PgnCodec.START_FEN, "",
+                List.of("e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1g1", "f8e7", "f1e1",
+                        "b7b5", "a4b3", "d7d6", "c2c3", "e8g8", "h2h3", "c6b8", "d2d4", "b8d7", "c3c4", "c7c6",
+                        "c4b5", "a6b5", "b1c3", "c8b7", "c1g5", "b5b4", "c3b1", "h7h6", "g5h4", "c6c5",
+                        "d4e5", "f6e4", "h4e7", "d8e7", "b1d2", "d7e5", "d2e4", "b7e4")));
+        // 40 plies at 0.8 s per search: the review alone would need well over 5 s
+        ReviewController review = fx(() -> {
+            ReviewController r = (ReviewController) main.getController("REVIEW");
+            main.navigateTo("REVIEW");
+            r.loadGame(game.movesAsUciString(), game.initialFen());
+            r.analyze();
+            return r;
+        });
+        waitFor("review engines started", () -> liveChildProcesses() > baseline);
+        Thread.sleep(500);
+        long left = System.currentTimeMillis();
+        fx(() -> {
+            main.navigateTo("HOME");
+            return null;
+        });
+        waitFor("review engines closed after leaving", () -> liveChildProcesses() <= baseline);
+        long closedAfter = System.currentTimeMillis() - left;
+        assertTrue(closedAfter < 3000, "engines closed " + closedAfter + " ms after leaving the review");
+        Thread analysis = (Thread) field(review, "analysisThread");
+        assertTrue(analysis == null || !analysis.isAlive(), "the review thread stopped");
+        Thread.sleep(1000);
+        assertNull(fxGet(() -> field(review, "currentReview")), "no final results from a cancelled review");
+        Files.writeString(script, "");
+    }
+
+    @Test
+    @Order(9)
+    void withoutABoardTheGameIsPlayedByTappingTheScreen() throws Exception {
+        Files.writeString(script, "e7e5\nd8h4\n"); // 1.f3 e5 2.g4 Qh4#
+        int before = archive().size();
+        ActiveGameController game = startPvc(true);
+        waitFor("screen moves accepted", () -> fxGet(() -> currentGame(game).isAwaitingHumanMove()));
+        tapMove(game, "f2f3");
+        waitFor("bot reply", () -> fxGet(() -> currentGame(game).getBoard().getHistory().size() - 1) >= 2);
+        tapMove(game, "g2g4");
+        waitFor("bot reply 2", () -> fxGet(() -> currentGame(game).getBoard().getHistory().size() - 1) >= 4);
+        assertEquals(List.of("f2f3", "e7e5", "g2g4", "d8h4"), fxGet(() -> currentGame(game).getBoard().getBackup()
+                .stream().map(b -> b.getMove().toString()).toList()));
+        // a tap on a piece of the bot does nothing
+        tapSquare(game, "a7");
+        tapSquare(game, "a5");
+        Thread.sleep(300);
+        assertEquals(4, (int) fxGet(() -> currentGame(game).getBoard().getHistory().size() - 1));
+        ArchivedGame saved = waitForArchived(before + 1);
+        assertEquals("f2f3 e7e5 g2g4 d8h4", saved.movesAsUciString());
+        assertEquals("0-1", saved.result());
+        fx(() -> {
+            main.navigateTo("HOME");
+            return null;
+        });
+    }
+
+    /** Taps the from-square then the to-square of {@code uci} on the game board (no physical board). */
+    private static void tapMove(ActiveGameController game, String uci) throws Exception {
+        tapSquare(game, uci.substring(0, 2));
+        tapSquare(game, uci.substring(2, 4));
+    }
+
+    private static void tapSquare(ActiveGameController game, String square) throws Exception {
+        fx(() -> {
+            javafx.scene.Node board = (javafx.scene.Node) field(game, "chessBoard");
+            int tile = (int) field(board, "TILE_SIZE");
+            boolean flipped = (boolean) field(board, "flipped");
+            int file = square.charAt(0) - 'a';
+            int rank = square.charAt(1) - '1';
+            double x = ((flipped ? 7 - file : file) + 0.5) * tile;
+            double y = ((flipped ? rank : 7 - rank) + 0.5) * tile;
+            javafx.geometry.Point2D scene = board.localToScene(x, y); // the dispatch recomputes x/y from it
+            javafx.event.Event.fireEvent(board, new javafx.scene.input.MouseEvent(
+                    javafx.scene.input.MouseEvent.MOUSE_CLICKED, scene.getX(), scene.getY(), scene.getX(),
+                    scene.getY(), javafx.scene.input.MouseButton.PRIMARY,
+                    1, false, false, false, false, true, false, false, true, false, true, null));
+            return null;
+        });
+    }
+
+    private static long liveChildProcesses() {
+        return ProcessHandle.current().descendants().filter(ProcessHandle::isAlive).count();
     }
 
     // ================================================================== helpers

@@ -20,6 +20,20 @@ public class PvcGame extends AbstractGame {
     private boolean isPlayerWhite;
     private int skillLevel;
     private EngineService.EngineType botType;
+    /** A bot move has been asked for and not applied yet. */
+    private boolean botThinking;
+    /** Id of the latest bot request: answers to older requests (position changed meanwhile) are ignored. */
+    private int botRequestId;
+    /** Consecutive failed bot moves (engine missing or crashed): the retries get further apart. */
+    private int botFailures;
+    private static final long[] BOT_RETRY_DELAYS_MS = { 2_000, 5_000, 15_000, 30_000 };
+    /** Choosing another engine while the bot cannot move retries at once. */
+    private final javafx.beans.value.ChangeListener<io.github.hardin22.javachess.Engine.EngineProfile> profileListener =
+            (obs, o, n) -> {
+                if (botFailures > 0) {
+                    retryBotMove();
+                }
+            };
 
     public PvcGame(ChessBoardUI chessBoardUI, EvalBar evalBar, Label openingPvc, boolean isPlayerWhite,
             int skillLevel, EngineService.EngineType botType) {
@@ -34,6 +48,24 @@ public class PvcGame extends AbstractGame {
         if (botType != null) {
             EngineManager.get().select(botType.profileId());
         }
+        EngineManager.get().setBotStrength(null); // the skill level above, unless a level in Elo is chosen
+    }
+
+    /**
+     * A game against a level of the ladder ({@code Play.BotLevels}), with a clock or without
+     * ({@code TimeControl.UNLIMITED}).
+     */
+    public PvcGame(ChessBoardUI chessBoardUI, EvalBar evalBar, Label openingPvc, boolean isPlayerWhite,
+            io.github.hardin22.javachess.Play.BotLevels.Level level,
+            io.github.hardin22.javachess.Play.TimeControl timeControl) {
+        this(chessBoardUI, evalBar, openingPvc, isPlayerWhite, level.strength().skillLevel(), level.engine());
+        this.level = level;
+        this.timeControl = timeControl == null ? io.github.hardin22.javachess.Play.TimeControl.UNLIMITED : timeControl;
+        if (!this.timeControl.isUnlimited()) {
+            this.clock = new io.github.hardin22.javachess.Play.GameClock(this.timeControl);
+            this.clock.setOnFlag(this::onFlag);
+        }
+        EngineManager.get().setBotStrength(level.strength());
     }
 
     /** Arrows are suggestions for the human only, not for the bot's side. */
@@ -46,6 +78,7 @@ public class PvcGame extends AbstractGame {
     public void startGame() {
         gameRunning = true;
         updateStatus("");
+        EngineManager.get().activeProfileProperty().addListener(profileListener);
 
         Platform.runLater(() -> chessBoardUI.setPosition(board.getFen(), null));
         evaluatePositionAndMoves();
@@ -68,16 +101,20 @@ public class PvcGame extends AbstractGame {
             public void onBoardSetupComplete() {
                 updateStatus("SCACCHIERA PRONTA! Partita Iniziata");
                 manager.startGameMode(); // ACTIVATE GAME MODE
+                boardReady = true;
+                startTurnClock();
 
-                // Start the actual game logic here if needed, or just let the user move
-                if (!isPlayerWhite) {
+                // the bot moves first when it is its turn (Black chosen, a position or a resumed game)
+                if (board.getSideToMove() != humanSide()) {
                     handleComputerMove();
                 }
             }
 
             @Override
             public void onSetupProgress(String message) {
-                updateStatus(message);
+                if (gameRunning) { // after the end the result stays on screen (the LEDs still guide)
+                    updateStatus(message);
+                }
             }
 
             @Override
@@ -89,14 +126,18 @@ public class PvcGame extends AbstractGame {
                 }
                 if (errorSquare != null) {
                     chessBoardUI.highlightErrorSquare(errorSquare);
-                    updateStatus("ERRORE: Controlla " + errorSquare);
+                    if (gameRunning) { // after the end the result stays on screen
+                        updateStatus("ERRORE: Controlla " + errorSquare);
+                    }
                 }
             }
 
             @Override
             public void onBotMoveReplicated() {
-                updateStatus("Mossa Bot Replicata! Tocca a te");
-                // Game continues naturally as we are now listening for user moves again
+                startTurnClock();
+                if (gameRunning) {
+                    updateStatus("Mossa Bot Replicata! Tocca a te");
+                }
             }
         });
 
@@ -122,14 +163,8 @@ public class PvcGame extends AbstractGame {
         }
 
         try {
-            Move move = parseMoveInput(moveInput);
-
-            // Handle Promotion (Auto-Queen)
-            if (move != null && isPromotionMove(move)) {
-                Side side = board.getSideToMove();
-                Piece promotionPiece = side == Side.WHITE ? Piece.WHITE_QUEEN : Piece.BLACK_QUEEN;
-                move = new Move(move.getFrom(), move.getTo(), promotionPiece);
-            }
+            // promotion: the piece chosen on the screen ("e7e8n"), a queen for a move from the board
+            Move move = withAutoQueen(parseMoveInput(moveInput));
 
             if (move != null && MoveGenerator.generateLegalMoves(board).contains(move)) {
                 String fenBefore = board.getFen();
@@ -169,23 +204,72 @@ public class PvcGame extends AbstractGame {
         if (!gameRunning)
             return;
 
+        botThinking = true;
+        final int requestId = ++botRequestId;
         final String requestedFen = board.getFen();
         // Asynchronous: the engine layer never blocks this thread nor the FX thread.
         EngineManager.get().botMove(requestedFen, skillLevel).whenComplete((bestMoveUci, err) -> {
-            if (err != null) {
-                log.error("bot move failed: {}", err.toString());
-                updateStatus("Motore non disponibile: " + EngineManager.get().statusProperty().get().message());
-                return;
-            }
-            // Board is not thread-safe: apply the bot move on the FX thread.
-            Platform.runLater(() -> applyBotMove(requestedFen, bestMoveUci));
+            // Board is not thread-safe: the outcome is handled on the FX thread.
+            Platform.runLater(() -> {
+                if (requestId != botRequestId) {
+                    return; // a newer request (or a position reset) superseded this one
+                }
+                botThinking = false;
+                if (err != null) {
+                    onBotMoveFailed(requestedFen, err);
+                } else {
+                    applyBotMove(requestedFen, bestMoveUci);
+                }
+            });
         });
+    }
+
+    /**
+     * The position was changed from outside the normal flow (e.g. a takeback): a bot answer still on its way is
+     * ignored and the human may move again.
+     */
+    protected void onPositionReset() {
+        botRequestId++;
+        botThinking = false;
+        botFailures = 0;
+    }
+
+    /** The engine could not move (missing, crashed, timed out): tell the player and try again later. */
+    private void onBotMoveFailed(String requestedFen, Throwable err) {
+        if (!gameRunning || !requestedFen.equals(board.getFen())) {
+            return;
+        }
+        long delay = BOT_RETRY_DELAYS_MS[Math.min(botFailures, BOT_RETRY_DELAYS_MS.length - 1)];
+        botFailures++;
+        log.error("bot move failed ({} in a row), retrying in {} ms: {}", botFailures, delay, err.toString());
+        var status = EngineManager.get().statusProperty().get();
+        String reason = status != null && !status.message().isBlank() ? status.message() : "nessuna risposta";
+        updateStatus("Motore non disponibile: " + reason + ". Nuovo tentativo tra " + delay / 1000 + " s");
+        runLaterOnFx(delay, () -> {
+            if (gameRunning && !botThinking && requestedFen.equals(board.getFen())) {
+                handleComputerMove();
+            }
+        });
+    }
+
+    /** Asks the bot again for its move now (e.g. "Riprova" after an engine failure). No effect on the human's turn. */
+    public void retryBotMove() {
+        if (gameRunning && !botThinking && board.getSideToMove() != (isPlayerWhite ? Side.WHITE : Side.BLACK)) {
+            handleComputerMove();
+        }
+    }
+
+    /** True while it is the human's turn and nothing else is pending (moves from the screen are accepted). */
+    @Override
+    public boolean isAwaitingHumanMove() {
+        return gameRunning && !botThinking && board.getSideToMove() == (isPlayerWhite ? Side.WHITE : Side.BLACK);
     }
 
     private void applyBotMove(String requestedFen, String bestMoveUci) {
         if (!gameRunning || !requestedFen.equals(board.getFen())) {
             return; // game ended or position changed meanwhile
         }
+        botFailures = 0;
         Move bestMove = parseMoveUci(bestMoveUci);
 
         if (isPromotionMove(bestMove) && bestMove.getPromotion() == Piece.NONE) {
@@ -205,6 +289,10 @@ public class PvcGame extends AbstractGame {
 
         chessBoardUI.setPosition(board.getFen(), finalBestMove);
         updateOpeningLabel(openingPvc);
+        // The player reproduces the bot's move on the board, also the one that ends the game.
+        io.github.hardin22.javachess.Controllers.ArduinoController.getInstance()
+                .getBoardStateManager()
+                .startBotMoveReplication(finalBestMove.getFrom().name(), finalBestMove.getTo().name());
         if (board.isMated()) {
             notifyMate(); // Trigger Victory Animation
             String winner = board.getSideToMove().flip() == Side.WHITE ? "Bianco" : "Nero";
@@ -213,12 +301,6 @@ public class PvcGame extends AbstractGame {
             String drawReason = getDrawReason();
             endGameWithMessage("Partita patta per " + drawReason + ".");
         } else {
-            // Trigger Physical Replication FIRST
-            io.github.hardin22.javachess.Controllers.ArduinoController.getInstance()
-                    .getBoardStateManager()
-                    .startBotMoveReplication(finalBestMove.getFrom().name(),
-                            finalBestMove.getTo().name());
-
             evaluatePositionAndMoves();
 
             // LED: Notify Opponent Move (Check/Mate only now)
@@ -227,6 +309,9 @@ public class PvcGame extends AbstractGame {
     }
 
     private String botName() {
+        if (level != null) {
+            return level.playerName();
+        }
         if (botType == null || botType == EngineService.EngineType.STOCKFISH) {
             return "Stockfish livello " + skillLevel;
         }
@@ -261,12 +346,16 @@ public class PvcGame extends AbstractGame {
 
     public void endGame(boolean saveGame) {
         gameRunning = false;
+        botThinking = false;
+        cancelPendingActions(); // pending bot retries
+        EngineManager.get().activeProfileProperty().removeListener(profileListener);
 
         if (pgn.length() < 10) {
             saveGame = false;
             log.info("Game too short, not saved");
         }
 
+        endFeatures();
         // Engine processes are owned and reused by EngineManager: just stop the live analysis.
         stopAnalysis();
 
@@ -306,5 +395,258 @@ public class PvcGame extends AbstractGame {
 
     private Move parseMoveUci(String uciMove) {
         return new Move(uciMove, board.getSideToMove()); // keeps the promotion piece (e7e8n)
+    }
+
+    // --- clock, take-back, hints, draw offers, resuming ---------------------------------------------------
+
+    private io.github.hardin22.javachess.Play.BotLevels.Level level;
+    private io.github.hardin22.javachess.Play.TimeControl timeControl = io.github.hardin22.javachess.Play.TimeControl.UNLIMITED;
+    private io.github.hardin22.javachess.Play.GameClock clock;
+    private io.github.hardin22.javachess.Play.HintAdvisor hintAdvisor;
+    private io.github.hardin22.javachess.Play.BotDrawPolicy drawPolicy;
+    private int takebacks;
+    private java.time.LocalDateTime startedAt = java.time.LocalDateTime.now();
+
+    private Side humanSide() {
+        return isPlayerWhite ? Side.WHITE : Side.BLACK;
+    }
+
+    /** The level of the ladder, or null for an old-style skill level. */
+    public io.github.hardin22.javachess.Play.BotLevels.Level getLevel() {
+        return level;
+    }
+
+    public io.github.hardin22.javachess.Play.TimeControl getTimeControl() {
+        return timeControl;
+    }
+
+    /** The clock (observable texts for the two player rows), or null for a game without time. */
+    public io.github.hardin22.javachess.Play.GameClock getClock() {
+        return clock;
+    }
+
+    /** Hints on request (observable level and text for the hint button and card). */
+    public io.github.hardin22.javachess.Play.HintAdvisor hints() {
+        if (hintAdvisor == null) {
+            hintAdvisor = new io.github.hardin22.javachess.Play.HintAdvisor();
+        }
+        return hintAdvisor;
+    }
+
+    /** Asks for a hint (first the piece, then the move). Only on the player's turn. */
+    public void requestHint() {
+        if (gameRunning && board.getSideToMove() == humanSide()) {
+            hints().request(board.getFen());
+        }
+    }
+
+    /** Moves taken back so far. */
+    public int getTakebacks() {
+        return takebacks;
+    }
+
+    /** True when {@link #takeBack()} would do something. */
+    public boolean canTakeBack() {
+        return gameRunning && pliesToTakeBack() > 0;
+    }
+
+    /** True once the pieces are set up (a take-back during the set-up would be undone by the board). */
+    private volatile boolean boardReady;
+
+    /** Half-moves a take-back removes now: the player's last move, and the bot's answer if it already came. */
+    private int pliesToTakeBack() {
+        if (!boardReady) {
+            return 0;
+        }
+        int plies = board.getSideToMove() == humanSide() ? 2 : 1;
+        return movesUci.size() >= plies ? plies : 0;
+    }
+
+    /**
+     * Takes back the player's last move (and the bot's answer): the position goes back, the LEDs show which pieces
+     * to put back on the board, and it is the player's turn again. A bot answer still being computed is dropped.
+     * Clocks keep their times. Returns false when there is nothing to take back.
+     */
+    public boolean takeBack() {
+        int plies = gameRunning ? pliesToTakeBack() : 0;
+        if (plies == 0 || !undoPlies(plies)) {
+            return false;
+        }
+        onPositionReset();
+        takebacks++;
+        hints().clear();
+        if (clock != null) {
+            clock.start(humanSide());
+        }
+        updateOpeningLabel(openingPvc);
+        updateStatus("Mossa annullata: rimetti i pezzi come sullo schermo");
+        evaluatePositionAndMoves();
+        saveSnapshot();
+        return true;
+    }
+
+    /**
+     * Offers a draw to the bot. It accepts only when it does not think it is better (and not in the opening); an
+     * accepted draw ends the game ("Patta d'accordo"). The future completes on the JavaFX thread.
+     */
+    public java.util.concurrent.CompletableFuture<io.github.hardin22.javachess.Play.BotDrawPolicy.Decision> offerDraw() {
+        if (!gameRunning) {
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                    new io.github.hardin22.javachess.Play.BotDrawPolicy.Decision(false, "La partita è finita"));
+        }
+        if (drawPolicy == null) {
+            drawPolicy = new io.github.hardin22.javachess.Play.BotDrawPolicy();
+        }
+        String fen = board.getFen();
+        java.util.concurrent.CompletableFuture<io.github.hardin22.javachess.Play.BotDrawPolicy.Decision> answer =
+                new java.util.concurrent.CompletableFuture<>();
+        drawPolicy.offer(fen, movesUci.size(), humanSide().flip(), botName()).thenAccept(d -> Platform.runLater(() -> {
+            if (!d.accepted()) {
+                answer.complete(d);
+            } else if (gameRunning && fen.equals(board.getFen())) {
+                endGame("Patta d'accordo", true);
+                answer.complete(d);
+            } else {
+                // a move was made (or the game ended) while the bot was thinking about it
+                drawPolicy.forgetLastOffer();
+                answer.complete(new io.github.hardin22.javachess.Play.BotDrawPolicy.Decision(false,
+                        "La posizione è cambiata: riproponi la patta"));
+            }
+        }));
+        return answer;
+    }
+
+    /** True when a draw may be offered now (not right after the previous offer). */
+    public boolean canOfferDraw() {
+        return gameRunning && (drawPolicy == null || drawPolicy.canOffer(movesUci.size()));
+    }
+
+    /** Puts a saved game back (call before {@link #startGame()}): position, moves, clocks, counters. */
+    public void resume(io.github.hardin22.javachess.Play.GameSnapshot snapshot) {
+        setStartPosition(snapshot.initialFen());
+        replayMoves(snapshot.moves());
+        takebacks = snapshot.takebacks();
+        hints().setUsed(snapshot.hints());
+        if (snapshot.startedAt() != null) {
+            startedAt = snapshot.startedAt();
+        }
+        if (clock != null) {
+            clock.restore(snapshot.whiteMillis(), snapshot.blackMillis());
+        }
+        replaceArchivedCopyOf(snapshot);
+    }
+
+    /** A game against the computer rebuilt from a saved one, ready for {@link #startGame()}. */
+    public static PvcGame fromSnapshot(io.github.hardin22.javachess.Play.GameSnapshot s, ChessBoardUI chessBoardUI,
+            EvalBar evalBar, Label openingPvc) {
+        PvcGame game;
+        var level = s.botLevelId() == null ? java.util.Optional.<io.github.hardin22.javachess.Play.BotLevels.Level>empty()
+                : io.github.hardin22.javachess.Play.BotLevels.byId(s.botLevelId());
+        if (level.isPresent()) {
+            game = new PvcGame(chessBoardUI, evalBar, openingPvc, s.humanWhite(), level.get(), s.timeControl());
+        } else {
+            EngineService.EngineType type;
+            try {
+                type = s.botEngine() == null ? EngineService.EngineType.STOCKFISH
+                        : EngineService.EngineType.valueOf(s.botEngine());
+            } catch (IllegalArgumentException e) {
+                type = EngineService.EngineType.STOCKFISH;
+            }
+            game = new PvcGame(chessBoardUI, evalBar, openingPvc, s.humanWhite(), s.skillLevel(), type);
+        }
+        game.resume(s);
+        return game;
+    }
+
+    @Override
+    protected io.github.hardin22.javachess.Play.GameSnapshot snapshot() {
+        long white = clock == null ? 0 : clock.remainingMillis(Side.WHITE);
+        long black = clock == null ? 0 : clock.remainingMillis(Side.BLACK);
+        return new io.github.hardin22.javachess.Play.GameSnapshot(io.github.hardin22.javachess.Play.GameSnapshot.Mode.PVC,
+                initialFen, movesUci, isPlayerWhite, level == null ? null : level.id(),
+                botType == null ? null : botType.name(), skillLevel, timeControl, white, black, takebacks,
+                hintAdvisor == null ? 0 : hintAdvisor.usedProperty().get(), startedAt, java.time.LocalDateTime.now());
+    }
+
+    /** After the player's move: the hint goes, the player's clock stops (+ increment) and the bot's starts. */
+    @Override
+    protected void onHumanMove(String fenBefore, Move move) {
+        super.onHumanMove(fenBefore, move);
+        if (hintAdvisor != null) {
+            hintAdvisor.clear();
+        }
+        if (clock != null) {
+            clock.moveMade(humanSide());
+            if (gameRunning) {
+                clock.start(humanSide().flip());
+            }
+            budgetBotTime();
+        }
+    }
+
+    /** After the bot's move: its clock stops (+ increment); the player's starts once the move is on the board. */
+    @Override
+    protected void notifyOpponentMove(String from, String to) {
+        super.notifyOpponentMove(from, to);
+        if (clock != null) {
+            clock.moveMade(humanSide().flip());
+            boolean board = io.github.hardin22.javachess.Controllers.ArduinoController.getInstance()
+                    .getBoardStateManager().isHardwareConnected();
+            // With a board the player's time starts once the bot's move is reproduced on it (setting
+            // game.clock.replicationFree=false makes it start at once, as in an online game)
+            if (!board || !io.github.hardin22.javachess.Utils.ConfigManager.getBooleanProperty(
+                    REPLICATION_FREE_KEY, true)) {
+                startTurnClock();
+            }
+        }
+    }
+
+    /** Setting: the time spent reproducing the bot's move on the board is not counted (default true). */
+    public static final String REPLICATION_FREE_KEY = "game.clock.replicationFree";
+
+    /** Starts the clock of the side to move (game start, board in step again, bot move reproduced). */
+    private void startTurnClock() {
+        if (clock == null || !gameRunning) {
+            return;
+        }
+        Side toMove = board.getSideToMove();
+        if (toMove == humanSide() && clock.runningProperty().get() != humanSide()) {
+            clock.start(toMove);
+        } else if (toMove != humanSide()) {
+            clock.start(toMove);
+            budgetBotTime();
+        }
+    }
+
+    /** The bot thinks within its clock: about 1/30 of its time plus most of the increment, at most the usual time. */
+    private void budgetBotTime() {
+        if (clock == null || level == null) {
+            return;
+        }
+        long left = clock.remainingMillis(humanSide().flip());
+        int configured = io.github.hardin22.javachess.Utils.ConfigManager.getIntProperty("game.bot.movetime", 2000);
+        long budget = left / 30 + timeControl.incrementSeconds() * 800L;
+        int movetime = (int) Math.max(100, Math.min(configured, budget));
+        EngineManager.get().setBotStrength(level.strength().withMovetime(movetime));
+    }
+
+    /** A clock ran out: the result (FIDE 6.9: a draw if the other side cannot mate). */
+    private void onFlag(Side flagged) {
+        if (gameRunning) {
+            endGame(io.github.hardin22.javachess.Play.GameClock.flagResult(board, flagged), true);
+        }
+    }
+
+    /** End of the game: clock stopped, hint removed, the bot strength back to the plain skill level. */
+    private void endFeatures() {
+        if (clock != null) {
+            clock.stop();
+        }
+        if (level != null) {
+            EngineManager.get().setBotStrength(null);
+        }
+        if (hintAdvisor != null) {
+            hintAdvisor.clear();
+        }
     }
 }

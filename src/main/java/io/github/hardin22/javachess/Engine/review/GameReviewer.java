@@ -13,6 +13,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -102,6 +104,7 @@ public final class GameReviewer implements AutoCloseable {
             // small blocks of consecutive positions handed out in game order: each engine reuses its hash inside a
             // block, and the evaluated prefix of the game grows steadily (progressive labels)
             AtomicInteger nextBlock = new AtomicInteger();
+            Map<Integer, EngineLine> afterCapture = new ConcurrentHashMap<>();
             Progressive progressive = new Progressive(replay, positions, l, whiteRating, blackRating);
             for (int t = 0; t < threads; t++) {
                 jobs.add(pool.submit(() -> {
@@ -126,6 +129,19 @@ public final class GameReviewer implements AutoCloseable {
                             }
                         } finally {
                             evaluator.endBlock();
+                        }
+                        // Phase 4 "threat ignored": the position after the opponent takes the piece an engine move of
+                        // this block left en prise, searched outside the block like the second lines (from a cleared
+                        // hash: the same search as the stored oracle answers of the gate)
+                        for (int idx = start; idx < Math.min(n, start + BLOCK)
+                                && ReviewClassifier.Tuning.DEFAULT.afterCaptureSearch; idx++) {
+                            String capture = ReviewClassifier.afterCaptureRequest(replay.fens().get(idx),
+                                    replay.uci().get(idx), positions[idx]);
+                            EngineLine line = capture == null ? null
+                                    : afterCapture(replay.fens().get(idx + 1), capture, nodes);
+                            if (line != null) {
+                                afterCapture.put(idx, line);
+                            }
                         }
                     }
                     return null;
@@ -154,12 +170,12 @@ public final class GameReviewer implements AutoCloseable {
             await(second);
 
             GameReview r = ReviewClassifier.classifyGame(new ReviewInput(replay.initialFen(), replay.uci(),
-                    Arrays.asList(positions), book, whiteRating, blackRating));
+                    Arrays.asList(positions), book, whiteRating, blackRating, afterCapture));
             int hits = evaluator instanceof CachingEvaluator c ? c.hits() - hits0 : 0;
             int misses = evaluator instanceof CachingEvaluator c ? c.misses() - miss0 : n + 1 + need.cardinality();
             long ms = (System.nanoTime() - t0) / 1_000_000;
-            log.info("review: {} moves, {} searches ({} MultiPV 2), {} cache hits, {} nodes in {} ms", n, misses,
-                    need.cardinality(), hits, nodes.get(), ms);
+            log.info("review: {} moves, {} searches ({} MultiPV 2, {} after a capture), {} cache hits, {} nodes in {} ms",
+                    n, misses, need.cardinality(), afterCapture.size(), hits, nodes.get(), ms);
             l.onProgress(1.0);
             return new GameReview(r.initialFen(), r.moves(), r.positions(), r.whiteAccuracy(), r.blackAccuracy(),
                     r.opening(), new GameReview.Stats(ms, misses, hits, need.cardinality(), nodes.get()));
@@ -228,6 +244,32 @@ public final class GameReviewer implements AutoCloseable {
             return PositionEval.terminal(fen, Eval.terminal(b).orElse(Eval.DRAW));
         }
         return replay.drawn().get(idx) ? PositionEval.terminal(fen, Eval.DRAW) : null;
+    }
+
+    /**
+     * Our engine's view of the position after the opponent's {@code capture} in {@code fen}: the capture, the
+     * evaluation after it (White POV) and the line (capture first), as {@link ReviewInput#afterCapture()} expects;
+     * null when the capture is not legal there.
+     */
+    private EngineLine afterCapture(String fen, String capture, AtomicLong nodes) throws Exception {
+        Board b = new Board();
+        b.loadFromFen(fen);
+        com.github.bhlangonijr.chesslib.move.Move m = Tactics.find(b, capture);
+        if (m == null) {
+            return null;
+        }
+        b.doMove(m);
+        if (b.legalMoves().isEmpty()) {
+            return new EngineLine(capture, Eval.terminal(b).orElse(Eval.DRAW), List.of(capture), 0);
+        }
+        PositionEval p = evaluator.evaluate(b.getFen(), 1, settings.nodes());
+        nodes.addAndGet(p.nodes());
+        List<String> pv = new ArrayList<>();
+        pv.add(capture);
+        if (p.best() != null) {
+            pv.addAll(p.best().pv());
+        }
+        return new EngineLine(capture, p.eval(), pv, p.depth());
     }
 
     private static void await(List<Future<?>> jobs) throws InterruptedException, ExecutionException {

@@ -41,6 +41,12 @@ import java.util.concurrent.TimeoutException;
  * rook move that is also the first half of castling, so sliding pieces and rook-first castling do not produce
  * false moves. Pieces left on squares that should be empty are flagged after {@code errorSettleMs}.
  *
+ * <h2>Board out of sync</h2>
+ * When the board reconnects during a game, the first occupancy snapshot tells what happened meanwhile: a move
+ * made on the board while it was offline is taken as a move; any other difference (the opponent's move not yet
+ * reproduced, moves made on the screen, a takeback) puts the manager in {@link Mode#RESYNC}: the LEDs show the
+ * missing and extra pieces as in the setup and the screen shows the game position until the board matches it.
+ *
  * <h2>Threading</h2>
  * Sensor events and the public methods are serialised on one daemon thread ("board-events"); public methods
  * return immediately. Listener callbacks run on the JavaFX thread (tests can pass another executor).
@@ -74,8 +80,13 @@ public class BoardStateManager implements BoardHardware.SensorListener {
     }
 
     public enum Mode {
-        IDLE, SETUP, PLAY, REPLICATE
+        IDLE, SETUP, PLAY, REPLICATE,
+        /** The physical board must be brought back to the game position (after a reconnection or a takeback). */
+        RESYNC
     }
+
+    /** How long to wait for the first occupancy snapshot after a reconnection before using what is known. */
+    private static final long SNAPSHOT_WAIT_MS = 2000;
 
     private final LedRenderer leds;
     private final MoveLeds moveLeds;
@@ -109,6 +120,11 @@ public class BoardStateManager implements BoardHardware.SensorListener {
     private String lastFen;
     private String lastError;
     private String lastProgress;
+    /** Reconnected during a game: moves are not evaluated until the board has sent its occupancy. */
+    private boolean awaitingSnapshot;
+    private ScheduledFuture<?> snapshotTimeout;
+    /** The resync also completes a pending opponent-move replication. */
+    private boolean resyncCompletesReplication;
 
     /** Production constructor: LEDs from the hardware layer, callbacks on the JavaFX thread, hints from the engine. */
     public BoardStateManager(LedRenderer leds, MoveLeds moveLeds) {
@@ -189,6 +205,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
     public void startSetupMode() {
         post(() -> {
             mode = Mode.SETUP;
+            awaitingSnapshot = false;
             lastProgress = null;
             log.info("Setup mode");
             refresh();
@@ -198,6 +215,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
     public void startGameMode() {
         post(() -> {
             mode = Mode.PLAY;
+            awaitingSnapshot = false;
             touched = 0;
             liftedSquare = -1;
             leds.clear(LedRenderer.Layer.BASE);
@@ -211,8 +229,10 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         listener = null;
         post(() -> {
             mode = Mode.IDLE;
+            awaitingSnapshot = false;
             cancel(pendingCommit);
             cancel(pendingCheck);
+            cancel(snapshotTimeout);
             touched = 0;
             liftedSquare = -1;
             physicalMoveSide = null;
@@ -234,7 +254,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
             liftedSquare = -1;
             cancel(pendingCommit);
             replicationRequired = 0;
-            if (mode == Mode.REPLICATE) {
+            if (mode == Mode.REPLICATE || mode == Mode.RESYNC) {
                 mode = Mode.PLAY;
             }
             leds.clear(LedRenderer.Layer.BASE);
@@ -263,6 +283,20 @@ public class BoardStateManager implements BoardHardware.SensorListener {
                     | (physical ^ occupancy(logical));
             log.info("Waiting for the player to replicate {}-{}", from, to);
             refresh();
+        });
+    }
+
+    /**
+     * Asks the player to bring the physical board back to the logical position (e.g. after a takeback set with
+     * {@link #setLogicalBoard}): missing and extra pieces are shown on the LEDs until the board matches. Does
+     * nothing when the board already matches, is not connected or no game is being played.
+     */
+    public void resyncToLogical() {
+        post(() -> {
+            if ((mode == Mode.PLAY || mode == Mode.REPLICATE) && hardwareConnected
+                    && physical != occupancy(logical)) {
+                startResync(mode == Mode.REPLICATE);
+            }
         });
     }
 
@@ -298,13 +332,31 @@ public class BoardStateManager implements BoardHardware.SensorListener {
                 applyChange(Long.numberOfTrailingZeros(bits), true);
             }
         });
+        post(() -> {
+            if (awaitingSnapshot) {
+                checkSyncAfterReconnection();
+            }
+        });
     }
 
     @Override
     public void onConnectionChanged(boolean connected, String description) {
+        boolean wasConnected = hardwareConnected;
         hardwareConnected = connected;
         log.info("Chessboard {}: {}", connected ? "connected" : "disconnected", description);
-        post(this::refresh);
+        post(() -> {
+            cancel(snapshotTimeout);
+            awaitingSnapshot = false;
+            if (connected && !wasConnected && (mode == Mode.PLAY || mode == Mode.REPLICATE)) {
+                // what is on the board now is only known from the next occupancy snapshot
+                awaitingSnapshot = true;
+                cancel(pendingCommit);
+                cancel(pendingCheck);
+                snapshotTimeout = schedule(this::checkSyncAfterReconnection, SNAPSHOT_WAIT_MS);
+                return;
+            }
+            refresh();
+        });
     }
 
     /** True when sensors are available (real board or simulator). */
@@ -326,13 +378,98 @@ public class BoardStateManager implements BoardHardware.SensorListener {
     }
 
     private void refresh() {
+        if (awaitingSnapshot) {
+            return;
+        }
         switch (mode) {
             case SETUP -> refreshSetup();
             case PLAY -> refreshPlay();
             case REPLICATE -> refreshReplication();
+            case RESYNC -> refreshResync();
             case IDLE -> {
             }
         }
+    }
+
+    /**
+     * First look at the board after a reconnection during a game: a single move made on it while it was offline
+     * is taken as the move; any other difference starts the resync.
+     */
+    private void checkSyncAfterReconnection() {
+        if (!awaitingSnapshot) {
+            return;
+        }
+        awaitingSnapshot = false;
+        cancel(snapshotTimeout);
+        long logicalOcc = occupancy(logical);
+        if (!hardwareConnected || (mode != Mode.PLAY && mode != Mode.REPLICATE) || physical == logicalOcc) {
+            refresh();
+            return;
+        }
+        if (mode == Mode.PLAY && (physicalMoveSide == null || physicalMoveSide == logical.getSideToMove())) {
+            touched = physical ^ logicalOcc; // every square that changed while offline was touched
+            List<Move> matches = matchingMoves();
+            if (matches.size() == 1) {
+                log.info("Move made while the board was offline");
+                commit(matches.get(0));
+                return;
+            }
+        }
+        startResync(mode == Mode.REPLICATE);
+    }
+
+    private void startResync(boolean completesReplication) {
+        mode = Mode.RESYNC;
+        resyncCompletesReplication = completesReplication;
+        cancel(pendingCommit);
+        touched = 0;
+        liftedSquare = -1;
+        lastProgress = null;
+        hints.hintsCleared();
+        leds.clear(LedRenderer.Layer.ALERT);
+        log.info("Board out of sync with the game: waiting for the pieces to be put back");
+        refresh();
+    }
+
+    private void refreshResync() {
+        cancel(pendingCheck);
+        long target = occupancy(logical);
+        long missing = target & ~physical;
+        long wrong = physical & ~target;
+        Map<Integer, Integer> base = new HashMap<>();
+        if (hardwareConnected) {
+            forEachSquare(missing, sq -> base.put(sq, LedColors.MISSING));
+            forEachSquare(wrong, sq -> base.put(sq, LedColors.WRONG));
+        }
+        leds.replace(LedRenderer.Layer.BASE, base);
+        publish(logical.getFen(), null); // the screen shows where the pieces go
+        if (hardwareConnected && (missing != 0 || wrong != 0)) {
+            StringBuilder message = new StringBuilder("Rimetti i pezzi come sullo schermo:");
+            if (missing != 0) {
+                message.append(" mancano ").append(Long.bitCount(missing));
+            }
+            if (wrong != 0) {
+                message.append(missing != 0 ? "," : "").append(" da togliere ").append(Long.bitCount(wrong))
+                        .append(" (in rosso)");
+            }
+            progress(message.toString());
+            return;
+        }
+        long snapshot = physical;
+        pendingCheck = schedule(() -> {
+            if (mode == Mode.RESYNC && physical == snapshot) {
+                log.info("Board back in sync with the game");
+                mode = Mode.PLAY;
+                touched = 0;
+                replicationRequired = 0;
+                updateBaseLayer(0, 0);
+                publish(displayFen(occupancy(logical)), null);
+                progress("Scacchiera allineata");
+                if (resyncCompletesReplication) {
+                    notifyListener(BoardMoveListener::onBotMoveReplicated);
+                }
+            }
+        }, hardwareConnected ? settleMs : 0);
     }
 
     private void refreshSetup() {
@@ -617,8 +754,11 @@ public class BoardStateManager implements BoardHardware.SensorListener {
             }
         }
         String[] parts = logical.getFen().split(" ");
+        boolean partial = !fen.toString().equals(parts[0]);
         for (int i = 1; i < parts.length; i++) {
-            fen.append(' ').append(parts[i]);
+            // with pieces in the air (e.g. the king lifted) an en passant square makes the FEN unreadable for
+            // chesslib (it checks the capture against the king): drop it from the picture of the board
+            fen.append(' ').append(i == 3 && partial ? "-" : parts[i]);
         }
         return fen.toString();
     }
