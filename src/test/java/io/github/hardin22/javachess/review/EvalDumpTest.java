@@ -154,6 +154,9 @@ class EvalDumpTest {
             h.put("engine", pool.id());
             h.put("hash_mode", pool.hashMode().name().toLowerCase(Locale.ROOT));
             h.put("cold_hash", pool.hashMode() == StockfishPool.HashMode.COLD);
+            if (pool.maxDepth() > 0) {
+                h.put("depth_limit", pool.maxDepth());
+            }
             h.put("product_ms", mainMs);
             List<String> lines = new ArrayList<>();
             List<PositionEval> ps = r.positions();
