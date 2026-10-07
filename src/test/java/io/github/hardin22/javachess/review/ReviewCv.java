@@ -83,6 +83,8 @@ public final class ReviewCv {
                 .append('\n');
         // --explain: the numbers behind every Brilliant / Great, ours or chess.com's (false positive / negative lists)
         boolean explain = Boolean.parseBoolean(a.getOrDefault("explain", "false"));
+        // --features: the same numbers for EVERY ply (twin finder)
+        boolean features = Boolean.parseBoolean(a.getOrDefault("features", "false"));
         StringBuilder specials = new StringBuilder();
         int n = 0;
         for (EvalDump.Game d : games) {
@@ -129,7 +131,7 @@ public final class ReviewCv {
                         s == null ? "" : f(s.eval().winChance(me)), String.valueOf(d.positions().get(i).legal()),
                         String.valueOf(p0.depth()), mateCheck(r, i, ours))).append('\n');
                 String cc = g.labels().get(i).name();
-                if (explain && (isSpecial(ours.name()) || isSpecial(cc))) {
+                if ((explain && (isSpecial(ours.name()) || isSpecial(cc))) || (features && !p0.terminal())) {
                     Map<String, String> x = io.github.hardin22.javachess.Engine.review.SpecialProbe.explain(in, r, i);
                     if (specials.isEmpty()) {
                         specials.append(String.join("\t", "game", "fold", "ply", "color", "san", "uci", "ours", "cc",
@@ -154,7 +156,7 @@ public final class ReviewCv {
         }
         Files.writeString(out.resolve("plies.tsv"), plies.toString(), StandardCharsets.UTF_8);
         Files.writeString(out.resolve("games.tsv"), gamesTsv.toString(), StandardCharsets.UTF_8);
-        if (explain) {
+        if (explain || features) {
             Files.writeString(out.resolve("specials.tsv"), specials.toString(), StandardCharsets.UTF_8);
         }
         System.out.println("classified " + n + " games -> " + out);
