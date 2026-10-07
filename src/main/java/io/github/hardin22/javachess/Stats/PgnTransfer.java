@@ -138,12 +138,88 @@ public final class PgnTransfer {
         return out;
     }
 
-    /** Imports a PGN file into the archive. */
+    /** Games per block of an import (each block is parsed and written on its own: progress, bounded memory). */
+    static final int BLOCK = 300;
+
+    /** Imports a PGN file into the archive (every game). */
     public GameArchiveService.ImportReport importFile(PgnFile file, GameArchiveService archive) throws IOException {
+        return importFile(file, archive, Integer.MAX_VALUE, null);
+    }
+
+    /**
+     * Imports at most {@code maxGames} games of a PGN file (the first ones), in blocks, telling {@code progress}
+     * the fraction done (0..1, called on this thread). A big file takes minutes on a Raspberry Pi: use
+     * {@link #countGames} first to warn or to choose a limit.
+     */
+    public GameArchiveService.ImportReport importFile(PgnFile file, GameArchiveService archive, int maxGames,
+                                                      java.util.function.DoubleConsumer progress) throws IOException {
         if (file.bytes() > MAX_FILE_BYTES) {
             throw new IOException("file troppo grande (" + file.bytes() / (1024 * 1024) + " MB)");
         }
-        return archive.importPgn(file.path());
+        List<String> games = splitGames(Files.readString(file.path(), java.nio.charset.StandardCharsets.UTF_8));
+        int total = Math.min(games.size(), Math.max(0, maxGames));
+        List<io.github.hardin22.javachess.Oggetti.ArchivedGame> imported = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        int skipped = 0;
+        for (int from = 0; from < total; from += BLOCK) {
+            int to = Math.min(total, from + BLOCK);
+            GameArchiveService.ImportReport r = archive.importPgn(String.join("\n\n", games.subList(from, to)));
+            imported.addAll(r.imported());
+            warnings.addAll(r.warnings());
+            skipped += r.skipped();
+            if (progress != null) {
+                progress.accept(to / (double) total);
+            }
+        }
+        if (games.size() > total) {
+            warnings.add("Importate le prime " + total + " partite di " + games.size());
+        }
+        return new GameArchiveService.ImportReport(imported, skipped, warnings);
+    }
+
+    /** Games in a PGN file, counted without parsing the moves (fast, for a warning before a long import). */
+    public static int countGames(PgnFile file) {
+        try (Stream<String> lines = Files.lines(file.path(), java.nio.charset.StandardCharsets.UTF_8)) {
+            int[] count = new int[1];
+            boolean[] inTags = {false};
+            lines.forEach(line -> {
+                boolean tag = line.startsWith("[");
+                if (tag && !inTags[0]) {
+                    count[0]++;
+                }
+                if (!line.isBlank()) {
+                    inTags[0] = tag;
+                }
+            });
+            return count[0];
+        } catch (IOException | java.io.UncheckedIOException e) {
+            return 0;
+        }
+    }
+
+    /** Splits PGN text into games: a game starts at a tag line that follows moves (or the start of the text). */
+    static List<String> splitGames(String text) {
+        List<String> games = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inTags = false;
+        boolean hasMoves = false;
+        for (String line : text.split("\\R")) {
+            boolean tag = line.startsWith("[");
+            if (tag && !inTags && current.length() > 0 && hasMoves) {
+                games.add(current.toString());
+                current.setLength(0);
+                hasMoves = false;
+            }
+            current.append(line).append('\n');
+            if (!line.isBlank()) {
+                inTags = tag;
+                hasMoves |= !tag;
+            }
+        }
+        if (current.toString().strip().length() > 0) {
+            games.add(current.toString());
+        }
+        return games;
     }
 
     /** Writes the whole archive to {@code javachess-partite-YYYY-MM-DD.pgn} on the drive; returns the file. */

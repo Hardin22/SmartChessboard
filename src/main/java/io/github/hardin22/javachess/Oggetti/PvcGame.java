@@ -500,7 +500,9 @@ public class PvcGame extends AbstractGame {
         String fen = board.getFen();
         java.util.concurrent.CompletableFuture<io.github.hardin22.javachess.Play.BotDrawPolicy.Decision> answer =
                 new java.util.concurrent.CompletableFuture<>();
-        drawPolicy.offer(fen, movesUci.size(), humanSide().flip(), botName()).thenAccept(d -> Platform.runLater(() -> {
+        // messages name the opponent as the screen does ("Circolo"); the archive keeps "Stockfish (1350)"
+        String opponent = level != null ? level.name() : botName();
+        drawPolicy.offer(fen, movesUci.size(), humanSide().flip(), opponent).thenAccept(d -> Platform.runLater(() -> {
             if (!d.accepted()) {
                 answer.complete(d);
             } else if (gameRunning && fen.equals(board.getFen())) {

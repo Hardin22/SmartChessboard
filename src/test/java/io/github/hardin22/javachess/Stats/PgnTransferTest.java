@@ -70,6 +70,35 @@ class PgnTransferTest {
     }
 
     @Test
+    void bigFilesAreImportedInBlocksWithProgressAndALimit() throws Exception {
+        StringBuilder pgn = new StringBuilder();
+        for (int i = 0; i < 650; i++) {
+            pgn.append("[Event \"Torneo\"]\n[White \"A").append(i).append("\"]\n[Black \"B\"]\n[Result \"1-0\"]\n\n")
+                    .append("1. e4 e5 2. Nf3 1-0\n\n");
+        }
+        Path file = Files.writeString(tmp.resolve("big.pgn"), pgn.toString());
+        PgnTransfer.PgnFile f = new PgnTransfer.PgnFile(file, "big.pgn", Files.size(file));
+        assertEquals(650, PgnTransfer.countGames(f));
+        GameArchiveService archive = new GameArchiveService(tmp.resolve("archive.json"), null, tmp.resolve("b"));
+        List<Double> progress = new java.util.ArrayList<>();
+        GameArchiveService.ImportReport r = new PgnTransfer(List.of()).importFile(f, archive, 400, progress::add);
+        assertEquals(400, r.imported().size());
+        assertEquals(400, archive.size());
+        assertEquals(List.of(0.75, 1.0), progress, "blocks of 300");
+        assertTrue(r.warnings().contains("Importate le prime 400 partite di 650"));
+        assertEquals("A0", archive.list().stream().map(g -> g.white()).filter(w -> w.equals("A0")).findFirst()
+                .orElseThrow());
+    }
+
+    @Test
+    void splittingGames() {
+        assertEquals(2, PgnTransfer.splitGames("[White \"a\"]\n\n1. e4 e5 *\n[White \"b\"]\n[Black \"c\"]\n1. d4 *\n")
+                .size());
+        assertEquals(1, PgnTransfer.splitGames("1. e4 e5 2. Nf3 *").size(), "moves without tags");
+        assertEquals(0, PgnTransfer.splitGames("  \n").size());
+    }
+
+    @Test
     void noDrives() {
         assertTrue(new PgnTransfer(List.of(tmp.resolve("nothing"))).drives().isEmpty());
     }
