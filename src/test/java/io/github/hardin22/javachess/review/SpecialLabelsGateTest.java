@@ -61,11 +61,18 @@ class SpecialLabelsGateTest {
      */
     static final Path DEFINITIONS = Path.of(System.getProperty("review.special.definitions",
             EvalDumpTest.TEAM_DATA.getParent().resolve("notes/special/DEFINITION_DECISIONS.tsv").toString()));
+    /** Main metrics: only moves by players rated at least this (the gate itself still covers every move). */
+    static final int MAIN_MIN_RATING = 1000;
+    /** Row of the main metrics in the tables (sorted first). */
+    static final String MAIN_KEY = "**MAIN: movers ≥1000 (177 games)**";
+    /** Rating counted for unrated players (the famous games), the product default. */
+    static final int MAIN_UNRATED = 2500;
     /** Largest allowed drop of the exact agreement on the 142 labelled games (fraction). */
     static final double EXACT_TOLERANCE = 0.003;
 
     /** One Brilliant/Great disagreement. kind: fp-brilliant, fn-brilliant, fp-great, fn-great. */
-    record Error(String set, String id, int ply, String san, String kind, String ours, String cc) {
+    /** @param main true when the mover's rating (unrated = the product default 2500) is at least 1000 */
+    record Error(String set, String id, int ply, String san, String kind, String ours, String cc, boolean main) {
         String key() {
             return id + "\t" + ply + "\t" + kind;
         }
@@ -140,6 +147,7 @@ class SpecialLabelsGateTest {
         List<Error> errors = new ArrayList<>();
         Map<String, Tally> tallies = new TreeMap<>();
         Tally labelled142 = new Tally();
+        Tally mainTally = new Tally();
         List<String> missing = new ArrayList<>();
         for (Game x : games) {
             if (x.dump == null) {
@@ -160,15 +168,23 @@ class SpecialLabelsGateTest {
                 ReviewLabel ours = ReviewLabel.of(m.label());
                 ReviewLabel cc = x.game.labels().get(i);
                 t.add(ours, cc);
+                // main metrics (user, 23:00): moves of players rated 1000+, unrated famous games at 2500
+                int rating = m.whiteMoved() ? x.game.whiteRating() : x.game.blackRating();
+                boolean main = (rating > 0 ? rating : MAIN_UNRATED) >= MAIN_MIN_RATING;
+                if (main) {
+                    mainTally.add(ours, cc);
+                }
                 if (!x.set.startsWith("famous")) {
                     labelled142.add(ours, cc);
                 }
                 for (ReviewLabel c : List.of(ReviewLabel.BRILLIANT, ReviewLabel.GREAT)) {
                     String name = c.name().toLowerCase(Locale.ROOT);
                     if (ours == c && cc != c) {
-                        errors.add(new Error(x.set, x.game.id(), i + 1, m.san(), "fp-" + name, lower(ours), lower(cc)));
+                        errors.add(new Error(x.set, x.game.id(), i + 1, m.san(), "fp-" + name, lower(ours), lower(cc),
+                                main));
                     } else if (cc == c && ours != c) {
-                        errors.add(new Error(x.set, x.game.id(), i + 1, m.san(), "fn-" + name, lower(ours), lower(cc)));
+                        errors.add(new Error(x.set, x.game.id(), i + 1, m.san(), "fn-" + name, lower(ours), lower(cc),
+                                main));
                     }
                 }
             }
@@ -188,6 +204,7 @@ class SpecialLabelsGateTest {
         }
         List<String> fixed = baseline.keys.stream().filter(k -> !seen.contains(k)).toList();
         double exact = (double) labelled142.exact / Math.max(1, labelled142.plies);
+        tallies.put(MAIN_KEY, mainTally);
 
         Files.createDirectories(OUT);
         writeErrors(errors, baseline, allow, shard);
@@ -392,7 +409,11 @@ class SpecialLabelsGateTest {
                 .append("| set | class | (1) raw | (2) − engine | (3) − definition |\n|---|---|---|---|---|\n");
         Map<String, Tally> rows = new LinkedHashMap<>(tallies);
         Tally all = new Tally();
-        for (Tally t : tallies.values()) {
+        for (Map.Entry<String, Tally> te : tallies.entrySet()) {
+            if (te.getKey().equals(MAIN_KEY)) {
+                continue;
+            }
+            Tally t = te.getValue();
             for (String c : List.of("brilliant", "great")) {
                 int[] a = all.pr.computeIfAbsent(c, k -> new int[3]);
                 int[] v = t.pr.get(c);
@@ -406,8 +427,9 @@ class SpecialLabelsGateTest {
         for (Map.Entry<String, Tally> e : rows.entrySet()) {
             for (String c : List.of("brilliant", "great")) {
                 int[] v = e.getValue().pr.get(c);
-                boolean total = e.getKey().startsWith("**");
-                List<Error> mine = errors.stream().filter(x -> (total || x.set.equals(e.getKey()))
+                boolean total = e.getKey().startsWith("**all");
+                boolean mainRow = e.getKey().equals(MAIN_KEY);
+                List<Error> mine = errors.stream().filter(x -> (mainRow ? x.main : total || x.set.equals(e.getKey()))
                         && x.kind.endsWith(c)).toList();
                 int[] fpx = new int[3];
                 int[] fnx = new int[3];
@@ -433,7 +455,7 @@ class SpecialLabelsGateTest {
                     cells[col] = String.format(Locale.ROOT, "%d/%d · %s · %s", fp, fn,
                             tp + fp == 0 ? "-" : String.format(Locale.ROOT, "%.2f", (double) tp / (tp + fp)),
                             tp + fn == 0 ? "-" : String.format(Locale.ROOT, "%.2f", (double) tp / (tp + fn)));
-                    if (total) {
+                    if (total && !mainRow) {
                         totals[col * 2] += fp;
                         totals[col * 2 + 1] += fn;
                     }
