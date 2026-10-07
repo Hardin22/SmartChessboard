@@ -234,6 +234,30 @@ class SimBoardEndToEndTest {
 
     @Test
     @Order(10)
+    void takeBackWhileTheBotMoveIsStillToBeReproducedIsFixedOnTheBoard() throws Exception {
+        app.bot("e7e5"); // the scripted bot answers e7-e5 whenever it is legal
+        ActiveGameController game = app.startPvc(true);
+        playOnBoard(game, "e2e4", 2);
+        waitForMode(BoardStateManager.Mode.REPLICATE); // e7-e5 shown on the LEDs, not reproduced yet
+        io.github.hardin22.javachess.Oggetti.PvcGame pvc = (io.github.hardin22.javachess.Oggetti.PvcGame) game(game);
+        assertTrue(fxGet(pvc::takeBack));
+        assertEquals(0, plies(game));
+        waitForMode(BoardStateManager.Mode.RESYNC); // e4 back to e2 (e7-e5 was never played on the board)
+        arrangeAsLogical();
+        waitForMode(BoardStateManager.Mode.PLAY);
+        assertTrue(fxGet(pvc::isAwaitingHumanMove));
+        playOnBoard(game, "d2d4", 2);
+        reproduceLastMove(game);
+        assertEquals(List.of("d2d4", "e7e5"), fxGet(() -> game(game).getBoard().getBackup().stream()
+                .map(b -> b.getMove().toString()).toList()));
+        fx(() -> {
+            app.main.navigateTo("HOME");
+            return null;
+        });
+    }
+
+    @Test
+    @Order(11)
     void puzzleSetUpAndSolvedOnTheBoard() throws Exception {
         PuzzleController puzzles = fx(() -> {
             PuzzleController c = (PuzzleController) app.main.getController("PUZZLE_GAME");
