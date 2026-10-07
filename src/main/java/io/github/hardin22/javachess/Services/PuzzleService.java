@@ -78,6 +78,19 @@ public class PuzzleService {
                 Path.of("src", "main", "resources", "data", "puzzles.csv"), Path.of("puzzles.csv"));
     }
 
+    /**
+     * True when puzzles can be served: a compact database or the raw CSV exists. Without them every search returns
+     * null, so the UI should say that the puzzle data is missing (see docs/raspberry-pi.md,
+     * scripts/build-puzzle-db.sh) instead of "no puzzle with these filters".
+     */
+    public static boolean hasPuzzleData() {
+        return hasPuzzleData(databaseLocations(), csvLocations());
+    }
+
+    static boolean hasPuzzleData(List<Path> databases, List<Path> csvFiles) {
+        return databases.stream().anyMatch(Files::isRegularFile) || csvFiles.stream().anyMatch(Files::isRegularFile);
+    }
+
     private PuzzleDatabase database() {
         synchronized (dbLock) {
             if (!databaseChecked) {

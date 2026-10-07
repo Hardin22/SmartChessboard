@@ -22,6 +22,8 @@ public class PvcGame extends AbstractGame {
     private EngineService.EngineType botType;
     /** A bot move has been asked for and not applied yet. */
     private boolean botThinking;
+    /** Id of the latest bot request: answers to older requests (position changed meanwhile) are ignored. */
+    private int botRequestId;
     /** Consecutive failed bot moves (engine missing or crashed): the retries get further apart. */
     private int botFailures;
     private static final long[] BOT_RETRY_DELAYS_MS = { 2_000, 5_000, 15_000, 30_000 };
@@ -180,16 +182,33 @@ public class PvcGame extends AbstractGame {
             return;
 
         botThinking = true;
+        final int requestId = ++botRequestId;
         final String requestedFen = board.getFen();
         // Asynchronous: the engine layer never blocks this thread nor the FX thread.
         EngineManager.get().botMove(requestedFen, skillLevel).whenComplete((bestMoveUci, err) -> {
             // Board is not thread-safe: the outcome is handled on the FX thread.
-            if (err != null) {
-                Platform.runLater(() -> onBotMoveFailed(requestedFen, err));
-            } else {
-                Platform.runLater(() -> applyBotMove(requestedFen, bestMoveUci));
-            }
+            Platform.runLater(() -> {
+                if (requestId != botRequestId) {
+                    return; // a newer request (or a position reset) superseded this one
+                }
+                botThinking = false;
+                if (err != null) {
+                    onBotMoveFailed(requestedFen, err);
+                } else {
+                    applyBotMove(requestedFen, bestMoveUci);
+                }
+            });
         });
+    }
+
+    /**
+     * The position was changed from outside the normal flow (e.g. a takeback): a bot answer still on its way is
+     * ignored and the human may move again.
+     */
+    protected void onPositionReset() {
+        botRequestId++;
+        botThinking = false;
+        botFailures = 0;
     }
 
     /** The engine could not move (missing, crashed, timed out): tell the player and try again later. */
@@ -197,7 +216,6 @@ public class PvcGame extends AbstractGame {
         if (!gameRunning || !requestedFen.equals(board.getFen())) {
             return;
         }
-        botThinking = false;
         long delay = BOT_RETRY_DELAYS_MS[Math.min(botFailures, BOT_RETRY_DELAYS_MS.length - 1)];
         botFailures++;
         log.error("bot move failed ({} in a row), retrying in {} ms: {}", botFailures, delay, err.toString());
@@ -228,7 +246,6 @@ public class PvcGame extends AbstractGame {
         if (!gameRunning || !requestedFen.equals(board.getFen())) {
             return; // game ended or position changed meanwhile
         }
-        botThinking = false;
         botFailures = 0;
         Move bestMove = parseMoveUci(bestMoveUci);
 
