@@ -94,7 +94,7 @@ final class Tactics {
         }
     }
 
-    private static Move leastValuableCapture(Board b, Square sq) {
+    static Move leastValuableCapture(Board b, Square sq) {
         Move best = null;
         int bestValue = Integer.MAX_VALUE;
         for (Move m : b.legalMoves()) {

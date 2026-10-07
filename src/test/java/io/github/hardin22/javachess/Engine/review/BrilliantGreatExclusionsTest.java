@@ -181,6 +181,25 @@ class BrilliantGreatExclusionsTest {
     }
 
     @Test
+    void aCaptureLeavingAPieceWhoseCaptureIsMatedIsBrilliant() {
+        // Bai Jinshi - Ding Liren 2017, 29...Rxf2 (chess.com Brilliant): the rook a8 stays en prise to the queen, and
+        // the product's after-capture search finds 30.Qxa8 Ng3 mate
+        String fen = "r7/pQ2bp1k/2n4B/4Nb1K/2P1n1p1/4P2P/P2r1PP1/5B1R b - - 0 29";
+        List<PositionEval> ps = new ArrayList<>();
+        ps.add(new PositionEval(fen, Eval.cp(-926), List.of(
+                new EngineLine("d2f2", Eval.cp(-926), List.of("d2f2", "b7e7", "c6e7", "h3g4", "e4g3", "h5h4"), 20),
+                new EngineLine("e4f6", Eval.cp(-595), List.of("e4f6"), 20)), 20, 0, false));
+        ps.add(after(fen, "d2f2", Eval.cp(-926)));
+        ReviewInput base = rated(new ReviewInput(fen, List.of("d2f2"), ps, OpeningBook.NONE, RATING, RATING), 2500,
+                2500);
+        ReviewInput rxf2 = base.withAfterCapture(java.util.Map.of(0, new EngineLine("b7a8", Eval.blackMates(1),
+                List.of("b7a8", "e4g3"), 20)));
+        assertEquals(MoveClassification.BRILLIANT, label(rxf2, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.BRILLIANT, label(rxf2, Tuning.DEFAULT.with("brilliantCaptureIntoMate", 0)));
+        assertNotEquals(MoveClassification.BRILLIANT, label(base, Tuning.DEFAULT)); // no search, no TI
+    }
+
+    @Test
     void realBrilliantStaysBrilliant() {
         // live_146777979394 ply 11, 6.Bxf7+ (chess.com Brilliant with both engines)
         String fen = "r1bqk1nr/pppp1ppp/2n5/2b5/2B1P3/2p2N2/PP3PPP/RNBQK2R w KQkq - 0 6";

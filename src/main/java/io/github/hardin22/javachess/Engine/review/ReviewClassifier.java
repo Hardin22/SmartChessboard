@@ -182,6 +182,8 @@ public final class ReviewClassifier {
         final boolean brilliantNoDiscoveredTrade;
         /** v2.5 B-E14: accepting loses more material at once and the line ends about level: a sham sacrifice. */
         final boolean brilliantNoShamSacrifice;
+        /** v2.5 B-TI+: a capture leaving a piece en prise whose capture (after-capture search) is mated. */
+        final boolean brilliantCaptureIntoMate;
         /** Phase 4: an answer to check taking free material (SEE > 0) follows the free material rule of captures. */
         final boolean greatInCheckFreeMaterial;
         /** Phase 4: no Great for a bishop retreating from the pawn that has just advanced against it. */
@@ -319,6 +321,7 @@ public final class ReviewClassifier {
             brilliantNoEmptyOffer = get("brilliantNoEmptyOffer", 1) != 0;
             brilliantNoDiscoveredTrade = get("brilliantNoDiscoveredTrade", 1) != 0;
             brilliantNoShamSacrifice = get("brilliantNoShamSacrifice", 1) != 0;
+            brilliantCaptureIntoMate = get("brilliantCaptureIntoMate", 1) != 0;
             greatInCheckFreeMaterial = get("greatInCheckFreeMaterial", 1) != 0;
             greatKickedBishop = get("greatKickedBishop", 1) != 0;
             greatNoCashIn = get("greatNoCashIn", 1) != 0;
@@ -636,6 +639,52 @@ public final class ReviewClassifier {
         return need;
     }
 
+    /**
+     * The after-capture searches the reviewer runs for the TI rules ({@link ReviewInput#afterCapture}): for every move i
+     * that is the engine's best move, not an answer to check, and leaves en prise (2+ by static exchange) a piece that
+     * was already en prise before it, the opponent's cheapest capture of the most valuable such piece. Key = move index,
+     * value = the capture (UCI); the reviewer searches the position after move i and that capture.
+     */
+    public static Map<Integer, String> afterCaptureRequests(ReviewInput in) {
+        GameReplay replay = GameReplay.of(in.initialFen(), in.uciMoves());
+        Map<Integer, String> out = new TreeMap<>();
+        for (int i = 0; i < replay.uci().size(); i++) {
+            PositionEval before = in.positions().get(i);
+            String uci = replay.uci().get(i);
+            if (before.terminal() || !uci.equals(before.bestMove()) || before.eval().isMateAgainst(before.whiteToMove())) {
+                continue;
+            }
+            boolean me = before.whiteToMove();
+            Board b0 = board(replay.fens().get(i));
+            Move m = Tactics.find(b0, uci);
+            if (m == null || b0.isKingAttacked()) {
+                continue;
+            }
+            Side side = me ? Side.WHITE : Side.BLACK;
+            Map<Square, Integer> was = Tactics.hanging(b0, side);
+            Board b1 = b0.clone();
+            b1.doMove(m);
+            if (b1.isMated()) {
+                continue;
+            }
+            Square target = null;
+            int best = 0;
+            for (Map.Entry<Square, Integer> e : Tactics.hanging(b1, side).entrySet()) {
+                Square sq = e.getKey();
+                if (sq != m.getTo() && was.containsKey(sq) && e.getValue() >= 2
+                        && Tactics.value(b1.getPiece(sq)) > best) {
+                    best = Tactics.value(b1.getPiece(sq));
+                    target = sq;
+                }
+            }
+            Move take = target == null ? null : Tactics.leastValuableCapture(b1, target);
+            if (take != null) {
+                out.put(i, take.toString());
+            }
+        }
+        return out;
+    }
+
     /** Classifies every move of the game and computes the accuracy of both players. */
     public static GameReview classifyGame(ReviewInput in) {
         return classifyGame(in, Tuning.DEFAULT);
@@ -766,7 +815,7 @@ public final class ReviewClassifier {
                     double oppLoss = i > 0 ? Math.max(0, epBefore[i - 1] - epAfter[i - 1]) : 0;
                     MoveClassification special = special(label, isTop, i, replay, p0, pos.get(i + 1), played[i],
                             epBefore[i], epAfter[i], me, oppLoss, t, me ? kWhite : kBlack,
-                            rating, i > 0 ? out.get(i - 1).label() : null);
+                            rating, i > 0 ? out.get(i - 1).label() : null, in.afterCapture().get(i));
                     if (special != null) {
                         label = special;
                     }
@@ -870,13 +919,14 @@ public final class ReviewClassifier {
     private static MoveClassification special(MoveClassification label, boolean isTop, int i, GameReplay replay,
                                               PositionEval p0, PositionEval p1, Eval played, double epBefore,
                                               double epAfter, boolean me, double oppLoss,
-                                              Tuning t, double k, int rating, MoveClassification prevLabel) {
+                                              Tuning t, double k, int rating, MoveClassification prevLabel,
+                                              EngineLine capture) {
         EngineLine second = p0.secondBest();
         Eval alternative = isTop ? (second == null ? null : second.eval()) : p0.eval();
         Board b0 = board(replay.fens().get(i));
         String uci = replay.uci().get(i);
         if (t.brilliantRule == 2 && brilliantV19(b0, uci, me, isTop, alternative, played, epBefore, epAfter, t, k,
-                playedLine(uci, p0, p1)) && !(t.brilliantRecaptureNet && i > 0 && isRecapture(replay, i)
+                playedLine(uci, p0, p1), capture) && !(t.brilliantRecaptureNet && i > 0 && isRecapture(replay, i)
                 && Sacrifice.of(b0, uci, me).movedNet() < t.sacMin)) {
             // B-E10: taking back on the square of the opponent's capture is a sacrifice only when the recapturing
             // piece itself is lost for at least sacMin (live_173981415730 19...Nxd4 cxd4 Rxd4: a knight for two pawns
@@ -1355,7 +1405,7 @@ public final class ReviewClassifier {
      */
     private static boolean brilliantV19(Board b0, String uci, boolean me, boolean isTop, Eval alternative,
                                         Eval played, double epBefore, double epAfter, Tuning t, double k,
-                                        List<String> line) {
+                                        List<String> line, EngineLine capture) {
         Move m = Tactics.find(b0, uci);
         if (m == null || m.getPromotion() != Piece.NONE) {
             return false;
@@ -1401,7 +1451,7 @@ public final class ReviewClassifier {
         if (kingMarch) {
             return true; // the king itself is what is offered
         }
-        if (sac.value() < t.sacMin && !leavesHeavyPiece(b0, m, me, line, t) && !(t.brilliantPawnCheckSac && pawnCheckSacrifice(b0, m, line, epBefore,
+        if (sac.value() < t.sacMin && !leavesHeavyPiece(b0, m, me, line, t) && !capturedIntoMate(b0, m, me, capture, t) && !(t.brilliantPawnCheckSac && pawnCheckSacrifice(b0, m, line, epBefore,
                 played, me))) {
             return false; // B-E1: nothing new is offered
         }
@@ -1585,6 +1635,29 @@ public final class ReviewClassifier {
         b1.doMove(m);
         Move reply = Tactics.find(b1, line.get(1));
         return reply != null && reply.getTo() == m.getTo();
+    }
+
+    /**
+     * v2.5 B-TI+ (narrow TI with the product's after-capture search, user 22:30): a capture leaves en prise a piece at
+     * least as valuable as the capturing one, and our engine's eval after the opponent takes that piece is a mate for
+     * the mover: taking it loses at once (Bai Jinshi - Ding Liren 29...Rxf2 30.Qxa8?? Ng3+, live_170651071526 20.Nxf7
+     * 21.Qxe4?? Qh8#). The search only exists for the TI candidates the reviewer chose ({@link ReviewInput#afterCapture}).
+     */
+    private static boolean capturedIntoMate(Board b0, Move m, boolean me, EngineLine capture, Tuning t) {
+        if (!t.brilliantCaptureIntoMate || capture == null || b0.getPiece(m.getTo()) == Piece.NONE
+                || !capture.eval().isMateFor(me)) {
+            return false;
+        }
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        Move take = Tactics.find(b1, capture.move());
+        if (take == null || take.getTo() == m.getTo()) {
+            return false;
+        }
+        Piece left = b1.getPiece(take.getTo());
+        Side side = me ? Side.WHITE : Side.BLACK;
+        return left != Piece.NONE && left.getPieceSide() == side
+                && Tactics.value(left) >= Tactics.value(b0.getPiece(m.getFrom()));
     }
 
     /** True when the second move of {@code line} (the opponent's answer) is a capture elsewhere that gives check. */
