@@ -27,6 +27,12 @@ Gravità: **alta** (vicolo cieco, perdita di dati, partita bloccata), **media** 
 | QA-019 | media | logica | Import PGN lentissimo (1000 partite: 9,6 s su Mac, minuti sul Pi) | corretto |
 | QA-020 | media | logica | Re sollevato subito dopo una spinta di due case: eccezione nel listener della scacchiera, schermo non aggiornato | corretto |
 | QA-021 | media | logica | PvP: abbandono / patta d'accordo nelle prime mosse non archiviati (soglia delle partite interrotte applicata a tutte) | corretto |
+| QA-022 | media | UI | A partita finita "Abbandona" resta attivo e non fa nulla | assegnato a design |
+| QA-023 | bassa | UI | A partita finita il riquadro coach mostra ancora la valutazione e "mossa consigliata" | assegnato a design |
+| QA-024 | bassa | UI/prodotto | PvP: frecce della mossa migliore e verdetti LED attivi di default per entrambi i giocatori | assegnato a design (decisione) |
+| QA-025 | media | logica | Import PGN grande: il parsing teneva il lock dell'archivio (il salvataggio della partita appena finita aspettava minuti sul Pi) | corretto |
+| QA-026 | bassa | logica | Ripresa rifiutata dopo uno spegnimento: la partita non finisce in archivio | proposto a features |
+| QA-027 | media | logica | E2E dipendenti dall'ordine: salvataggi asincroni del test precedente contati nel successivo | corretto |
 
 ---
 
@@ -155,3 +161,23 @@ failed" nel log e scacchiera a schermo non aggiornata. Trovato dall'E2E con la s
 **Passi**: Due giocatori → 1.e4 e5 → patta d'accordo (o abbandono): la partita non andava in archivio perché
 `PvpGame.endGame` scartava ogni partita con meno di ~4 semimosse, anche con un risultato (contro il bot invece
 vengono tenute). **Correzione**: la soglia vale solo per le partite interrotte. Test E2E `pvpDrawByAgreement`.
+
+## QA-022/023/024 · Nuova UI, fine partita e PvP
+Passi (`-Djavachess.board=sim -Djavachess.devgame=pvc -Djavachess.sim.autoplay=40`, monitor 720×1920): al matto
+del bot la scheda "Partita finita · Hai perso · Rivedi / Nuova partita" è corretta, ma "Abbandona" resta attivo
+(nessun effetto) e il riquadro coach mostra "-M1 · Al tuo turno vedrai la mossa consigliata". In PvP
+(`-Djavachess.devgame=pvp`) a inizio partita compare la freccia e2-e4 per entrambi.
+
+## QA-025 · Import PGN e lock dell'archivio (media, logica)
+`importPgn` era `synchronized` per tutta la durata (parsing + controllo delle mosse). Con l'import da USB di
+features (file fino a 50 MB) il salvataggio della partita appena giocata restava in attesa. Ora parsing e
+controllo sono fuori dal lock. Test `aGameIsSavedWhileABigPgnIsBeingImported` (prima: 667 ms di attesa).
+
+## QA-026 · Ripresa rifiutata (bassa, logica)
+Verificato con kill -9 sull'app vera: `current-game.json` resta coerente e la ripresa è possibile; se però
+l'utente rifiuta la ripresa (`GameResume.discard`) la partita non va in archivio. Proposto a features di
+archiviarla come interrotta.
+
+## QA-027 · E2E dipendenti dall'ordine (media, test)
+Fallimento visto solo nella cartella di main (5 → 6 partite): la partita lasciata dal test precedente veniva
+archiviata in modo asincrono durante il test successivo. `E2eHarness.awaitStorage()` prima di ogni test.
