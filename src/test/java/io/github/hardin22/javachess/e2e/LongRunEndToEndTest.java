@@ -63,17 +63,27 @@ class LongRunEndToEndTest {
      * they are Java arrays and fill the heap until memory gets tight, which is not a leak. An allocation larger than
      * the heap makes the JVM clear every soft reference first (and then fail), so only what is really held remains.
      */
-    private static void clearSoftReferences() {
-        long max = Runtime.getRuntime().maxMemory();
-        if (max / 8 + 1024 >= Integer.MAX_VALUE - 16) {
-            return; // the request could succeed on a huge heap
+    private static boolean clearSoftReferences() {
+        if (!canClearSoftReferences()) {
+            return false;
         }
         try {
-            long[] tooBig = new long[(int) (max / 8 + 1024)];
+            long[] tooBig = new long[(int) (Runtime.getRuntime().maxMemory() / 8 + 1024)];
             tooBig[0] = 1;
         } catch (OutOfMemoryError expected) {
             // soft references were cleared before this error
         }
+        return true;
+    }
+
+    private static boolean canClearSoftReferences() {
+        if (Runtime.getRuntime().maxMemory() / 8 + 1024 >= Integer.MAX_VALUE - 16) {
+            return false; // the request could succeed on a huge heap
+        }
+        // run_pi.sh flags (-XX:+ExitOnOutOfMemoryError): the JVM would quit. That run checks there is no OOM with the
+        // Pi's 512 MB heap; the heap after GC then includes the soft caches and is only reported.
+        return ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
+                .noneMatch(a -> a.contains("OnOutOfMemoryError"));
     }
 
     @Test
@@ -114,7 +124,9 @@ class LongRunEndToEndTest {
         assertTrue(after.threads() - baseline.threads() <= 6, "threads grow: " + report);
         assertTrue(after.nonDaemon() <= baseline.nonDaemon(), "non-daemon threads grow: " + report);
         assertTrue(after.processes() <= baseline.processes(), "engine processes pile up: " + report);
-        assertTrue(after.heapMb() - baseline.heapMb() <= 48, "heap grows: " + report);
+        if (canClearSoftReferences()) {
+            assertTrue(after.heapMb() - baseline.heapMb() <= 48, "heap grows: " + report);
+        }
     }
 
     /** With {@code -De2e.longrun.histogram=true}: the 40 biggest classes on the heap (jcmd), to find a leak. */
