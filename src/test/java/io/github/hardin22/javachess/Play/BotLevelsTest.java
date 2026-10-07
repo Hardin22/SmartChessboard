@@ -28,11 +28,12 @@ class BotLevelsTest {
     void textsAndNames() {
         BotLevels.Level club = BotLevels.byId("club").orElseThrow();
         assertEquals("circa 1350", club.eloText());
-        assertEquals("Stockfish 1350", club.playerName());
+        assertEquals("Stockfish (1350)", club.playerName());
+        assertEquals(1350, io.github.hardin22.javachess.Engine.review.PlayerRating.of(club.playerName(), false));
         assertEquals(1320, club.strength().uciElo());
         BotLevels.Level max = BotLevels.byId("max").orElseThrow();
         assertEquals("oltre 3000", max.eloText());
-        assertEquals("Stockfish massimo", max.playerName());
+        assertEquals("Stockfish (3200)", max.playerName());
         assertEquals("Maia 1500", BotLevels.byId("maia-1500").orElseThrow().playerName());
         assertEquals(1, BotLevels.byId("beginner").orElseThrow().strength().depth());
     }

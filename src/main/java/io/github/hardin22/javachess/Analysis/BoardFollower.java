@@ -144,11 +144,13 @@ public final class BoardFollower {
                 return;
             }
             String uci = (fromSquare + toSquare).toLowerCase(Locale.ROOT);
+            String before = target;
+            target = after(before, uci); // what the board shows now (the sink may send it elsewhere)
             String reached = sink.onBoardMove(uci);
             if (reached == null) {
                 log.info("board move {} refused by the analysis: guiding the board back", uci);
-                place(target);
-            } else {
+                place(before);
+            } else if (state.get() == State.FOLLOWING) {
                 target = reached;
             }
         }
@@ -189,6 +191,17 @@ public final class BoardFollower {
             }
         }
     };
+
+    /** Position after {@code uci} from {@code fen} (the same position when the move cannot be read). */
+    private static String after(String fen, String uci) {
+        Board b = board(fen);
+        var m = MoveText.legal(b, uci);
+        if (m == null) {
+            return fen;
+        }
+        b.doMove(m);
+        return b.getFen();
+    }
 
     private static Board board(String fen) {
         Board b = new Board();
