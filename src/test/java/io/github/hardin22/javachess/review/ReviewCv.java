@@ -83,7 +83,12 @@ public final class ReviewCv {
             if ("cv".equals(set) && "H".equals(fold) || "holdout".equals(set) && !"H".equals(fold)) {
                 continue;
             }
-            ReviewInput in = d.input(mode, book);
+            ReviewInput base = d.input(mode, book);
+            // the players' ratings (chess.com judges a loss of win chance by the player's level)
+            // cv.py -D ratings=none: every player unknown, as for a local game in the app
+            boolean ratings = !"none".equals(System.getProperty("javachess.review.ratings"));
+            ReviewInput in = new ReviewInput(base.initialFen(), base.uciMoves(), base.positions(), base.book(),
+                    ratings ? g.whiteRating() : 0, ratings ? g.blackRating() : 0);
             GameReview r = ReviewClassifier.classifyGame(in);
             int second = 0;
             for (int i = 0; i < r.moves().size(); i++) {

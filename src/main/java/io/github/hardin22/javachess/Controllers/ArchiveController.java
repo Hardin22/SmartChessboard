@@ -62,7 +62,7 @@ public class ArchiveController implements NavigationAware {
      * place that touches the archive data, so the data layer can change without touching the presentation.
      */
     public record Row(int id, String title, String meta, String detail, String score, String finalFen, String moves,
-                      String initialFen) {
+                      String initialFen, int whiteRating, int blackRating) {
     }
 
     private final class GameCell extends ListCell<Row> {
@@ -104,7 +104,7 @@ public class ArchiveController implements NavigationAware {
                     return;
                 }
                 if (game != null) {
-                    showReview(game.moves(), game.initialFen());
+                    showReview(game);
                 }
             });
         }
@@ -155,7 +155,7 @@ public class ArchiveController implements NavigationAware {
         Button open = actionButton(I18n.t("archive.open"), "fth-play", "btn-secondary");
         open.setOnAction(e -> {
             mainController.closeSheet();
-            showReview(game.moves(), game.initialFen());
+            showReview(game);
         });
         Button export = actionButton(I18n.t("archive.export"), "fth-download", "btn-secondary");
         export.setOnAction(e -> {
@@ -281,7 +281,8 @@ public class ArchiveController implements NavigationAware {
                         : !game.termination().isEmpty() ? game.termination() : describeOutcome("");
                 rows.add(new Row(game.id(), describe(game), meta, detail, scoreOf(game.result()),
                         game.finalFen().isEmpty() ? START_FEN : game.finalFen(), game.movesAsUciString(),
-                        game.initialFen().isEmpty() ? START_FEN : game.initialFen()));
+                        game.initialFen().isEmpty() ? START_FEN : game.initialFen(), game.whiteRating(),
+                        game.blackRating()));
             }
             if (archive.getLoadProblem() != null) {
                 ErrorReporter.showError("Archivio", archive.getLoadProblem());
@@ -312,10 +313,10 @@ public class ArchiveController implements NavigationAware {
         };
     }
 
-    private void showReview(String pgn, String initialFen) {
+    private void showReview(Row game) {
         ReviewController reviewController = (ReviewController) mainController.getController("REVIEW");
         mainController.navigateTo("REVIEW");
-        reviewController.loadGame(pgn, initialFen);
+        reviewController.loadGame(game.moves(), game.initialFen(), game.whiteRating(), game.blackRating());
     }
 
     @FXML

@@ -48,6 +48,16 @@ public record ArchivedGame(int id, GameMode mode, String label, String white, St
         return String.join(" ", movesUci);
     }
 
+    /** White's rating for the review labels (bots: their profile; Lichess: the game's rating), 0 if unknown. */
+    public int whiteRating() {
+        return io.github.hardin22.javachess.Engine.review.PlayerRating.of(white, mode == GameMode.LICHESS);
+    }
+
+    /** Black's rating for the review labels, 0 if unknown. */
+    public int blackRating() {
+        return io.github.hardin22.javachess.Engine.review.PlayerRating.of(black, mode == GameMode.LICHESS);
+    }
+
     /** Number of full moves (rounded up). */
     public int fullMoves() {
         return (movesUci.size() + 1) / 2;

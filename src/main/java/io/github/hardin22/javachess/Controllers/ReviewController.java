@@ -104,6 +104,9 @@ public class ReviewController implements NavigationAware, GameNavigationListener
     private List<MoveAnalysis> currentAnalysis;
     private String currentPgn;
     private String currentInitialFen = START_FEN;
+    /** Players' ratings of the loaded game for the review labels, 0 when unknown. */
+    private int currentWhiteRating;
+    private int currentBlackRating;
     /** Incremented when another game is loaded: a running full analysis of the previous game is discarded. */
     private final java.util.concurrent.atomic.AtomicInteger analysisGeneration =
             new java.util.concurrent.atomic.AtomicInteger();
@@ -144,6 +147,13 @@ public class ReviewController implements NavigationAware, GameNavigationListener
     }
 
     public void loadGame(String pgn, String initialFen) {
+        loadGame(pgn, initialFen, 0, 0);
+    }
+
+    /** Loads a game whose players' ratings are known (0 = unknown): the review labels take them into account. */
+    public void loadGame(String pgn, String initialFen, int whiteRating, int blackRating) {
+        this.currentWhiteRating = whiteRating;
+        this.currentBlackRating = blackRating;
         this.currentPgn = pgn;
         analysisGeneration.incrementAndGet();
         this.currentInitialFen = initialFen == null ? START_FEN : initialFen;
@@ -210,10 +220,12 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         String pgn = currentPgn;
         int generation = analysisGeneration.get();
         String fenToAnalyze = currentInitialFen;
+        int whiteRating = currentWhiteRating;
+        int blackRating = currentBlackRating;
         Thread.ofPlatform().daemon().name("game-analysis").start(() -> {
             try {
                 int totalMoves = reviewChessBoard.getMoveList().size();
-                analyzer.review(pgn, fenToAnalyze, progress -> Platform.runLater(() -> {
+                analyzer.review(pgn, fenToAnalyze, whiteRating, blackRating, progress -> Platform.runLater(() -> {
                     if (generation == analysisGeneration.get()) { // progress of an older game is ignored
                         analysisProgressIndicator.setProgress(progress);
                         percentLabel.setText(I18n.t("review.analyzing", Math.round(progress * 100)));

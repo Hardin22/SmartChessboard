@@ -8,8 +8,10 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Named opening positions for the Book label: a move is "Book" while the position it reaches is a named opening
@@ -26,9 +28,19 @@ public final class OpeningBook {
     private static volatile OpeningBook standard;
 
     private final Map<String, String> names;
+    private final Set<String> theory;
 
     public OpeningBook(Map<String, String> namesByKey) {
+        this(namesByKey, Set.of());
+    }
+
+    /**
+     * @param namesByKey     named opening positions ({@link #key})
+     * @param theoryKeys     unnamed positions on the way to a named one (also book moves)
+     */
+    public OpeningBook(Map<String, String> namesByKey, Set<String> theoryKeys) {
         this.names = Map.copyOf(namesByKey);
+        this.theory = Set.copyOf(theoryKeys);
     }
 
     /** The bundled book (loaded once). */
@@ -68,7 +80,21 @@ public final class OpeningBook {
             log.warn("opening book not loaded: {}", e.toString());
             return NONE;
         }
-        return new OpeningBook(m);
+        Set<String> t = new HashSet<>(8_192);
+        try (InputStream in = OpeningBook.class.getResourceAsStream("/review/theory.tsv")) {
+            if (in != null) {
+                BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+                String line;
+                while ((line = r.readLine()) != null) {
+                    if (!line.isEmpty() && !line.startsWith("#")) {
+                        t.add(line.trim());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("opening theory not loaded: {}", e.toString());
+        }
+        return new OpeningBook(m, t);
     }
 
     /** "ECO Name" ("C50 Italian Game") of the position, if it is a named opening position. */
@@ -79,6 +105,12 @@ public final class OpeningBook {
     /** True when {@code fen} is a named opening position. */
     public boolean contains(String fen) {
         return names.containsKey(key(fen));
+    }
+
+    /** True when {@code fen} is a named opening position or on the way to one (a book move leads there). */
+    public boolean isTheory(String fen) {
+        String k = key(fen);
+        return names.containsKey(k) || theory.contains(k);
     }
 
     public int size() {

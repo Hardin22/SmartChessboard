@@ -19,9 +19,9 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * A few single-threaded Stockfish processes that evaluate review positions in parallel. One thread per process
- * with node limits makes results independent of the machine's speed (only the hash carried over from the previous
- * positions can change a score slightly), and N processes scale better than N threads in one process for many
- * short searches.
+ * with node limits makes results independent of the machine's speed, a cleared hash before each search (default)
+ * independent of which process searched what before, and N processes scale better than N threads in one process for
+ * many short searches.
  */
 public final class StockfishPool implements PositionEvaluator {
 
@@ -31,13 +31,26 @@ public final class StockfishPool implements PositionEvaluator {
     private volatile boolean closed;
     /** The process each review thread used last: consecutive positions reuse its warm hash. */
     private final ThreadLocal<UciClient> affinity = new ThreadLocal<>();
+    /** Clear the hash before every search: a position's evaluation then depends only on the position. */
+    private final boolean coldHash;
+
+    /**
+     * Pool whose searches start from a cleared hash unless {@code -Djavachess.review.coldHash=false}: with a node
+     * budget and one thread the evaluation of a position is then the same whichever process runs it and whatever it
+     * searched before (a warm hash made ~17% of the labels change between two reviews of the same game).
+     */
+    public StockfishPool(Path stockfish, int processes, int hashMb) {
+        this(stockfish, processes, hashMb, !"false".equals(System.getProperty("javachess.review.coldHash")));
+    }
 
     /**
      * @param stockfish executable
      * @param processes number of processes (1 thread each)
      * @param hashMb    Hash of each process
+     * @param coldHash  clear the hash before every search (deterministic evaluations)
      */
-    public StockfishPool(Path stockfish, int processes, int hashMb) {
+    public StockfishPool(Path stockfish, int processes, int hashMb, boolean coldHash) {
+        this.coldHash = coldHash;
         int n = Math.max(1, processes);
         idle = new ArrayBlockingQueue<>(n);
         Map<String, String> opts = new LinkedHashMap<>();
@@ -111,6 +124,9 @@ public final class StockfishPool implements PositionEvaluator {
         try {
             // generous client-side cap: a node budget normally ends long before (protects against a hung engine)
             long capMs = Math.max(10_000, nodes / 20);
+            if (coldHash) {
+                c.newGame().get(capMs, TimeUnit.MILLISECONDS);
+            }
             return c.search(fen, limits.withTimeout(capMs)).result().get(capMs + 10_000, TimeUnit.MILLISECONDS);
         } finally {
             idle.add(c);
@@ -131,6 +147,11 @@ public final class StockfishPool implements PositionEvaluator {
             throw new EngineException("no line for " + fen);
         }
         return new PositionEval(fen, lines.get(0).eval(), lines, r.depth(), r.nodes(), false);
+    }
+
+    /** True when every search starts from a cleared hash. */
+    public boolean coldHash() {
+        return coldHash;
     }
 
     /** Clears the hash of every process (start of a game). */
