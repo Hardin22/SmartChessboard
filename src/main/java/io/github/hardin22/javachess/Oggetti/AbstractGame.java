@@ -145,7 +145,12 @@ public abstract class AbstractGame {
         if (label == null) {
             return;
         }
-        OpeningExplorer.lookup(board.getFen()).thenAccept(name ->
+        String fen = board.getFen();
+        // offline book first (the board often has no network), then the online explorer if it answers
+        java.util.concurrent.CompletableFuture.supplyAsync(
+                () -> io.github.hardin22.javachess.Engine.review.OpeningBook.standard().nameAfter(fen),
+                AppExecutors.compute()).thenAccept(name -> name.ifPresent(n -> Platform.runLater(() -> label.setText(n))));
+        OpeningExplorer.lookup(fen).thenAccept(name ->
                 name.ifPresent(n -> Platform.runLater(() -> label.setText(n))));
     }
 
