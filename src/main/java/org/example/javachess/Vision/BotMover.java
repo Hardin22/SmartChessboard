@@ -28,6 +28,10 @@ public class BotMover {
         String promotion = move.length() > 4 ? move.substring(4, 5) : "";
 
         String url = browser.getURL();
+        if (url == null) {
+            log.warn("[Bot] Browser has no page loaded");
+            return;
+        }
 
         if (url.contains("chess.com")) {
             makeMoveChessCom(from, to, isFlipped);
