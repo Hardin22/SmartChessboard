@@ -60,6 +60,10 @@ public final class ReviewClassifier {
         final double forcingCheckGap;
         /** Ratings below this are judged as this (chess.com's curve does not flatten further). */
         final double ratingFloor;
+        /** B-E8: no Brilliant when the alternative wins by at least this many centipawns (any rating). */
+        final double brilliantWinningCp;
+        /** B-E7: no Brilliant when the mover stands below this many centipawns after the move (any rating). */
+        final double brilliantMinCpAfter;
         /** v1.9: no capture is Great (G-E1). */
         final boolean greatNoCapture;
         /**
@@ -148,6 +152,8 @@ public final class ReviewClassifier {
             brilliantNonTopLoss = get("brilliantNonTopLoss", 0.01);
             fakeRegain = get("fakeRegain", 2);
             greatNoCapture = get("greatNoCapture", 1) != 0;
+            brilliantWinningCp = get("brilliantWinningCp", 700);
+            brilliantMinCpAfter = get("brilliantMinCpAfter", -15);
             greatForcingCheck = get("greatForcingCheck", 1) != 0;
             forcingCheckMinEp = get("forcingCheckMinEp", 0.85);
             forcingCheckGap = get("forcingCheckGap", 0.25);
@@ -291,6 +297,9 @@ public final class ReviewClassifier {
             if (d <= 0) {
                 return MoveClassification.BEST;
             }
+            if (review && n == 2 && d == 2) {
+                return MoveClassification.GOOD; // mate in 2 -> mate in 3 (chess.com 4/4: Good)
+            }
             if (review && n <= 2 && d >= 2) {
                 return MoveClassification.MISS; // a mate in 1-2 missed (chess.com: M1 -> M3 is a Miss)
             }
@@ -303,7 +312,8 @@ public final class ReviewClassifier {
                 return MoveClassification.BEST;
             }
             // a much faster mate (to mate in 1-2, 3+ moves sooner) is an Inaccuracy for chess.com (M-7 -> M-2 Kd8)
-            return m <= 2 && n - m >= 3 ? MoveClassification.INACCURACY : MoveClassification.EXCELLENT;
+            boolean muchFaster = (m == 1 && n >= 3) || (m <= 2 && n - m >= 3);
+            return muchFaster ? MoveClassification.INACCURACY : MoveClassification.EXCELLENT;
         }
         if (best.isMateFor(me) && played.isMateAgainst(me)) {
             return MoveClassification.BLUNDER;
@@ -634,7 +644,7 @@ public final class ReviewClassifier {
         Eval alternative = isTop ? (second == null ? null : second.eval()) : p0.eval();
         Board b0 = board(replay.fens().get(i));
         String uci = replay.uci().get(i);
-        if (t.brilliantRule == 2 && brilliantV19(b0, uci, me, isTop, alternative, epBefore, epAfter, t, k)) {
+        if (t.brilliantRule == 2 && brilliantV19(b0, uci, me, isTop, alternative, played, epBefore, epAfter, t, k)) {
             return MoveClassification.BRILLIANT;
         }
         if (t.brilliantRule == 1 && brilliantBySee(b0, uci, me, alternative, played, epBefore, epAfter, t, k)) {
@@ -743,7 +753,7 @@ public final class ReviewClassifier {
      * {@link Tuning#brilliantNonTopLoss}, B-E4 no Brilliant when accepting the sacrifice loses more than it wins.
      */
     private static boolean brilliantV19(Board b0, String uci, boolean me, boolean isTop, Eval alternative,
-                                        double epBefore, double epAfter, Tuning t, double k) {
+                                        Eval played, double epBefore, double epAfter, Tuning t, double k) {
         Move m = Tactics.find(b0, uci);
         if (m == null || m.getPromotion() != Piece.NONE || b0.getPiece(m.getFrom()).getPieceType() == PieceType.KING) {
             return false;
@@ -755,6 +765,15 @@ public final class ReviewClassifier {
         }
         if (alternative != null && ep(alternative, me, k) > t.brilliantMaxAlt) {
             return false; // B-E2: winning anyway, also when the move mates
+        }
+        // the same two tests in centipawns, whatever the players' rating (a decided position is decided for anyone):
+        // B-E8 the alternative already wins by this much, or mates; B-E7 the mover stands worse after the move
+        if (alternative != null && (alternative.isMateFor(me)
+                || (!alternative.isMate() && alternative.cpFor(me) >= t.brilliantWinningCp))) {
+            return false;
+        }
+        if (!played.isMate() && played.cpFor(me) < t.brilliantMinCpAfter) {
+            return false;
         }
         Sacrifice sac = Sacrifice.of(b0, uci, me);
         if (sac.value() < t.sacMin) {

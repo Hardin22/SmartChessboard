@@ -55,7 +55,9 @@ class BrilliantGreatExclusionsTest {
         String fen = "3rr2k/pQp3pp/3bqp2/8/8/3R2P1/P1nB1P1P/2R3K1 b - - 3 27";
         ReviewInput in = oneMove(fen, "c2b4", Eval.cp(-794), "e6e2", Eval.cp(-720), "e6a2", Eval.cp(-696));
         assertNotEquals(MoveClassification.BRILLIANT, label(in, Tuning.DEFAULT));
-        assertEquals(MoveClassification.BRILLIANT, label(in, Tuning.DEFAULT.with("brilliantNonTopLoss", 0.05)));
+        // the alternative is +7.2 for Black: B-E8 (winning anyway) excludes it as well
+        assertEquals(MoveClassification.BRILLIANT, label(in, Tuning.DEFAULT.with("brilliantNonTopLoss", 0.05)
+                .with("brilliantWinningCp", 100_000)));
     }
 
     @Test
@@ -64,6 +66,23 @@ class BrilliantGreatExclusionsTest {
         String fen = "r1bqk1nr/pppp1ppp/2n5/2b5/2B1P3/2p2N2/PP3PPP/RNBQK2R w KQkq - 0 6";
         ReviewInput in = oneMove(fen, "c4f7", Eval.cp(98), "c4f7", Eval.cp(0), "d1b3", Eval.cp(98));
         assertEquals(MoveClassification.BRILLIANT, label(in, Tuning.DEFAULT));
+    }
+
+    @Test
+    void decidedPositionsAndWorsePositionsAreJudgedInCentipawnsWhateverTheRating() {
+        // famous games without ratings (default 1500: a flat curve), chess.com Best
+        // Tal - Larsen 1965 g10, 34.Bc5: White is +7.9 anyway (B-E8)
+        ReviewInput bc5 = oneMove("6k1/1b4pp/p2q4/3PR1P1/3BQ2P/1PP5/1P1K4/5r2 w - - 1 34", "d4c5", Eval.cp(792),
+                "b3b4", Eval.cp(780), "e5e8", Eval.cp(815));
+        // Kasparov - Topalov 1999, 24.Rxd4: White stands -0.22 after it (B-E7)
+        ReviewInput rxd4 = oneMove("b2r3r/k4p1p/p2q1np1/NppP4/3p1Q2/P4PPB/1PP4P/1K1RR3 w - - 1 24", "d1d4",
+                Eval.cp(-22), "d1d4", Eval.cp(-86), "a5c6", Eval.cp(-22));
+        for (ReviewInput in : List.of(bc5, rxd4)) {
+            assertNotEquals(MoveClassification.BRILLIANT, label(in, Tuning.DEFAULT));
+        }
+        Tuning noGuards = Tuning.DEFAULT.with("brilliantWinningCp", 100_000).with("brilliantMinCpAfter", -100_000);
+        assertEquals(MoveClassification.BRILLIANT, label(bc5, noGuards));
+        assertEquals(MoveClassification.BRILLIANT, label(rxd4, noGuards));
     }
 
     // ------------------------------------------------------------------ Great
@@ -148,6 +167,20 @@ class BrilliantGreatExclusionsTest {
                 ReviewClassifier.fast(Eval.blackMates(4), Eval.blackMates(2), true, false).label());
         assertEquals(MoveClassification.EXCELLENT,
                 ReviewClassifier.fast(Eval.blackMates(6), Eval.blackMates(4), true, false).label());
+    }
+
+    @Test
+    void mateRulesFromTheChessComLabels() {
+        // live_173843114164 ply 68, 34...Kd7: mate in 3 against becomes mate in 1 (chess.com Inaccuracy)
+        ReviewInput kd7 = oneMove("2r5/pqk3pp/4R3/4Qp2/8/4P1P1/PB3P1P/6K1 b - - 4 34", "c7d7", Eval.whiteMates(3),
+                "c7d8", Eval.whiteMates(3), "c7b8", Eval.whiteMates(1));
+        assertEquals(MoveClassification.INACCURACY, label(kd7, Tuning.DEFAULT));
+        assertEquals(MoveClassification.INACCURACY,
+                ReviewClassifier.fast(Eval.whiteMates(3), Eval.whiteMates(1), false, false).label());
+        // live_184567962764 ply 132, 66...g3: mate in 2 kept as mate in 3 (chess.com Good, not Miss)
+        ReviewInput g3 = oneMove("4K3/8/4k3/8/6p1/8/8/4q3 b - - 1 66", "g4g3", Eval.blackMates(2), "e1b4",
+                Eval.blackMates(3), "e1e2", Eval.blackMates(3));
+        assertEquals(MoveClassification.GOOD, label(g3, Tuning.DEFAULT));
     }
 
     // ------------------------------------------------------------------ helpers
