@@ -109,12 +109,15 @@ class LedDepthStudyTest {
         List<Sample> mates = new ArrayList<>();
         for (Path f : files) {
             JSONObject g = new JSONObject(Files.readString(f));
-            JSONArray uci = g.getJSONArray("moves_uci");
+            List<String> uci = movesOf(g);
+            if (uci == null) {
+                continue;
+            }
             Board b = new Board();
             List<Sample> game = new ArrayList<>();
-            for (int i = 0; i < uci.length(); i++) {
+            for (int i = 0; i < uci.size(); i++) {
                 String before = b.getFen();
-                String mv = uci.getString(i);
+                String mv = uci.get(i);
                 b.doMove(new Move(mv, b.getSideToMove()));
                 game.add(new Sample(g.getString("id"), i, before, mv, b.getFen(), ""));
             }
@@ -135,6 +138,31 @@ class LedDepthStudyTest {
         out.addAll(mates.subList(0, Math.min(mates.size(), Integer.getInteger("led.mateSamples", 80))));
         out.addAll(userBug());
         return out;
+    }
+
+    /** UCI moves of a dataset game ({@code moves_uci}, else the SAN of the PGN movetext), null if unreadable. */
+    static List<String> movesOf(JSONObject g) {
+        List<String> out = new ArrayList<>();
+        if (g.has("moves_uci")) {
+            JSONArray a = g.getJSONArray("moves_uci");
+            for (int i = 0; i < a.length(); i++) {
+                out.add(a.getString(i));
+            }
+            return out;
+        }
+        try {
+            String pgn = g.getString("pgn");
+            String text = pgn.substring(pgn.lastIndexOf(']') + 1).replaceAll("\\{[^}]*}", " ")
+                    .replaceAll("\\d+\\.+", " ").replaceAll("1-0|0-1|1/2-1/2|\\*", " ").trim();
+            MoveList ml = new MoveList();
+            ml.loadFromSan(text);
+            for (Move m : ml) {
+                out.add(m.toString());
+            }
+            return out;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** 1.e4 d5 2.exd5 Bd7 3.d4 a5 4.c4 f6 5.Qh5+ g6 6.Be2 gxh5?? 7.Bxh5#: 6...gxh5 must be a blunder. */

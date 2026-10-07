@@ -38,9 +38,16 @@ import java.util.Locale;
  * @param botHashMb         Hash of the bot process
  * @param analysisThreads   Threads of the analysis process
  * @param idleCloseMs       idle engine processes are closed after this long (restarted lazily)
+ * @param cores             CPU cores of the machine
  */
 public record ProcessPlan(long ramMb, String tier, boolean botSharesAnalysis, int analysisHashMb, int botHashMb,
-                          int analysisThreads, long idleCloseMs) {
+                          int analysisThreads, long idleCloseMs, int cores) {
+
+    public ProcessPlan(long ramMb, String tier, boolean botSharesAnalysis, int analysisHashMb, int botHashMb,
+                       int analysisThreads, long idleCloseMs) {
+        this(ramMb, tier, botSharesAnalysis, analysisHashMb, botHashMb, analysisThreads, idleCloseMs,
+                Runtime.getRuntime().availableProcessors());
+    }
 
     private static volatile ProcessPlan detected;
 
@@ -71,7 +78,7 @@ public record ProcessPlan(long ramMb, String tier, boolean botSharesAnalysis, in
         int cfgHash = (int) Math.min(ConfigManager.getIntProperty("stockfish.hash", p.analysisHashMb),
                 Math.max(16, ramMb / 16));
         return new ProcessPlan(p.ramMb, p.tier, p.botSharesAnalysis, Math.max(1, cfgHash), p.botHashMb,
-                Math.max(1, cfgThreads), p.idleCloseMs);
+                Math.max(1, cfgThreads), p.idleCloseMs, Math.max(1, cores));
     }
 
     /** MemTotal from /proc/meminfo on Linux, the OS bean elsewhere, or {@code -Djavachess.ram.mb}. */
