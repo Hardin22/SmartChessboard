@@ -674,6 +674,10 @@ def cmd_prcurve(a):
         m = metrics(cvp, cvg)
         out["cv"] = {c: pr(cvp, c) for c in SPECIAL}
         out["exact"], out["far"], out["pi5"] = m["exact"], m["far_n"], m["pi5_s_per_40"]
+        out["pi5max"] = m["pi5_s_per_40_max"]
+        # worst real game: its whole review time on the Pi 5, not normalised to 40 moves
+        game_s = [(int(g["product_nodes"]) / (PI5_NPS * PI5_PROCESSES), g["game"], int(g["plies"])) for g in cvg]
+        out["pi5game"] = max(game_s)
         for rating in (1500, 2500):
             kr = dict(k, defaultRating=str(rating))
             fr = rc if famous_deep else None
@@ -694,7 +698,7 @@ def cmd_prcurve(a):
         res = list(ex.map(one, variants))
     md = ["| variant | CV exact / ≥2 | CV Brilliant | CV Great | CV Miss | famous 1500 brilliant-kind B / G | "
           "famous 1500 control B / G | famous 2500 brilliant-kind B / G | famous 2500 control B / G | Chessigma B | "
-          "Pi 5 s/40 |", "|---|---|---|---|---|---|---|---|---|---|---:|"]
+          "Pi 5 s/40 mean / worst | worst game on Pi 5 |", "|---|---|---|---|---|---|---|---|---|---|---:|---|"]
     for r in res:
         star = "" if r["f1500recheck"] else " (no famous deep: lite)"
         md.append(f"| {r['name']}{star} | {r['exact']:.1%} / {r['far']} | {fmt_pr(r['cv']['brilliant'])} | "
@@ -703,7 +707,8 @@ def cmd_prcurve(a):
                   f"{fmt_pr(r['f1500control']['brilliant'])} / {fmt_pr(r['f1500control']['great'])} | "
                   f"{fmt_pr(r['f2500brilliant']['brilliant'])} / {fmt_pr(r['f2500brilliant']['great'])} | "
                   f"{fmt_pr(r['f2500control']['brilliant'])} / {fmt_pr(r['f2500control']['great'])} | "
-                  f"{r['chessigma']} | {r['pi5']:.1f} |")
+                  f"{r['chessigma']} | {r['pi5']:.1f} / {r['pi5max']:.1f} | {r['pi5game'][0]:.1f} s "
+                  f"({r['pi5game'][1]}, {(r['pi5game'][2] + 1) // 2} moves) |")
     text = "\n".join(md)
     (root / f"{a.name or Path(a.variants).stem}.md").write_text(text + "\n")
     print(text)
