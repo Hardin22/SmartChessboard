@@ -675,6 +675,37 @@ public class ChessBoardUI extends StackPane {
         return chessBoard.getFen();
     }
 
+    /**
+     * Shows a position given from outside (analysis view-models). With {@code animate} and a last move, the piece
+     * slides from its square (one step forward through the moves).
+     */
+    public void showPosition(String fen, String lastUci, boolean animate) {
+        Move last = null;
+        if (lastUci != null && lastUci.length() >= 4) {
+            try {
+                Square from = Square.valueOf(lastUci.substring(0, 2).toUpperCase());
+                Square to = Square.valueOf(lastUci.substring(2, 4).toUpperCase());
+                last = new Move(from, to);
+            } catch (RuntimeException e) {
+                last = null;
+            }
+        }
+        stopCurrentAnimation();
+        chessBoard.loadFromFen(fen);
+        if (!animate || last == null || !animationsOn()) {
+            updateBoard(chessBoard, last, pieceStyle, null);
+            return;
+        }
+        Move move = last;
+        updateBoard(chessBoard, move, pieceStyle, move.getTo());
+        animateMove(move.getFrom(), move.getTo(), chessBoard.getPiece(move.getTo()), pieceStyle,
+                () -> updateBoard(chessBoard, move, pieceStyle, null));
+    }
+
+    private static boolean animationsOn() {
+        return io.github.hardin22.javachess.Components.Ui.animations();
+    }
+
     public void loadPgn(String pgn) {
         loadPgn(pgn, START_FEN);
     }

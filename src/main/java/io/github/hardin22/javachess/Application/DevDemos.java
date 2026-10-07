@@ -173,6 +173,10 @@ final class DevDemos {
         if (Boolean.getBoolean("javachess.demo.analyze")) {
             review.analyze();
         }
+        double variationAfter = Double.parseDouble(System.getProperty("javachess.demo.variationAfter", "0"));
+        if (variationAfter > 0) {
+            later(variationAfter, review::devShowBest);
+        }
     }
 
     private static void puzzle(MainController main) {
