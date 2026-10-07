@@ -876,6 +876,11 @@ public class ChessBoardUI extends StackPane {
 
         /** A legal move in UCI ("e2e4"; promotions as "e7e8q"). */
         void play(String uci);
+
+        /** A pawn reaches the last rank: ask which piece (q, r, b, n); by default a queen. */
+        default void choosePromotion(String from, String to, boolean white, Consumer<String> done) {
+            done.accept(from + to + "q");
+        }
     }
 
     private MoveInput moveInput;
@@ -908,9 +913,16 @@ public class ChessBoardUI extends StackPane {
         if (selected != null) {
             for (Move move : selectedMoves) {
                 if (move.getTo() == square) {
-                    String uci = move.getFrom().name().toLowerCase() + move.getTo().name().toLowerCase();
+                    String from = move.getFrom().name().toLowerCase();
+                    String to = move.getTo().name().toLowerCase();
+                    boolean white = position.getSideToMove() == com.github.bhlangonijr.chesslib.Side.WHITE;
+                    MoveInput input = moveInput;
                     clearSelection();
-                    moveInput.play(uci); // promotions: the game promotes to a queen
+                    if (move.getPromotion() != Piece.NONE) {
+                        input.choosePromotion(from, to, white, input::play);
+                    } else {
+                        input.play(from + to);
+                    }
                     return;
                 }
             }

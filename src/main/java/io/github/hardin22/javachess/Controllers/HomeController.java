@@ -12,6 +12,9 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import io.github.hardin22.javachess.Play.BotLevels;
+import io.github.hardin22.javachess.Play.GameResume;
+import io.github.hardin22.javachess.Play.GameSnapshot;
 import io.github.hardin22.javachess.Components.BoardThemes;
 import io.github.hardin22.javachess.Components.HardwareStatus;
 import io.github.hardin22.javachess.Components.I18n;
@@ -239,6 +242,7 @@ public class HomeController implements Screen {
             var archive = io.github.hardin22.javachess.Services.GameArchiveService.getInstance();
             List<ArchivedGame> games = archive.list();
             ArchivedGame last = games.isEmpty() ? null : games.get(0);
+            var interrupted = inProgress ? java.util.Optional.<GameSnapshot>empty() : GameResume.available();
             Platform.runLater(() -> {
                 puzzleValue.setText(String.valueOf(progress.rating()));
                 gamesValue.setText(String.valueOf(games.size()));
@@ -246,6 +250,8 @@ public class HomeController implements Screen {
                     showResume(I18n.t("home.resume.current"), game.getTitle(), game.getCurrentFen(),
                             game.getSubtitle(), I18n.t("home.resume.continue"), "fth-play",
                             () -> mainController.navigateTo("GAME"));
+                } else if (interrupted.isPresent()) {
+                    showInterrupted(interrupted.get());
                 } else if (last != null) {
                     showResume(I18n.t("home.resume.last"), ArchiveController.describe(last),
                             last.finalFen(), ArchiveController.outcomeLine(last), I18n.t("home.resume.review"),
@@ -264,6 +270,45 @@ public class HomeController implements Screen {
             return null;
         }
     }
+
+    /** A game cut short by a restart or a power cut: resume it where it was, or forget it. */
+    private void showInterrupted(GameSnapshot s) {
+        String title;
+        if (s.mode() == GameSnapshot.Mode.PVP) {
+            title = I18n.t("home.resume.pvp", s.timeControl().isUnlimited()
+                    ? I18n.t("pvc.timecontrol.none") : s.timeControl().label());
+        } else {
+            title = (s.botLevelId() == null ? java.util.Optional.<BotLevels.Level>empty() : BotLevels.byId(s.botLevelId()))
+                    .map(l -> l.name() + " · " + l.eloText()).orElse(I18n.t("game.vs.computer"));
+        }
+        String detail = I18n.t("home.resume.move", s.moveNumber());
+        if (s.savedAt() != null) {
+            detail += " · " + s.savedAt().format(SAVED_AT);
+        }
+        showResume(I18n.t("home.resume.interrupted"), title, s.currentFen(), detail, I18n.t("home.resume.continue"),
+                "fth-play", () -> {
+                    if (mainController.getController("GAME") instanceof ActiveGameController game) {
+                        game.resumeSnapshot(s);
+                        mainController.navigateTo("GAME");
+                    }
+                });
+        Button discard = Ui.button(I18n.t("home.resume.discard"), null, "btn-ghost", "btn-md");
+        discard.setOnAction(e -> {
+            resumeSlot.setVisible(false);
+            AppExecutors.io().execute(() -> {
+                GameResume.discard();
+                Platform.runLater(this::refresh);
+            });
+        });
+        if (resumeActions != null) {
+            resumeActions.getChildren().add(discard);
+        }
+    }
+
+    private static final java.time.format.DateTimeFormatter SAVED_AT =
+            java.time.format.DateTimeFormatter.ofPattern("d MMM, HH:mm", java.util.Locale.ITALIAN);
+
+    private HBox resumeActions;
 
     private void showResume(String caption, String title, String fen, String detail, String action, String icon,
                             Runnable onAction) {
@@ -285,7 +330,9 @@ public class HomeController implements Screen {
         }
         Button go = Ui.button(action, icon, "btn-inverse", "btn-md");
         go.setOnAction(e -> onAction.run());
-        texts.getChildren().addAll(Ui.vgrow(), go);
+        resumeActions = new HBox(12, go);
+        resumeActions.setAlignment(Pos.CENTER_LEFT);
+        texts.getChildren().addAll(Ui.vgrow(), resumeActions);
         texts.setMinWidth(0);
         HBox.setHgrow(texts, Priority.ALWAYS);
         StackPane boardBox = new StackPane(resumeBoard);

@@ -26,6 +26,10 @@ record GameStatus(Kind kind, String text, String from, String to) {
         ERROR,
         /** Connection messages and other information. */
         INFO,
+        /** The physical board went out of step (reconnection): pieces to put back as on the screen. */
+        RESYNC,
+        /** The engine does not answer; the game retries by itself (a "Riprova" button can force it). */
+        ENGINE,
         /** The game is over (text = end message). */
         END
     }
@@ -44,9 +48,7 @@ record GameStatus(Kind kind, String text, String from, String to) {
         if (m.isEmpty()) {
             return none();
         }
-        if (!running) {
-            return new GameStatus(Kind.END, m, null, null);
-        }
+        // Board instructions first: the last bot move may still have to be made on the board after the end.
         Matcher replicate = REPLICATE.matcher(m);
         if (replicate.find()) {
             String from = replicate.group(1);
@@ -54,14 +56,23 @@ record GameStatus(Kind kind, String text, String from, String to) {
             return new GameStatus(Kind.REPLICATE, m, from == null ? null : from.toLowerCase(Locale.ROOT),
                     to.toLowerCase(Locale.ROOT));
         }
-        if (lower.startsWith("posiziona") || lower.startsWith("configura") || lower.startsWith("rimetti")) {
+        if (lower.startsWith("rimetti")) {
+            return new GameStatus(Kind.RESYNC, m, null, null);
+        }
+        if (lower.startsWith("posiziona") || lower.startsWith("configura")) {
             return new GameStatus(Kind.SETUP, m, null, null);
         }
-        if (lower.contains("errore") || lower.contains("non disponibile") || lower.startsWith("⚠")) {
+        if (lower.contains("motore non disponibile")) {
+            return new GameStatus(Kind.ENGINE, m, null, null);
+        }
+        if (lower.contains("errore") || lower.startsWith("⚠")) {
             Matcher sq = SQUARE.matcher(m);
             return new GameStatus(Kind.ERROR, m, null, sq.find() ? sq.group(1).toLowerCase(Locale.ROOT) : null);
         }
-        if (lower.contains("pronta")) {
+        if (!running) {
+            return new GameStatus(Kind.END, m, null, null);
+        }
+        if (lower.contains("pronta") || lower.contains("allineata")) {
             return new GameStatus(Kind.READY, m, null, null);
         }
         if (lower.contains("replicata")) {
