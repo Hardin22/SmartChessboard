@@ -18,6 +18,7 @@ daily_990231844	43	fn-great	cv93	bxa6	best	great
 daily_998267522	41	fn-great	ex-holdout49	Bxd4	best	great
 daily_998267522	45	fn-great	ex-holdout49	Rf3	excellent	great
 daily_998267522	47	fn-great	ex-holdout49	c3	best	great
+live_117364247477	21	fn-great	cv93	Qxb8+	best	great
 live_117364247477	32	fn-great	cv93	Qxb2	best	great
 live_118493959209	32	fn-great	ex-holdout49	Bxc3	best	great
 live_118493959209	84	fn-great	ex-holdout49	Nxf1	best	great
@@ -108,6 +109,7 @@ live_184440015284	57	fn-great	ex-holdout49	Kf3	best	great
 live_184440015284	60	fn-great	ex-holdout49	hxg6	best	great
 live_184440015284	71	fn-great	ex-holdout49	Qd8+	best	great
 live_184440015284	105	fn-great	ex-holdout49	Kxd3	best	great
+live_184510489798	18	fp-great	cv93	Bxg4	great	excellent
 live_184566976354	12	fn-great	cv93	b5	best	great
 live_184567962764	19	fn-great	cv93	Bb5	best	great
 live_184567962764	78	fn-great	cv93	Bd4	best	great
@@ -131,6 +133,7 @@ botvinnik_tal_1960_g6	58	fn-great	famous-control	Rxc1	best	great
 byrne_fischer_1956	34	fn-brilliant	famous-brilliant	Be6	great	brilliant
 byrne_fischer_1956	34	fp-great	famous-brilliant	Be6	great	brilliant
 capablanca_marshall_1918	71	fn-brilliant	famous-control	Bxf7+	best	brilliant
+deepblue_kasparov_1997_g6	33	fp-brilliant	famous-control	Bf5	brilliant	excellent
 fischer_petrosian_1971_g7	59	fn-great	famous-control	Kd2	best	great
 fischer_spassky_1972_g6	41	fn-great	famous-control	f4	best	great
 ivanchuk_yusupov_1991_g9	38	fn-great	famous-brilliant	gxf4	best	great
@@ -165,6 +168,5 @@ topalov_shirov_1998	61	fn-great	famous-brilliant	Re3	best	great
 topalov_shirov_1998	75	fn-great	famous-brilliant	Rf3	best	great
 topalov_shirov_1998	92	fn-great	famous-brilliant	Ke6	best	great
 topalov_shirov_1998	100	fp-great	famous-brilliant	d4	great	best
-zukertort_blackburne_1883	47	fp-great	famous-brilliant	Bxe4	great	best
-deepblue_kasparov_1997_g6	33	fp-brilliant	famous-control	Bf5	brilliant	excellent
 wei_yi_bruzon_2015	57	fn-great	famous-brilliant	Qb3	excellent	great
+zukertort_blackburne_1883	47	fp-great	famous-brilliant	Bxe4	great	best
