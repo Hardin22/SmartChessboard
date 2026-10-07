@@ -13,9 +13,6 @@ jobs:
     name: Build and test (Java 21, Ubuntu)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      # No display on the runner: tests that need a GUI skip themselves; AWT/JavaFX run headless.
-      JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
     steps:
       - uses: actions/checkout@v4
 
@@ -29,7 +26,8 @@ jobs:
         run: sudo apt-get update -q && sudo apt-get install -y -q stockfish || echo "Stockfish not available, engine tests will be skipped"
 
       - name: Build and test
-        run: ./mvnw -B -ntp verify
+        # xvfb gives JavaFX a display, so the end-to-end tests (real views + scripted engine) run as well
+        run: xvfb-run -a ./mvnw -B -ntp verify
 
       - name: Upload test reports
         if: failure()

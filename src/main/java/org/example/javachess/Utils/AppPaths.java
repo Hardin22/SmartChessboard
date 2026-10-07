@@ -78,6 +78,22 @@ public final class AppPaths {
         return dir;
     }
 
+    /**
+     * Where exported PGN files go: {@code -Djavachess.exportDir} if set, otherwise the user's home folder
+     * (easy to find, e.g. to copy to a USB stick).
+     */
+    public static Path exportDir() {
+        String override = System.getProperty("javachess.exportDir");
+        Path dir = override != null && !override.isBlank() ? Paths.get(override)
+                : Paths.get(System.getProperty("user.home"));
+        try {
+            Files.createDirectories(dir);
+        } catch (IOException e) {
+            log.warn("Cannot create export folder {}: {}", dir, e.getMessage());
+        }
+        return dir;
+    }
+
     /** Folder where pre-1.0 versions stored their files: the working directory (overridable for tests). */
     public static Path legacyDir() {
         String override = System.getProperty(LEGACY_DIR_PROPERTY);

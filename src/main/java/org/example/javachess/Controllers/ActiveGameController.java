@@ -184,11 +184,16 @@ public class ActiveGameController implements NavigationAware {
     }
 
     public void startPvP(int duration, int increment) {
+        startPvPSeconds(duration * 60, increment);
+    }
+
+    /** Two-player game with {@code seconds} on each clock (also used by the end-to-end tests: short clocks). */
+    public void startPvPSeconds(int seconds, int increment) {
+        int duration = Math.max(1, seconds / 60);
         setupBoard();
         arduino().getBoardStateManager().setEvaluationEnabled(showBestMoves);
         MoveCoach.get().setEnabled(showBestMoves); // LED verdicts follow the suggestions toggle
-        currentGame = new PvpGame(chessBoard, evalBar, openingNameLabel, bottomLabel, topLabel, duration * 60,
-                increment);
+        currentGame = new PvpGame(chessBoard, evalBar, openingNameLabel, bottomLabel, topLabel, seconds, increment);
         header.setTitle(I18n.t("game.vs.player") + " · " + duration + " + " + increment);
         setPlayers(I18n.t("game.black"), I18n.t("game.player2"), I18n.t("game.white"), I18n.t("game.player1"), true);
         setupGameCallbacks();
@@ -196,6 +201,7 @@ public class ActiveGameController implements NavigationAware {
         // The opponent sits on the other side of the board: turn their bar towards them (portrait monitor only).
         rotateTopBar = true;
         updateTopBarRotation();
+        updateStockfishState(); // live analysis on if evaluation OR suggestions are shown (as the toolbar does)
         currentGame.startGame();
     }
 
@@ -215,6 +221,7 @@ public class ActiveGameController implements NavigationAware {
         updateAnalysisParams();
         rotateTopBar = false;
         updateTopBarRotation();
+        updateStockfishState(); // live analysis on if evaluation OR suggestions are shown (as the toolbar does)
         currentGame.startGame();
     }
 

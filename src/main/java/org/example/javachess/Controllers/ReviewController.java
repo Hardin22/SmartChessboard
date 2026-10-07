@@ -217,9 +217,15 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         Thread.ofPlatform().daemon().name("game-analysis").start(() -> {
             try {
                 List<MoveAnalysis> analysis = analyzer.analyzeGame(pgn, fenToAnalyze, depth, progress -> Platform.runLater(() -> {
-                    analysisProgressIndicator.setProgress(progress);
-                    percentLabel.setText(I18n.t("review.analyzing", Math.round(progress * 100)));
+                    if (generation == analysisGeneration.get()) { // progress of an older game is ignored
+                        analysisProgressIndicator.setProgress(progress);
+                        percentLabel.setText(I18n.t("review.analyzing", Math.round(progress * 100)));
+                    }
                 }));
+                if (analysis.isEmpty() && !pgn.isBlank()) {
+                    // GameAnalyzer returns nothing when the engine fails mid-way: report it, do not show 0%
+                    throw new IllegalStateException("il motore non ha risposto");
+                }
                 double whiteAccuracy = analyzer.calculateAccuracy(analysis, true);
                 double blackAccuracy = analyzer.calculateAccuracy(analysis, false);
                 Platform.runLater(() -> {
@@ -229,6 +235,9 @@ public class ReviewController implements NavigationAware, GameNavigationListener
                 });
             } catch (RuntimeException | Error e) {
                 LOG.error("Game analysis failed", e);
+                if (generation != analysisGeneration.get()) {
+                    return; // the user already moved to another game
+                }
                 Platform.runLater(() -> {
                     progressContainer.setVisible(false);
                     progressContainer.setManaged(false);

@@ -52,8 +52,6 @@ public class PuzzleController implements NavigationAware {
     private int currentTargetRating = 1500;
     private Puzzle currentPuzzle;
     /** Hint, wrong move or give-up on the current puzzle: it no longer counts as solved cleanly. */
-    private boolean currentFailed;
-    private boolean currentRecorded;
     private List<String> currentThemes = null;
 
     @Override
@@ -85,18 +83,15 @@ public class PuzzleController implements NavigationAware {
         chessBoardUI.setFitToParent(true);
         puzzleBoardContainer.getChildren().setAll(chessBoardUI);
         puzzleGame = new PuzzleGame(chessBoardUI, new EvalBar(8, 400), instructionLabel);
+        puzzleGame.setStatusCallback(this::showStatus); // setup progress, wrong move, hint, solution
     }
 
     private void showStatus(String text) {
         String pretty = text.equals(text.toUpperCase()) && text.length() > 3
                 ? Character.toUpperCase(text.charAt(0)) + text.substring(1).toLowerCase() : text;
         statusLabel.setText(pretty);
-        String upper = text.toUpperCase();
-        if (upper.startsWith("MOSSA ERRATA")) {
-            currentFailed = true;
-        }
-        if (upper.startsWith("COMPLIMENTI")) {
-            recordAttempt(!currentFailed);
+        // Progress (solved / mistakes / hints / give up) is recorded once by PuzzleGame itself.
+        if (text.toUpperCase().startsWith("COMPLIMENTI")) {
             showNext();
         }
     }
@@ -114,8 +109,6 @@ public class PuzzleController implements NavigationAware {
         }
 
         currentPuzzle = puzzle;
-        currentFailed = false;
-        currentRecorded = false;
         header.setSubtitle(I18n.t("puzzle.info", puzzle.getId(), puzzle.getRating()));
         ratingBadge.setText(String.valueOf(puzzle.getRating()));
         statusLabel.setText(I18n.t("puzzle.find"));
@@ -154,7 +147,6 @@ public class PuzzleController implements NavigationAware {
     @FXML
     public void handleHint() {
         if (puzzleGame != null) {
-            currentFailed = true;
             int level = puzzleGame.toggleHint();
             if (level == 1) {
                 hintButton.setText(I18n.t("puzzle.solution"));
@@ -166,7 +158,6 @@ public class PuzzleController implements NavigationAware {
     public void handleSolution() {
         if (puzzleGame != null) {
             puzzleGame.giveUp();
-            recordAttempt(false);
             showNext();
         }
     }
@@ -178,18 +169,6 @@ public class PuzzleController implements NavigationAware {
         giveUpButton.setManaged(false);
         hintButton.setVisible(false);
         hintButton.setManaged(false);
-    }
-
-    /** Stores the result once per puzzle (progress file I/O off the FX thread). */
-    private void recordAttempt(boolean solvedCleanly) {
-        Puzzle puzzle = currentPuzzle;
-        if (puzzle == null || currentRecorded) {
-            return;
-        }
-        currentRecorded = true;
-        org.example.javachess.Utils.AppExecutors.io().execute(() ->
-                org.example.javachess.Services.PuzzleProgressService.getInstance().record(puzzle.getId(),
-                        puzzle.getRating(), puzzle.getThemes() == null ? List.of() : puzzle.getThemes(), solvedCleanly));
     }
 
     @FXML
@@ -207,6 +186,13 @@ public class PuzzleController implements NavigationAware {
                         mainController.showToast(I18n.t("puzzle.none"));
                     }
                 }));
+    }
+
+    @Override
+    public void onNavigatedFrom() {
+        if (puzzleGame != null) {
+            puzzleGame.endGame("Menu", false); // leave setup mode and release the board listener
+        }
     }
 
     @FXML

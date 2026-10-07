@@ -162,8 +162,8 @@ public class ArchiveController implements NavigationAware {
             mainController.closeSheet();
             org.example.javachess.Utils.AppExecutors.io().execute(() -> {
                 try {
-                    java.nio.file.Path file = java.nio.file.Path.of(System.getProperty("user.home"),
-                            "javachess-partita-" + game.id() + ".pgn");
+                    java.nio.file.Path file = org.example.javachess.Utils.AppPaths.exportDir()
+                            .resolve("javachess-partita-" + game.id() + ".pgn");
                     String pgn = GameArchiveService.getInstance().exportPgn(java.util.List.of(game.id()));
                     java.nio.file.Files.writeString(file, pgn, java.nio.charset.StandardCharsets.UTF_8);
                     mainController.showToast(I18n.t("archive.exported", file));
@@ -188,7 +188,8 @@ public class ArchiveController implements NavigationAware {
         Button confirm = actionButton(I18n.t("archive.delete"), "fth-trash-2", "btn-danger");
         confirm.setOnAction(e -> {
             mainController.closeSheet();
-            org.example.javachess.Utils.AppExecutors.io().execute(() -> {
+            // same queue as the game saves: a delete can never overtake a pending save
+            org.example.javachess.Utils.AppExecutors.storage().execute(() -> {
                 GameArchiveService.getInstance().delete(game.id());
                 Platform.runLater(this::loadArchive);
             });
@@ -214,6 +215,9 @@ public class ArchiveController implements NavigationAware {
         String t = type.replace("Plaver", "Player");
         if (t.startsWith("Player vs Stockfish livello")) {
             return "Contro Stockfish · livello " + t.substring("Player vs Stockfish livello".length()).trim();
+        }
+        if (t.startsWith("Player vs ") && !t.equals("Player vs Player")) {
+            return "Contro " + t.substring("Player vs ".length()).trim(); // e.g. "Player vs Maia 1500"
         }
         if (t.equals("Player vs Player")) {
             return I18n.t("pvp.title");

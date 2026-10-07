@@ -22,8 +22,6 @@ public class PuzzleGame extends AbstractGame {
     private int currentMoveIndex = 0;
     private Label instructionLabel;
     private boolean isSolving = false;
-    /** A wrong move, a hint or giving up: the puzzle no longer counts as solved cleanly. */
-    private boolean hadMistake;
     private boolean progressRecorded;
 
     public PuzzleGame(ChessBoardUI chessBoardUI, EvalBar evalBar, Label instructionLabel) {
@@ -46,8 +44,6 @@ public class PuzzleGame extends AbstractGame {
         this.currentPuzzle = puzzle;
         this.currentMoveIndex = 0;
         this.isSolving = false;
-        this.hadMistake = false;
-        this.progressRecorded = false;
         // Reset Hints
         this.hintLevel = 0;
         this.mistakes = 0;
@@ -267,7 +263,6 @@ public class PuzzleGame extends AbstractGame {
             } else {
                 // Incorrect Move
                 log.info("Wrong puzzle move {} (expected {})", move, expectedUci);
-                hadMistake = true;
                 updateStatus("Mossa Errata! Riprova.");
                 mistakes++;
                 // the board manager already took the move: tell it the position did not change
@@ -301,7 +296,7 @@ public class PuzzleGame extends AbstractGame {
     public void showHint() {
         if (!isSolving || currentPuzzle == null)
             return;
-        hadMistake = true;
+        hintLevel = Math.max(hintLevel, 1); // a hint means the puzzle is not solved cleanly
 
         if (currentMoveIndex < currentPuzzle.getMoves().size()) {
             String expectedUci = currentPuzzle.getMoves().get(currentMoveIndex);
@@ -324,10 +319,12 @@ public class PuzzleGame extends AbstractGame {
     }
 
     public void giveUp() {
-        if (!isSolving || currentPuzzle == null)
+        if (currentPuzzle == null)
             return;
         gaveUp = true;
-        recordProgress(currentPuzzle);
+        recordProgress(currentPuzzle); // also during set-up: a given-up puzzle is a failed attempt
+        if (!isSolving)
+            return;
 
         if (currentMoveIndex < currentPuzzle.getMoves().size()) {
             String expectedUci = currentPuzzle.getMoves().get(currentMoveIndex);

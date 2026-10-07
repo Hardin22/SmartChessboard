@@ -60,10 +60,7 @@ public class App extends Application {
             this.mainController = mainController;
             // after the first frame: connect the board and build the other views in idle time
             Platform.runLater(() -> {
-                AppExecutors.io().execute(() -> {
-                    Hardware.get();
-                    org.example.javachess.Hardware.CoachLeds.install(); // move-quality LEDs from the engine coach
-                });
+                AppExecutors.io().execute(Hardware::get); // also registers the coach -> LED renderer
                 mainController.startIdlePreload();
             });
             DevOptions.afterShow(primaryStage, mainController);

@@ -34,6 +34,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.version>5.10.0</junit.version>
+        <skipE2E>false</skipE2E>
     </properties>
 
     <repositories>
@@ -198,7 +199,28 @@
                         <javachess.home>${project.build.directory}/test-home</javachess.home>
                         <javachess.legacyDir>${project.build.directory}/test-legacy</javachess.legacyDir>
                     </systemPropertyVariables>
+                    <!-- end-to-end tests run in their own JVM (execution "e2e" below) -->
+                    <excludes>
+                        <exclude>**/e2e/**</exclude>
+                    </excludes>
                 </configuration>
+                <executions>
+                    <execution>
+                        <!-- Real views + game classes + scripted engine; skipped without a display (CI: xvfb-run).
+                             Skip locally with -DskipE2E=true -->
+                        <id>e2e</id>
+                        <goals>
+                            <goal>test</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${skipE2E}</skip>
+                            <excludes combine.self="override"/>
+                            <includes>
+                                <include>**/e2e/**/*Test.java</include>
+                            </includes>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
 
             <plugin>
