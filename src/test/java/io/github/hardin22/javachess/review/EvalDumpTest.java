@@ -36,7 +36,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *     [-Dreview.dump.budget=lite|deep|NAME] [-Dreview.dump.nodes=N -Dreview.dump.secondNodes=N]
  *     [-Dreview.dump.processes=3 -Dreview.dump.hash=64] [-Dreview.dump.mpv3=true] [-Dreview.dump.parallelGames=3]
  *     [-Dreview.dump.force=false] [-Dreview.dump.only=id1,id2] [-Dreview.labels=DIR] [-Dreview.gamesDir=DIR] [-Dreview.dump.out=DIR]
+ *     [-Dreview.dump.tag=TAG]
  * </pre>
+ * With {@code tag} the games are the files of {@code gamesDir} carrying that tag (e.g. {@code brilliant_benchmark}),
+ * labelled or not; otherwise the label files of {@code review.labels}.
  * The main pass is the product's: a {@link GameReviewer} on a {@link StockfishPool} (N processes x 1 thread, node
  * budget, hash carried over in blocks of consecutive positions). Then every position gets its second line (best move
  * excluded, like the product re-search) and, unless disabled, a MultiPV 3 search at the main budget. Games already
@@ -69,8 +72,12 @@ class EvalDumpTest {
 
         List<String> only = List.of(System.getProperty("review.dump.only", "").split(",")).stream()
                 .map(String::trim).filter(x -> !x.isEmpty()).toList();
-        List<LabelledGame> games = new ArrayList<>();
-        for (LabelledGame g : LabelledGame.loadAll(labelsDir(), gamesDir())) {
+        List<Moves> games = new ArrayList<>();
+        String tag = System.getProperty("review.dump.tag", "");
+        List<Moves> all = tag.isEmpty()
+                ? LabelledGame.loadAll(labelsDir(), gamesDir()).stream().map(g -> new Moves(g.id(), g.uci())).toList()
+                : tagged(gamesDir(), tag);
+        for (Moves g : all) {
             boolean selected = only.isEmpty() || only.contains(g.id());
             Path out = folds.isEmpty() || folds.containsKey(g.id()) ? cvOut : holdOut;
             if (selected && (force || !Files.exists(out.resolve(g.id() + ".jsonl")))) {
@@ -84,7 +91,7 @@ class EvalDumpTest {
         AtomicInteger done = new AtomicInteger();
         long t0 = System.nanoTime();
         List<Future<?>> jobs = new ArrayList<>();
-        for (LabelledGame g : games) {
+        for (Moves g : games) {
             jobs.add(ex.submit(() -> {
                 long g0 = System.nanoTime();
                 Path out = folds.isEmpty() || folds.containsKey(g.id()) ? cvOut : holdOut;
@@ -103,7 +110,25 @@ class EvalDumpTest {
         assertEquals(games.size(), done.get(), "games dumped");
     }
 
-    private static void dump(LabelledGame g, String budget, ReviewSettings s, long mpv3Nodes, Path out)
+    /** The moves of a game to dump. */
+    record Moves(String id, List<String> uci) {
+    }
+
+    private static List<Moves> tagged(Path gamesDir, String tag) throws java.io.IOException {
+        List<Moves> out = new ArrayList<>();
+        try (Stream<Path> files = Files.list(gamesDir)) {
+            for (Path f : files.filter(f -> f.getFileName().toString().endsWith(".json")).sorted().toList()) {
+                JSONObject g = new JSONObject(Files.readString(f));
+                if (g.has("moves_uci") && g.optJSONArray("tags") != null
+                        && g.getJSONArray("tags").toList().contains(tag)) {
+                    out.add(new Moves(g.getString("id"), ChessComDataset.strings(g.getJSONArray("moves_uci"))));
+                }
+            }
+        }
+        return out;
+    }
+
+    private static void dump(Moves g, String budget, ReviewSettings s, long mpv3Nodes, Path out)
             throws Exception {
         StockfishPool pool = new StockfishPool(ReviewBenchmarkTest.stockfish(), s.processes(), s.hashMb());
         Recording rec = new Recording(pool);

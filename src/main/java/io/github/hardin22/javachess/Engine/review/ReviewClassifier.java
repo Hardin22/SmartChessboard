@@ -2,6 +2,7 @@ package io.github.hardin22.javachess.Engine.review;
 
 import com.github.bhlangonijr.chesslib.Board;
 import com.github.bhlangonijr.chesslib.Piece;
+import com.github.bhlangonijr.chesslib.PieceType;
 import com.github.bhlangonijr.chesslib.Side;
 import com.github.bhlangonijr.chesslib.Square;
 import com.github.bhlangonijr.chesslib.move.Move;
@@ -45,6 +46,16 @@ public final class ReviewClassifier {
         final double winningAnywayCp;
         /** Brilliant/Great: the mover must not stand worse than this after the move (chess.com allows about equal). */
         final double criticalMinEp;
+        /** Brilliant rule: 1 = material left en prise by static exchange (SPEC v1.8), 0 = WintrChess piece shapes. */
+        final int brilliantRule;
+        /** v1.8: material (pawns) the move leaves to the opponent, at least. */
+        final double sacMin;
+        /** v1.8: at most this win chance loss ... */
+        final double brilliantMaxLoss;
+        /** ... the mover at least this win chance after the move ... */
+        final double brilliantMinEpAfter;
+        /** ... and the alternative (second line, or best line for another move) not above this, unless it mates. */
+        final double brilliantMaxAlt;
         /** Brilliant may also come from a Good move (a sacrifice our shallower search undervalues), SPEC v1.5. */
         final boolean brilliantFromGood;
         /** Great: the second best move loses at least this much win chance. */
@@ -62,6 +73,12 @@ public final class ReviewClassifier {
         final double greatOpponentLoss;
         /** Miss: the opponent's previous move lost at least this much. */
         final double missOpponentLoss;
+        /** Miss rule for moves between two centipawn scores: 1 = SPEC v1.8, 0 = v1.6 (material and opportunity). */
+        final int missRule;
+        /** v1.8: the missed move loses at least this much ... */
+        final double missMinLoss;
+        /** ... from at least this win chance. */
+        final double missMinEp;
         /** Miss whatever the move gives away (but mate) after an opponent's error losing at least this much. */
         final double missAnyway;
         /** Miss: the mover ends no worse than before the opponent's error, within this tolerance. */
@@ -104,6 +121,11 @@ public final class ReviewClassifier {
             winningAnywayCp = get("winningAnywayCp", 700);
             criticalMinEp = get("criticalMinEp", 0.40);
             brilliantFromGood = get("brilliantFromGood", 1) != 0;
+            brilliantRule = (int) get("brilliantRule", 1);
+            sacMin = get("sacMin", 2);
+            brilliantMaxLoss = get("brilliantMaxLoss", 0.03);
+            brilliantMinEpAfter = get("brilliantMinEpAfter", 0.48);
+            brilliantMaxAlt = get("brilliantMaxAlt", 0.97);
             greatGap = get("greatGap", 0.15);
             greatPunishGap = get("greatPunishGap", 0.07);
             greatMinEp = get("greatMinEp", 0.35);
@@ -114,6 +136,9 @@ public final class ReviewClassifier {
             greatOpponentLoss = get("greatOpponentLoss", 0.03);
             missNoWorse = get("missNoWorse", 0.10);
             missAnyway = get("missAnyway", 0.20);
+            missRule = (int) get("missRule", 1);
+            missMinLoss = get("missMinLoss", 0.08);
+            missMinEp = get("missMinEp", 0.40);
             blunderAnywayLoss = get("blunderAnyway", 0.30);
             blunderMaterial = get("blunderMaterial", 2);
             giveAwayDrawEp = get("giveAwayDrawEp", 0.6);
@@ -342,6 +367,11 @@ public final class ReviewClassifier {
             }
             boolean me = before.whiteToMove();
             Board b = board(replay.fens().get(i));
+            if (Tuning.DEFAULT.brilliantRule == 1 && !before.eval().isMateAgainst(me)
+                    && sacrifice(b, uci, me) >= Tuning.DEFAULT.sacMin) {
+                need.set(i); // a sacrifice: Brilliant unless the second best move was as good (also in check)
+                continue;
+            }
             if (b.isKingAttacked() || uci.endsWith("q")) {
                 continue;
             }
@@ -440,7 +470,23 @@ public final class ReviewClassifier {
                     // hardly changes (43 labelled games: 21 of 29 moves losing 2+ pawns from -5 or worse)
                     label = MoveClassification.MISTAKE;
                 }
-                if (label == MoveClassification.MISTAKE || label == MoveClassification.BLUNDER) {
+                boolean cpToCp = !best.isMate() && !played[i].isMate();
+                if (t.missRule == 1 && cpToCp && !isTop && i > 0) {
+                    // SPEC v1.8: a clear loss (Inaccuracy or worse) right after the opponent's error, ending no
+                    // worse than before that error, from a position that was not bad: Miss, whatever it gives away
+                    double oppLoss = Math.max(0, epBefore[i - 1] - epAfter[i - 1]);
+                    double epBeforeOpp = ep(pos.get(i - 1).eval(), me, me ? kWhite : kBlack);
+                    double loss = epBefore[i] - epAfter[i];
+                    if (severity(label) >= severity(MoveClassification.INACCURACY) && oppLoss >= t.missOpponentLoss
+                            && loss >= t.missMinLoss && epAfter[i] >= epBeforeOpp - t.missNoWorse
+                            && epBefore[i] >= t.missMinEp) {
+                        label = MoveClassification.MISS;
+                    } else if (label == MoveClassification.BLUNDER && epBefore[i] - epAfter[i] < t.blunderAnywayLoss
+                            && !givesSomethingAway(replay.fens().get(i), uci, p0, pos.get(i + 1), played[i], me,
+                            epBefore[i], t)) {
+                        label = MoveClassification.MISTAKE;
+                    }
+                } else if (label == MoveClassification.MISTAKE || label == MoveClassification.BLUNDER) {
                     boolean gives = givesSomethingAway(replay.fens().get(i), uci, p0, pos.get(i + 1), played[i], me,
                             epBefore[i], t);
                     double oppLoss = i > 0 ? Math.max(0, epBefore[i - 1] - epAfter[i - 1]) : 0;
@@ -548,15 +594,18 @@ public final class ReviewClassifier {
                                               Tuning t, double k) {
         EngineLine second = p0.secondBest();
         Eval alternative = isTop ? (second == null ? null : second.eval()) : p0.eval();
+        Board b0 = board(replay.fens().get(i));
+        String uci = replay.uci().get(i);
+        if (t.brilliantRule == 1 && brilliantBySee(b0, uci, me, alternative, played, epBefore, epAfter, t, k)) {
+            return MoveClassification.BRILLIANT;
+        }
         if (alternative == null) {
             return null; // no MultiPV here: the reviewer judged it not worth it
         }
-        Board b0 = board(replay.fens().get(i));
-        String uci = replay.uci().get(i);
         if (!candidate(b0, uci, alternative, epAfter, me, t)) {
             return null;
         }
-        if (brilliant(b0, uci, me)) {
+        if (t.brilliantRule == 0 && brilliant(b0, uci, me)) {
             return MoveClassification.BRILLIANT;
         }
         if (label != MoveClassification.BEST || !isTop || played.isMateFor(me)) {
@@ -597,6 +646,58 @@ public final class ReviewClassifier {
     /** SPEC §5.2: the move leaves a piece en prise that is not simply lost (a sound sacrifice). */
     private static boolean brilliant(Board b0, String uci, boolean me) {
         return sacrificeVerdict(b0, uci, me) == null;
+    }
+
+    /**
+     * SPEC v1.8 Brilliant: the move leaves at least {@link Tuning#sacMin} pawns of material to the opponent (static
+     * exchange), loses almost nothing, does not leave the mover worse, and the alternative was not winning already
+     * (unless the move mates). Allowed in check; no king moves or promotions. chess.com gives the same Brilliants with
+     * two different engines: the rule is about the board, not the search.
+     */
+    private static boolean brilliantBySee(Board b0, String uci, boolean me, Eval alternative, Eval played,
+                                          double epBefore, double epAfter, Tuning t, double k) {
+        Move m = Tactics.find(b0, uci);
+        if (m == null || m.getPromotion() != Piece.NONE || b0.getPiece(m.getFrom()).getPieceType() == PieceType.KING) {
+            return false;
+        }
+        if (epBefore - epAfter > t.brilliantMaxLoss || epAfter < t.brilliantMinEpAfter) {
+            return false;
+        }
+        if (alternative != null && ep(alternative, me, k) > t.brilliantMaxAlt && !played.isMateFor(me)) {
+            return false; // winning anyway
+        }
+        return sacrifice(b0, uci, me) >= t.sacMin;
+    }
+
+    /**
+     * Material (pawns) the move leaves to the opponent by static exchange: on the moved piece (minus what it took), or
+     * on another piece; 0 when the move rather saves pieces that were en prise. (SPEC v1.8 §5.2)
+     */
+    static int sacrifice(Board b0, String uci, boolean me) {
+        Move m = Tactics.find(b0, uci);
+        if (m == null) {
+            return 0;
+        }
+        Side side = me ? Side.WHITE : Side.BLACK;
+        int hangingBefore = Tactics.hanging(b0, side).size();
+        int captured = Tactics.value(b0.getPiece(m.getTo()));
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        if (b1.isMated()) {
+            return 0;
+        }
+        int movedNet = Tactics.see(b1, m.getTo()) - captured;
+        Map<Square, Integer> after = Tactics.hanging(b1, side);
+        int other = 0;
+        for (Map.Entry<Square, Integer> e : after.entrySet()) {
+            if (e.getKey() != m.getTo()) {
+                other = Math.max(other, e.getValue());
+            }
+        }
+        if (after.size() < hangingBefore && movedNet < Tuning.DEFAULT.sacMin) {
+            return 0; // saving pieces, not sacrificing
+        }
+        return Math.max(movedNet, other - captured);
     }
 
     /** Null when the move is a real sacrifice (SPEC §5.2), else why it is not (calibration tools). */
