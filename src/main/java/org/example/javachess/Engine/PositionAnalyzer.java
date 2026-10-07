@@ -53,6 +53,9 @@ public final class PositionAnalyzer {
     private volatile Request pendingRequest;
     private final AtomicBoolean deliveryScheduled = new AtomicBoolean();
     private volatile long lastDeliveryNanos;
+    private volatile int lastDeliveredGeneration = -1;
+    private volatile int lastDeliveredDepth;
+    private AnalysisUpdate lastDelivered; // engine event thread only
 
     private record Request(String fen, int depth, int multiPv, Listener listener, int legalMoves, boolean inCheck,
                            int generation) {
@@ -326,18 +329,27 @@ public final class PositionAnalyzer {
         }
         pending = u;
         pendingRequest = req;
-        if (deliveryScheduled.compareAndSet(false, true)) {
+        // No throttling for the first update of a new position, the first one at the verdict depth and the
+        // final one: they matter for the LED latency. The others are coalesced (at most one per interval).
+        int minDepth = budgetSupplier.get().coachMinDepth();
+        boolean urgent = u.finished() || req.generation != lastDeliveredGeneration
+                || (u.depth() >= minDepth && lastDeliveredDepth < minDepth);
+        if (urgent) {
+            EngineEvents.EXECUTOR.execute(this::deliver);
+        } else if (deliveryScheduled.compareAndSet(false, true)) {
             long sinceLast = (System.nanoTime() - lastDeliveryNanos) / 1_000_000;
-            long delay = u.finished() ? 0 : Math.max(0, MIN_INTERVAL_MS - sinceLast);
-            EngineEvents.EXECUTOR.schedule(this::deliver, delay, TimeUnit.MILLISECONDS);
+            EngineEvents.EXECUTOR.schedule(() -> {
+                deliveryScheduled.set(false);
+                deliver();
+            }, Math.max(0, MIN_INTERVAL_MS - sinceLast), TimeUnit.MILLISECONDS);
         }
     }
 
+    /** Engine event thread only. */
     private void deliver() {
-        deliveryScheduled.set(false);
         AnalysisUpdate u = pending;
         Request req = pendingRequest;
-        if (u == null || req == null) {
+        if (u == null || req == null || u == lastDelivered) {
             return;
         }
         Listener l;
@@ -347,7 +359,10 @@ public final class PositionAnalyzer {
             }
             l = current.listener;
         }
+        lastDelivered = u;
         lastDeliveryNanos = System.nanoTime();
+        lastDeliveredGeneration = req.generation;
+        lastDeliveredDepth = u.depth();
         if (l != null) {
             safeNotify(l, u);
         }

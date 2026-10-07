@@ -456,13 +456,15 @@ public final class EngineManager implements EngineSelection {
 
     /**
      * Search budgets for one resource tier. Numbers come from {@code EngineBenchmarkTest} (Stockfish 19, 240 moves
-     * of weak self-play, reference depth 20; Pi 5 core ~1/3 and Pi 4 core ~1/7 of an Apple M-series core):
+     * of weak self-play, reference depth 20). Official SF 19 binary: 1.24 M nodes/s on one Apple M4 core, so
+     * ~310 k on a Pi 5 core (1/4) and ~135 k on a Pi 4 core (1/9):
      * <ul>
      *   <li>depth 12 is the shallowest depth with no missed and no invented blunder vs the reference (depth 10
-     *       missed 3/240, depth 8 missed 2); cold-hash cost after a move: p50 10k / p95 33k nodes, i.e.
-     *       ~80 / 310 ms on one Pi 5 core and ~190 / 730 ms on one Pi 4 core;</li>
+     *       missed 3/240, depth 8 missed 2); cold-hash cost after a move: p50 10 k / p95 33 k nodes, i.e.
+     *       ~30 / 110 ms on one Pi 5 core and ~75 / 245 ms on one Pi 4 core (much less with the warm hash of
+     *       the live analysis);</li>
      *   <li>depth 16 raises the ok/error agreement to 96% (when the position before was searched deeper) but costs
-     *       ~1.1 / 2.8 s on one Pi 5 core: used only as a capped confirmation.</li>
+     *       p50 134 k / p95 330 k nodes (~0.4 / 1.1 s on one Pi 5 core): used only as a capped confirmation.</li>
      * </ul>
      *
      * @param threads            analysis engine threads
