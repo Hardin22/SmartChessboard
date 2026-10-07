@@ -44,6 +44,24 @@ class MoveClassifierTest {
     }
 
     @Test
+    void allowingAForcedMateIsNeverGood() {
+        // the user's game: 6...gxh5?? 7.Bxh5# with Black at about -1.5
+        assertEquals(BLUNDER, q(Score.cp(-150), Score.mate(-1)));
+        assertEquals(BLUNDER, q(Score.cp(-600), Score.mate(-4)));  // WP alone says inaccuracy
+        assertEquals(MISTAKE, q(Score.cp(-800), Score.mate(-4)));
+        assertEquals(INACCURACY, q(Score.cp(-1500), Score.mate(-6)));
+        assertEquals(BEST, q(Score.mate(-5), Score.mate(-3)));      // the mate was forced anyway
+    }
+
+    @Test
+    void matingMovesAreNeverErrors() {
+        assertEquals(BEST, q(Score.mate(1), Score.mateDelivered()));
+        assertEquals(BEST, q(Score.cp(300), Score.mateDelivered()));  // shallow best missed the mate
+        assertEquals(BEST, q(Score.mate(2), Score.mate(4)));
+        assertEquals(BEST, q(Score.mate(-1).negate(), Score.mate(0).negate()));
+    }
+
+    @Test
     void alreadyLostPositionsAreNotBlunders() {
         assertEquals(INACCURACY, q(Score.cp(-400), Score.cp(-2000))); // loss can never exceed WP(best)
         assertEquals(BLUNDER, q(Score.cp(-200), Score.cp(-900)));

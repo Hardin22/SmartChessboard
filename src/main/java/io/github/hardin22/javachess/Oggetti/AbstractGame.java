@@ -312,7 +312,12 @@ public abstract class AbstractGame {
         }
     }
 
+    /** Checkmate on the board: the eval bar shows the result (fully the winner's colour), then the animation. */
     protected void notifyMate() {
+        if (evalBar != null && analysisEnabled) {
+            // the live analysis is not asked for the final position once the game has ended
+            evalBar.updateEvaluation(board.getSideToMove() == Side.WHITE ? -1000.0 : 1000.0);
+        }
         if (!io.github.hardin22.javachess.Utils.ConfigManager.getBooleanProperty("ui.mate.animation", true)) {
             return;
         }

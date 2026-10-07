@@ -58,11 +58,14 @@ public record AnalysisUpdate(String fen, int depth, List<InfoLine> lines, boolea
         return s == null ? 0.0 : s.legacyPawns();
     }
 
-    /** Evaluation text of line {@code i}, White POV: "0.35", "-1.20", "M3", "-M2". */
+    /** Evaluation text of line {@code i}, White POV: "0.35", "-1.20", "M3", "-M2", "1-0"/"0-1" after mate. */
     public String evalText(int i) {
         Score s = whiteScore(i);
         if (s == null) {
             return "0.00";
+        }
+        if (s.isCheckmate()) {
+            return s.isWinningMate() ? "1-0" : "0-1";
         }
         if (s.mate()) {
             return s.value() > 0 ? "M" + s.value() : "-M" + Math.abs(s.value());

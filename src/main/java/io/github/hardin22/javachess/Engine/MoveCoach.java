@@ -303,8 +303,10 @@ public final class MoveCoach {
                             return;
                         }
                         Score played = r.best().score().negate();
-                        Score best = p.bestBefore != null ? p.bestBefore : played;
-                        emit(p, MoveClassifier.classify(best, played, p.playedIsBest), r.depth(),
+                        if (p.bestBefore == null) {
+                            return; // no reference for the position before: no verdict rather than a wrong "best"
+                        }
+                        emit(p, MoveClassifier.classify(p.bestBefore, played, p.playedIsBest), r.depth(),
                                 r.depth() < b.coachConfirmDepth());
                     }));
         }
@@ -344,11 +346,14 @@ public final class MoveCoach {
         EngineManager.Budget b = budget.get();
         Score playedForMover;
         if (u.terminalScore() != null) {
-            playedForMover = u.terminalScore().mate() ? Score.mate(1) : Score.cp(0); // we mated / stalemated
+            playedForMover = u.terminalScore().negate(); // we mated (mate delivered) or stalemated (0)
         } else if (u.depth() >= b.coachMinDepth() || u.finished()) {
             playedForMover = u.score().negate();
         } else {
             return;
+        }
+        if (p.bestBefore == null && !playedForMover.isWinningMate()) {
+            return; // no reference for the position before: no verdict rather than a wrong "best"
         }
         Score bestBefore = p.bestBefore != null ? p.bestBefore : playedForMover;
         MoveClassifier.Classification c = MoveClassifier.classify(bestBefore, playedForMover, p.playedIsBest);
@@ -370,6 +375,10 @@ public final class MoveCoach {
             EngineEvents.EXECUTOR.execute(() -> {
                 InfoLine line = r == null ? null : r.lineFor(p.uci);
                 if (pending != p || p.emitted != null || line == null) {
+                    return;
+                }
+                if (p.bestBefore == null && !line.score().isWinningMate()) {
+                    finish(p); // no reference for the position before: no verdict rather than a wrong "best"
                     return;
                 }
                 Score best = p.bestBefore != null ? p.bestBefore : line.score();

@@ -7,7 +7,9 @@ package io.github.hardin22.javachess.Engine;
  * +/-10000 cp. The loss of a move is {@code WP(best) - WP(played)}. Thresholds are the chess.com style
  * expected-points ones already used by the review ({@code GameAnalyzer}): inaccuracy &ge; 0.05,
  * mistake &ge; 0.10, blunder &ge; 0.20. A "blunder" in an already lost position (WP(best) &lt; 0.10) is
- * reported as an inaccuracy, like the review does.</p>
+ * reported as an inaccuracy, like the review does, except that allowing a forced mate the best move avoided is at
+ * least an inaccuracy (best &lt; -10), a mistake (best &lt; -7) or else a blunder. A move that mates or keeps a
+ * forced mate has win probability 1 and can never be an error.</p>
  */
 public final class MoveClassifier {
 
@@ -53,7 +55,26 @@ public final class MoveClassifier {
         if (playedIsBest) {
             return new Classification(MoveQuality.BEST, loss, cpLoss);
         }
-        return new Classification(qualityForLoss(loss, bestWp), loss, cpLoss);
+        MoveQuality q = qualityForLoss(loss, bestWp);
+        if (playedAfter.isLosingMate() && !bestBefore.isLosingMate()) {
+            // Allowing a forced mate is never a good move, even in a lost position (Lichess "MateCreated").
+            MoveQuality floor = matedFloor(bestBefore.centipawns());
+            if (floor.ordinal() > q.ordinal()) {
+                q = floor;
+            }
+        }
+        return new Classification(q, loss, cpLoss);
+    }
+
+    /** Least severe class for a move that allows a forced mate when the best move did not (Lichess thresholds). */
+    static MoveQuality matedFloor(int bestCp) {
+        if (bestCp < -999) {
+            return MoveQuality.INACCURACY;
+        }
+        if (bestCp < -700) {
+            return MoveQuality.MISTAKE;
+        }
+        return MoveQuality.BLUNDER;
     }
 
     /** Maps a win probability loss (0..1) to a quality, given the WP of the best move. */

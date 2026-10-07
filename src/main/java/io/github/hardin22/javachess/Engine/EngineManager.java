@@ -45,6 +45,8 @@ public final class EngineManager implements EngineSelection {
     public static final String CONFIG_KEY = "engine.profile";
 
     private static volatile EngineManager instance;
+    /** Review engines (several processes) are closed sooner than the others. */
+    static final long REVIEW_IDLE_CLOSE_MS = 60_000;
 
     private final ExecutorService exec = Executors.newSingleThreadExecutor(UciClient.daemonFactory("engine-manager"));
     private final ScheduledExecutorService timer =
@@ -61,6 +63,7 @@ public final class EngineManager implements EngineSelection {
     private UciClient analysis;                         // guarded by this
     private Budget analysisBudget;                       // guarded by this
     private PositionAnalyzer analyzer;                   // guarded by this
+    private ReviewEngines reviewEngines;                 // guarded by this
     private volatile CompletableFuture<UciClient> bot;   // replaced on profile change
     private volatile String botProfileId;
 
@@ -166,6 +169,13 @@ public final class EngineManager implements EngineSelection {
             boolean tierChanged = isLite(previous) != isLite(p);
             if (tierChanged) {
                 reconfigureAnalysis();
+                ReviewEngines re;
+                synchronized (this) {
+                    re = reviewEngines;
+                }
+                if (re != null) {
+                    re.closeIfIdle(0); // restarted with the new tier's threads and hash
+                }
             }
             ensureBot(p);
         });
@@ -180,7 +190,7 @@ public final class EngineManager implements EngineSelection {
         List<EngineProfile> list = new ArrayList<>();
         list.add(new EngineProfile(STOCKFISH, "Stockfish", "Massima forza · analisi profonda", sf));
         list.add(new EngineProfile(STOCKFISH_LITE, "Stockfish Lite",
-                "Leggero · 1 thread, ideale su Raspberry Pi 4", sf));
+                "Leggero · pensato per Raspberry Pi 5", sf));
         for (String elo : new String[] { "1100", "1500", "1900" }) {
             boolean weights = Files.isRegularFile(maiaWeights(elo));
             list.add(new EngineProfile("maia-" + elo, "Maia " + elo,
@@ -208,6 +218,21 @@ public final class EngineManager implements EngineSelection {
             onAnalysisReconfigured(analyzer::refresh);
         }
         return analyzer;
+    }
+
+    /**
+     * Parallel engines of the game review (separate processes, sized by the active tier's {@link ReviewPlan},
+     * started lazily, closed one minute after the last review).
+     */
+    public synchronized ReviewEngines reviewEngines() {
+        if (reviewEngines == null) {
+            reviewEngines = new ReviewEngines(() -> {
+                Path sf = stockfishLookup.path().orElseThrow(() -> new EngineException(stockfishLookup.describeMissing()));
+                ReviewPlan r = budget().review();
+                return EngineSpec.of("review", sf, stockfishOptions(r.threads(), r.hashMb()));
+            }, () -> budget().review(), this::analyzer);
+        }
+        return reviewEngines;
     }
 
     /** Shared analysis engine (started lazily). Throws {@link EngineException} if Stockfish is missing. */
@@ -352,8 +377,8 @@ public final class EngineManager implements EngineSelection {
     }
 
     /**
-     * Stockfish Lite on a Raspberry Pi 4 or older (Cortex-A72: ~1/9 of an M-series core) or with less than ~1.4 GB of
-     * RAM, Stockfish elsewhere.
+     * Stockfish Lite on any Raspberry Pi (it is sized for the Pi 5; a Pi 4 core is ~1/9 of an M-series core) or with
+     * less than ~1.4 GB of RAM, Stockfish elsewhere.
      */
     static String defaultProfileForThisMachine() {
         if (ProcessPlan.detect().ramMb() < 1_400) {
@@ -364,8 +389,7 @@ public final class EngineManager implements EngineSelection {
             Path model = Path.of("/proc/device-tree/model");
             if (Files.isReadable(model)) {
                 String m = Files.readString(model).replace("\0", "");
-                java.util.regex.Matcher v = java.util.regex.Pattern.compile("Raspberry Pi (\\d+)").matcher(m);
-                if (v.find() && Integer.parseInt(v.group(1)) <= 4) {
+                if (m.contains("Raspberry Pi")) {
                     log.info("{}: defaulting to Stockfish Lite", m.trim());
                     return STOCKFISH_LITE;
                 }
@@ -390,6 +414,9 @@ public final class EngineManager implements EngineSelection {
         synchronized (this) {
             if (analysis != null) {
                 all.add(analysis);
+            }
+            if (reviewEngines != null) {
+                all.addAll(reviewEngines.liveClients());
             }
         }
         CompletableFuture<UciClient> b = bot;
@@ -421,9 +448,14 @@ public final class EngineManager implements EngineSelection {
             }
             UciClient a;
             PositionAnalyzer pa;
+            ReviewEngines re;
             synchronized (this) {
                 a = analysis;
                 pa = analyzer;
+                re = reviewEngines;
+            }
+            if (re != null) {
+                re.closeIfIdle(Math.min(limit, REVIEW_IDLE_CLOSE_MS));
             }
             if (a != null && !a.isClosed() && a.idleMillis() > limit && (pa == null || pa.isForegroundIdle())) {
                 synchronized (this) {
@@ -449,6 +481,9 @@ public final class EngineManager implements EngineSelection {
         UciClient c = b == null ? null : b.getNow(null);
         if (c != null && !c.isClosed()) {
             out.add(c);
+        }
+        if (reviewEngines != null) {
+            out.addAll(reviewEngines.liveClients());
         }
         return out;
     }
@@ -560,18 +595,40 @@ public final class EngineManager implements EngineSelection {
      */
     public record Budget(int threads, int hashMb, int liveMaxDepth, int coachMinDepth, int coachConfirmDepth,
                          long coachCapMs, long candidateNodes, long candidateCapMs, int botThreads, int botHashMb,
-                         int botMaxMovetimeMs, long botMaxNodes, int reviewMovetimeCapMs) {
+                         int botMaxMovetimeMs, long botMaxNodes, int reviewMovetimeCapMs, ReviewPlan review) {
 
-        /** Pi 5 / desktop: threads and hash from the {@link ProcessPlan}, deep live analysis. */
-        public static Budget full(ProcessPlan plan) {
-            return new Budget(plan.analysisThreads(), plan.analysisHashMb(), 30, 12, 16, 2_500, 150_000, 600, 1,
-                    plan.botHashMb(), 10_000, 0, 1_500);
+        public Budget(int threads, int hashMb, int liveMaxDepth, int coachMinDepth, int coachConfirmDepth,
+                      long coachCapMs, long candidateNodes, long candidateCapMs, int botThreads, int botHashMb,
+                      int botMaxMovetimeMs, long botMaxNodes, int reviewMovetimeCapMs) {
+            this(threads, hashMb, liveMaxDepth, coachMinDepth, coachConfirmDepth, coachCapMs, candidateNodes,
+                    candidateCapMs, botThreads, botHashMb, botMaxMovetimeMs, botMaxNodes, reviewMovetimeCapMs,
+                    new ReviewPlan(1, 1, 16));
         }
 
-        /** Pi 4 / weak hardware: 1 thread everywhere, same verdict depth (12), cheaper confirmation and hints. */
+        /** Stockfish: threads and hash from the {@link ProcessPlan}, deep live analysis, all spare cores for reviews. */
+        public static Budget full(ProcessPlan plan) {
+            int reviewWorkers = plan.ramMb() >= 6_000 ? clamp(plan.cores() - 2, 1, 6)
+                    : plan.ramMb() >= 2_800 ? clamp(plan.cores() - 1, 1, 3) : 1;
+            int reviewHash = plan.ramMb() >= 6_000 ? 128 : plan.ramMb() >= 2_800 ? 32 : 16;
+            return new Budget(plan.analysisThreads(), plan.analysisHashMb(), 30, 12, 16, 2_500, 150_000, 600, 1,
+                    plan.botHashMb(), 10_000, 0, 1_500, new ReviewPlan(reviewWorkers, 1, reviewHash));
+        }
+
+        /**
+         * Stockfish Lite, the default on a Raspberry Pi (designed for a Pi 5 8 GB: 4 Cortex-A76 cores, ~300-450 k
+         * nodes/s each). In a game: 2 analysis threads (eval bar, LED verdicts and hints), the bot on a third core,
+         * the fourth for the UI and the camera. In a review nobody plays: 3 single-thread processes in parallel.
+         * Smaller boards (Pi 4, 1-4 GB) get 1 thread and small hashes.
+         */
         public static Budget lite(ProcessPlan plan) {
-            return new Budget(1, Math.min(16, plan.analysisHashMb()), 16, 12, 14, 1_500, 40_000, 500, 1,
-                    Math.min(16, plan.botHashMb()), 1_000, 300_000, 1_000);
+            boolean big = plan.ramMb() >= 6_000;
+            boolean mid = plan.ramMb() >= 2_800;
+            int threads = mid && plan.cores() >= 4 ? 2 : 1;
+            int hash = big ? 64 : mid ? 32 : Math.min(16, plan.analysisHashMb());
+            int reviewWorkers = mid ? clamp(plan.cores() - 1, 1, 3) : 1;
+            return new Budget(threads, hash, 18, 12, 14, 1_500, 60_000, 500, 1,
+                    big ? 32 : Math.min(16, plan.botHashMb()), 1_000, 300_000, 1_000,
+                    new ReviewPlan(reviewWorkers, 1, hash));
         }
 
         public static Budget full() {
@@ -581,5 +638,19 @@ public final class EngineManager implements EngineSelection {
         public static Budget lite() {
             return lite(ProcessPlan.detect());
         }
+
+        private static int clamp(int v, int lo, int hi) {
+            return Math.max(lo, Math.min(hi, v));
+        }
+    }
+
+    /**
+     * Engines of the game review ({@link ReviewEngines}).
+     *
+     * @param workers parallel Stockfish processes
+     * @param threads threads of each process
+     * @param hashMb  hash of each process
+     */
+    public record ReviewPlan(int workers, int threads, int hashMb) {
     }
 }
