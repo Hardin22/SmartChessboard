@@ -45,8 +45,6 @@ public final class EngineManager implements EngineSelection {
     public static final String CONFIG_KEY = "engine.profile";
 
     private static volatile EngineManager instance;
-    /** Review engines (several processes) are closed sooner than the others. */
-    static final long REVIEW_IDLE_CLOSE_MS = 60_000;
 
     private final ExecutorService exec = Executors.newSingleThreadExecutor(UciClient.daemonFactory("engine-manager"));
     private final ScheduledExecutorService timer =
@@ -63,7 +61,6 @@ public final class EngineManager implements EngineSelection {
     private UciClient analysis;                         // guarded by this
     private Budget analysisBudget;                       // guarded by this
     private PositionAnalyzer analyzer;                   // guarded by this
-    private ReviewEngines reviewEngines;                 // guarded by this
     private volatile CompletableFuture<UciClient> bot;   // replaced on profile change
     private volatile String botProfileId;
 
@@ -169,13 +166,6 @@ public final class EngineManager implements EngineSelection {
             boolean tierChanged = isLite(previous) != isLite(p);
             if (tierChanged) {
                 reconfigureAnalysis();
-                ReviewEngines re;
-                synchronized (this) {
-                    re = reviewEngines;
-                }
-                if (re != null) {
-                    re.closeIfIdle(0); // restarted with the new tier's threads and hash
-                }
             }
             ensureBot(p);
         });
@@ -218,21 +208,6 @@ public final class EngineManager implements EngineSelection {
             onAnalysisReconfigured(analyzer::refresh);
         }
         return analyzer;
-    }
-
-    /**
-     * Parallel engines of the game review (separate processes, sized by the active tier's {@link ReviewPlan},
-     * started lazily, closed one minute after the last review).
-     */
-    public synchronized ReviewEngines reviewEngines() {
-        if (reviewEngines == null) {
-            reviewEngines = new ReviewEngines(() -> {
-                Path sf = stockfishLookup.path().orElseThrow(() -> new EngineException(stockfishLookup.describeMissing()));
-                ReviewPlan r = budget().review();
-                return EngineSpec.of("review", sf, stockfishOptions(r.threads(), r.hashMb()));
-            }, () -> budget().review(), this::analyzer);
-        }
-        return reviewEngines;
     }
 
     /** Shared analysis engine (started lazily). Throws {@link EngineException} if Stockfish is missing. */
@@ -415,9 +390,6 @@ public final class EngineManager implements EngineSelection {
             if (analysis != null) {
                 all.add(analysis);
             }
-            if (reviewEngines != null) {
-                all.addAll(reviewEngines.liveClients());
-            }
         }
         CompletableFuture<UciClient> b = bot;
         if (b != null) {
@@ -448,14 +420,9 @@ public final class EngineManager implements EngineSelection {
             }
             UciClient a;
             PositionAnalyzer pa;
-            ReviewEngines re;
             synchronized (this) {
                 a = analysis;
                 pa = analyzer;
-                re = reviewEngines;
-            }
-            if (re != null) {
-                re.closeIfIdle(Math.min(limit, REVIEW_IDLE_CLOSE_MS));
             }
             if (a != null && !a.isClosed() && a.idleMillis() > limit && (pa == null || pa.isForegroundIdle())) {
                 synchronized (this) {
@@ -481,9 +448,6 @@ public final class EngineManager implements EngineSelection {
         UciClient c = b == null ? null : b.getNow(null);
         if (c != null && !c.isClosed()) {
             out.add(c);
-        }
-        if (reviewEngines != null) {
-            out.addAll(reviewEngines.liveClients());
         }
         return out;
     }
@@ -556,28 +520,23 @@ public final class EngineManager implements EngineSelection {
     }
 
     /**
-     * Search budgets for one resource tier. Numbers come from {@code EngineBenchmarkTest} (Stockfish 19, 240 moves
-     * of weak self-play, reference depth 20). Official SF 19 binary: 1.24 M nodes/s on one Apple M4 core (1.08 M in the
-     * linux/arm64 container), so ~310 k on a Pi 5 core (1/3.5-1/4) and ~120-135 k on a Pi 4 core (1/9):
-     * <ul>
-     *   <li>depth 12 is the shallowest depth with no missed and no invented blunder vs the reference (depth 10
-     *       missed 3/240, depth 8 missed 2); cold-hash cost after a move: p50 10 k / p95 33 k nodes, i.e.
-     *       ~30 / 110 ms on one Pi 5 core and ~75 / 245 ms on one Pi 4 core (much less with the warm hash of
-     *       the live analysis);</li>
-     *   <li>depth 16 raises the ok/error agreement to 96% (when the position before was searched deeper) but costs
-     *       p50 134 k / p95 330 k nodes (~0.4 / 1.1 s on one Pi 5 core): used only as a capped confirmation.</li>
-     * </ul>
-     * Latency targets (verdict after the piece is put down; {@code CoachLatencyTest} asserts them with a
-     * machine-speed-normalised estimate, one analysis thread):
+     * Search budgets for one resource tier. LED numbers from {@code LedDepthStudyTest} (Stockfish 19, 613 moves of
+     * real chess.com games of all levels plus their mating / mate-allowing moves, reference = both positions at depth
+     * 20, LED classification = the review's fast verdict). The position before is searched by the live analysis
+     * while the player thinks, the position after the move with that warm hash:
      * <table>
-     *   <caption>Targets and estimates</caption>
-     *   <tr><th>board</th><th>profile</th><th>target p50 / p95</th><th>estimate p50 / p95</th><th>CFS-quota worst case</th></tr>
-     *   <tr><td>Pi 5</td><td>Stockfish</td><td>0.5 s / 1.5 s</td><td>~25-70 ms / ~170 ms</td><td>0.12 s / 0.7 s</td></tr>
-     *   <tr><td>Pi 4</td><td>Stockfish Lite</td><td>1 s / 3 s</td><td>~60-160 ms / ~390 ms</td><td>1.1 s / 2.0 s</td></tr>
+     *   <caption>LED verdict at depth d of the position after the move, position before at depth 16</caption>
+     *   <tr><th>d</th><th>same class</th><th>same ok/error</th><th>real mistakes shown ok</th><th>nodes p50 / p95 / max</th><th>Pi 5, 1 thread p50 / p95</th></tr>
+     *   <tr><td>10</td><td>78.5%</td><td>94.1%</td><td>5</td><td>2 k / 14 k / 77 k</td><td>7 / 47 ms</td></tr>
+     *   <tr><td>12</td><td>78.5%</td><td>93.6%</td><td>2</td><td>6 k / 44 k / 273 k</td><td>21 / 146 ms</td></tr>
+     *   <tr><td>14</td><td>80.8%</td><td>94.9%</td><td>3</td><td>27 k / 109 k / 568 k</td><td>89 / 362 ms</td></tr>
+     *   <tr><td>16</td><td>81.9%</td><td>96.4%</td><td>2</td><td>115 k / 300 k / 911 k</td><td>385 ms / 1.0 s</td></tr>
      * </table>
-     * The CFS-quota column comes from a linux/arm64 container on the Mac limited with {@code --cpus 0.25 / 0.11}
-     * (one Pi 5 / Pi 4 core): the 100 ms throttling makes it very pessimistic. Lift hints: 13 moves at depth 10 in
-     * 81 ms on one M4 core, i.e. ~0.3 s on a Pi 5 and capped at 0.6 s / 0.5 s (full / lite).
+     * Depth 12 is the verdict depth (shallower loses agreement, deeper costs 4x per two plies); 16 the confirmation,
+     * which only changes the LEDs if the class changes. A shallow position before costs more than a shallow position
+     * after (before at depth 12 instead of 16: -5 points of agreement). The engine's top move (at depth &ge; 10) is
+     * BEST at once: 1 mistake in ~250 such moves. Pi 5 = 300 k nodes/s per core (1/4 of an M4 core; 2 threads ~1.7x).
+     * The Raspberry Pi 4 (1 thread at ~120 k nodes/s) keeps the depth 14 confirmation.
      *
      * @param threads            analysis engine threads
      * @param hashMb             analysis engine hash
@@ -626,7 +585,7 @@ public final class EngineManager implements EngineSelection {
             int threads = mid && plan.cores() >= 4 ? 2 : 1;
             int hash = big ? 64 : mid ? 32 : Math.min(16, plan.analysisHashMb());
             int reviewWorkers = mid ? clamp(plan.cores() - 1, 1, 3) : 1;
-            return new Budget(threads, hash, 18, 12, 14, 1_500, 60_000, 500, 1,
+            return new Budget(threads, hash, 18, 12, mid ? 16 : 14, 1_500, 60_000, 500, 1,
                     big ? 32 : Math.min(16, plan.botHashMb()), 1_000, 300_000, 1_000,
                     new ReviewPlan(reviewWorkers, 1, hash));
         }
@@ -645,7 +604,7 @@ public final class EngineManager implements EngineSelection {
     }
 
     /**
-     * Engines of the game review ({@link ReviewEngines}).
+     * Engines of the game review (the review's own pool of single-thread processes, {@code Engine.review}).
      *
      * @param workers parallel Stockfish processes
      * @param threads threads of each process

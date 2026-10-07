@@ -319,6 +319,26 @@ class LedDepthStudyTest {
                 + "missErr = reference mistake/blunder shown as BEST/GOOD; falseErr = reference BEST/GOOD shown as "
                 + "mistake/blunder; mateBad = conceded forced mate not shown as an error, or a mating/still-mating move "
                 + "shown as an error.");
+        for (int bd : new int[] { 8, 10, 12, 14, 16 }) {
+            int top = 0;
+            int topErr = 0;
+            int topBad = 0;
+            for (Row r : rows) {
+                Point b = at(r.before, bd);
+                if (b != null && r.s.move.equals(b.best) && r.terminalPlayed == null) {
+                    top++;
+                    MoveQuality rq = ref(c, r);
+                    if (rq.isError()) {
+                        topErr++;
+                    }
+                    if (rq.ordinal() >= MoveQuality.MISTAKE.ordinal()) {
+                        topBad++;
+                    }
+                }
+            }
+            out(String.format(Locale.ROOT, "instant BEST for the top move at depth %2d: %d moves, reference error %d "
+                    + "(mistake/blunder %d)", bd, top, topErr, topBad));
+        }
         List<String> bad = new ArrayList<>();
         for (Row r : rows) {
             MoveQuality q = led(c, r, 16, 12);
