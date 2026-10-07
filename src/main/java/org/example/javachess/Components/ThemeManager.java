@@ -136,7 +136,9 @@ public final class ThemeManager {
     /** Changes the theme immediately and persists the choice. Must be called on the FX thread. */
     public void setMode(Mode newMode) {
         mode.set(newMode);
-        ConfigManager.setProperty(CONFIG_KEY, newMode.name().toLowerCase(Locale.ROOT));
+        if (System.getProperty("javachess.snapshot") == null) { // screenshot runs never touch the user config
+            ConfigManager.setProperty(CONFIG_KEY, newMode.name().toLowerCase(Locale.ROOT));
+        }
         if (newMode == Mode.SYSTEM) {
             refreshSystemPreference();
         }

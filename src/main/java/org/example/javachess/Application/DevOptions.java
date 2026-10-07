@@ -32,6 +32,7 @@ import java.util.function.Consumer;
  *       game ({@code javachess.demo.game=id}, {@code javachess.demo.ply=N}, {@code javachess.demo.analyze=true});
  *       a random puzzle around 1500</li>
  *   <li>{@code -Djavachess.demo.sheet=engine|analysis|end} also open that bottom sheet on the game screen</li>
+ *   <li>{@code -Djavachess.demo.switchTheme=light|dark|system} switch theme at runtime 1.5 s after start-up</li>
  * </ul>
  */
 public final class DevOptions {
@@ -70,6 +71,14 @@ public final class DevOptions {
             Platform.runLater(() -> DevDemos.run(mainController, demo));
         } else if (view != null && mainController != null) {
             Platform.runLater(() -> navigate(mainController, view));
+        }
+        String switchTheme = System.getProperty("javachess.demo.switchTheme");
+        if (switchTheme != null) {
+            // Exercises the runtime theme switch (no restart) a moment after start-up.
+            PauseTransition later = new PauseTransition(Duration.millis(1500));
+            later.setOnFinished(e -> org.example.javachess.Components.ThemeManager.get().setMode(
+                    org.example.javachess.Components.ThemeManager.Mode.valueOf(switchTheme.toUpperCase())));
+            later.play();
         }
         String snapshot = System.getProperty("javachess.snapshot");
         if (snapshot != null) {
