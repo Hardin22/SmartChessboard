@@ -950,10 +950,39 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
             return;
         }
         String initialFen = currentGame == null ? START_FEN : currentGame.getInitialFen();
-        List<String> moves = uciPlayed;
+        List<String> moves = List.copyOf(uciPlayed);
         String reviewTitle = title;
         mainController.closeSheet();
-        ReviewController.openMoves(mainController, String.join(" ", moves), initialFen, reviewTitle);
+        // The archived copy knows the players' ratings and shares its saved review with the archive screen
+        io.github.hardin22.javachess.Utils.AppExecutors.io().execute(() -> {
+            io.github.hardin22.javachess.Oggetti.ArchivedGame match = null;
+            try {
+                match = io.github.hardin22.javachess.Services.GameArchiveService.getInstance().list().stream()
+                        .filter(g -> g.movesUci().equals(moves) && samePosition(g.initialFen(), initialFen))
+                        .findFirst().orElse(null);
+            } catch (RuntimeException e) {
+                LOG.warn("Archive not readable for the review", e);
+            }
+            io.github.hardin22.javachess.Oggetti.ArchivedGame found = match;
+            Platform.runLater(() -> {
+                if (found != null) {
+                    ReviewController.open(mainController, found);
+                } else {
+                    ReviewController.openMoves(mainController, String.join(" ", moves), initialFen, reviewTitle);
+                }
+            });
+        });
+    }
+
+    private static boolean samePosition(String a, String b) {
+        String[] x = (a == null || a.isBlank() ? START_FEN : a).split(" ");
+        String[] y = (b == null || b.isBlank() ? START_FEN : b).split(" ");
+        for (int i = 0; i < Math.min(4, Math.min(x.length, y.length)); i++) {
+            if (!x[i].equals(y[i])) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override

@@ -219,12 +219,36 @@ final class DevDemos {
         ReviewController review = (ReviewController) main.getController("REVIEW");
         review.goTo(Integer.getInteger("javachess.demo.ply", 20));
         if (Boolean.getBoolean("javachess.demo.analyze")) {
-            review.analyze();
+            later(1.5, () -> {
+                if (!review.hasReview()) { // a saved review opens already analysed
+                    review.analyze();
+                }
+            });
+        }
+        if (Boolean.getBoolean("javachess.demo.summary")) {
+            later(2, review::devShowSummary);
+        }
+        if (Boolean.getBoolean("javachess.demo.trainer")) {
+            openTrainerWhenReady(review, 240);
         }
         double variationAfter = Double.parseDouble(System.getProperty("javachess.demo.variationAfter", "0"));
         if (variationAfter > 0) {
             later(variationAfter, review::devShowBest);
         }
+    }
+
+    private static void openTrainerWhenReady(ReviewController review, int tries) {
+        later(1, () -> {
+            if (review.devOpenTrainer()) {
+                String attempt = System.getProperty("javachess.demo.trainerTry");
+                if (attempt != null) {
+                    later(1, () -> ((io.github.hardin22.javachess.Controllers.TrainerController)
+                            review.mainControllerForDemo().getController("TRAINER")).devAttempt(attempt));
+                }
+            } else if (tries > 0) {
+                openTrainerWhenReady(review, tries - 1);
+            }
+        });
     }
 
     private static void puzzle(MainController main) {
