@@ -302,8 +302,16 @@ public abstract class AbstractGame {
                 type, openingName, pgnText, startFen, finalFen, result, timeControl, white, black));
     }
 
+    /** Demo and screenshot runs never touch the user's saved game (like the archive). */
+    private static boolean isDemoRun() {
+        return System.getProperty("javachess.demo") != null || System.getProperty("javachess.snapshot") != null;
+    }
+
     /** A game that ended with a result is no longer resumable; an interrupted one stays resumable. */
     protected void forgetSnapshotIfFinished(String result) {
+        if (isDemoRun()) {
+            return;
+        }
         if (snapshot() != null && !io.github.hardin22.javachess.Play.GameResume.isInterruption(result)) {
             io.github.hardin22.javachess.Play.GameSnapshotStore.get().clear();
         }
@@ -507,7 +515,7 @@ public abstract class AbstractGame {
 
     /** Saves the game for resuming (after each move). */
     protected void saveSnapshot() {
-        if (!gameRunning) {
+        if (!gameRunning || isDemoRun()) {
             return;
         }
         io.github.hardin22.javachess.Play.GameSnapshot s = snapshot();
