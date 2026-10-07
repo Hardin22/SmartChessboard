@@ -22,6 +22,9 @@ import java.util.concurrent.TimeUnit;
  */
 public class App extends Application {
 
+    /** Kept to archive the game in progress on exit. */
+    private MainController mainController;
+
     private static final Logger log = LoggerFactory.getLogger(App.class);
 
     @Override
@@ -57,9 +60,13 @@ public class App extends Application {
             StartupMetrics.onStageShown(startAt);
 
             MainController mainController = fxmlLoader.getController();
+            this.mainController = mainController;
             // after the first frame: connect the board and build the other views in idle time
             Platform.runLater(() -> {
-                AppExecutors.io().execute(Hardware::get);
+                AppExecutors.io().execute(() -> {
+                    Hardware.get();
+                    org.example.javachess.Hardware.CoachLeds.install(); // move-quality LEDs from the engine coach
+                });
                 mainController.startIdlePreload();
             });
             DevOptions.afterShow(primaryStage, mainController);
@@ -72,6 +79,15 @@ public class App extends Application {
     @Override
     public void stop() {
         log.info("Stopping application...");
+        // A game in progress is archived (as interrupted) like when leaving the game screen.
+        try {
+            if (mainController != null
+                    && mainController.getController("GAME") instanceof org.example.javachess.Controllers.NavigationAware game) {
+                game.onNavigatedFrom();
+            }
+        } catch (RuntimeException e) {
+            log.warn("Could not save the game in progress: {}", e.toString());
+        }
         if (Hardware.isInitialized()) {
             Hardware.shutdown(); // LEDs off, serial port closed
         }
@@ -130,6 +146,7 @@ public class App extends Application {
             if (Hardware.isInitialized()) {
                 Hardware.shutdown();
             }
+            AppExecutors.shutdown(); // finish pending archive / puzzle progress writes
             org.example.javachess.Controllers.BrowserController.disposeIfStarted();
         }, "shutdown-hook"));
 

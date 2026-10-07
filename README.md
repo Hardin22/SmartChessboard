@@ -150,7 +150,7 @@ Most settings are changed from the *Settings* screen. Useful keys:
 | Key | Default | Meaning |
 |---|---|---|
 | `stockfish.path`, `lc0.path` | searched | Engine executables (optional, see Installation) |
-| `stockfish.threads`, `stockfish.hash` | 2, 64 | Engine resources (1–256 threads, MB of hash) |
+| `stockfish.threads`, `stockfish.hash` | automatic | Engine resources (threads, MB of hash); unset = sized from the machine |
 | `game.bot.level` | 10 | Stockfish skill level (0–20) |
 | `game.bot.movetime` | 2000 | Bot thinking time in ms |
 | `game.default.duration`, `game.default.increment` | 10, 0 | Default clock for two-player games (minutes, seconds) |

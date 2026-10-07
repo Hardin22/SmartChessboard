@@ -45,6 +45,18 @@ public class MoveAnalysis {
         this.bestWp = bestWp;
     }
 
+    /**
+     * True when White played this move. Taken from the position before the move, so it stays right for games
+     * that start with Black to move (ply parity would swap the sides).
+     */
+    public boolean isWhiteMove() {
+        String[] parts = fen == null ? new String[0] : fen.trim().split("\\s+");
+        if (parts.length >= 2) {
+            return !"b".equals(parts[1]);
+        }
+        return moveNumber % 2 != 0;
+    }
+
     public int getMoveNumber() {
         return moveNumber;
     }

@@ -105,7 +105,7 @@ public class BrowserController implements NavigationAware {
                 // builder.addJcefArgs("--log-severity=disable");
 
                 // ENABLE PERSISTENCE (Cookies/Login)
-                String cachePath = new File(userHome, ".javachess/jcef-cache").getAbsolutePath();
+                String cachePath = org.example.javachess.Utils.AppPaths.resolve("jcef-cache").toString();
                 log.info("[BrowserController] Setting Cache Path: " + cachePath);
                 File cacheDir = new File(cachePath);
                 if (!cacheDir.exists()) {
@@ -208,7 +208,7 @@ public class BrowserController implements NavigationAware {
     private org.example.javachess.Vision.BotMover botMover = new org.example.javachess.Vision.BotMover();
     private com.github.bhlangonijr.chesslib.Board internalBoard = new com.github.bhlangonijr.chesslib.Board();
 
-    private boolean isVisionRunning = false;
+    private volatile boolean isVisionRunning = false;
     private volatile boolean isFlipped = false; // Track orientation locally
     private boolean isSetupPhase = false;
     private String lastFen = "";
@@ -291,11 +291,11 @@ public class BrowserController implements NavigationAware {
 
     private void toggleVision(javax.swing.JButton btn) {
         if (isVisionRunning) {
-            stopOnlineGame();
+            Platform.runLater(this::stopOnlineGame); // game state lives on the FX thread
             btn.setText("ENABLE VISION");
             btn.setBackground(java.awt.Color.DARK_GRAY);
         } else {
-            startOnlineGame();
+            Platform.runLater(this::startOnlineGame);
             btn.setText("DISABLE VISION");
             btn.setBackground(java.awt.Color.RED);
         }
@@ -320,7 +320,9 @@ public class BrowserController implements NavigationAware {
             visionService = new org.example.javachess.Services.VisionService();
         }
         visionService.setFlipped(isFlipped);
-        visionService.setOnReading(this::handleReading);
+        // Readings arrive on the vision thread: handle them on the FX thread like the board callbacks, so the
+        // game state (internalBoard, pgn...) is only ever touched by one thread.
+        visionService.setOnReading(reading -> Platform.runLater(() -> handleReading(reading)));
         visionService.setOnError(msg -> updateStatus(msg, java.awt.Color.RED));
 
         // HARD RESET VISION STATE: Ensure no "ghost" boards from previous sessions
@@ -363,6 +365,9 @@ public class BrowserController implements NavigationAware {
                                 .getInstance().getBoardStateManager();
                         manager.setLogicalBoard(internalBoard);
                         manager.startGameMode(); // ACTIVATE GAME MODE
+                        // only our pieces are moved by hand; the opponent's moves come from the screen
+                        manager.setPhysicalMoveSide(isFlipped ? com.github.bhlangonijr.chesslib.Side.BLACK
+                                : com.github.bhlangonijr.chesslib.Side.WHITE);
                     } catch (Exception e) {
                         log.error("Unexpected error", e);
                     }
@@ -394,15 +399,19 @@ public class BrowserController implements NavigationAware {
     }
 
     private void stopOnlineGame() {
+        boolean wasRunning = isVisionRunning;
         isVisionRunning = false;
         if (visionService != null) {
-            visionService.stopScanning();
+            visionService.requestStop();
         }
-        org.example.javachess.Services.BoardStateManager manager = org.example.javachess.Controllers.ArduinoController
-                .getInstance().getBoardStateManager();
-        manager.stopGameMode(); // DEACTIVATE GAME MODE
-        manager.setEvaluationEnabled(true); // Re-enable for offline
-        updateStatus("VISION STOPPED", java.awt.Color.GRAY);
+        if (wasRunning) {
+            org.example.javachess.Services.BoardStateManager manager = org.example.javachess.Controllers.ArduinoController
+                    .getInstance().getBoardStateManager();
+            manager.stopGameMode(); // DEACTIVATE GAME MODE
+            manager.setEvaluationEnabled(
+                    org.example.javachess.Utils.ConfigManager.getBooleanProperty("game.suggestions", true));
+            updateStatus("VISION STOPPED", java.awt.Color.GRAY);
+        }
 
         // SAVE GAME
         if (!isGameSaved && !initialFen.isEmpty()) {
@@ -410,12 +419,13 @@ public class BrowserController implements NavigationAware {
                     .filter(org.example.javachess.Utils.PgnCodec::looksLikeUci).toList();
             if (moves.size() >= 3) {
                 String decided = org.example.javachess.Utils.PgnCodec.forcedResultOf(internalBoard);
-                org.example.javachess.Services.GameArchiveService.getInstance().add(
-                        new org.example.javachess.Oggetti.ArchivedGame(0,
+                org.example.javachess.Oggetti.ArchivedGame game = new org.example.javachess.Oggetti.ArchivedGame(0,
                                 org.example.javachess.Oggetti.ArchivedGame.GameMode.BROWSER,
                                 currentSiteName(), "", "", decided != null ? decided : "*",
                                 decided != null ? "" : "Interrotta", "", "", java.time.LocalDateTime.now(),
-                                initialFen, internalBoard.getFen(), moves));
+                                initialFen, internalBoard.getFen(), moves);
+                org.example.javachess.Utils.AppExecutors.storage().execute(
+                        () -> org.example.javachess.Services.GameArchiveService.getInstance().add(game));
                 isGameSaved = true;
             } else {
                 log.info("Online game too short, not archived ({} moves)", moves.size());
@@ -546,7 +556,7 @@ public class BrowserController implements NavigationAware {
         manager.setLogicalBoard(internalBoard);
         manager.startBotMoveReplication(legalMove.getFrom().name(), legalMove.getTo().name());
 
-        visionService.stopScanning(); // pause while the user replicates the move on the board
+        visionService.requestStop(); // pause while the user replicates the move on the board (no join on the FX thread)
     }
 
     private void handlePhysicalMove(String from, String to) {
@@ -573,7 +583,7 @@ public class BrowserController implements NavigationAware {
 
                 // Pause vision briefly to skip animation
                 if (visionService != null) {
-                    visionService.stopScanning();
+                    visionService.requestStop();
                 }
                 new Thread(() -> {
                     try {
@@ -602,7 +612,7 @@ public class BrowserController implements NavigationAware {
     }
 
     private void closeBrowser() {
-        stopOnlineGame();
+        Platform.runLater(this::stopOnlineGame); // called from Swing: the game state lives on the FX thread
 
         // 1. CLEANUP SWING/JCEF
         SwingUtilities.invokeLater(() -> {

@@ -88,6 +88,15 @@ public class VisionService {
         log.info("Vision scanning started");
     }
 
+    /**
+     * Stops scanning without waiting for the scan thread (safe on the JavaFX thread): a frame being classified is
+     * discarded thanks to the generation check.
+     */
+    public synchronized void requestStop() {
+        running = false;
+        generation++;
+    }
+
     public void stopScanning() {
         Thread t;
         synchronized (this) {

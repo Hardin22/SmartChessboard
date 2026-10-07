@@ -84,6 +84,9 @@ public class ReviewController implements NavigationAware, GameNavigationListener
     private EvaluationGraph evaluationGraph;
     private List<MoveAnalysis> currentAnalysis;
     private String currentPgn;
+    /** Incremented when another game is loaded: a running full analysis of the previous game is discarded. */
+    private final java.util.concurrent.atomic.AtomicInteger analysisGeneration =
+            new java.util.concurrent.atomic.AtomicInteger();
     private String currentInitialFen;
 
     @FXML
@@ -131,6 +134,7 @@ public class ReviewController implements NavigationAware, GameNavigationListener
 
     public void loadGame(String pgn, String initialFen) {
         this.currentPgn = pgn;
+        analysisGeneration.incrementAndGet();
         this.currentInitialFen = initialFen;
 
         String boardStyle = ConfigManager.getProperty("theme.board", "Marghiacciato.png");
@@ -170,6 +174,7 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         progressContainer.setManaged(true);
 
         String pgnToAnalyze = currentPgn;
+        int generation = analysisGeneration.get();
         String fenToAnalyze = currentInitialFen;
         Thread analysisThread = new Thread(() -> {
             try {
@@ -184,6 +189,9 @@ public class ReviewController implements NavigationAware, GameNavigationListener
                 double blackAccuracy = analyzer.calculateAccuracy(analysis, false);
 
                 Platform.runLater(() -> {
+                    if (generation != analysisGeneration.get()) {
+                        return; // another game was opened meanwhile
+                    }
                     this.currentAnalysis = analysis;
                     progressContainer.setVisible(false);
                     progressContainer.setManaged(false);
@@ -270,7 +278,7 @@ public class ReviewController implements NavigationAware, GameNavigationListener
             if (move.getClassification() == null)
                 continue;
 
-            boolean isWhite = (move.getMoveNumber() % 2) != 0;
+            boolean isWhite = move.isWhiteMove();
             int ordinal = move.getClassification().ordinal();
 
             if (isWhite) {
@@ -310,6 +318,11 @@ public class ReviewController implements NavigationAware, GameNavigationListener
 
         wBlunder.setText(String.valueOf(whiteCounts[MoveAnalysis.MoveClassification.BLUNDER.ordinal()]));
         bBlunder.setText(String.valueOf(blackCounts[MoveAnalysis.MoveClassification.BLUNDER.ordinal()]));
+    }
+
+    @Override
+    public void onNavigatedFrom() {
+        PositionAnalyzer.get().stop(); // do not keep the engine busy for a screen that is not shown
     }
 
     @FXML
@@ -481,9 +494,12 @@ public class ReviewController implements NavigationAware, GameNavigationListener
             debounceHandle.cancel(false);
         }
 
+        if (reviewChessBoard == null || reviewEvalBar == null) {
+            return;
+        }
+        String currentFen = reviewChessBoard.getFen(); // read on the FX thread, which owns the board
         debounceHandle = scheduler.schedule(() -> {
             if (reviewChessBoard != null && reviewEvalBar != null) {
-                String currentFen = reviewChessBoard.getFen();
 
                 // Opening name (asynchronous, cached, never blocks)
                 OpeningExplorer.lookup(currentFen).thenAccept(openingName -> Platform.runLater(() -> {

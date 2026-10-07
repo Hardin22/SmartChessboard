@@ -130,11 +130,13 @@ public class LichessGameManager {
         }
         if (!isMyTurn()) {
             log.info("Ignoring physical move {}{}: not our turn", from, to);
+            resyncBoardManager();
             return;
         }
         Move move = PgnCodec.fromUci(board, (from + to).toLowerCase()); // pawn to last rank -> queen
         if (move == null) {
             ui(cb -> cb.onStatusMessage("Mossa non valida: " + from.toLowerCase() + to.toLowerCase()));
+            resyncBoardManager();
             return;
         }
         sendMove(PgnCodec.toUci(move));
@@ -226,6 +228,10 @@ public class LichessGameManager {
                     + "Impostazioni."));
         }
         log.info("Lichess game {}: playing as {}", gameId, isWhite ? "white" : "black");
+        if (boardStateManager != null) {
+            // only our pieces' moves are taken from the board; the opponent's are replicated
+            boardStateManager.setPhysicalMoveSide(isWhite ? Side.WHITE : Side.BLACK);
+        }
     }
 
     private void applyState(LichessClient.GameState state, boolean full) {
@@ -272,6 +278,13 @@ public class LichessGameManager {
         stop();
     }
 
+    /** The board manager applies a physical move at once; when it does not count, give it the real position back. */
+    private void resyncBoardManager() {
+        if (boardStateManager != null) {
+            boardStateManager.setLogicalBoard(board);
+        }
+    }
+
     // ------------------------------------------------------------------ commands
 
     /** Sends a move (UCI) in the background; failures are reported through {@link UiCallback#onError}. */
@@ -283,6 +296,7 @@ public class LichessGameManager {
                 ui(cb -> cb.onMoveMade(uciMove));
             } catch (LichessClient.LichessException e) {
                 log.warn("Move {} rejected: {}", uciMove, e.getMessage());
+                resyncBoardManager(); // the board manager already applied it: go back to the real position
                 ui(cb -> cb.onError("Mossa " + uciMove + " non accettata: " + e.getMessage()));
             }
         });
@@ -340,6 +354,9 @@ public class LichessGameManager {
     public void setPlayerColor(boolean isWhite) {
         this.isWhite = isWhite;
         this.colorKnown = true;
+        if (boardStateManager != null) {
+            boardStateManager.setPhysicalMoveSide(isWhite ? Side.WHITE : Side.BLACK);
+        }
     }
 
     public String getGameId() {

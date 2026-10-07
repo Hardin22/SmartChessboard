@@ -75,7 +75,8 @@ public class PvpGame extends AbstractGame {
             }
         });
 
-        // Start Setup Mode
+        // Start Setup Mode (explicit target: a previous puzzle or browser game may have left another one)
+        manager.setSetupTargetFen(board.getFen());
         manager.startSetupMode();
         updateStatus("Posiziona i pezzi...");
     }

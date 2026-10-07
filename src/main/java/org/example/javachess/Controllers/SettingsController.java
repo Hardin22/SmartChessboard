@@ -168,6 +168,9 @@ public class SettingsController implements NavigationAware {
         values.put("lichess.token", lichessApiKeyField.getText());
         values.put("hardware.led.brightness", String.valueOf((int) ledBrightnessSlider.getValue()));
         ConfigManager.setProperties(values);
+        if (org.example.javachess.Hardware.Hardware.isInitialized()) { // apply now, not at the next start
+            org.example.javachess.Hardware.Hardware.leds().setBrightnessPercent((int) ledBrightnessSlider.getValue());
+        }
         if (lichessPasswordField != null) {
             lichessPasswordField.clear();
         }

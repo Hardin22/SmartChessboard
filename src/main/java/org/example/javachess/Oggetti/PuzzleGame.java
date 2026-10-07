@@ -121,6 +121,8 @@ public class PuzzleGame extends AbstractGame {
         // CRITICAL: Use current board FEN (which includes opponent move), NOT
         // puzzle.getFen()
         manager.setSetupTargetFen(board.getFen());
+        // No engine hints while solving: coloured destinations would give the solution away.
+        manager.setEvaluationEnabled(false);
 
         manager.setListener(new org.example.javachess.Services.BoardStateManager.BoardMoveListener() {
             @Override
@@ -430,6 +432,10 @@ public class PuzzleGame extends AbstractGame {
         isSolving = false;
         cancelPendingActions();
         // Cleanup if needed
-        org.example.javachess.Controllers.ArduinoController.getInstance().getBoardStateManager().stopGameMode();
+        org.example.javachess.Services.BoardStateManager manager =
+                org.example.javachess.Controllers.ArduinoController.getInstance().getBoardStateManager();
+        manager.stopGameMode();
+        manager.setEvaluationEnabled(org.example.javachess.Utils.ConfigManager.getBooleanProperty(
+                "game.suggestions", true));
     }
 }
