@@ -93,10 +93,13 @@ class ReviewCalibrationTest {
                 o.put("nodes", r.stats().nodes());
                 o.put("hits", r.stats().cacheHits());
                 JSONArray labels = new JSONArray();
+                JSONArray sans = new JSONArray();
                 for (MoveReview m : r.moves()) {
                     labels.put(m.label().name());
+                    sans.put(m.san());
                 }
                 o.put("labels", labels);
+                o.put("san", sans);
                 JSONArray evals = new JSONArray();
                 for (PositionEval p : r.positions()) {
                     JSONObject e = new JSONObject();

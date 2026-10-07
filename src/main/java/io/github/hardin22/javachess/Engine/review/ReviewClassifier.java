@@ -31,6 +31,8 @@ public final class ReviewClassifier {
 
     /** Second best line this good (cp, mover POV) means the position was winning anyway: no Great/Brilliant. */
     static final int WINNING_ANYWAY_CP = 700;
+    /** Brilliant/Great: the mover must not stand worse than this after the move (chess.com allows about equal). */
+    static final double CRITICAL_MIN_EP = 0.40;
     /** Great: the second best move loses at least this much win chance. */
     static final double GREAT_GAP = 0.10;
     /** Miss: the opponent's previous move lost at least this much. */
@@ -180,15 +182,16 @@ public final class ReviewClassifier {
                 continue;
             }
             boolean me = before.whiteToMove();
-            double ep = before.eval().winChance(me);
-            if (ep < SECOND_LINE_MIN_EP || ep > SECOND_LINE_MAX_EP || before.eval().isMate()) {
-                continue;
-            }
             Board b = board(replay.fens().get(i));
             if (b.isKingAttacked() || uci.endsWith("q")) {
                 continue;
             }
-            need.set(i);
+            double ep = before.eval().winChance(me);
+            boolean greatRange = ep >= SECOND_LINE_MIN_EP && ep <= SECOND_LINE_MAX_EP && !before.eval().isMate();
+            // a sacrifice can be Brilliant even when it mates: only the second line tells if it was needed
+            if (greatRange || (!before.eval().isMateAgainst(me) && brilliant(b, uci, me))) {
+                need.set(i);
+            }
         }
         return need;
     }
@@ -251,7 +254,7 @@ public final class ReviewClassifier {
                     }
                 }
                 if ((label == MoveClassification.BEST || label == MoveClassification.EXCELLENT) && !mates) {
-                    MoveClassification special = special(label, isTop, i, replay, p0, played[i], epBefore[i],
+                    MoveClassification special = special(label, isTop, i, replay, p0, pos.get(i + 1), played[i], epBefore[i],
                             epAfter[i], me);
                     if (special != null) {
                         label = special;
@@ -294,6 +297,20 @@ public final class ReviewClassifier {
         return best.isMateFor(me) && !played[i].isMate() && played[i].cpFor(me) > 0 && !pos.get(i + 1).terminal();
     }
 
+    /** The played move followed by the engine's best play: its own MultiPV line, or the next position's line. */
+    static List<String> playedLine(String uci, PositionEval p0, PositionEval p1) {
+        EngineLine own = p0.lineFor(uci);
+        if (own != null) {
+            return own.pv();
+        }
+        List<String> line = new ArrayList<>();
+        line.add(uci);
+        if (p1.best() != null) {
+            line.addAll(p1.best().pv());
+        }
+        return line;
+    }
+
     /** SPEC §5.5: the move loses material along the line, allows mate, or throws the game away into a draw. */
     private static boolean givesSomethingAway(String fen, String uci, PositionEval p0, PositionEval p1,
                                                      Eval played, boolean me, double epBefore) {
@@ -304,14 +321,7 @@ public final class ReviewClassifier {
             return true; // stalemate or dead draw from a won position
         }
         Side side = me ? Side.WHITE : Side.BLACK;
-        List<String> playedLine = new ArrayList<>();
-        playedLine.add(uci);
-        EngineLine own = p0.lineFor(uci);
-        if (own != null) {
-            playedLine = own.pv();
-        } else if (p1.best() != null) {
-            playedLine.addAll(p1.best().pv());
-        }
+        List<String> playedLine = playedLine(uci, p0, p1);
         EngineLine bestLine = p0.best();
         if (bestLine == null) {
             return true;
@@ -321,17 +331,22 @@ public final class ReviewClassifier {
         return mBest - mPlayed >= BLUNDER_MATERIAL;
     }
 
-    /** SPEC §5.2-5.3: Brilliant or Great for a Best/Excellent move, null when neither applies. */
+    /**
+     * SPEC §5.2-5.3: Brilliant or Great, null when neither applies. The alternative that must not be winning anyway
+     * is the second line when the played move is the engine's choice, the engine's choice otherwise (a sacrifice the
+     * engine found only at a deeper search than ours).
+     */
     private static MoveClassification special(MoveClassification label, boolean isTop, int i, GameReplay replay,
-                                              PositionEval p0, Eval played, double epBefore, double epAfter,
+                                              PositionEval p0, PositionEval p1, Eval played, double epBefore, double epAfter,
                                               boolean me) {
         EngineLine second = p0.secondBest();
-        if (second == null) {
+        Eval alternative = isTop ? (second == null ? null : second.eval()) : p0.eval();
+        if (alternative == null) {
             return null; // no MultiPV here: the reviewer judged it not worth it
         }
         Board b0 = board(replay.fens().get(i));
         String uci = replay.uci().get(i);
-        if (!candidate(b0, uci, second.eval(), played, epAfter, me)) {
+        if (!candidate(b0, uci, alternative, epAfter, me)) {
             return null;
         }
         if (brilliant(b0, uci, me)) {
@@ -352,14 +367,14 @@ public final class ReviewClassifier {
     }
 
     /** Shared precondition of Brilliant and Great (WintrChess "critical candidate"). */
-    private static boolean candidate(Board b0, String uci, Eval second, Eval played, double epAfter, boolean me) {
+    private static boolean candidate(Board b0, String uci, Eval alternative, double epAfter, boolean me) {
         if (b0.isKingAttacked() || uci.endsWith("q")) {
             return false;
         }
-        if (second.isMateFor(me) || (!second.isMate() && second.cpFor(me) >= WINNING_ANYWAY_CP)) {
+        if (alternative.isMateFor(me) || (!alternative.isMate() && alternative.cpFor(me) >= WINNING_ANYWAY_CP)) {
             return false; // winning anyway
         }
-        return epAfter >= 0.5;
+        return epAfter >= CRITICAL_MIN_EP;
     }
 
     /** SPEC §5.2: the move leaves a piece en prise that is not simply lost (a sound sacrifice). */
@@ -381,13 +396,13 @@ public final class ReviewClassifier {
         if (unsafeAfter.isEmpty() || movedWasTrapped) {
             return false;
         }
-        int trapped = 0;
+        int real = 0;
         for (Square sq : unsafeAfter) {
-            if (Tactics.isTrapped(b1, sq)) {
-                trapped++;
+            if (!Tactics.isTrapped(b1, sq) && !Tactics.isFakeSacrifice(b1, sq)) {
+                real++;
             }
         }
-        return trapped < unsafeAfter.size();
+        return real > 0;
     }
 
     /** True when move i captures on the square where the opponent just captured (a plain recapture). */
