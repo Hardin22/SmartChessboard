@@ -8,6 +8,8 @@ import javafx.scene.control.Label;
 
 public class PvpGame extends AbstractGame {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PvpGame.class);
+
     private Label openingNameLabel;
     private ChessTimer chessTimer;
     private int increment;
@@ -36,12 +38,12 @@ public class PvpGame extends AbstractGame {
                 .getInstance().getBoardStateManager();
 
         manager.setLogicalBoard(board); // Sync initial board state
-        manager.startSetupMode(); // Start setup phase
+        manager.setPhysicalMoveSide(null); // both players move on the board
 
         manager.setListener(new org.example.javachess.Services.BoardStateManager.BoardMoveListener() {
             @Override
             public void onPhysicalMoveDetected(String from, String to) {
-                System.out.println("Physical Move (PvP): " + from + to);
+                log.debug("Physical move {}{}", from, to);
                 handleMoveInput(from + to);
             }
 
@@ -49,7 +51,7 @@ public class PvpGame extends AbstractGame {
             public void onBoardSetupComplete() {
                 updateStatus("SCACCHIERA PRONTA! Partita Iniziata");
                 manager.startGameMode(); // ACTIVATE GAME MODE
-                Platform.runLater(() -> chessTimer.startWhiteTimer());
+                chessTimer.startWhiteTimer();
             }
 
             @Override
@@ -59,13 +61,12 @@ public class PvpGame extends AbstractGame {
 
             @Override
             public void onBoardStateUpdated(String fen, String errorSquare) {
-                Platform.runLater(() -> {
-                    chessBoardUI.setPosition(fen, null);
-                    if (errorSquare != null) {
-                        chessBoardUI.highlightErrorSquare(errorSquare);
-                        updateStatus("ERRORE: Controlla " + errorSquare);
-                    }
-                });
+                // Called on the FX thread: mirror the physical board
+                chessBoardUI.setPosition(fen, null);
+                if (errorSquare != null) {
+                    chessBoardUI.highlightErrorSquare(errorSquare);
+                    updateStatus("ERRORE: Controlla " + errorSquare);
+                }
             }
 
             @Override
@@ -89,7 +90,7 @@ public class PvpGame extends AbstractGame {
             return;
 
         try {
-            Move move = parseMoveInput(moveInput);
+            Move move = withAutoQueen(parseMoveInput(moveInput));
 
             if (move != null && MoveGenerator.generateLegalMoves(board).contains(move)) {
                 String fenBefore = board.getFen();
@@ -134,10 +135,10 @@ public class PvpGame extends AbstractGame {
                     }
                 });
             } else {
-                System.out.println("Mossa illegale o non valida, riprova.");
+                log.info("Illegal or invalid move: {}", moveInput);
             }
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (RuntimeException e) {
+            log.error("Move {} failed", moveInput, e);
         }
     }
 
@@ -147,12 +148,15 @@ public class PvpGame extends AbstractGame {
 
     @Override
     public void endGame(String endMessage, boolean saveGame) {
+        if (!gameRunning) {
+            return; // already ended (mate, flag): do not save twice
+        }
         gameRunning = false;
         chessTimer.stopWhiteTimer();
         chessTimer.stopBlackTimer();
 
         if (pgn.length() < 20) {
-            System.out.println("Partita non salvata, mossa troppo breve");
+            log.info("Game too short, not saved");
             saveGame = false;
         }
 

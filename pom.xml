@@ -4,10 +4,32 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.example</groupId>
+    <groupId>io.github.hardin22</groupId>
     <artifactId>javaChess</artifactId>
     <version>1.0-SNAPSHOT</version>
     <name>javaChess</name>
+    <description>Smart chessboard software: play against Stockfish/Maia, online on Lichess and chess.com, puzzles,
+        game review and archive, driven by a sensor/LED board connected to an Arduino.</description>
+    <url>https://github.com/Hardin22/SmartChessboard</url>
+    <inceptionYear>2024</inceptionYear>
+
+    <licenses>
+        <license>
+            <name>GNU General Public License v3.0 or later</name>
+            <url>https://www.gnu.org/licenses/gpl-3.0.html</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <name>Francesco Albano</name>
+        </developer>
+    </developers>
+
+    <scm>
+        <url>https://github.com/Hardin22/SmartChessboard</url>
+    </scm>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -68,17 +90,13 @@
         <dependency>
             <groupId>org.json</groupId>
             <artifactId>json</artifactId>
-            <version>20220924</version>
+            <!-- 20231013+ is public domain; older releases use the GPL-incompatible "JSON License" -->
+            <version>20240303</version>
         </dependency>
         <dependency>
             <groupId>me.friwi</groupId>
             <artifactId>jcefmaven</artifactId>
             <version>127.3.1</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-shade-plugin</artifactId>
-            <version>3.6.0</version>
         </dependency>
         <dependency>
             <groupId>com.konghq</groupId>
@@ -118,35 +136,25 @@
         
         <!-- JOGL Removed: Incompatible with macOS ARM64 and not needed for Windowed Mode -->
 
-        <dependency>
-            <groupId>com.github.kurbatov</groupId>
-            <artifactId>firmata4j</artifactId>
-            <version>2.3.7</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.scream3r</groupId>
-                    <artifactId>jssc</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
         <!-- Dipendenza per jSerialComm -->
         <dependency>
             <groupId>com.fazecast</groupId>
             <artifactId>jSerialComm</artifactId>
             <version>2.9.3</version>
         </dependency>
-        <dependency>
-            <groupId>io.github.java-native</groupId>
-            <artifactId>jssc</artifactId>
-            <version>2.9.6</version>
-        </dependency>
 
 
-        <!-- Dipendenza per SLF4J Simple Logger (per risolvere l'errore SLF4J) -->
+        <!-- Logging: SLF4J API + Logback (configuration in src/main/resources/logback.xml).
+             slf4j-api is declared explicitly so that no transitive 1.7.x API wins. -->
         <dependency>
             <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-simple</artifactId>
-            <version>2.0.9</version>
+            <artifactId>slf4j-api</artifactId>
+            <version>2.0.16</version>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.5.12</version>
         </dependency>
 
         <!-- Computer Vision & AI Dependencies -->
@@ -163,6 +171,15 @@
     </dependencies>
 
     <build>
+        <resources>
+            <!-- Datasets (puzzles.csv is ~1 GB) never go to the classpath or the jar: see docs/raspberry-pi.md -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <excludes>
+                    <exclude>data/**</exclude>
+                </excludes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -171,6 +188,21 @@
                 <configuration>
                     <source>21</source>
                     <target>21</target>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <!-- Maven 3.8 defaults to surefire 2.12, which does not run JUnit 5 tests -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+                <configuration>
+                    <systemPropertyVariables>
+                        <java.awt.headless>true</java.awt.headless>
+                        <!-- tests never read or write the real ~/.javachess nor the working directory files -->
+                        <javachess.home>${project.build.directory}/test-home</javachess.home>
+                        <javachess.legacyDir>${project.build.directory}/test-legacy</javachess.legacyDir>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
 
@@ -221,6 +253,17 @@
                         </goals>
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <filters>
+                                <filter>
+                                    <!-- signatures of the original jars are invalid in the merged jar -->
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>org.example.javachess.Application.Main</mainClass>
@@ -233,4 +276,42 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- Raspberry Pi (Linux arm64) jar without the native libraries of other platforms (~250 MB less):
+             ./mvnw -Ppi -Djavafx.platform=linux-aarch64 -DskipTests package   (see docs/raspberry-pi.md) -->
+        <profile>
+            <id>pi</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-shade-plugin</artifactId>
+                        <configuration>
+                            <filters combine.children="append">
+                                <filter>
+                                    <artifact>org.openpnp:opencv</artifact>
+                                    <excludes>
+                                        <exclude>nu/pattern/opencv/osx/**</exclude>
+                                        <exclude>nu/pattern/opencv/windows/**</exclude>
+                                        <exclude>nu/pattern/opencv/linux/x86_32/**</exclude>
+                                        <exclude>nu/pattern/opencv/linux/x86_64/**</exclude>
+                                        <exclude>nu/pattern/opencv/linux/ARMv7/**</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <artifact>com.microsoft.onnxruntime:onnxruntime</artifact>
+                                    <excludes>
+                                        <exclude>ai/onnxruntime/native/osx-*/**</exclude>
+                                        <exclude>ai/onnxruntime/native/win-*/**</exclude>
+                                        <exclude>ai/onnxruntime/native/linux-x64/**</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

@@ -15,16 +15,21 @@ import org.example.javachess.Engine.OpeningExplorer;
 import org.example.javachess.Engine.PositionAnalyzer;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.example.javachess.Hardware.Hardware;
+import org.example.javachess.Services.EngineService;
+import org.example.javachess.Utils.AppExecutors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 public abstract class AbstractGame {
+    private static final Logger log = LoggerFactory.getLogger(AbstractGame.class);
+
     protected Board board;
     protected ChessBoardUI chessBoardUI;
     // Removed evaluationLabel
@@ -32,8 +37,6 @@ public abstract class AbstractGame {
     protected EvalBar evalBar;
     protected boolean gameRunning;
     protected StringBuilder pgn;
-    protected int gameId;
-    protected Path archivePath;
     protected boolean saveGame = true;
     protected String initialFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
     protected Task<Void> moveCalculationTask;
@@ -47,8 +50,6 @@ public abstract class AbstractGame {
         this.evalBar = evalBar;
         // Removed move labels assignment
         this.pgn = new StringBuilder();
-        this.archivePath = copyArchiveJsonToWritableLocation();
-        this.gameId = getNextGameId();
     }
 
     public void setStatusCallback(java.util.function.Consumer<String> callback) {
@@ -70,41 +71,6 @@ public abstract class AbstractGame {
     public abstract void handleMoveInput(String moveInput);
 
     public abstract void endGame(String endMessage, boolean saveGame);
-
-    protected Path copyArchiveJsonToWritableLocation() {
-        Path targetPath = Paths.get("archive.json");
-        if (!Files.exists(targetPath)) {
-            try (InputStream resourceStream = getClass().getResourceAsStream("/archive.json")) {
-                if (resourceStream == null) {
-                    throw new IllegalArgumentException("archive.json not found in resources");
-                }
-                Files.copy(resourceStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-        return targetPath;
-    }
-
-    protected int getNextGameId() {
-        int nextId = 1;
-        try {
-            if (Files.exists(archivePath)) {
-                String content = new String(Files.readAllBytes(archivePath));
-                JSONArray gamesArray = new JSONArray(content);
-                for (int i = 0; i < gamesArray.length(); i++) {
-                    JSONObject game = gamesArray.getJSONObject(i);
-                    int id = game.getInt("id");
-                    if (id >= nextId) {
-                        nextId = id + 1;
-                    }
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return nextId;
-    }
 
     protected int analysisDepth = org.example.javachess.Utils.ConfigManager.getIntProperty("game.depth", 18);
     protected int analysisMultiPV = 1;
@@ -275,18 +241,50 @@ public abstract class AbstractGame {
         }
     }
 
+    /** Appends the result to the PGN and writes the game to the archive on the storage thread. */
     protected void saveGameToJson(String result, String openingName, String type, String timeControl) {
         pgn.append(" ").append(result);
-        System.out.println("Partita salvata in formato PGN: " + pgn.toString());
+        String pgnText = pgn.toString();
+        String startFen = initialFen;
+        String finalFen = board.getFen();
+        log.info("Saving game: {}", pgnText);
+        AppExecutors.storage().execute(() -> org.example.javachess.Services.GameArchiveService.saveGame(
+                type, openingName, pgnText, startFen, finalFen, result, timeControl));
+    }
 
-        org.example.javachess.Services.GameArchiveService.saveGame(
-                type,
-                openingName,
-                pgn.toString(),
-                initialFen,
-                board.getFen(),
-                result,
-                timeControl);
+    // --- delayed actions -----------------------------------------------------------------------------------
+
+    private final Set<ScheduledFuture<?>> pendingActions = ConcurrentHashMap.newKeySet();
+
+    /** Runs {@code action} on the JavaFX thread after {@code delayMs}; cancelled by {@link #cancelPendingActions()}. */
+    protected void runLaterOnFx(long delayMs, Runnable action) {
+        ScheduledFuture<?>[] holder = new ScheduledFuture<?>[1];
+        holder[0] = AppExecutors.scheduler().schedule(() -> {
+            pendingActions.remove(holder[0]);
+            Platform.runLater(action);
+        }, delayMs, TimeUnit.MILLISECONDS);
+        pendingActions.add(holder[0]);
+    }
+
+    /** Cancels the actions scheduled with {@link #runLaterOnFx} (end of game, view closed). */
+    protected void cancelPendingActions() {
+        pendingActions.forEach(f -> f.cancel(false));
+        pendingActions.clear();
+    }
+
+    /** A pawn move to the last rank without promotion piece becomes a queen promotion. */
+    protected Move withAutoQueen(Move move) {
+        if (move == null || move.getPromotion() != Piece.NONE) {
+            return move;
+        }
+        Piece piece = board.getPiece(move.getFrom());
+        boolean lastRank = move.getTo().getRank() == com.github.bhlangonijr.chesslib.Rank.RANK_8
+                || move.getTo().getRank() == com.github.bhlangonijr.chesslib.Rank.RANK_1;
+        if (piece.getPieceType() == com.github.bhlangonijr.chesslib.PieceType.PAWN && lastRank) {
+            return new Move(move.getFrom(), move.getTo(),
+                    board.getSideToMove() == Side.WHITE ? Piece.WHITE_QUEEN : Piece.BLACK_QUEEN);
+        }
+        return move;
     }
 
     public Board getBoard() {
@@ -294,37 +292,25 @@ public abstract class AbstractGame {
     }
 
     // --- LED VISUALIZATION METHODS ---
+    // Check, setup and opponent moves are shown by BoardStateManager from the position itself.
+
     protected void notifyOpponentMove(String from, String to) {
-        // Check for Check/Mate
         if (board.isMated()) {
             notifyMate();
-        } else if (board.isKingAttacked()) {
-            notifyCheck();
         }
-    }
-
-    protected void notifyCheck() {
-        org.example.javachess.Controllers.ArduinoController arduino = org.example.javachess.Controllers.ArduinoController
-                .getInstance();
-        Square kingSq = board.getKingSquare(board.getSideToMove());
-        arduino.sendLedCommand(kingSq.name(), 255, 69, 0); // OrangeRed
     }
 
     protected void notifyMate() {
         if (!org.example.javachess.Utils.ConfigManager.getBooleanProperty("ui.mate.animation", true)) {
             return;
         }
-        org.example.javachess.Controllers.ArduinoController arduino = org.example.javachess.Controllers.ArduinoController
-                .getInstance();
-        arduino.playVictoryAnimation();
-
-        // Trigger UI Animation
-        com.github.bhlangonijr.chesslib.Side winner = board.getSideToMove().flip();
-        String winnerText = (winner == com.github.bhlangonijr.chesslib.Side.WHITE ? "IL BIANCO" : "IL NERO") + " VINCE";
+        Hardware.leds().playVictoryWave();
+        Side winner = board.getSideToMove().flip();
+        String winnerText = (winner == Side.WHITE ? "IL BIANCO" : "IL NERO") + " VINCE";
         Platform.runLater(() -> chessBoardUI.showVictoryAnimation("SCACCO MATTO", winnerText));
     }
 
     protected void clearBoardLeds() {
-        org.example.javachess.Controllers.ArduinoController.getInstance().clearLeds();
+        Hardware.moveLeds().clearCandidates();
     }
 }

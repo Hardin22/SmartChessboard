@@ -7,11 +7,16 @@ import com.github.bhlangonijr.chesslib.move.MoveGenerator;
 import java.util.List;
 import java.util.Random;
 
+/** Random but legal positions, reached by playing random legal moves from the start. */
 public class RandomFenGenerator {
 
     public static String generateRandomFen(int movesCount) {
+        return generateRandomFen(movesCount, new Random());
+    }
+
+    /** Same as {@link #generateRandomFen(int)} with a given random source (reproducible tests). */
+    public static String generateRandomFen(int movesCount, Random random) {
         Board board = new Board();
-        Random random = new Random();
 
         for (int i = 0; i < movesCount; i++) {
             List<Move> legalMoves = MoveGenerator.generateLegalMoves(board);
@@ -23,10 +28,5 @@ public class RandomFenGenerator {
         }
 
         return board.getFen();
-    }
-
-    public static void main(String[] args) {
-        String randomFen = generateRandomFen(10); // Genera una posizione dopo 10 mosse
-        System.out.println("FEN casuale: " + randomFen);
     }
 }

@@ -1,0 +1,26 @@
+# systemd *user* service: starts javaChess full screen when the Pi desktop session starts and restarts it if it
+# crashes. Install (as the desktop user, e.g. "pi"):
+#   mkdir -p ~/.config/systemd/user && cp deploy/javachess.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now javachess.service
+#   journalctl --user -u javachess -f        # logs
+# Adjust WorkingDirectory if the app is not in ~/javachess. See docs/raspberry-pi.md.
+[Unit]
+Description=javaChess smart chessboard (kiosk)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/javachess
+Environment=DISPLAY=:0
+Environment=GDK_BACKEND=x11
+# Environment=JAVACHESS_OPTS=-Djavachess.metrics=true
+ExecStart=%h/javachess/run_pi.sh
+Restart=on-failure
+RestartSec=3
+# the app turns the LEDs off and stops the engines on SIGTERM; give it a moment
+TimeoutStopSec=10
+KillMode=mixed
+
+[Install]
+WantedBy=graphical-session.target
