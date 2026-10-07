@@ -133,7 +133,8 @@ public final class GameReviewer implements AutoCloseable {
                         // Phase 4 "threat ignored": the position after the opponent takes the piece an engine move of
                         // this block left en prise, searched outside the block like the second lines (from a cleared
                         // hash: the same search as the stored oracle answers of the gate)
-                        for (int idx = start; idx < Math.min(n, start + BLOCK); idx++) {
+                        for (int idx = start; idx < Math.min(n, start + BLOCK)
+                                && ReviewClassifier.Tuning.DEFAULT.afterCaptureSearch; idx++) {
                             String capture = ReviewClassifier.afterCaptureRequest(replay.fens().get(idx),
                                     replay.uci().get(idx), positions[idx]);
                             EngineLine line = capture == null ? null

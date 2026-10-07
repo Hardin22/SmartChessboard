@@ -180,6 +180,8 @@ public final class ReviewClassifier {
         final boolean brilliantNoEmptyOffer;
         /** v2.5 B-E13: an offer taken back at once by a discovered attack, material level after the line: an exchange. */
         final boolean brilliantNoDiscoveredTrade;
+        /** Phase 4 TI: the reviewer runs the after-capture searches of {@link #afterCaptureRequest} (cost runs: 0 = off). */
+        final boolean afterCaptureSearch;
         /** v2.5 B-E14: accepting loses more material at once and the line ends about level: a sham sacrifice. */
         final boolean brilliantNoShamSacrifice;
         /** v2.5 B-TI+: a capture leaving a piece en prise whose capture (after-capture search) is mated. */
@@ -320,6 +322,7 @@ public final class ReviewClassifier {
             brilliantMateSacrifice = get("brilliantMateSacrifice", 1) != 0;
             brilliantNoEmptyOffer = get("brilliantNoEmptyOffer", 1) != 0;
             brilliantNoDiscoveredTrade = get("brilliantNoDiscoveredTrade", 1) != 0;
+            afterCaptureSearch = get("afterCaptureSearch", 1) != 0;
             brilliantNoShamSacrifice = get("brilliantNoShamSacrifice", 1) != 0;
             brilliantCaptureIntoMate = get("brilliantCaptureIntoMate", 1) != 0;
             greatInCheckFreeMaterial = get("greatInCheckFreeMaterial", 1) != 0;
