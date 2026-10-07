@@ -64,6 +64,17 @@ public final class ReviewCv {
             games.addAll(EvalDump.load(dumpDir.resolve("holdout"), budget));
         }
         OpeningBook book = OpeningBook.standard();
+        String recheck = a.get("recheck");
+        String deepBudget = a.getOrDefault("deepBudget", "deep");
+        Map<String, EvalDump.Game> deepGames = new HashMap<>();
+        if (recheck != null) {
+            for (EvalDump.Game g : EvalDump.load(dumpDir, deepBudget)) {
+                deepGames.put(g.id(), g);
+            }
+            for (EvalDump.Game g : EvalDump.load(dumpDir.resolve("holdout"), deepBudget)) {
+                deepGames.put(g.id(), g);
+            }
+        }
         StringBuilder plies = new StringBuilder(String.join("\t", "game", "fold", "ply", "color", "san", "uci",
                 "ours", "cc", "eval_before", "eval_played", "ep_before", "ep_after", "ep_loss", "best", "is_top",
                 "second", "second_eval", "second_ep", "legal", "depth", "mate_check")).append('\n');
@@ -86,7 +97,14 @@ public final class ReviewCv {
             if ("cv".equals(set) && "H".equals(fold) || "holdout".equals(set) && !"H".equals(fold)) {
                 continue;
             }
-            ReviewInput base = d.input(mode, book);
+            // --recheck second|full: the candidates' second line (or whole evaluation) from the deep dump, a proxy of a
+            // deeper re-search of the Great/Brilliant candidates only
+            long[] extra = new long[1];
+            EvalDump.Game deepGame = recheck == null ? null : deepGames.get(d.id());
+            if (recheck != null && deepGame == null) {
+                throw new IllegalStateException(d.id() + ": no " + deepBudget + " dump for --recheck");
+            }
+            ReviewInput base = deepGame == null ? d.input(mode, book) : d.recheckedInput(deepGame, recheck, book, extra);
             // the players' ratings (chess.com judges a loss of win chance by the player's level)
             // cv.py -D ratings=none: every player unknown, as for a local game in the app
             boolean ratings = !"none".equals(System.getProperty("javachess.review.ratings"));
@@ -131,7 +149,7 @@ public final class ReviewCv {
             gamesTsv.append(String.join("\t", d.id(), fold, g.timeClass(),
                     String.valueOf((g.whiteRating() + g.blackRating()) / 2), String.valueOf(g.uci().size()),
                     f(g.whiteAccuracy()), f(g.blackAccuracy()), f(r.whiteAccuracy()), f(r.blackAccuracy()),
-                    String.valueOf(d.productNodes(book)), String.valueOf(second))).append('\n');
+                    String.valueOf(d.productNodes(book) + extra[0]), String.valueOf(second))).append('\n');
             n++;
         }
         Files.writeString(out.resolve("plies.tsv"), plies.toString(), StandardCharsets.UTF_8);

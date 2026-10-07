@@ -62,7 +62,8 @@ def classpath():
     return f"{REPO / 'target' / 'classes'}:{REPO / 'target' / 'test-classes'}:{cp_file.read_text().strip()}"
 
 
-def run_java(cp, knobs, out, budget, mode, dataset, dump, labels=None, games=None, folds=None, explain=False):
+def run_java(cp, knobs, out, budget, mode, dataset, dump, labels=None, games=None, folds=None, explain=False,
+             recheck=None):
     cmd = ["java", "-Xss8m"] + [f"-Djavachess.review.{k}={v}" for k, v in sorted(knobs.items())]
     cmd += ["-cp", cp, "io.github.hardin22.javachess.review.ReviewCv", "--out", str(out), "--budget", budget,
             "--mode", mode, "--set", dataset, "--dump", str(dump), "--labels", str(labels or LABELS_DIR)]
@@ -72,6 +73,8 @@ def run_java(cp, knobs, out, budget, mode, dataset, dump, labels=None, games=Non
         cmd += ["--games", str(games)]
     if explain:
         cmd += ["--explain", "true"]
+    if recheck:
+        cmd += ["--recheck", recheck]
     r = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(f"ReviewCv failed for {knobs}:\n{r.stdout[-2000:]}\n{r.stderr[-4000:]}")
@@ -315,8 +318,9 @@ def cmd_cv(a):
     dataset = "holdout" if a.holdout else "cv"
     root = REPO / "target" / "cv"
     with ThreadPoolExecutor(max_workers=a.jobs) as ex:
-        runs = list(ex.map(lambda k: (k, *run_java(cp, k, root / "runs" / f"{a.budget}-{a.mode}-{dataset}-{tag(k)}",
-                                                     a.budget, a.mode, dataset, a.dump)), points))
+        runs = list(ex.map(lambda k: (k, *run_java(cp, k, root / "runs" / f"{a.budget}-{a.mode}-{dataset}-{a.ref}-"
+                                                     f"{a.recheck or 'norecheck'}-{tag(k)}", a.budget, a.mode, dataset,
+                                                     a.dump, recheck=a.recheck)), points))
     name = a.name or (f"{dataset}-{a.budget}-{a.mode}-{a.ref}-" + ("grid" if a.grid else tag(fixed)))
     out = root / name
     out.mkdir(parents=True, exist_ok=True)
@@ -630,9 +634,84 @@ def cmd_fplist(a):
     print(f"{len(fp)} false positives -> {outdir / 'FP_LIST.csv'}; {len(fn)} false negatives -> {outdir / 'FN_LIST.csv'}")
 
 
+def pr(ps, c):
+    tp = sum(1 for p in ps if p["cc"] == c and p["ours"] == c)
+    fp = sum(1 for p in ps if p["ours"] == c and p["cc"] != c)
+    fn = sum(1 for p in ps if p["cc"] == c and p["ours"] != c)
+    return tp, fp, fn
+
+
+def fmt_pr(t):
+    tp, fp, fn = t
+    p = f"{tp / (tp + fp):.2f}" if tp + fp else "-"
+    r = f"{tp / (tp + fn):.2f}" if tp + fn else "-"
+    return f"{tp}/{fp} P {p} R {r}"
+
+
+def cmd_prcurve(a):
+    """Precision/recall of Brilliant, Great (and Miss) for a list of classifier variants on the CV games (SF22), the
+    famous games at the product's default rating 1500 and at 2500 (sensitivity), and Chessigma (recall)."""
+    if not a.no_build:
+        subprocess.run([str(REPO / "mvnw"), "-q", "test-compile"], cwd=REPO, check=True)
+    cp = classpath()
+    spec = json.loads(Path(a.variants).read_text())
+    variants = spec if isinstance(spec, list) else [{"name": tag(k), "knobs": k} for k in expand_grid(spec)]
+    root = REPO / "target" / "cv" / "prcurve"
+    nofolds = root / "nofolds.json"
+    root.mkdir(parents=True, exist_ok=True)
+    nofolds.write_text('{"folds": {}}')
+    chessigma_labels(root / "chessigma-labels")
+    kind = {f.stem: json.loads(f.read_text()).get("kind", "") for f in (DATA / "famous_chesscom").glob("*.json")}
+    famous_deep = (DATA / "evals_famous" / "deep").is_dir() and len(list((DATA / "evals_famous" / "deep").glob("*.jsonl"))) >= 35
+
+    def one(v):
+        k = {kk: str(vv) for kk, vv in v.get("knobs", {}).items()}
+        rc = v.get("recheck")
+        nm = v.get("name") or tag(k)
+        out = {"name": nm}
+        cvp, cvg = run_java(cp, k, root / nm / "cv", a.budget, a.mode, "cv", a.dump, labels=DATA / REFS["sf22"],
+                            recheck=rc)
+        m = metrics(cvp, cvg)
+        out["cv"] = {c: pr(cvp, c) for c in SPECIAL}
+        out["exact"], out["far"], out["pi5"] = m["exact"], m["far_n"], m["pi5_s_per_40"]
+        for rating in (1500, 2500):
+            kr = dict(k, defaultRating=str(rating))
+            fr = rc if famous_deep else None
+            fp_, _ = run_java(cp, kr, root / nm / f"famous{rating}", "lite", a.mode, "all", DATA / "evals_famous",
+                              labels=DATA / "famous_chesscom", games=DATA / "famous", folds=nofolds, recheck=fr)
+            for kd in ("brilliant", "control"):
+                ps = [p for p in fp_ if kind.get(p["game"]) == kd]
+                out[f"f{rating}{kd}"] = {c: pr(ps, c) for c in ("brilliant", "great")}
+            out[f"f{rating}recheck"] = bool(fr) or not rc
+        cs, _ = run_java(cp, k, root / nm / "chessigma", "lite", a.mode, "all", DATA / "evals_chessigma",
+                         labels=root / "chessigma-labels", folds=nofolds)
+        tp = sum(1 for p in cs if p["cc"] == "brilliant" and p["ours"] == "brilliant")
+        pos = sum(1 for p in cs if p["cc"] == "brilliant")
+        out["chessigma"] = f"{tp}/{pos} R {tp / pos:.2f}" if pos else "-"
+        return out
+
+    with ThreadPoolExecutor(max_workers=a.jobs) as ex:
+        res = list(ex.map(one, variants))
+    md = ["| variant | CV exact / ≥2 | CV Brilliant | CV Great | CV Miss | famous 1500 brilliant-kind B / G | "
+          "famous 1500 control B / G | famous 2500 brilliant-kind B / G | famous 2500 control B / G | Chessigma B | "
+          "Pi 5 s/40 |", "|---|---|---|---|---|---|---|---|---|---|---:|"]
+    for r in res:
+        star = "" if r["f1500recheck"] else " (no famous deep: lite)"
+        md.append(f"| {r['name']}{star} | {r['exact']:.1%} / {r['far']} | {fmt_pr(r['cv']['brilliant'])} | "
+                  f"{fmt_pr(r['cv']['great'])} | {fmt_pr(r['cv']['miss'])} | "
+                  f"{fmt_pr(r['f1500brilliant']['brilliant'])} / {fmt_pr(r['f1500brilliant']['great'])} | "
+                  f"{fmt_pr(r['f1500control']['brilliant'])} / {fmt_pr(r['f1500control']['great'])} | "
+                  f"{fmt_pr(r['f2500brilliant']['brilliant'])} / {fmt_pr(r['f2500brilliant']['great'])} | "
+                  f"{fmt_pr(r['f2500control']['brilliant'])} / {fmt_pr(r['f2500control']['great'])} | "
+                  f"{r['chessigma']} | {r['pi5']:.1f} |")
+    text = "\n".join(md)
+    (root / f"{a.name or Path(a.variants).stem}.md").write_text(text + "\n")
+    print(text)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", nargs="?", default="cv", choices=["cv", "stability", "ceiling", "noise", "refs", "fplist"])
+    ap.add_argument("command", nargs="?", default="cv", choices=["cv", "stability", "ceiling", "noise", "refs", "fplist", "prcurve"])
     ap.add_argument("a", nargs="?", help="stability: first budget")
     ap.add_argument("b", nargs="?", help="stability: second budget")
     ap.add_argument("--dump", default=str(DATA / "evals_labeled"))
@@ -649,6 +728,9 @@ def main():
     ap.add_argument("--margin", type=float, default=0.01, help="unstable when the win chance loss is this close to a threshold")
     ap.add_argument("--fp-out", default=str(Path.home() / ".javachess-orchestrator/review-team/notes/fp"),
                     help="fplist: folder of FP_LIST.csv / FN_LIST.csv")
+    ap.add_argument("--recheck", choices=["second", "full"], help="candidates re-searched deeper, simulated with "
+                    "the --deep dump: 'second' = deep second line when the deep best move is ours, 'full' = deep eval")
+    ap.add_argument("--variants", help="prcurve: JSON list of {name, knobs: {...}, recheck} or a knob grid")
     ap.add_argument("--holdout", action="store_true")
     ap.add_argument("--final", action="store_true")
     ap.add_argument("--no-build", action="store_true", help="skip ./mvnw test-compile")
@@ -656,7 +738,7 @@ def main():
     global LABELS_DIR, FOLDS
     LABELS_DIR = DATA / REFS[a.ref]
     FOLDS = a.folds
-    {"stability": cmd_stability, "ceiling": cmd_ceiling, "noise": cmd_noise, "refs": cmd_refs, "fplist": cmd_fplist}.get(a.command, cmd_cv)(a)
+    {"stability": cmd_stability, "ceiling": cmd_ceiling, "noise": cmd_noise, "refs": cmd_refs, "fplist": cmd_fplist, "prcurve": cmd_prcurve}.get(a.command, cmd_cv)(a)
 
 
 if __name__ == "__main__":
