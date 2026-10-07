@@ -503,6 +503,31 @@ class BrilliantGreatExclusionsTest {
     }
 
     @Test
+    void aCaptureCashingInTheMoversOwnGreatIsNotGreat() {
+        // live_174521739268 plies 5-8 (1303 vs 1293): 3.e5?! dxe5! (Great) 4.dxe5 Qxd1+ is Best for chess.com: the
+        // queen trade only cashes in the Great 3...dxe5
+        String fen = "rnbqkb1r/ppp1pppp/3p1n2/8/3PP3/8/PPP2PPP/RNBQKBNR w KQkq - 1 3";
+        List<String> moves = List.of("e4e5", "d6e5", "d4e5", "d8d1");
+        List<PositionEval> ps = new ArrayList<>();
+        String f = fen;
+        Eval[] best = {Eval.cp(47), Eval.cp(-169), Eval.cp(-154), Eval.cp(-149)};
+        String[] bestMove = {"b1c3", "d6e5", "d4e5", "d8d1"};
+        Eval[] second = {Eval.cp(41), Eval.cp(65), Eval.cp(-208), Eval.cp(48)};
+        String[] secondMove = {"f1d3", "f6d5", "g1f3", "f6d5"};
+        for (int i = 0; i < moves.size(); i++) {
+            ps.add(withLines(f, best[i], bestMove[i], second[i], secondMove[i]));
+            f = play(f, moves.get(i));
+        }
+        ps.add(new PositionEval(f, Eval.cp(-164), List.of(new EngineLine("e1d1", Eval.cp(-164), List.of("e1d1"), 20)),
+                20, 0, false));
+        ReviewInput in = new ReviewInput(fen, moves, ps, OpeningBook.NONE, 1303, 1293);
+        GameReview r = ReviewClassifier.classifyGame(in, Tuning.DEFAULT);
+        assertEquals(MoveClassification.GREAT, r.moves().get(1).label());
+        assertEquals(MoveClassification.BEST, r.moves().get(3).label());
+        assertEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT.with("greatNoCashIn", 0)));
+    }
+
+    @Test
     void aBishopDrivenBackByAPawnPushIsNotGreat() {
         // live_173864617688 ply 28 (2007): 14.g4 attacks Bh5, 14...Bg6 is the only move (f5 -0.70) but chess.com Best
         ReviewInput bg6 = rated(twoMoves("r4rk1/1pq1npp1/p1nbp2p/3p3b/3P4/2PBBN1P/PPQN1PP1/R3R1K1 w - - 0 14", "g2g4",

@@ -164,6 +164,8 @@ public final class ReviewClassifier {
         /** Phase 4: an answer to check taking free material (SEE > 0) follows the free material rule of captures. */
         final boolean greatInCheckFreeMaterial;
         /** Phase 4: no Great for a bishop retreating from the pawn that has just advanced against it. */
+        /** Phase 4: no Great for a capture right after the mover's own Great (cashing in). */
+        final boolean greatNoCashIn;
         final boolean greatKickedBishop;
         /** Phase 4 (0 = off): R9 also when the opponent's move lost at least this much, whatever the alternative. */
         final double greatStartsMatePunish;
@@ -285,6 +287,7 @@ public final class ReviewClassifier {
             greatPawnTradeOppLoss = get("greatPawnTradeOppLoss", 0.15);
             greatInCheckFreeMaterial = get("greatInCheckFreeMaterial", 1) != 0;
             greatKickedBishop = get("greatKickedBishop", 1) != 0;
+            greatNoCashIn = get("greatNoCashIn", 1) != 0;
             greatStartsMatePunish = get("greatStartsMatePunish", 0.15);
             pieceSacrifice = get("pieceSacrifice", 1) != 0;
             outcomeLow = get("outcomeLow", 0.40);
@@ -720,6 +723,7 @@ public final class ReviewClassifier {
                     // blunder is Great (177 games: 6 of 6 mates after an error >= 0.20, 0 of 14 other mates under 1000)
                     label = MoveClassification.GREAT;
                 }
+                MoveClassification plain = label;
                 if (nearBest && !mates && !fromTheory) {
                     double oppLoss = i > 0 ? Math.max(0, epBefore[i - 1] - epAfter[i - 1]) : 0;
                     MoveClassification special = special(label, isTop, i, replay, p0, pos.get(i + 1), played[i],
@@ -732,6 +736,13 @@ public final class ReviewClassifier {
                 if (label == MoveClassification.BEST && isTop && !mates && !fromTheory
                         && punishesBlunder(i, replay, out, epBefore[i], me ? in.whiteRating() : in.blackRating(), t)) {
                     label = MoveClassification.GREAT;
+                }
+                if (label == MoveClassification.GREAT && t.greatNoCashIn && i >= 2
+                        && out.get(i - 2).label() == MoveClassification.GREAT
+                        && Tactics.isCapture(board(replay.fens().get(i)), uci)) {
+                    // Phase 4: a capture right after the mover's own Great cashes in the idea already rewarded
+                    // (177 games: 3 of 3 chess.com Best, no Great; after a Brilliant chess.com may still say Great)
+                    label = plain;
                 }
             }
             EngineLine bestLine = p0.best();

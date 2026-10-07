@@ -1,6 +1,6 @@
 # Brilliant/Great errors accepted today by SpecialLabelsGateTest (Phase 4). It only shrinks: regenerate
 # (-Dreview.special.regen=true) after fixing errors. Allowlisted exceptions are not repeated here.
-# exact 0.6847 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
+# exact 0.6850 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
 id	ply	kind	set	san	ours	chesscom
 daily_1009092152	36	fn-great	cv93	Qxe1	best	great
 daily_1009092152	48	fp-great	cv93	g6	great	best
@@ -84,7 +84,6 @@ live_174024200644	120	fn-great	ex-holdout49	Qxb8+	best	great
 live_174045977526	12	fn-great	cv93	Bxc3	best	great
 live_174077845410	59	fn-great	ex-holdout49	Qe4	best	great
 live_174118851816	33	fn-great	cv93	Qxg4	best	great
-live_174118851816	50	fp-great	cv93	Bxf6	great	best
 live_174171529346	65	fn-great	cv93	Nxe3	best	great
 live_174171529346	75	fn-great	cv93	Qxh3	best	great
 live_174231520474	41	fn-great	cv93	Rxb8	best	great
@@ -99,7 +98,6 @@ live_174389074664	56	fn-great	cv93	Kc5	best	great
 live_174392911096	28	fn-great	ex-holdout49	Nd7	best	great
 live_174392911096	39	fn-great	ex-holdout49	g5	best	great
 live_174392911096	65	fn-great	ex-holdout49	Nd3	best	great
-live_174521739268	8	fp-great	ex-holdout49	Qxd1+	great	best
 live_174521739268	47	fp-brilliant	ex-holdout49	Ndxb5	brilliant	best
 live_174521739268	51	fn-great	ex-holdout49	Nc7+	best	great
 live_174521739268	60	fn-great	ex-holdout49	Rg3+	best	great
@@ -181,7 +179,6 @@ polugaevsky_nezhmetdinov_1958	26	fn-great	famous-brilliant	Bh6	excellent	great
 polugaevsky_nezhmetdinov_1958	31	fn-great	famous-brilliant	Nd5	best	great
 polugaevsky_nezhmetdinov_1958	33	fn-great	famous-brilliant	g3	best	great
 polugaevsky_nezhmetdinov_1958	38	fn-brilliant	famous-brilliant	Be6	best	brilliant
-polugaevsky_nezhmetdinov_1958	44	fp-great	famous-brilliant	Bxd5	great	best
 polugaevsky_nezhmetdinov_1958	54	fn-great	famous-brilliant	c5+	best	great
 reshevsky_petrosian_1953	50	fn-great	famous-control	Re6	best	great
 reshevsky_petrosian_1953	52	fn-great	famous-control	Ne7	best	great
