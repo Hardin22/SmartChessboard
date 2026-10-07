@@ -1,5 +1,6 @@
 package io.github.hardin22.javachess.Play;
 
+import io.github.hardin22.javachess.Services.GameArchiveService;
 import io.github.hardin22.javachess.Utils.AppExecutors;
 import io.github.hardin22.javachess.Utils.AppPaths;
 import io.github.hardin22.javachess.Utils.AtomicFiles;
@@ -44,6 +45,10 @@ public final class GameSnapshotStore {
                 s = instance;
                 if (s == null) {
                     s = new GameSnapshotStore(AppPaths.resolve("current-game.json"), AppExecutors.storage());
+                    // a saved game replaced by a new one goes to the archive if it is not there (power cut, then a
+                    // new game instead of resuming): nothing played is lost
+                    s.setOnReplaced(old -> AppExecutors.storage().execute(() -> GameResume.keepInArchive(old,
+                            GameArchiveService.getInstance())));
                     instance = s;
                 }
             }
@@ -66,13 +71,28 @@ public final class GameSnapshotStore {
         return file;
     }
 
+    private java.util.function.Consumer<GameSnapshot> onReplaced = s -> { };
+    /** The saved game as last seen (null = not read yet this session). */
+    private Optional<GameSnapshot> known;
+
+    /** Called with a saved game that a different game (another start time) is about to overwrite. */
+    public void setOnReplaced(java.util.function.Consumer<GameSnapshot> handler) {
+        this.onReplaced = handler == null ? s -> { } : handler;
+    }
+
     /** Saves {@code snapshot} in the background (the latest call wins). */
-    public void save(GameSnapshot snapshot) {
+    public synchronized void save(GameSnapshot snapshot) {
+        if (known == null) {
+            known = load();
+        }
+        known.filter(old -> !java.util.Objects.equals(old.startedAt(), snapshot.startedAt())).ifPresent(onReplaced);
+        known = Optional.of(snapshot);
         submit(Optional.of(snapshot));
     }
 
     /** Removes the saved game in the background. */
-    public void clear() {
+    public synchronized void clear() {
+        known = Optional.empty();
         submit(Optional.empty());
     }
 
@@ -81,11 +101,11 @@ public final class GameSnapshotStore {
      * when possible.
      */
     public Optional<GameSnapshot> load() {
-        Optional<GameSnapshot> queued = pending.get();
-        if (queued != null) {
-            return queued; // not written yet: the newest state is in memory
-        }
         synchronized (writeLock) {
+            Optional<GameSnapshot> queued = pending.get();
+            if (queued != null) {
+                return queued; // not written yet: the newest state is in memory
+            }
             if (!Files.isRegularFile(file)) {
                 return Optional.empty();
             }
@@ -111,11 +131,12 @@ public final class GameSnapshotStore {
     }
 
     private void flush() {
-        Optional<GameSnapshot> value = pending.getAndSet(null);
-        if (value == null) {
-            return;
-        }
         synchronized (writeLock) {
+            // taken under the lock: load() never sees "nothing pending" before the file is written
+            Optional<GameSnapshot> value = pending.getAndSet(null);
+            if (value == null) {
+                return;
+            }
             try {
                 if (value.isPresent()) {
                     Files.createDirectories(file.getParent());

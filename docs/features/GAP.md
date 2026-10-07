@@ -85,3 +85,13 @@ Priorità: **indispensabile** (senza, un giocatore la considera una mancanza gra
 
 Per ogni funzione: logica e view-model osservabili con test (package `Analysis`, `Play`, `Stats`), specifica UI
 in `docs/features/specs/` mandata alla sessione design. La classificazione della revisione non si tocca.
+
+## Prove sull'app vera (schermo 720×1920, scacchiera simulata)
+
+- **Contro il computer** (`-Djavachess.board=sim -Djavachess.dev.pvc=e2e4,g1f3,f1c4,d2d3`, dati in una cartella
+  temporanea): la partita procede, il nome dell'apertura compare ("B00 Nimzowitsch Defense: Declined Variation"),
+  e dopo ogni mossa viene scritto `current-game.json` con le 8 mosse giocate (ripresa dopo un riavvio). Nessun
+  orologio, nessun annulla né suggerimento a richiesta nella schermata di oggi: confermato P2, P3, P5.
+- **Revisione** (`-Djavachess.demo=review`): con il nuovo view-model la scheda mostra 2 linee del computer con
+  valutazione, mosse in notazione italiana e profondità ("+2.22 13. h5 Dg5 14. Df3 … prof. 22"); il segno della
+  seconda linea è stato verificato con Stockfish da riga di comando (stessa posizione, profondità 20).

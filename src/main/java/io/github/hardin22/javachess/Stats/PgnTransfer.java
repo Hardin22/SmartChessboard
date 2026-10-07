@@ -95,18 +95,40 @@ public final class PgnTransfer {
                 "user.name", "\0")) && p.getParent() != null && p.getParent().toString().equals("/media");
     }
 
-    /** PGN files on {@code drive} (a few folder levels deep), newest first. */
+    /**
+     * PGN files on {@code drive} (a few folder levels deep), newest first. Unreadable or hidden folders
+     * ({@code lost+found}, {@code .Trashes}, {@code System Volume Information}) are skipped, not fatal.
+     */
     public List<PgnFile> pgnFiles(Drive drive) {
         List<PgnFile> out = new ArrayList<>();
-        try (Stream<Path> s = Files.walk(drive.root(), MAX_DEPTH)) {
-            s.filter(Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pgn"))
-                    .filter(p -> !p.getFileName().toString().startsWith("."))
-                    .forEach(p -> {
-                        try {
-                            out.add(new PgnFile(p, p.getFileName().toString(), Files.size(p)));
-                        } catch (IOException ignored) {
-                            // vanished meanwhile
+        try {
+            Files.walkFileTree(drive.root(), java.util.EnumSet.noneOf(java.nio.file.FileVisitOption.class), MAX_DEPTH,
+                    new java.nio.file.SimpleFileVisitor<>() {
+                        @Override
+                        public java.nio.file.FileVisitResult preVisitDirectory(Path dir,
+                                java.nio.file.attribute.BasicFileAttributes attrs) {
+                            String n = dir.getFileName() == null ? "" : dir.getFileName().toString();
+                            boolean skip = !dir.equals(drive.root()) && (n.startsWith(".") || n.equals("lost+found")
+                                    || n.equals("System Volume Information") || n.startsWith("$"));
+                            return skip ? java.nio.file.FileVisitResult.SKIP_SUBTREE
+                                    : java.nio.file.FileVisitResult.CONTINUE;
+                        }
+
+                        @Override
+                        public java.nio.file.FileVisitResult visitFile(Path p,
+                                java.nio.file.attribute.BasicFileAttributes attrs) {
+                            String n = p.getFileName().toString();
+                            if (attrs.isRegularFile() && !n.startsWith(".")
+                                    && n.toLowerCase(Locale.ROOT).endsWith(".pgn")) {
+                                out.add(new PgnFile(p, n, attrs.size()));
+                            }
+                            return java.nio.file.FileVisitResult.CONTINUE;
+                        }
+
+                        @Override
+                        public java.nio.file.FileVisitResult visitFileFailed(Path p, IOException e) {
+                            log.debug("skipped {}: {}", p, e.toString());
+                            return java.nio.file.FileVisitResult.CONTINUE;
                         }
                     });
         } catch (IOException | RuntimeException e) {
@@ -116,12 +138,88 @@ public final class PgnTransfer {
         return out;
     }
 
-    /** Imports a PGN file into the archive. */
+    /** Games per block of an import (each block is parsed and written on its own: progress, bounded memory). */
+    static final int BLOCK = 300;
+
+    /** Imports a PGN file into the archive (every game). */
     public GameArchiveService.ImportReport importFile(PgnFile file, GameArchiveService archive) throws IOException {
+        return importFile(file, archive, Integer.MAX_VALUE, null);
+    }
+
+    /**
+     * Imports at most {@code maxGames} games of a PGN file (the first ones), in blocks, telling {@code progress}
+     * the fraction done (0..1, called on this thread). A big file takes minutes on a Raspberry Pi: use
+     * {@link #countGames} first to warn or to choose a limit.
+     */
+    public GameArchiveService.ImportReport importFile(PgnFile file, GameArchiveService archive, int maxGames,
+                                                      java.util.function.DoubleConsumer progress) throws IOException {
         if (file.bytes() > MAX_FILE_BYTES) {
             throw new IOException("file troppo grande (" + file.bytes() / (1024 * 1024) + " MB)");
         }
-        return archive.importPgn(file.path());
+        List<String> games = splitGames(Files.readString(file.path(), java.nio.charset.StandardCharsets.UTF_8));
+        int total = Math.min(games.size(), Math.max(0, maxGames));
+        List<io.github.hardin22.javachess.Oggetti.ArchivedGame> imported = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        int skipped = 0;
+        for (int from = 0; from < total; from += BLOCK) {
+            int to = Math.min(total, from + BLOCK);
+            GameArchiveService.ImportReport r = archive.importPgn(String.join("\n\n", games.subList(from, to)));
+            imported.addAll(r.imported());
+            warnings.addAll(r.warnings());
+            skipped += r.skipped();
+            if (progress != null) {
+                progress.accept(to / (double) total);
+            }
+        }
+        if (games.size() > total) {
+            warnings.add("Importate le prime " + total + " partite di " + games.size());
+        }
+        return new GameArchiveService.ImportReport(imported, skipped, warnings);
+    }
+
+    /** Games in a PGN file, counted without parsing the moves (fast, for a warning before a long import). */
+    public static int countGames(PgnFile file) {
+        try (Stream<String> lines = Files.lines(file.path(), java.nio.charset.StandardCharsets.UTF_8)) {
+            int[] count = new int[1];
+            boolean[] inTags = {false};
+            lines.forEach(line -> {
+                boolean tag = line.startsWith("[");
+                if (tag && !inTags[0]) {
+                    count[0]++;
+                }
+                if (!line.isBlank()) {
+                    inTags[0] = tag;
+                }
+            });
+            return count[0];
+        } catch (IOException | java.io.UncheckedIOException e) {
+            return 0;
+        }
+    }
+
+    /** Splits PGN text into games: a game starts at a tag line that follows moves (or the start of the text). */
+    static List<String> splitGames(String text) {
+        List<String> games = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inTags = false;
+        boolean hasMoves = false;
+        for (String line : text.split("\\R")) {
+            boolean tag = line.startsWith("[");
+            if (tag && !inTags && current.length() > 0 && hasMoves) {
+                games.add(current.toString());
+                current.setLength(0);
+                hasMoves = false;
+            }
+            current.append(line).append('\n');
+            if (!line.isBlank()) {
+                inTags = tag;
+                hasMoves |= !tag;
+            }
+        }
+        if (current.toString().strip().length() > 0) {
+            games.add(current.toString());
+        }
+        return games;
     }
 
     /** Writes the whole archive to {@code javachess-partite-YYYY-MM-DD.pgn} on the drive; returns the file. */

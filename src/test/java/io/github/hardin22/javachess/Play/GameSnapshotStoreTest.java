@@ -70,6 +70,25 @@ class GameSnapshotStoreTest {
     }
 
     @Test
+    void aDifferentGameReplacingTheSavedOneIsReported() {
+        Path f = dir.resolve("g.json");
+        new GameSnapshotStore(f, Runnable::run).save(sample(List.of("e2e4"))); // left by a power cut
+        List<GameSnapshot> replaced = new ArrayList<>();
+        GameSnapshotStore store = new GameSnapshotStore(f, Runnable::run);
+        store.setOnReplaced(replaced::add);
+        GameSnapshot sameGame = sample(List.of("e2e4", "e7e5"));
+        store.save(sameGame); // same start time: the same game going on
+        assertTrue(replaced.isEmpty());
+        GameSnapshot newGame = new GameSnapshot(GameSnapshot.Mode.PVP, null, List.of("d2d4"), true, null, null, 0,
+                TimeControl.minutes(5, 0), 300_000, 300_000, 0, 0, LocalDateTime.of(2026, 10, 8, 9, 0), null);
+        store.save(newGame);
+        assertEquals(List.of(sameGame), replaced);
+        store.clear();
+        store.save(sample(List.of("c2c4")));
+        assertEquals(1, replaced.size(), "after a clear there is nothing to replace");
+    }
+
+    @Test
     void advancedKeepsTheSetUp() {
         GameSnapshot s = sample(List.of("e2e4"));
         GameSnapshot next = s.advanced(List.of("e2e4", "e7e5"), 1000, 2000, 3, 4);

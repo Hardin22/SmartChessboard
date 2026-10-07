@@ -57,7 +57,7 @@ class PlayerStatsTest {
         assertEquals("Maia 1500", s.byOpponent().get(0).name());
         assertEquals(new PlayerStats.Score(0, 1, 1), s.byOpponent().get(0).score());
         assertEquals(2, s.openings().size());
-        assertTrue(s.openings().stream().anyMatch(r -> r.name().equals("Italian Game") && r.score().games() == 2));
+        assertTrue(s.openings().stream().anyMatch(r -> r.name().equals("Partita Italiana") && r.score().games() == 2));
         assertTrue(Double.isNaN(s.accuracy()));
         assertEquals("—", s.accuracyText());
     }
@@ -91,8 +91,9 @@ class PlayerStatsTest {
         PlayerStats.Stats s = PlayerStats.compute(games, Map.of(), ME);
         assertEquals(2, s.currentStreak());
         assertEquals(3, s.bestStreak());
-        assertEquals("Italian Game", PlayerStats.openingFamily("C50 Italian Game: Giuoco Piano, Main Line"));
-        assertEquals("Queen's Gambit Declined", PlayerStats.openingFamily("D30 Queen's Gambit Declined"));
+        assertEquals("Partita Italiana", PlayerStats.openingFamily("C50 Italian Game: Giuoco Piano, Main Line"));
+        assertEquals("Partita Italiana", PlayerStats.openingFamily("C50 Partita Italiana: Giuoco Piano"));
+        assertEquals("Gambetto di Donna rifiutato", PlayerStats.openingFamily("D30 Queen's Gambit Declined"));
         assertEquals("Sconosciuta", PlayerStats.openingFamily(""));
         assertEquals("Sconosciuta", PlayerStats.openingFamily("Opening Name"));
     }

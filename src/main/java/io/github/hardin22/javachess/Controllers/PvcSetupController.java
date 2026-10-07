@@ -9,40 +9,61 @@ import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.Region;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import io.github.hardin22.javachess.Components.BoardThemes;
 import io.github.hardin22.javachess.Components.I18n;
+import io.github.hardin22.javachess.Components.Icons;
 import io.github.hardin22.javachess.Components.Prefs;
 import io.github.hardin22.javachess.Components.ScreenHeader;
-import io.github.hardin22.javachess.Components.Stepper;
 import io.github.hardin22.javachess.Components.Ui;
-import io.github.hardin22.javachess.Engine.EngineSelection;
+import io.github.hardin22.javachess.Play.BotLevels;
+import io.github.hardin22.javachess.Play.TimeControl;
 import io.github.hardin22.javachess.Services.EngineService.EngineType;
 import io.github.hardin22.javachess.Utils.ImageCache;
 
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
-/** Game against the computer: opponent, level and colour, then one big "Gioca". Choices are remembered. */
+/**
+ * Game against the computer: the opponent on a ladder of levels in approximate Elo (Stockfish weakened, or Maia
+ * playing like a person), the time control (none by default), the colour, then one big "Gioca". Remembered.
+ */
 public class PvcSetupController implements Screen {
 
-    static final String BOT_KEY = "game.pvc.bot";
+    static final String LEVEL_KEY = "game.pvc.level";
+    static final String TIME_KEY = "game.pvc.time";
     static final String COLOR_KEY = "game.pvc.color";
-    private static final int[] QUICK_LEVELS = { 1, 5, 10, 15, 20 };
+    /** Time controls offered as tiles (no clock first). */
+    private static final List<TimeControl> TIMES = List.of(TimeControl.UNLIMITED, TimeControl.minutes(3, 2),
+            TimeControl.minutes(5, 3), TimeControl.minutes(10, 0), TimeControl.minutes(10, 5),
+            TimeControl.minutes(15, 10), TimeControl.minutes(30, 0), TimeControl.minutes(30, 20),
+            TimeControl.minutes(90, 30));
+    /** Quick picks under the level card. */
+    private static final String[][] QUICK = { { "beginner", "pvc.quick.beginner" }, { "club", "pvc.quick.club" },
+            { "expert", "pvc.quick.expert" }, { "max", "pvc.quick.max" } };
 
     private MainController mainController;
     private final BorderPane root = new BorderPane();
-    private final ToggleGroup botGroup = new ToggleGroup();
     private final ToggleGroup colorGroup = new ToggleGroup();
-    private final Map<EngineType, ToggleButton> botCards = new EnumMap<>(EngineType.class);
-    private final Stepper level = new Stepper(1, 20, 1, 10);
-    private final VBox levelSection = new VBox(16);
-    private final HBox quickLevels = new HBox(10);
+    private final ToggleGroup timeGroup = new ToggleGroup();
+    private final Label levelName = Ui.label("", "t-h1");
+    private final Label levelElo = Ui.label("", "t-body-m", "t-muted");
+    private final Label levelDescription = Ui.wrap("", "t-body", "t-muted");
+    private final StackPane levelIcon = new StackPane();
+    private final Button minus;
+    private final Button plus;
+    private final HBox quick = new HBox(10);
+    private List<BotLevels.Level> levels = BotLevels.ALL;
+    private BotLevels.Level level = BotLevels.byId(BotLevels.DEFAULT_ID).orElse(BotLevels.ALL.get(0));
 
     public PvcSetupController() {
+        minus = stepButton("fth-minus", -1);
+        plus = stepButton("fth-plus", 1);
         build();
     }
 
@@ -60,28 +81,55 @@ public class PvcSetupController implements Screen {
         ScreenHeader header = new ScreenHeader(I18n.t("pvc.title"), () -> mainController.navigateTo("HOME"));
         header.setSubtitle(I18n.t("pvc.subtitle"));
 
-        VBox bots = new VBox(12);
-        bots.getChildren().addAll(
-                bot(EngineType.STOCKFISH, I18n.t("pvc.stockfish"), I18n.t("pvc.stockfish.description")),
-                bot(EngineType.MAIA_1100, I18n.t("pvc.maia1100"), I18n.t("pvc.maia1100.description")),
-                bot(EngineType.MAIA_1500, I18n.t("pvc.maia1500"), I18n.t("pvc.maia1500.description")),
-                bot(EngineType.MAIA_1900, I18n.t("pvc.maia1900"), I18n.t("pvc.maia1900.description")));
-        Ui.keepOneSelected(botGroup);
-        botGroup.selectedToggleProperty().addListener((obs, o, n) -> updateLevelState());
-
-        level.format(String::valueOf, I18n.t("pvc.level.of"));
-        for (int q : QUICK_LEVELS) {
-            ToggleButton chip = Ui.chip(String.valueOf(q));
-            chip.setOnAction(e -> level.setValue(q));
-            chip.setUserData(q);
-            HBox.setHgrow(chip, javafx.scene.layout.Priority.ALWAYS);
+        // level card: icon, name, "circa 1350", description, − / + at the sides
+        levelIcon.getStyleClass().add("tile-icon");
+        VBox names = new VBox(2, levelName, levelElo);
+        HBox nameRow = new HBox(16, levelIcon, names);
+        nameRow.setAlignment(Pos.CENTER_LEFT);
+        VBox texts = new VBox(12, nameRow, levelDescription);
+        texts.setMinWidth(0);
+        HBox.setHgrow(texts, Priority.ALWAYS);
+        levelDescription.setPrefWidth(400);
+        HBox card = new HBox(14, minus, texts, plus);
+        card.setAlignment(Pos.CENTER);
+        card.getStyleClass().add("card");
+        card.setPadding(new Insets(24, 14, 24, 14));
+        for (String[] q : QUICK) {
+            ToggleButton chip = Ui.chip(I18n.t(q[1]));
+            chip.setUserData(q[0]);
             chip.setMaxWidth(Double.MAX_VALUE);
-            quickLevels.getChildren().add(chip);
+            HBox.setHgrow(chip, Priority.ALWAYS);
+            chip.setOnAction(e -> pickQuick(q[0]));
+            quick.getChildren().add(chip);
         }
-        level.valueProperty().addListener((obs, o, n) -> quickLevels.getChildren().forEach(node ->
-                ((ToggleButton) node).setSelected(node.getUserData().equals(n.intValue()))));
-        Label levelHint = Ui.wrap(I18n.t("pvc.level.hint"), "t-small", "t-muted");
-        levelSection.getChildren().addAll(Ui.sectionLabel(I18n.t("pvc.level")), level, quickLevels, levelHint);
+
+        // time control tiles
+        GridPane times = new GridPane();
+        times.setHgap(12);
+        times.setVgap(12);
+        for (int c = 0; c < 3; c++) {
+            ColumnConstraints col = new ColumnConstraints();
+            col.setPercentWidth(100.0 / 3);
+            col.setHgrow(Priority.ALWAYS);
+            times.getColumnConstraints().add(col);
+        }
+        for (int i = 0; i < TIMES.size(); i++) {
+            TimeControl tc = TIMES.get(i);
+            ToggleButton tile = new ToggleButton();
+            VBox content = tc.isUnlimited()
+                    ? new VBox(6, Icons.of("fth-coffee", 38), Ui.label(I18n.t("pvc.timecontrol.none"), "option-sub"))
+                    : new VBox(2, Ui.label(tc.initialSeconds() / 60 + "+" + tc.incrementSeconds(), "option-big"),
+                            Ui.label(tc.category().italian(), "option-sub"));
+            content.setAlignment(Pos.CENTER);
+            tile.setGraphic(content);
+            tile.getStyleClass().setAll("option");
+            tile.setMaxWidth(Double.MAX_VALUE);
+            tile.setMinHeight(128);
+            tile.setUserData(tc);
+            tile.setToggleGroup(timeGroup);
+            times.add(tile, i % 3, i / 3);
+        }
+        Ui.keepOneSelected(timeGroup);
 
         ToggleButton white = colorSegment("w", I18n.t("common.white"), "white");
         ToggleButton random = colorSegment(null, I18n.t("common.random"), "random");
@@ -90,48 +138,60 @@ public class PvcSetupController implements Screen {
         colors.getChildren().forEach(n -> n.setStyle("-fx-min-height: 140px; -fx-pref-height: 140px;"));
 
         VBox body = new VBox(16,
-                Ui.sectionLabel(I18n.t("pvc.opponent")), bots,
-                Ui.gap(8), levelSection,
+                Ui.sectionLabel(I18n.t("pvc.opponent")), card, quick,
+                Ui.wrap(I18n.t("pvc.level.help"), "t-small", "t-muted"),
+                Ui.gap(8), Ui.sectionLabel(I18n.t("pvc.timecontrol")), times,
                 Ui.gap(8), Ui.sectionLabel(I18n.t("pvc.color")), colors,
                 Ui.wrap(I18n.t("pvc.color.hint"), "t-small", "t-muted"));
         body.getStyleClass().add("screen-body");
 
         Button play = Ui.wide(I18n.t("common.play"), "fth-play", "btn-primary", "btn-lg");
         play.setOnAction(e -> start());
-        VBox footer = Ui.footer(play);
-
         root.setTop(header);
         root.setCenter(Ui.scroll(body));
-        root.setBottom(footer);
+        root.setBottom(Ui.footer(play));
         refreshDefaults();
     }
 
-    private ToggleButton bot(EngineType type, String title, String description) {
-        Region dot = new Region();
-        dot.getStyleClass().add("check-dot");
-        HBox content = new HBox(20, Ui.texts(title, description, "option-title", "option-sub"), dot);
-        content.setAlignment(Pos.CENTER_LEFT);
-        ToggleButton card = new ToggleButton();
-        card.getStyleClass().setAll("option");
-        card.setGraphic(content);
-        card.setMaxWidth(Double.MAX_VALUE);
-        content.prefWidthProperty().bind(card.widthProperty().subtract(52));
-        card.setToggleGroup(botGroup);
-        card.setUserData(type);
-        botCards.put(type, card);
-        return card;
+    private Button stepButton(String icon, int delta) {
+        Button b = new Button();
+        b.getStyleClass().setAll("stepper-btn");
+        b.setGraphic(Icons.of(icon, 34));
+        b.setFocusTraversable(false);
+        b.setOnAction(e -> setLevel(BotLevels.step(level, delta, levels)));
+        return b;
+    }
+
+    private void pickQuick(String id) {
+        if ("max".equals(id)) {
+            setLevel(levels.get(levels.size() - 1));
+        } else {
+            BotLevels.byId(id).filter(levels::contains).ifPresentOrElse(this::setLevel, () -> setLevel(level));
+        }
+    }
+
+    private void setLevel(BotLevels.Level newLevel) {
+        level = newLevel;
+        levelName.setText(level.name());
+        levelElo.setText(level.eloText());
+        levelDescription.setText(level.description());
+        levelIcon.getChildren().setAll(Icons.of(level.isMaia() ? "fth-user" : "fth-cpu", 34));
+        int index = levels.indexOf(level);
+        minus.setDisable(index <= 0);
+        plus.setDisable(index >= levels.size() - 1);
+        for (javafx.scene.Node n : quick.getChildren()) {
+            String id = (String) n.getUserData();
+            boolean on = "max".equals(id) ? index == levels.size() - 1 : id.equals(level.id());
+            ((ToggleButton) n).setSelected(on);
+        }
     }
 
     private ToggleButton colorSegment(String pieceColor, String text, String id) {
         ToggleButton segment = new ToggleButton(text);
         if (pieceColor != null) {
-            ImageView king = new ImageView(ImageCache.getInstance().getImage(
-                    "/images/Pieces/" + BoardThemes.currentPieces() + "/" + pieceColor + "k.png", 64, 64));
-            king.setFitWidth(64);
-            king.setFitHeight(64);
-            segment.setGraphic(king);
+            segment.setGraphic(kingImage(pieceColor, 64));
         } else {
-            HBox both = new HBox(-26, kingImage("w"), kingImage("b"));
+            HBox both = new HBox(-26, kingImage("w", 56), kingImage("b", 56));
             both.setAlignment(Pos.CENTER);
             segment.setGraphic(both);
         }
@@ -140,99 +200,79 @@ public class PvcSetupController implements Screen {
         return segment;
     }
 
-    private static ImageView kingImage(String color) {
+    private static ImageView kingImage(String color, double size) {
         ImageView king = new ImageView(ImageCache.getInstance().getImage(
-                "/images/Pieces/" + BoardThemes.currentPieces() + "/" + color + "k.png", 56, 56));
-        king.setFitWidth(56);
-        king.setFitHeight(56);
+                "/images/Pieces/" + BoardThemes.currentPieces() + "/" + color + "k.png", size, size));
+        king.setFitWidth(size);
+        king.setFitHeight(size);
         return king;
     }
 
     @Override
     public void onNavigatedTo() {
         refreshDefaults();
-        markUnavailableBots();
     }
 
     private void refreshDefaults() {
-        level.setValue(Prefs.integer("game.bot.level", 10));
-        EngineType bot = lastBot();
-        ToggleButton card = botCards.get(bot);
-        if (card != null && !card.isDisabled()) {
-            card.setSelected(true);
-        } else {
-            botCards.get(EngineType.STOCKFISH).setSelected(true);
+        try {
+            levels = BotLevels.available();
+        } catch (RuntimeException e) {
+            levels = BotLevels.ALL;
         }
+        if (levels.isEmpty()) {
+            levels = BotLevels.ALL;
+        }
+        setLevel(lastLevel(levels));
+        TimeControl time = TimeControl.parseStorage(Prefs.string(TIME_KEY, "")).orElse(TimeControl.UNLIMITED);
+        timeGroup.getToggles().stream().filter(t -> time.equals(t.getUserData())).findFirst()
+                .ifPresentOrElse(t -> t.setSelected(true), () -> timeGroup.getToggles().get(0).setSelected(true));
         String color = Prefs.string(COLOR_KEY, "white");
         colorGroup.getToggles().stream().filter(t -> color.equals(t.getUserData())).findFirst()
-                .ifPresent(t -> t.setSelected(true));
-        if (colorGroup.getSelectedToggle() == null) {
-            colorGroup.getToggles().get(0).setSelected(true);
-        }
-        updateLevelState();
+                .ifPresentOrElse(t -> t.setSelected(true), () -> colorGroup.getToggles().get(0).setSelected(true));
     }
 
-    static EngineType lastBot() {
-        try {
-            return EngineType.valueOf(Prefs.string(BOT_KEY, "STOCKFISH"));
-        } catch (IllegalArgumentException e) {
-            return EngineType.STOCKFISH;
+    /** The level chosen last time (old settings: converted from engine type and skill), within those available. */
+    static BotLevels.Level lastLevel(List<BotLevels.Level> available) {
+        BotLevels.Level chosen = BotLevels.byId(Prefs.string(LEVEL_KEY, "")).orElse(null);
+        if (chosen == null) {
+            String engine = Prefs.string("game.pvc.bot", "");
+            if (!engine.isEmpty()) {
+                try {
+                    chosen = BotLevels.fromLegacy(EngineType.valueOf(engine), Prefs.integer("game.bot.level", 10));
+                } catch (RuntimeException e) {
+                    chosen = null;
+                }
+            }
         }
+        if (chosen == null) {
+            chosen = BotLevels.byId(BotLevels.DEFAULT_ID).orElse(available.get(0));
+        }
+        return available.contains(chosen) ? chosen : BotLevels.closestTo(chosen.elo(), available);
     }
 
-    /** "Stockfish · livello 10 · Bianco" (Home tile). */
+    /** "Circolo · circa 1350 · Bianco" (Home tile). */
     static String describeLastChoice() {
-        EngineType bot = lastBot();
-        String who = bot == EngineType.STOCKFISH
-                ? I18n.t("pvc.bot.name", Prefs.integer("game.bot.level", 10))
-                : "Maia " + bot.name().replace("MAIA_", "");
+        BotLevels.Level l;
+        try {
+            l = lastLevel(BotLevels.available());
+        } catch (RuntimeException e) {
+            l = BotLevels.byId(BotLevels.DEFAULT_ID).orElse(BotLevels.ALL.get(0));
+        }
         String color = switch (Prefs.string(COLOR_KEY, "white")) {
             case "black" -> I18n.t("common.black");
             case "random" -> I18n.t("common.random");
             default -> I18n.t("common.white");
         };
-        return who + " · " + color;
-    }
-
-    /** Maia needs lc0 and its weights: cards of engines missing on this device are disabled, with the reason. */
-    private void markUnavailableBots() {
-        for (Map.Entry<EngineType, ToggleButton> entry : botCards.entrySet()) {
-            if (entry.getKey() == EngineType.STOCKFISH) {
-                continue;
-            }
-            String id = entry.getKey().profileId();
-            boolean missing = EngineSelection.get().profiles().stream()
-                    .anyMatch(p -> p.id().equals(id) && !p.available());
-            ToggleButton card = entry.getValue();
-            card.setDisable(missing);
-            if (missing && card.getGraphic() instanceof HBox content
-                    && content.getChildren().get(0) instanceof VBox texts && texts.getChildren().size() > 1
-                    && texts.getChildren().get(1) instanceof Label desc) {
-                desc.setText(I18n.t("engine.unavailable.short"));
-            }
-            if (missing && card.isSelected()) {
-                botCards.get(EngineType.STOCKFISH).setSelected(true);
-            }
-        }
-    }
-
-    private void updateLevelState() {
-        boolean stockfish = selectedBot() == EngineType.STOCKFISH;
-        levelSection.setDisable(!stockfish);
-        levelSection.setOpacity(stockfish ? 1 : 0.4);
-    }
-
-    private EngineType selectedBot() {
-        return botGroup.getSelectedToggle() == null ? EngineType.STOCKFISH
-                : (EngineType) botGroup.getSelectedToggle().getUserData();
+        TimeControl time = TimeControl.parseStorage(Prefs.string(TIME_KEY, "")).orElse(TimeControl.UNLIMITED);
+        return l.name() + " · " + l.eloText() + (time.isUnlimited() ? "" : " · " + time.label()) + " · " + color;
     }
 
     private void start() {
-        EngineType bot = selectedBot();
         String color = colorGroup.getSelectedToggle() == null ? "white"
                 : (String) colorGroup.getSelectedToggle().getUserData();
-        Prefs.setAll(Map.of(BOT_KEY, bot.name(), COLOR_KEY, color,
-                "game.bot.level", String.valueOf(level.getValue())));
+        TimeControl time = timeGroup.getSelectedToggle() == null ? TimeControl.UNLIMITED
+                : (TimeControl) timeGroup.getSelectedToggle().getUserData();
+        Prefs.setAll(Map.of(LEVEL_KEY, level.id(), COLOR_KEY, color, TIME_KEY, time.storage()));
         boolean isWhite = switch (color) {
             case "black" -> false;
             case "random" -> Math.random() < 0.5;
@@ -240,6 +280,6 @@ public class PvcSetupController implements Screen {
         };
         ActiveGameController game = (ActiveGameController) mainController.getController("GAME");
         mainController.navigateTo("GAME");
-        game.startPvC(level.getValue(), isWhite, bot);
+        game.startPvC(level, isWhite, time);
     }
 }

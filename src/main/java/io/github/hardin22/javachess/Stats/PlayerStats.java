@@ -212,6 +212,14 @@ public final class PlayerStats {
 
     // ------------------------------------------------------------------ helpers
 
+    /**
+     * The local player's side in an archived game (TRUE = White), empty when it cannot be told (two players at the
+     * board, someone else's game). For "Rigioca i tuoi errori" and per-game results.
+     */
+    public static java.util.Optional<Boolean> localSide(ArchivedGame g) {
+        return java.util.Optional.ofNullable(mySide(g, Identity.fromSettings()));
+    }
+
     /** True/false when the local player had White/Black, null when the game is not "mine". */
     static Boolean mySide(ArchivedGame g, Identity me) {
         if (g.mode() == GameMode.PVP || g.mode() == GameMode.PUZZLE) {
@@ -251,8 +259,8 @@ public final class PlayerStats {
     }
 
     /**
-     * Opening family: without the ECO code and the variation ("C50 Italian Game: Giuoco Piano" → "Italian Game");
-     * "Sconosciuta" when the archive has no name.
+     * Opening family in Italian: without the ECO code and the variation ("C50 Italian Game: Giuoco Piano" →
+     * "Partita Italiana", the same for a name already in Italian); "Sconosciuta" when the archive has no name.
      */
     static String openingFamily(String opening) {
         if (opening == null || opening.isBlank() || opening.equalsIgnoreCase("Unknown")
@@ -268,7 +276,7 @@ public final class PlayerStats {
         if (comma > 0) {
             s = s.substring(0, comma);
         }
-        return s.trim();
+        return io.github.hardin22.javachess.Analysis.OpeningNames.italian(s.trim()); // one name per family
     }
 
     private static List<Row> group(List<Entry> entries, java.util.function.Function<Entry, String> key, int max) {

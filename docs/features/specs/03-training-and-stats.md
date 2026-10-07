@@ -25,8 +25,9 @@ ReviewStore.get().save(archivedGame, gameReview);
 ## 2. Rigioca i tuoi errori — `Analysis.MistakeTrainer`
 
 Dalla revisione (dopo l'analisi): pulsante **Rigioca i tuoi errori** (scheda Riepilogo, vicino ai momenti
-chiave), visibile se `MistakeTrainer.exercises(review, mioLato, false)` non è vuoto. Il "mio lato": contro il
-computer il lato del giocatore; online il lato con il proprio nome; a due giocatori chiedi "Bianco o Nero?".
+chiave), visibile se `MistakeTrainer.exercises(review, mioLato, false)` non è vuoto. Il "mio lato":
+`PlayerStats.localSide(archivedGame)` (contro il computer il lato del giocatore, online il lato con il proprio nome);
+se è vuoto (partita a due) chiedi "Bianco o Nero?".
 
 ```java
 MistakeTrainer t = new MistakeTrainer(MistakeTrainer.exercises(review, white, false), session.boardFollower());
@@ -93,6 +94,18 @@ new OnlineImport().importRecent(OnlineImport.Source.LICHESS, user, 50)
 - Le partite entrano in archivio come Lichess / Online (browser), con il rating nel nome e l'apertura; reimportare
   non crea doppioni. Solo API pubbliche in lettura: nessun accesso all'account.
 
+## 4b. PGN da chiavetta USB — `Stats.PgnTransfer`
+
+Nell'Archivio (menu ⋯): **Importa da chiavetta** / **Esporta su chiavetta**.
+- `new PgnTransfer().drives()` → chiavette inserite (`Drive.label()`); nessuna → "Inserisci una chiavetta USB".
+- `pgnFiles(drive)` → `PgnFile.description()` "torneo.pgn · 120 KB" (più recenti prima).
+- Prima di importare: `PgnTransfer.countGames(file)`; sopra ~500 partite avvisa ("12.000 partite: sul Raspberry
+  richiede alcuni minuti") e proponi "Importa le prime 500 / tutte".
+- `importFile(file, archive, maxGames, fraction -> ...)` (fuori dal thread FX; l'avanzamento 0..1 arriva sullo
+  stesso thread: passalo con `Platform.runLater`) → `PgnTransfer.describe(report)` "1.240 partite importate,
+  3 ignorate" + `report.warnings()`.
+- Esporta: `exportAll(drive, archive)` → file `javachess-partite-AAAA-MM-GG.pgn` sulla chiavetta.
+
 ## 5. Puzzle: ripasso e serie a tempo
 
 **Ripasso dei puzzle sbagliati** — `Play.PuzzleReview`: i puzzle non risolti "puliti" (errore, aiuto, soluzione)
@@ -119,6 +132,14 @@ rush.start();
 - `stateProperty()`: LOADING (breve) / PLAYING / FINISHED → carta finale con `messageProperty()` ("Tempo scaduto:
   14 puzzle risolti · nuovo record!"), **Ancora** (`start()`), **Esci** (`stop()` se in corso).
 - Ricordati di rimettere `setRated(true)` e `setResultListener(null)` per i puzzle normali.
+
+## 6. Nomi delle aperture in italiano
+
+`Analysis.OpeningNames.italian(nome)`: "C50 Italian Game: Giuoco Piano" → "C50 Partita Italiana: Giuoco Piano",
+"B90 Sicilian Defense: Najdorf Variation" → "B90 Difesa Siciliana: Variante Najdorf" (nomi sconosciuti invariati).
+`AnalysisSession.openingProperty()` e le aperture di `PlayerStats` sono già in italiano; nella partita il
+`openingNameLabel` resta in inglese (finisce nell'archivio e nel PGN): mostralo con `OpeningNames.italian(...)`,
+e così anche la colonna apertura dell'archivio.
 
 ## Testi (chiavi i18n proposte)
 

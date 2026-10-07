@@ -155,6 +155,19 @@ class AnalysisTreeTest {
     }
 
     @Test
+    void analysisAfterTheLastMoveIsExportedAsAVariation() {
+        AnalysisTree t = new AnalysisTree(null, List.of("e2e4", "e7e5"));
+        t.last();
+        t.play("g1f3");
+        t.play("b8c6");
+        assertEquals("1. e4 e5 (2. Nf3 Nc6)", t.movetext());
+        AnalysisTree empty = new AnalysisTree(null, List.of());
+        assertTrue(empty.mainLineNode(3).isRoot());
+        empty.play("d2d4");
+        assertEquals("(1. d4)", empty.movetext());
+    }
+
+    @Test
     void customStartAndForeignNodes() {
         String fen = "4k3/8/8/8/8/8/4P3/4K3 b - - 0 40";
         AnalysisTree t = new AnalysisTree(fen, List.of("e8d7", "e2e4"));

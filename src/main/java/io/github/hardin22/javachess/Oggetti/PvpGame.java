@@ -218,6 +218,7 @@ public class PvpGame extends AbstractGame {
         if (plies == 0 || (interrupted && plies < 4)) {
             log.info("Game too short, not saved ({} plies)", plies);
             saveGame = false;
+            forgetSnapshotIfFinished(endMessage); // not archived, but a result still ends it for good
         }
 
         if (saveGame) {
@@ -260,7 +261,7 @@ public class PvpGame extends AbstractGame {
         ChessClock clock = chessTimer.clock();
         clock.setRemainingMillis(ChessClock.Side.WHITE, snapshot.whiteMillis());
         clock.setRemainingMillis(ChessClock.Side.BLACK, snapshot.blackMillis());
-        io.github.hardin22.javachess.Play.GameResume.forgetArchivedInterruption(snapshot);
+        replaceArchivedCopyOf(snapshot);
     }
 
     /** A two-player game rebuilt from a saved one, ready for {@link #startGame()}. */

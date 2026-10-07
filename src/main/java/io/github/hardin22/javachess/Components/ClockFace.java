@@ -174,7 +174,7 @@ public class ClockFace extends StackPane {
     }
 
     /** "05:00" -> "5:00", "00:42" -> "0:42", "00:09.4" -> "9.4", "75:00" -> "75:00". */
-    static String format(String raw) {
+    public static String format(String raw) {
         if (raw == null || raw.isBlank()) {
             return "–:––";
         }

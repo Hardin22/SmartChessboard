@@ -133,6 +133,9 @@ public final class PositionSetup {
                 } else if (other.isKingAttacked()) {
                     errors.add((toMove == Side.WHITE ? "Il re nero" : "Il re bianco")
                             + " è sotto scacco ma non tocca a lui muovere");
+                } else if (b.legalMoves().isEmpty()) {
+                    errors.add(b.isKingAttacked() ? "La partita è già finita: scacco matto"
+                            : "La partita è già finita: stallo");
                 }
             } catch (RuntimeException e) {
                 errors.add("Posizione non leggibile");

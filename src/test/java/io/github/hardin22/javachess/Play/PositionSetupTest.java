@@ -62,6 +62,14 @@ class PositionSetupTest {
     }
 
     @Test
+    void finishedPositionsCannotStartAGame() {
+        assertEquals("La partita è già finita: scacco matto",
+                PositionSetup.check("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3").errors().get(0));
+        assertEquals("La partita è già finita: stallo",
+                PositionSetup.check("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1").errors().get(0));
+    }
+
+    @Test
     void enPassantOnlyWhenPossible() {
         PositionSetup.Result ok = PositionSetup.check("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1");
         assertEquals("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1", ok.fen());

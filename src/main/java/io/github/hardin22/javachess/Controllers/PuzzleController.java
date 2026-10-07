@@ -146,13 +146,18 @@ public class PuzzleController implements Screen {
             @Override
             public boolean enabled() {
                 // without a physical board the puzzle is solved on the screen
-                return !finished && !io.github.hardin22.javachess.Controllers.ArduinoController.getInstance()
-                        .getBoardStateManager().isHardwareConnected();
+                return !finished && game.isAwaitingHumanMove() && !io.github.hardin22.javachess.Controllers
+                        .ArduinoController.getInstance().getBoardStateManager().isHardwareConnected();
             }
 
             @Override
             public void play(String uci) {
                 game.handleMoveInput(uci);
+            }
+
+            @Override
+            public void choosePromotion(String from, String to, boolean white, java.util.function.Consumer<String> done) {
+                PromotionPicker.show(mainController, white, piece -> done.accept(from + to + piece));
             }
         });
         puzzleGame.setStatusCallback(this::showStatus); // setup progress, wrong move, hint, solution

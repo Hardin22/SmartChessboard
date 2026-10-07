@@ -80,7 +80,9 @@ public final class AnalysisSession {
         this(initialFen, gameUci, new EngineLines(), defaultFollower(), null);
         CompletableFuture.supplyAsync(OpeningBook::standard, AppExecutors.io()).thenAccept(b -> AppExecutors.runOnFx(() -> {
             book = b;
-            refresh();
+            if (!closed) {
+                refresh(); // not after close(): it would start the engine for a screen that is gone
+            }
         })).exceptionally(t -> {
             log.warn("opening book not available: {}", t.toString());
             return null;
@@ -166,7 +168,10 @@ public final class AnalysisSession {
         return variationText.getReadOnlyProperty();
     }
 
-    /** Opening of the position from the offline book ("C50 Italian Game"), the last one met on the way; or "". */
+    /**
+     * Opening of the position from the offline book, in Italian ("C50 Partita Italiana"), the last one met on the
+     * way; or "".
+     */
     public ReadOnlyStringProperty openingProperty() {
         return opening.getReadOnlyProperty();
     }
@@ -373,8 +378,11 @@ public final class AnalysisSession {
         }
     }
 
+    private boolean closed;
+
     /** Leaving the screen: stops the engine and frees the board. */
     public void close() {
+        closed = true;
         lines.stop();
         if (follower != null) {
             follower.stop();
@@ -469,7 +477,7 @@ public final class AnalysisSession {
         for (AnalysisTree.Node n = tree.current(); n != null; n = n.parent()) {
             var name = b.nameAfter(n.fen());
             if (name.isPresent()) {
-                return name.get();
+                return OpeningNames.italian(name.get());
             }
         }
         return "";
