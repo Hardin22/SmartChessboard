@@ -81,7 +81,6 @@ live_174389074664	56	fn-great	cv93	Kc5	best	great
 live_174392911096	28	fn-great	ex-holdout49	Nd7	best	great
 live_174392911096	39	fn-great	ex-holdout49	g5	best	great
 live_174392911096	65	fn-great	ex-holdout49	Nd3	best	great
-live_174521739268	47	fp-brilliant	ex-holdout49	Ndxb5	brilliant	best
 live_174521739268	51	fn-great	ex-holdout49	Nc7+	best	great
 live_174521739268	61	fn-great	ex-holdout49	Kf2	best	great
 live_183990190310	9	fp-great	ex-holdout49	Nxe4	great	best
@@ -105,7 +104,6 @@ live_184350007554	40	fp-brilliant	ex-holdout49	Nc3	brilliant	best
 live_184350007554	42	fn-great	ex-holdout49	Qxf3	best	great
 live_184350007554	50	fn-great	ex-holdout49	h5	best	great
 live_184355907802	48	fn-great	cv93	Bxg2	best	great
-live_184435729088	28	fn-brilliant	cv93	Nxd3	excellent	brilliant
 live_184440015284	57	fn-great	ex-holdout49	Kf3	best	great
 live_184440015284	60	fn-great	ex-holdout49	hxg6	best	great
 live_184440015284	105	fn-great	ex-holdout49	Kxd3	best	great
@@ -160,8 +158,6 @@ short_timman_1991	35	fn-great	famous-brilliant	b3	best	great
 short_timman_1991	43	fn-great	famous-brilliant	Be3	best	great
 short_timman_1991	49	fn-great	famous-brilliant	Rad1	best	great
 spassky_bronstein_1960	24	fn-great	famous-brilliant	Be7	best	great
-spassky_bronstein_1960	31	fp-brilliant	famous-brilliant	Nxf7	brilliant	great
-spassky_bronstein_1960	31	fn-great	famous-brilliant	Nxf7	brilliant	great
 spassky_fischer_1972_g1	24	fn-great	famous-control	Bxc5	best	great
 spassky_fischer_1972_g1	68	fn-great	famous-control	Bxg3	best	great
 spassky_fischer_1972_g1	79	fn-great	famous-control	Kh4	best	great
