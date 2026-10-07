@@ -101,6 +101,7 @@ public class PvcGame extends AbstractGame {
             public void onBoardSetupComplete() {
                 updateStatus("SCACCHIERA PRONTA! Partita Iniziata");
                 manager.startGameMode(); // ACTIVATE GAME MODE
+                boardReady = true;
                 startTurnClock();
 
                 // the bot moves first when it is its turn (Black chosen, a position or a resumed game)
@@ -449,8 +450,14 @@ public class PvcGame extends AbstractGame {
         return gameRunning && pliesToTakeBack() > 0;
     }
 
+    /** True once the pieces are set up (a take-back during the set-up would be undone by the board). */
+    private volatile boolean boardReady;
+
     /** Half-moves a take-back removes now: the player's last move, and the bot's answer if it already came. */
     private int pliesToTakeBack() {
+        if (!boardReady) {
+            return 0;
+        }
         int plies = board.getSideToMove() == humanSide() ? 2 : 1;
         return movesUci.size() >= plies ? plies : 0;
     }
@@ -494,10 +501,17 @@ public class PvcGame extends AbstractGame {
         java.util.concurrent.CompletableFuture<io.github.hardin22.javachess.Play.BotDrawPolicy.Decision> answer =
                 new java.util.concurrent.CompletableFuture<>();
         drawPolicy.offer(fen, movesUci.size(), humanSide().flip(), botName()).thenAccept(d -> Platform.runLater(() -> {
-            if (d.accepted() && gameRunning && fen.equals(board.getFen())) {
+            if (!d.accepted()) {
+                answer.complete(d);
+            } else if (gameRunning && fen.equals(board.getFen())) {
                 endGame("Patta d'accordo", true);
+                answer.complete(d);
+            } else {
+                // a move was made (or the game ended) while the bot was thinking about it
+                drawPolicy.forgetLastOffer();
+                answer.complete(new io.github.hardin22.javachess.Play.BotDrawPolicy.Decision(false,
+                        "La posizione è cambiata: riproponi la patta"));
             }
-            answer.complete(d);
         }));
         return answer;
     }
@@ -519,7 +533,7 @@ public class PvcGame extends AbstractGame {
         if (clock != null) {
             clock.restore(snapshot.whiteMillis(), snapshot.blackMillis());
         }
-        io.github.hardin22.javachess.Play.GameResume.forgetArchivedInterruption(snapshot);
+        replaceArchivedCopyOf(snapshot);
     }
 
     /** A game against the computer rebuilt from a saved one, ready for {@link #startGame()}. */

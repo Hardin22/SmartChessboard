@@ -95,18 +95,40 @@ public final class PgnTransfer {
                 "user.name", "\0")) && p.getParent() != null && p.getParent().toString().equals("/media");
     }
 
-    /** PGN files on {@code drive} (a few folder levels deep), newest first. */
+    /**
+     * PGN files on {@code drive} (a few folder levels deep), newest first. Unreadable or hidden folders
+     * ({@code lost+found}, {@code .Trashes}, {@code System Volume Information}) are skipped, not fatal.
+     */
     public List<PgnFile> pgnFiles(Drive drive) {
         List<PgnFile> out = new ArrayList<>();
-        try (Stream<Path> s = Files.walk(drive.root(), MAX_DEPTH)) {
-            s.filter(Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pgn"))
-                    .filter(p -> !p.getFileName().toString().startsWith("."))
-                    .forEach(p -> {
-                        try {
-                            out.add(new PgnFile(p, p.getFileName().toString(), Files.size(p)));
-                        } catch (IOException ignored) {
-                            // vanished meanwhile
+        try {
+            Files.walkFileTree(drive.root(), java.util.EnumSet.noneOf(java.nio.file.FileVisitOption.class), MAX_DEPTH,
+                    new java.nio.file.SimpleFileVisitor<>() {
+                        @Override
+                        public java.nio.file.FileVisitResult preVisitDirectory(Path dir,
+                                java.nio.file.attribute.BasicFileAttributes attrs) {
+                            String n = dir.getFileName() == null ? "" : dir.getFileName().toString();
+                            boolean skip = !dir.equals(drive.root()) && (n.startsWith(".") || n.equals("lost+found")
+                                    || n.equals("System Volume Information") || n.startsWith("$"));
+                            return skip ? java.nio.file.FileVisitResult.SKIP_SUBTREE
+                                    : java.nio.file.FileVisitResult.CONTINUE;
+                        }
+
+                        @Override
+                        public java.nio.file.FileVisitResult visitFile(Path p,
+                                java.nio.file.attribute.BasicFileAttributes attrs) {
+                            String n = p.getFileName().toString();
+                            if (attrs.isRegularFile() && !n.startsWith(".")
+                                    && n.toLowerCase(Locale.ROOT).endsWith(".pgn")) {
+                                out.add(new PgnFile(p, n, attrs.size()));
+                            }
+                            return java.nio.file.FileVisitResult.CONTINUE;
+                        }
+
+                        @Override
+                        public java.nio.file.FileVisitResult visitFileFailed(Path p, IOException e) {
+                            log.debug("skipped {}: {}", p, e.toString());
+                            return java.nio.file.FileVisitResult.CONTINUE;
                         }
                     });
         } catch (IOException | RuntimeException e) {

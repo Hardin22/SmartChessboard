@@ -29,17 +29,34 @@ class GameResumeTest {
     }
 
     @Test
-    void resumingRemovesOnlyTheInterruptedCopyOfTheSameGame() {
+    void findsOnlyTheInterruptedCopyOfTheSameGame() {
         GameArchiveService archive = new GameArchiveService(dir.resolve("archive.json"), null, dir.resolve("b"));
         List<String> moves = List.of("e2e4", "e7e5", "g1f3");
-        archive.add(archived(ArchivedGame.GameMode.PVC, "*", moves));                      // the copy to remove
         archive.add(archived(ArchivedGame.GameMode.PVC, "*", List.of("d2d4", "d7d5")));    // another game
-        archive.add(archived(ArchivedGame.GameMode.PVC, "1-0", moves));                    // finished: kept
-        archive.add(archived(ArchivedGame.GameMode.PVP, "*", moves));                      // other mode: kept
-        GameResume.forgetArchivedInterruption(snapshot(moves), archive);
-        assertEquals(3, archive.size());
-        assertTrue(archive.list().stream().noneMatch(g -> g.mode() == ArchivedGame.GameMode.PVC
-                && "*".equals(g.result()) && g.movesUci().equals(moves)));
+        archive.add(archived(ArchivedGame.GameMode.PVC, "1-0", moves));                    // finished
+        archive.add(archived(ArchivedGame.GameMode.PVP, "*", moves));                      // other mode
+        assertEquals(0, GameResume.archivedInterruption(snapshot(moves), archive));
+        int id = archive.add(archived(ArchivedGame.GameMode.PVC, "*", moves)).id();       // the copy
+        assertEquals(id, GameResume.archivedInterruption(snapshot(moves), archive));
+        assertEquals(4, archive.size(), "nothing is deleted when resuming");
+    }
+
+    @Test
+    void aDroppedSavedGameIsKeptInTheArchiveOnce() {
+        GameArchiveService archive = new GameArchiveService(dir.resolve("archive.json"), null, dir.resolve("b"));
+        GameSnapshot s = snapshot(List.of("e2e4", "c7c5"));
+        GameResume.keepInArchive(s, archive);
+        assertEquals(1, archive.size());
+        ArchivedGame g = archive.list().get(0);
+        assertEquals("*", g.result());
+        assertEquals("Interrotta", g.termination());
+        assertEquals("Giocatore", g.white());
+        assertEquals("Stockfish (1350)", g.black());
+        assertEquals(ArchivedGame.GameMode.PVC, g.mode());
+        GameResume.keepInArchive(s, archive); // already there
+        assertEquals(1, archive.size());
+        GameResume.keepInArchive(snapshot(List.of()), archive); // nothing played
+        assertEquals(1, archive.size());
     }
 
     @Test

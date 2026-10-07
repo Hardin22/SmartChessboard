@@ -174,7 +174,16 @@ public final class OnlineImport {
 
     // ------------------------------------------------------------------ archive
 
+    /** One import at a time: the duplicate check and the write must see the same archive. */
+    private static final Object STORE_LOCK = new Object();
+
     private Result store(Source source, String user, String pgnText, int max) {
+        synchronized (STORE_LOCK) {
+            return storeLocked(source, user, pgnText, max);
+        }
+    }
+
+    private Result storeLocked(Source source, String user, String pgnText, int max) {
         List<ArchivedGame> found = toArchived(source, pgnText);
         found.sort(Comparator.comparing(ArchivedGame::playedAt, Comparator.nullsFirst(Comparator.naturalOrder()))
                 .reversed());

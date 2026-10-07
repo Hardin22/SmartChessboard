@@ -138,7 +138,7 @@ public final class AnalysisTree {
 
     /** Main-line node after {@code ply} half-moves (0 = start). */
     public Node mainLineNode(int ply) {
-        return ply <= 0 ? root : mainLine.get(Math.min(ply, mainLine.size()) - 1);
+        return ply <= 0 || mainLine.isEmpty() ? root : mainLine.get(Math.min(ply, mainLine.size()) - 1);
     }
 
     public boolean isInMainLine() {
@@ -335,6 +335,17 @@ public final class AnalysisTree {
         boolean needNumber = forceNumber;
         while (!at.children.isEmpty()) {
             Node main = at.children.get(0);
+            if (at.mainLine && !main.mainLine) {
+                // after the last move of the game every continuation is analysis: all in brackets
+                for (Node alt : at.children) {
+                    sb.append("(");
+                    appendMove(sb, alt, true);
+                    writeLine(sb, alt, false);
+                    trimEnd(sb);
+                    sb.append(") ");
+                }
+                return;
+            }
             appendMove(sb, main, needNumber);
             needNumber = false;
             for (int i = 1; i < at.children.size(); i++) {

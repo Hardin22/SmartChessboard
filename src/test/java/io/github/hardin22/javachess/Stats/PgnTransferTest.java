@@ -49,6 +49,27 @@ class PgnTransferTest {
     }
 
     @Test
+    void hiddenAndUnreadableFoldersAreSkipped() throws Exception {
+        Path media = Files.createDirectories(tmp.resolve("m"));
+        Path stick = Files.createDirectories(media.resolve("USB"));
+        Path locked = Files.createDirectories(stick.resolve("aaa-locked"));
+        Files.writeString(locked.resolve("x.pgn"), "x");
+        Files.createDirectories(stick.resolve(".Trashes"));
+        Files.writeString(stick.resolve(".Trashes/old.pgn"), "x");
+        Files.writeString(stick.resolve("z-partite.pgn"), "x");
+        locked.toFile().setReadable(false);
+        locked.toFile().setExecutable(false);
+        try {
+            PgnTransfer t = new PgnTransfer(List.of(media));
+            List<PgnTransfer.PgnFile> files = t.pgnFiles(t.drives().get(0));
+            assertEquals(List.of("z-partite.pgn"), files.stream().map(PgnTransfer.PgnFile::name).toList());
+        } finally {
+            locked.toFile().setReadable(true);
+            locked.toFile().setExecutable(true);
+        }
+    }
+
+    @Test
     void noDrives() {
         assertTrue(new PgnTransfer(List.of(tmp.resolve("nothing"))).drives().isEmpty());
     }

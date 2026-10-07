@@ -80,7 +80,9 @@ public final class AnalysisSession {
         this(initialFen, gameUci, new EngineLines(), defaultFollower(), null);
         CompletableFuture.supplyAsync(OpeningBook::standard, AppExecutors.io()).thenAccept(b -> AppExecutors.runOnFx(() -> {
             book = b;
-            refresh();
+            if (!closed) {
+                refresh(); // not after close(): it would start the engine for a screen that is gone
+            }
         })).exceptionally(t -> {
             log.warn("opening book not available: {}", t.toString());
             return null;
@@ -376,8 +378,11 @@ public final class AnalysisSession {
         }
     }
 
+    private boolean closed;
+
     /** Leaving the screen: stops the engine and frees the board. */
     public void close() {
+        closed = true;
         lines.stop();
         if (follower != null) {
             follower.stop();
