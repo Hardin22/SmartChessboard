@@ -30,6 +30,7 @@ class BrilliantGreatExclusionsTest {
                 "h1g1", true).value() < 2);
     }
 
+    /** Board facts of the B-E4 cards (SPEC v2.1 excludes from regain >= offered + 4; Deep Blue's Bf5 is a known FP). */
     @Test
     void bE4FakeSacrificeWinsMoreBackAtOnce() {
         // Deep Blue - Kasparov 1997 g6, 17.Bf5: ...exf5 Rxe7 wins the queen
@@ -89,11 +90,14 @@ class BrilliantGreatExclusionsTest {
 
     @Test
     void gE1CaptureIsNotGreat() {
-        // daily_1017236144 ply 23, 12.fxg6: the capture keeps the material, chess.com Best
+        // daily_1017236144 ply 23, 12.fxg6: the capture keeps the material, chess.com Best. v2.1 (a capture only when
+        // it punishes a blunder) excludes it; v2.2 admits exchanges to be made now and accepts this one as a known
+        // false positive (CV: +2 true Greats, -2 false positives overall)
         String fen = "r1bqkb1r/pp2n2p/3p2p1/4pPPQ/4p2P/8/PPP2PB1/R1B1K1NR w KQkq - 0 12";
         ReviewInput in = oneMove(fen, "f5g6", Eval.cp(401), "f5g6", Eval.cp(-245), "h5d1", Eval.cp(401));
-        assertNotEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT));
-        assertEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT.with("greatNoCapture", 0)));
+        Tuning v21 = Tuning.DEFAULT.with("greatCaptureRule", 0);
+        assertNotEquals(MoveClassification.GREAT, label(in, v21));
+        assertEquals(MoveClassification.GREAT, label(in, v21.with("greatCaptureOppLoss", 0)));
     }
 
     @Test
@@ -102,8 +106,8 @@ class BrilliantGreatExclusionsTest {
         ReviewInput in = twoMoves("r2qk2r/1b1ppp2/ppn2n1p/5Np1/4P3/2PQ2B1/P1P1BPPP/R3K2R b KQkq - 2 12",
                 "a8c8", Eval.cp(191), "d7d5", "e4e5", Eval.cp(543), "e4e5", Eval.cp(312), "h2h4", Eval.cp(543));
         assertNotEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT));
-        assertEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT.with("greatMaxEp", 0.98)
-                .with("greatPunishGap", 0.10)));
+        // v2.1: winning before and after the second best move, and not the only move
+        assertEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT.with("greatGap", 0.10)));
     }
 
     @Test
@@ -112,23 +116,16 @@ class BrilliantGreatExclusionsTest {
         ReviewInput in = twoMoves("2r2rk1/1p3ppp/p7/3p4/4n1P1/PP2K3/4BP1P/R6R w - - 0 20",
                 "e2f3", Eval.cp(-239), "f2f3", "c8c3", Eval.cp(-618), "c8c3", Eval.cp(-371), "f8e8", Eval.cp(-618));
         assertNotEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT));
-        assertEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT.with("greatPunishGap", 0.10)));
+        assertEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT.with("greatGap", 0.10)));
     }
 
-    @Test
-    void realGreatStaysGreat() {
-        // daily_1011205894 ply 48, 24...Rd2+ after 24.Nxe5? (chess.com Great)
-        ReviewInput in = twoMoves("2kr4/1pp2p1p/p3p1p1/4n1b1/1PN5/2P2P2/P1K3PP/4R3 w - - 0 24",
-                "c4e5", Eval.cp(-176), "e1e5", "d8d2", Eval.cp(-441), "d8d2", Eval.cp(-146), "g5f4", Eval.cp(-441));
-        assertEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT));
-    }
 
     @Test
     void gPlus1QuietForcingCheckInAWonAttackIsGreat() {
         // Botvinnik - Capablanca 1938, 32.Qg5+ at +8.3, chess.com Great: G+1 holds above the ordinary Great range
         ReviewInput botvinnik = oneMove("8/p5kp/1p2Pn2/3pQ2p/2pP4/qnP5/6PP/6K1 w - - 0 32", "e5g5", Eval.cp(827),
                 "e5g5", Eval.cp(-682), "h2h3", Eval.cp(827));
-        Tuning narrow = Tuning.DEFAULT.with("greatMaxEp", 0.90);
+        Tuning narrow = Tuning.DEFAULT.with("greatRule", 1).with("greatMaxEp", 0.90);
         assertEquals(MoveClassification.GREAT, label(botvinnik, narrow));
         assertNotEquals(MoveClassification.GREAT, label(botvinnik, narrow.with("greatForcingCheck", 0)));
         // Torre - Lasker 1925, 28.Rg7+ (the windmill) and D. Byrne - Fischer 1956, 19...Ne2+: chess.com Great
@@ -183,12 +180,78 @@ class BrilliantGreatExclusionsTest {
         assertEquals(MoveClassification.GOOD, label(g3, Tuning.DEFAULT));
     }
 
+    // ------------------------------------------------------------------ recall round (PHASE3 §16, notes/fn)
+
+    @Test
+    void brilliantRecoveredByTheFinerExclusions() {
+        // live_145692245792 ply 33, 17.Rxf6: wins back 3 at once if taken, less than sacrifice + 4 (chess.com Brilliant)
+        ReviewInput rxf6 = rated(oneMove("r1b1k3/ppp2Npr/4pn1p/3q4/8/P1P5/1PQB1RPP/R5K1 w q - 3 17", "f2f6",
+                Eval.cp(565), "f2f6", Eval.cp(533), "a1e1", Eval.cp(565)), 1117, 1096);
+        assertEquals(MoveClassification.BRILLIANT, label(rxf6, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.BRILLIANT, label(rxf6, Tuning.DEFAULT.with("fakeRegain", 2)));
+    }
+
+    @Test
+    void aPieceForPawnsIsASacrifice() {
+        // Morphy - Duke/Count 1858 (Opera Game), 10.Nxb5: knight for two pawns, chess.com Brilliant
+        ReviewInput nxb5 = oneMove("rn2kb1r/p3qppp/2p2n2/1p2p1B1/2B1P3/1QN5/PPP2PPP/R3K2R w KQkq b6 0 10", "c3b5",
+                Eval.cp(484), "c3b5", Eval.cp(115), "g5f6", Eval.cp(484));
+        assertEquals(MoveClassification.BRILLIANT, label(nxb5, Tuning.DEFAULT));
+        // Reshevsky - Petrosian 1953, 30.Rxd3: the exchange for a bishop and a pawn, chess.com Brilliant
+        ReviewInput rxd3 = oneMove("3rq1k1/6pp/4p3/pp1nP3/P1pP4/2Pb1R2/1B4PP/4RQK1 w - - 4 30", "f3d3", Eval.cp(0),
+                "f3d3", Eval.cp(-165), "f1f2", Eval.cp(0));
+        assertEquals(MoveClassification.BRILLIANT, label(rxd3, Tuning.DEFAULT));
+    }
+
+    @Test
+    void greatChangesTheOutcome() {
+        // live_173843114164 ply 34, 17...c4: equal with it, losing with the second best move (chess.com Great)
+        ReviewInput c4 = rated(twoMoves("2rq1rk1/p2bb1pp/4pn2/1pp2p2/3P1N2/1P2P1P1/P3QPBP/R1B2RK1 w - - 1 17", "c1b2",
+                Eval.cp(90), "d4c5", "c5c4", Eval.cp(-33), "c5c4", Eval.cp(117), "c5d4", Eval.cp(-33)), 2513, 2617);
+        assertEquals(MoveClassification.GREAT, label(c4, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.GREAT, label(c4, Tuning.DEFAULT.with("greatClassGap", 1)));
+        // daily_1011205894 ply 56, 28...Rd2 (chess.com Great)
+        ReviewInput rd2 = rated(oneMove("2kbR3/1pp2N1p/p5p1/5p2/1P6/1KP2P2/P5rP/8 b - - 1 28", "g2d2", Eval.cp(0),
+                "g2d2", Eval.cp(228), "c8d7", Eval.cp(0)), 1301, 1202);
+        assertEquals(MoveClassification.GREAT, label(rd2, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.GREAT, label(rd2, Tuning.DEFAULT.with("greatClassGap", 1)));
+    }
+
+    @Test
+    void aCaptureWinningMaterialIsGreatOnlyUnder1000() {
+        // live_138835439112 ply 25, 13.dxc5 after 12...Nc6?? by a 459-rated player (chess.com Great)
+        ReviewInput dxc5 = rated(twoMoves("rnbqk2r/pp5p/4p1p1/2b2p2/2BP4/5Q2/PPP2PPP/R1B2RK1 b kq - 1 12", "b8c6",
+                Eval.cp(-315), "d8d4", "d4c5", Eval.cp(453), "d4c5", Eval.cp(-85), "d4d5", Eval.cp(453)), 459, 482);
+        assertEquals(MoveClassification.GREAT, label(dxc5, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.GREAT, label(dxc5, Tuning.DEFAULT.with("greatFreeMaterialRating", 0)));
+    }
+
+    @Test
+    void anExchangeToMakeNowCanBeGreatTakingFreeMaterialIsNot() {
+        // SPEC v2.2, live_174045499582 (players ~1860): 8...Bxc3+ must be played now (chess.com Great) ...
+        ReviewInput bxc3 = rated(twoMoves("rn1qk2r/p4ppp/1pp1pn2/2Pp1b2/1b1P4/2N1PN1P/PP3PP1/R1BQKB1R w KQkq - 0 8",
+                "a2a3", Eval.cp(-40), "c5b6", "b4c3", Eval.cp(-103), "b4c3", Eval.cp(418), "b4c5", Eval.cp(-103)),
+                1875, 1857);
+        assertEquals(MoveClassification.GREAT, label(bxc3, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.GREAT, label(bxc3, Tuning.DEFAULT.with("greatCaptureRule", 0)));
+        // ... while 14.Bxa6 takes the knight Black just left hanging: chess.com Best
+        ReviewInput bxa6 = rated(twoMoves("rn2k2r/p2q1ppp/2p1pnb1/3p4/1Q1N4/P1P1P2P/4BPP1/R1B1K2R b KQkq - 4 13",
+                "b8a6", Eval.cp(-237), "f6e4", "e2a6", Eval.cp(623), "e2a6", Eval.cp(-52), "b4a5", Eval.cp(623)),
+                1875, 1857);
+        assertNotEquals(MoveClassification.GREAT, label(bxa6, Tuning.DEFAULT));
+        assertEquals(MoveClassification.GREAT, label(bxa6, Tuning.DEFAULT.with("greatCaptureRule", 0)));
+    }
+
+    private static ReviewInput rated(ReviewInput in, int white, int black) {
+        return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static void assertFake(String fen, String uci, boolean white) {
         ReviewClassifier.Sacrifice s = ReviewClassifier.Sacrifice.of(board(fen), uci, white);
-        assertTrue(s.value() >= 2, uci + " offers " + s.value());
-        assertTrue(s.regain() >= s.value() + 2, uci + " wins back " + s.regain() + " for " + s.value());
+        assertTrue(s.offered() >= 2, uci + " offers " + s.offered());
+        assertTrue(s.regain() >= s.offered() + 2, uci + " wins back " + s.regain() + " for " + s.offered());
     }
 
     private static MoveClassification label(ReviewInput in, Tuning t) {

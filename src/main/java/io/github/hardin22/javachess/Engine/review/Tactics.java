@@ -62,6 +62,38 @@ final class Tactics {
         }
     }
 
+    /**
+     * The pieces taken on {@code sq} along the static exchange of {@link #see} (the first is the piece standing there),
+     * as values with pawns counted 0: what of the exchange is pieces rather than pawns. Empty when the side to move
+     * should not capture.
+     */
+    static List<Integer> seePieceSequence(Board b, Square sq) {
+        Piece target = b.getPiece(sq);
+        if (target == Piece.NONE) {
+            return List.of();
+        }
+        Move capture = leastValuableCapture(b, sq);
+        if (capture == null) {
+            return List.of();
+        }
+        int pieceValue = target.getPieceType() == PieceType.PAWN ? 0 : value(target);
+        if (target.getPieceType() == PieceType.KING) {
+            return List.of(pieceValue);
+        }
+        b.doMove(capture);
+        try {
+            if (value(target) - see(b, sq) <= 0) {
+                return List.of();
+            }
+            List<Integer> out = new ArrayList<>();
+            out.add(pieceValue);
+            out.addAll(seePieceSequence(b, sq));
+            return out;
+        } finally {
+            b.undoMove();
+        }
+    }
+
     private static Move leastValuableCapture(Board b, Square sq) {
         Move best = null;
         int bestValue = Integer.MAX_VALUE;
@@ -286,6 +318,16 @@ final class Tactics {
             }
         }
         return best;
+    }
+
+    /** True when a pawn takes a pawn (en passant included): a pawn exchange. */
+    static boolean isPawnTakesPawn(Board b, String uci) {
+        Move m = find(b, uci);
+        if (m == null || b.getPiece(m.getFrom()).getPieceType() != PieceType.PAWN) {
+            return false;
+        }
+        Piece target = b.getPiece(m.getTo());
+        return target == Piece.NONE ? isEnPassant(b, m) : target.getPieceType() == PieceType.PAWN;
     }
 
     /** True when the move (UCI) captures something, en passant included. */
