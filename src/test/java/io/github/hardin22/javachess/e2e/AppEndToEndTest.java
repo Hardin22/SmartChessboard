@@ -246,7 +246,7 @@ class AppEndToEndTest {
             // the provisional results of the moves reviewed so far come first: wait for the accuracy as well
             List<?> analysis = (List<?>) field(review, "currentAnalysis");
             return analysis != null && analysis.size() == 7
-                    && ((javafx.scene.Node) field(review, "accuracyWrapper")).isVisible();
+                    && field(review, "currentReview") != null; // set with the accuracy when the review is done
         }));
         String white = fxGet(() -> ((Label) field(review, "whiteAccuracyLabel")).getText());
         String black = fxGet(() -> ((Label) field(review, "blackAccuracyLabel")).getText());
@@ -366,8 +366,7 @@ class AppEndToEndTest {
         Thread analysis = (Thread) field(review, "analysisThread");
         assertTrue(analysis == null || !analysis.isAlive(), "the review thread stopped");
         Thread.sleep(1000);
-        assertFalse(fxGet(() -> ((javafx.scene.Node) field(review, "accuracyWrapper")).isVisible()),
-                "no final results (nor error) from a cancelled review");
+        assertNull(fxGet(() -> field(review, "currentReview")), "no final results from a cancelled review");
         Files.writeString(script, "");
     }
 

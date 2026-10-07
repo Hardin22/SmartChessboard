@@ -29,6 +29,7 @@ class BoardStateManagerTest {
     private BoardStateManager manager;
     private final List<String> events = new CopyOnWriteArrayList<>();
     private final List<String> hints = new CopyOnWriteArrayList<>();
+    private final List<String> fens = new CopyOnWriteArrayList<>();
 
     @BeforeEach
     void setUp() {
@@ -66,6 +67,7 @@ class BoardStateManagerTest {
 
             @Override
             public void onBoardStateUpdated(String fen, String errorSquare) {
+                fens.add(fen);
                 if (errorSquare != null) {
                     events.add("error " + errorSquare);
                 }
@@ -461,5 +463,22 @@ class BoardStateManagerTest {
         settle();
         assertEquals(BoardStateManager.Mode.PLAY, manager.mode());
         assertEquals(List.of("move E2E4"), moves(), "the taken-back move is not detected again");
+    }
+
+    @Test
+    void liftingTheKingAfterADoublePawnPushPublishesAReadableFen() throws InterruptedException {
+        // 1.e4 c5 2.e5 d5: White may take en passant on d6; the white king is lifted (e.g. to castle later)
+        play("rnbqkbnr/pp2pppp/8/2ppP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3");
+        fens.clear();
+        sim.lift("e1");
+        settle();
+        assertFalse(fens.isEmpty());
+        for (String fen : fens) {
+            Board shown = new Board();
+            shown.loadFromFen(fen); // threw ArrayIndexOutOfBoundsException (no king to check the en passant)
+        }
+        sim.place("e1");
+        settle();
+        assertTrue(fens.get(fens.size() - 1).contains(" d6 "), "the full position keeps its en passant square");
     }
 }

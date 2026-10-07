@@ -99,7 +99,7 @@ public class AnalysisPanel extends VBox {
      * Game messages often arrive (partly) in capitals ("SCACCHIERA PRONTA! Partita Iniziata"): show them in
      * sentence case, capitalising after . ! ? as well. Square names (e2, F8) are kept upper-case.
      */
-    static String prettify(String s) {
+    public static String prettify(String s) {
         long letters = s.chars().filter(Character::isLetter).count();
         long upper = s.chars().filter(Character::isUpperCase).count();
         if (letters < 4 || upper < letters * 0.5) {
@@ -164,7 +164,7 @@ public class AnalysisPanel extends VBox {
     }
 
     /** "0.35" -> "+0.35", "-1.20" -> "−1.20", "M3"/"-M2" and results kept; anything unparsable -> an en dash. */
-    static String formatScore(String raw) {
+    public static String formatScore(String raw) {
         String s = raw == null ? "" : raw.trim();
         if (s.matches("-?M\\d+") || s.equals("1-0") || s.equals("0-1") || s.equals("½-½")) {
             return s.startsWith("-M") ? "−" + s.substring(1) : s;

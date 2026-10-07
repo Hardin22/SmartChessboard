@@ -1,19 +1,27 @@
 package io.github.hardin22.javachess.Controllers;
 
 import javafx.application.Platform;
-import javafx.fxml.FXML;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
+import javafx.scene.Parent;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
+import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import io.github.hardin22.javachess.Components.BoardThemes;
 import io.github.hardin22.javachess.Components.I18n;
 import io.github.hardin22.javachess.Components.Icons;
-import io.github.hardin22.javachess.Components.PageHeader;
+import io.github.hardin22.javachess.Components.Prefs;
+import io.github.hardin22.javachess.Components.ScreenHeader;
+import io.github.hardin22.javachess.Components.TouchKeyboard;
+import io.github.hardin22.javachess.Components.Ui;
 import io.github.hardin22.javachess.Oggetti.ArchivedGame;
 import io.github.hardin22.javachess.Oggetti.ChessBoardUI;
 import io.github.hardin22.javachess.Services.GameArchiveService;
@@ -21,35 +29,138 @@ import io.github.hardin22.javachess.Utils.ErrorReporter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/** Archive of played games; the file is read off the FX thread, rows are recycled by the ListView. */
-public class ArchiveController implements NavigationAware {
+/**
+ * Archive of played games. Large rows grouped by day, a search by name with the on-screen keyboard, three filters
+ * (mode, result, period) and a preview sheet with the actions. The file is read off the FX thread; rows are
+ * virtualised and recycled by the ListView.
+ */
+public class ArchiveController implements Screen {
 
     private static final Logger LOG = LoggerFactory.getLogger(ArchiveController.class);
     private static final String START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.ITALIAN);
+    private static final DateTimeFormatter DAY_YEAR = DateTimeFormatter.ofPattern("EEEE d MMMM yyyy", Locale.ITALIAN);
+    private static final DateTimeFormatter FULL = DateTimeFormatter.ofPattern("d MMMM yyyy, HH:mm", Locale.ITALIAN);
+
+    enum ModeFilter { ALL, COMPUTER, TWO_PLAYERS, ONLINE }
+
+    enum ResultFilter { ALL, WON, LOST, DRAWN, UNFINISHED }
+
+    enum PeriodFilter { ALL, TODAY, WEEK, MONTH }
+
+    /**
+     * What one archive row shows. Built from the stored games in {@link #readRows()}: that method is the only place
+     * that touches the archive data, so the data layer can change without touching the presentation.
+     *
+     * @param outcome 1 won, 0 drawn, -1 lost from the local player's point of view, null when there is none
+     */
+    public record Row(int id, String title, String meta, String detail, String result, Integer outcome,
+                      boolean decisive, String finalFen, LocalDate day, ArchivedGame game, String search) {
+    }
 
     private MainController mainController;
+    private final BorderPane root = new BorderPane();
+    private final ScreenHeader header;
+    private final ListView<Row> archiveListView = new ListView<>();
+    private final VBox emptyState = new VBox();
+    private final Label emptyTitle = Ui.label("", "empty-title");
+    private final Label emptySub = Ui.wrap("", "empty-sub");
+    private final Label searchText = Ui.label("", "search-text");
+    private final HBox searchBox = new HBox();
+    private final Button modeButton = filterButton();
+    private final Button resultButton = filterButton();
+    private final Button periodButton = filterButton();
+    private List<Row> allRows = List.of();
+    private String query = "";
+    private ModeFilter modeFilter = ModeFilter.ALL;
+    private ResultFilter resultFilter = ResultFilter.ALL;
+    private PeriodFilter periodFilter = PeriodFilter.ALL;
 
-    @FXML
-    private ListView<Row> archiveListView;
-    @FXML
-    private VBox emptyState;
-    @FXML
-    private PageHeader header;
+    public ArchiveController() {
+        header = new ScreenHeader(I18n.t("archive.title"), () -> mainController.navigateTo("HOME"));
+        build();
+    }
 
     @Override
     public void setMainController(MainController mainController) {
         this.mainController = mainController;
     }
 
-    @FXML
-    public void initialize() {
+    @Override
+    public Parent getRoot() {
+        return root;
+    }
+
+    private void build() {
+        // search
+        searchBox.getStyleClass().add("search-box");
+        searchBox.setId("archive-search");
+        searchText.setMinWidth(0);
+        HBox.setHgrow(searchText, Priority.ALWAYS);
+        searchText.setMaxWidth(Double.MAX_VALUE);
+        Button clear = Ui.iconButton("fth-x", I18n.t("archive.search.clear"), () -> setQuery(""));
+        clear.getStyleClass().add("plain");
+        clear.visibleProperty().bind(searchText.textProperty().isNotEqualTo(I18n.t("archive.search")));
+        searchBox.getChildren().addAll(Icons.of("fth-search", 28), searchText, clear);
+        searchBox.setOnMouseClicked(e -> {
+            if (!(e.getTarget() instanceof Node n && isInside(n, clear))) {
+                openSearch();
+            }
+        });
+
+        modeButton.setOnAction(e -> chooseMode());
+        resultButton.setOnAction(e -> chooseResult());
+        periodButton.setOnAction(e -> choosePeriod());
+        HBox filters = Ui.equalRow(10, modeButton, resultButton, periodButton);
+
+        VBox top = new VBox(14, header, padded(new VBox(14, searchBox, filters)));
+        top.setPadding(new Insets(0, 0, 8, 0));
+
         archiveListView.setCellFactory(list -> new GameCell());
         archiveListView.setFocusTraversable(false);
-        archiveListView.setFixedCellSize(112);
+
+
+        emptyState.getStyleClass().add("empty-state");
+        emptyState.getChildren().addAll(Icons.of("fth-archive", 64), emptyTitle, emptySub);
+        emptyState.setVisible(false);
+
+        StackPane center = new StackPane(archiveListView, emptyState);
+        center.setPadding(new Insets(0, 20, 0, 24));
+        root.setTop(top);
+        root.setCenter(center);
+        refreshFilterLabels();
+    }
+
+    private static Node padded(Node node) {
+        VBox box = new VBox(node);
+        box.setPadding(new Insets(0, 24, 0, 24));
+        return box;
+    }
+
+    private static Button filterButton() {
+        Button b = new Button();
+        b.getStyleClass().setAll("chip");
+        b.setGraphic(Icons.of("fth-chevron-down", 22));
+        b.setContentDisplay(javafx.scene.control.ContentDisplay.RIGHT);
+        b.setMaxWidth(Double.MAX_VALUE);
+        b.setMnemonicParsing(false);
+        return b;
+    }
+
+    private static boolean isInside(Node node, Node parent) {
+        for (Node n = node; n != null; n = n.getParent()) {
+            if (n == parent) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -57,56 +168,187 @@ public class ArchiveController implements NavigationAware {
         loadArchive();
     }
 
-    /**
-     * What one archive row shows. Built from the stored games in {@link #readRows()}: that method is the only
-     * place that touches the archive data, so the data layer can change without touching the presentation.
-     */
-    public record Row(int id, String title, String meta, String detail, String score, String finalFen, String moves,
-                      String initialFen, int whiteRating, int blackRating) {
+    // ================================================================== filters
+
+    private void refreshFilterLabels() {
+        modeButton.setText(switch (modeFilter) {
+            case ALL -> I18n.t("archive.filter.mode");
+            case COMPUTER -> I18n.t("archive.mode.computer");
+            case TWO_PLAYERS -> I18n.t("archive.mode.pvp");
+            case ONLINE -> I18n.t("archive.mode.online");
+        });
+        resultButton.setText(switch (resultFilter) {
+            case ALL -> I18n.t("archive.filter.result");
+            case WON -> I18n.t("archive.result.won");
+            case LOST -> I18n.t("archive.result.lost");
+            case DRAWN -> I18n.t("archive.result.drawn");
+            case UNFINISHED -> I18n.t("archive.result.unfinished");
+        });
+        periodButton.setText(switch (periodFilter) {
+            case ALL -> I18n.t("archive.filter.period");
+            case TODAY -> I18n.t("archive.period.today");
+            case WEEK -> I18n.t("archive.period.week");
+            case MONTH -> I18n.t("archive.period.month");
+        });
+        markActive(modeButton, modeFilter != ModeFilter.ALL);
+        markActive(resultButton, resultFilter != ResultFilter.ALL);
+        markActive(periodButton, periodFilter != PeriodFilter.ALL);
+        searchText.setText(query.isEmpty() ? I18n.t("archive.search") : query);
+        searchText.getStyleClass().remove("t-faint");
+        if (query.isEmpty()) {
+            searchText.getStyleClass().add("t-faint");
+        }
     }
 
+    private static void markActive(Button b, boolean active) {
+        b.pseudoClassStateChanged(javafx.css.PseudoClass.getPseudoClass("selected"), active);
+    }
+
+    private void chooseMode() {
+        choose(I18n.t("archive.filter.mode"), ModeFilter.values(), modeFilter, f -> switch (f) {
+            case ALL -> I18n.t("archive.mode.all");
+            case COMPUTER -> I18n.t("archive.mode.computer");
+            case TWO_PLAYERS -> I18n.t("archive.mode.pvp");
+            case ONLINE -> I18n.t("archive.mode.online");
+        }, f -> modeFilter = f);
+    }
+
+    private void chooseResult() {
+        choose(I18n.t("archive.filter.result"), ResultFilter.values(), resultFilter, f -> switch (f) {
+            case ALL -> I18n.t("archive.result.all");
+            case WON -> I18n.t("archive.result.won");
+            case LOST -> I18n.t("archive.result.lost");
+            case DRAWN -> I18n.t("archive.result.drawn");
+            case UNFINISHED -> I18n.t("archive.result.unfinished");
+        }, f -> resultFilter = f);
+    }
+
+    private void choosePeriod() {
+        choose(I18n.t("archive.filter.period"), PeriodFilter.values(), periodFilter, f -> switch (f) {
+            case ALL -> I18n.t("archive.period.all");
+            case TODAY -> I18n.t("archive.period.today");
+            case WEEK -> I18n.t("archive.period.week");
+            case MONTH -> I18n.t("archive.period.month");
+        }, f -> periodFilter = f);
+    }
+
+    private <T> void choose(String title, T[] values, T current, java.util.function.Function<T, String> label,
+                            java.util.function.Consumer<T> apply) {
+        VBox options = new VBox(10);
+        for (T value : values) {
+            Region dot = new Region();
+            dot.getStyleClass().add("check-dot");
+            HBox content = new HBox(16, Ui.label(label.apply(value), "option-title"), Ui.hgrow(), dot);
+            content.setAlignment(Pos.CENTER_LEFT);
+            Button option = new Button();
+            option.getStyleClass().setAll("option");
+            option.setGraphic(content);
+            option.setMaxWidth(Double.MAX_VALUE);
+            content.prefWidthProperty().bind(option.widthProperty().subtract(52));
+            option.pseudoClassStateChanged(javafx.css.PseudoClass.getPseudoClass("selected"), value == current);
+            option.setOnAction(e -> {
+                apply.accept(value);
+                mainController.closeSheet();
+                applyFilters();
+            });
+            options.getChildren().add(option);
+        }
+        mainController.showSheet(title, options);
+    }
+
+    private void openSearch() {
+        TouchKeyboard keyboard = new TouchKeyboard(I18n.t("archive.search.prompt"));
+        keyboard.textProperty().set(query);
+        keyboard.textProperty().addListener((obs, o, n) -> setQuery(n));
+        keyboard.setOnDone(mainController::closeSheet);
+        mainController.showSheet(I18n.t("archive.search.title"), keyboard);
+    }
+
+    private void setQuery(String text) {
+        query = text == null ? "" : text.trim();
+        applyFilters();
+    }
+
+    private void applyFilters() {
+        refreshFilterLabels();
+        String q = query.toLowerCase(Locale.ITALIAN);
+        LocalDate today = LocalDate.now();
+        List<Row> shown = new ArrayList<>();
+        for (Row row : allRows) {
+            if (!q.isEmpty() && !row.search().contains(q)) {
+                continue;
+            }
+            ArchivedGame.GameMode mode = row.game().mode();
+            boolean modeOk = switch (modeFilter) {
+                case ALL -> true;
+                case COMPUTER -> mode == ArchivedGame.GameMode.PVC;
+                case TWO_PLAYERS -> mode == ArchivedGame.GameMode.PVP;
+                case ONLINE -> mode == ArchivedGame.GameMode.LICHESS || mode == ArchivedGame.GameMode.BROWSER;
+            };
+            boolean resultOk = switch (resultFilter) {
+                case ALL -> true;
+                case WON -> row.outcome() != null ? row.outcome() > 0 : row.decisive();
+                case LOST -> row.outcome() != null ? row.outcome() < 0 : row.decisive();
+                case DRAWN -> "1/2-1/2".equals(row.game().result());
+                case UNFINISHED -> "*".equals(row.game().result());
+            };
+            boolean periodOk = periodFilter == PeriodFilter.ALL || (row.day() != null && switch (periodFilter) {
+                case TODAY -> row.day().equals(today);
+                case WEEK -> !row.day().isBefore(today.minusDays(6));
+                case MONTH -> !row.day().isBefore(today.minusDays(29));
+                default -> true;
+            });
+            if (modeOk && resultOk && periodOk) {
+                shown.add(row);
+            }
+        }
+        archiveListView.getItems().setAll(shown);
+        archiveListView.scrollTo(0);
+        boolean filtered = !q.isEmpty() || modeFilter != ModeFilter.ALL || resultFilter != ResultFilter.ALL
+                || periodFilter != PeriodFilter.ALL;
+        header.setSubtitle(allRows.isEmpty() ? I18n.t("archive.subtitle")
+                : filtered ? I18n.t("archive.count.filtered", shown.size(), allRows.size())
+                : I18n.t("archive.count", allRows.size()));
+        boolean empty = shown.isEmpty();
+        emptyState.setVisible(empty);
+        archiveListView.setVisible(!empty);
+        emptyTitle.setText(I18n.t(allRows.isEmpty() ? "archive.empty" : "archive.empty.filtered"));
+        emptySub.setText(I18n.t(allRows.isEmpty() ? "archive.empty.description" : "archive.empty.filtered.hint"));
+    }
+
+    // ================================================================== rows
+
     private final class GameCell extends ListCell<Row> {
-        private final ChessBoardUI miniBoard = new ChessBoardUI(BoardThemes.currentBoard(),
-                BoardThemes.currentPieces(), 11);
-        private final Label title = new Label();
-        private final Label meta = new Label();
-        private final Label opening = new Label();
-        private final Label result = new Label();
+        private final ChessBoardUI miniBoard = new ChessBoardUI(BoardThemes.currentBoard(), BoardThemes.currentPieces(),
+                14);
+        private final Label day = Ui.label("", "archive-day");
+        private final Label title = Ui.label("", "archive-title");
+        private final Label meta = Ui.label("", "archive-meta");
+        private final Label opening = Ui.label("", "archive-opening");
+        private final Label result = Ui.label("", "result-tile");
         private final HBox row;
+        private final VBox box;
 
         GameCell() {
-            getStyleClass().add("archive-cell");
-            title.getStyleClass().add("archive-title");
-            meta.getStyleClass().add("archive-meta");
-            opening.getStyleClass().add("archive-meta");
-            title.setMinWidth(0);
-            opening.setMinWidth(0);
-            VBox texts = new VBox(3, title, meta, opening);
+            miniBoard.setShowCoordinates(false);
+            VBox texts = new VBox(4, title, meta, opening);
             texts.setAlignment(Pos.CENTER_LEFT);
             texts.setMinWidth(0);
             HBox.setHgrow(texts, Priority.ALWAYS);
-            result.setMinWidth(USE_PREF_SIZE);
-            Button more = new Button();
-            more.getStyleClass().addAll("btn", "btn-ghost", "icon-btn");
-            more.setGraphic(Icons.of("fth-more-horizontal", 22));
-            more.setAccessibleText(I18n.t("archive.actions"));
-            more.setOnAction(e -> {
+            result.setMinWidth(Region.USE_PREF_SIZE);
+            StackPane thumb = new StackPane(miniBoard);
+            thumb.setMinSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
+            row = new HBox(thumb, texts, result);
+            row.getStyleClass().add("archive-row");
+            row.setId("archive-row");
+            row.setOnMouseClicked(e -> {
                 if (getItem() != null) {
                     showActions(getItem());
                 }
-                e.consume();
             });
-            row = new HBox(miniBoard, texts, result, more);
-            row.getStyleClass().add("archive-row");
-            row.setOnMouseClicked(e -> {
-                Row game = getItem();
-                if (e.getTarget() instanceof javafx.scene.Node n && isInside(n, more)) {
-                    return;
-                }
-                if (game != null) {
-                    showReview(game);
-                }
-            });
+            day.managedProperty().bind(day.visibleProperty());
+            box = new VBox(0, day, row);
+            box.setPadding(new Insets(0, 0, 12, 0));
         }
 
         @Override
@@ -124,115 +366,240 @@ public class ArchiveController implements NavigationAware {
             title.setText(game.title());
             meta.setText(game.meta());
             opening.setText(game.detail());
-            setResult(game.score());
-            setGraphic(row);
-        }
-
-        private void setResult(String score) {
-            result.setText(score);
-            result.getStyleClass().setAll("badge", "mono");
-            if ("1-0".equals(score)) {
-                result.getStyleClass().add("badge-success");
-            } else if ("0-1".equals(score)) {
-                result.getStyleClass().add("badge-danger");
-            } else if ("½-½".equals(score)) {
-                result.getStyleClass().add("badge-warning");
-            }
+            setResult(result, game);
+            int index = getIndex();
+            Row previous = index > 0 && index - 1 < getListView().getItems().size()
+                    ? getListView().getItems().get(index - 1) : null;
+            boolean newDay = previous == null || !java.util.Objects.equals(previous.day(), game.day());
+            day.setVisible(newDay);
+            day.setText(dayLabel(game.day()));
+            setGraphic(box);
         }
     }
 
-    private static boolean isInside(javafx.scene.Node node, javafx.scene.Node parent) {
-        for (javafx.scene.Node n = node; n != null; n = n.getParent()) {
-            if (n == parent) {
-                return true;
-            }
+    private static void setResult(Label result, Row game) {
+        result.setText(game.result());
+        result.getStyleClass().setAll("label", "result-tile");
+        if (game.outcome() != null) {
+            result.getStyleClass().add(game.outcome() > 0 ? "win" : game.outcome() < 0 ? "loss" : "draw");
+        } else if ("1/2-1/2".equals(game.game().result())) {
+            result.getStyleClass().add("draw");
+        } else if (game.decisive()) {
+            result.getStyleClass().add("score");
         }
-        return false;
     }
 
-    /** Sheet with the actions on one game: open, export as PGN, delete (with confirmation). */
-    private void showActions(Row game) {
-        Button open = actionButton(I18n.t("archive.open"), "fth-play", "btn-secondary");
+    static String dayLabel(LocalDate day) {
+        if (day == null) {
+            return I18n.t("archive.day.unknown");
+        }
+        LocalDate today = LocalDate.now();
+        if (day.equals(today)) {
+            return I18n.t("archive.day.today");
+        }
+        if (day.equals(today.minusDays(1))) {
+            return I18n.t("archive.day.yesterday");
+        }
+        String text = day.format(day.getYear() == today.getYear() ? DAY : DAY_YEAR);
+        return Character.toUpperCase(text.charAt(0)) + text.substring(1);
+    }
+
+    // ================================================================== preview and actions
+
+    /** Preview sheet of one game: large final position, players, result, and the actions. */
+    private void showActions(Row row) {
+        ArchivedGame game = row.game();
+        ChessBoardUI board = new ChessBoardUI(BoardThemes.currentBoard(), BoardThemes.currentPieces(), 40);
+        try {
+            board.setPosition(row.finalFen(), null);
+        } catch (RuntimeException e) {
+            board.resetBoard();
+        }
+        Label title = Ui.wrap(row.title(), "t-title");
+        Label when = Ui.wrap(game.playedAt() == null ? "" : game.playedAt().format(FULL), "t-small", "t-muted");
+        Label outcome = Ui.wrap(outcomeLine(game), "t-body-m");
+        Label players = Ui.wrap(I18n.t("archive.players", game.white(), game.black()), "t-small", "t-muted");
+        Label moves = Ui.wrap(I18n.t("archive.moves", game.fullMoves())
+                + (game.opening().isBlank() ? "" : " · " + game.opening()), "t-small", "t-muted");
+        VBox info = new VBox(8, title, when, outcome, players, moves);
+        info.setMinWidth(0);
+        HBox.setHgrow(info, Priority.ALWAYS);
+        HBox top = new HBox(22, board, info);
+        top.setAlignment(Pos.TOP_LEFT);
+
+        Button open = Ui.wide(I18n.t("archive.open"), "fth-bar-chart-2", "btn-inverse", "btn-lg");
         open.setOnAction(e -> {
             mainController.closeSheet();
-            showReview(game);
+            ReviewController.open(mainController, game);
         });
-        Button export = actionButton(I18n.t("archive.export"), "fth-download", "btn-secondary");
+        Button export = Ui.wide(I18n.t("archive.export"), "fth-download", "btn-outline");
         export.setOnAction(e -> {
             mainController.closeSheet();
-            io.github.hardin22.javachess.Utils.AppExecutors.io().execute(() -> {
-                try {
-                    java.nio.file.Path file = io.github.hardin22.javachess.Utils.AppPaths.exportDir()
-                            .resolve("javachess-partita-" + game.id() + ".pgn");
-                    String pgn = GameArchiveService.getInstance().exportPgn(java.util.List.of(game.id()));
-                    java.nio.file.Files.writeString(file, pgn, java.nio.charset.StandardCharsets.UTF_8);
-                    mainController.showToast(I18n.t("archive.exported", file));
-                } catch (java.io.IOException | RuntimeException ex) {
-                    ErrorReporter.showError(I18n.t("archive.title"), ErrorReporter.userMessage(ex));
-                }
-            });
+            exportGame(row);
         });
-        Button delete = actionButton(I18n.t("archive.delete"), "fth-trash-2", "btn-danger");
-        delete.setOnAction(e -> confirmDelete(game));
-        VBox content = new VBox(10, new Label(game.title() + " · " + game.meta()), open, export, delete);
-        content.getChildren().get(0).getStyleClass().add("card-description");
+        Button delete = Ui.wide(I18n.t("archive.delete"), "fth-trash-2", "btn-danger");
+        delete.setOnAction(e -> confirmDelete(row));
+        VBox content = new VBox(18, top, Ui.gap(4), open, Ui.equalRow(12, export, delete));
         mainController.showSheet(I18n.t("archive.game"), content);
     }
 
-    private void confirmDelete(Row game) {
-        Label text = new Label(I18n.t("archive.delete.confirm"));
-        text.getStyleClass().add("card-description");
-        text.setWrapText(true);
-        Button cancel = actionButton(I18n.t("common.cancel"), null, "btn-secondary");
+    private void exportGame(Row row) {
+        io.github.hardin22.javachess.Utils.AppExecutors.io().execute(() -> {
+            try {
+                java.nio.file.Path file = io.github.hardin22.javachess.Utils.AppPaths.exportDir()
+                        .resolve("javachess-partita-" + row.id() + ".pgn");
+                String pgn = GameArchiveService.getInstance().exportPgn(List.of(row.id()));
+                java.nio.file.Files.writeString(file, pgn, java.nio.charset.StandardCharsets.UTF_8);
+                mainController.showToast(I18n.t("archive.exported", file));
+            } catch (java.io.IOException | RuntimeException ex) {
+                ErrorReporter.showError(I18n.t("archive.title"), ErrorReporter.userMessage(ex));
+            }
+        });
+    }
+
+    private void confirmDelete(Row row) {
+        Label text = Ui.wrap(I18n.t("archive.delete.confirm"), "t-body", "t-muted");
+        Button cancel = Ui.wide(I18n.t("common.cancel"), null, "btn-outline", "btn-lg");
         cancel.setOnAction(e -> mainController.closeSheet());
-        Button confirm = actionButton(I18n.t("archive.delete"), "fth-trash-2", "btn-danger");
+        Button confirm = Ui.wide(I18n.t("archive.delete"), "fth-trash-2", "btn-danger-solid", "btn-lg");
         confirm.setOnAction(e -> {
             mainController.closeSheet();
             // same queue as the game saves: a delete can never overtake a pending save
             io.github.hardin22.javachess.Utils.AppExecutors.storage().execute(() -> {
-                GameArchiveService.getInstance().delete(game.id());
+                GameArchiveService.getInstance().delete(row.id());
                 Platform.runLater(this::loadArchive);
             });
         });
-        HBox buttons = new HBox(12, cancel, confirm);
-        HBox.setHgrow(cancel, Priority.ALWAYS);
-        HBox.setHgrow(confirm, Priority.ALWAYS);
-        mainController.showSheet(I18n.t("archive.delete.title"), new VBox(20, text, buttons));
+        mainController.showModalSheet(I18n.t("archive.delete.title"),
+                new VBox(24, text, Ui.equalRow(14, cancel, confirm)));
     }
 
-    private static Button actionButton(String text, String icon, String variant) {
-        Button b = new Button(text);
-        b.getStyleClass().addAll("btn", variant, "btn-lg");
-        if (icon != null) {
-            b.setGraphic(Icons.of(icon, 20));
-        }
-        b.setMaxWidth(Double.MAX_VALUE);
-        b.setAlignment(Pos.CENTER_LEFT);
-        return b;
+    // ================================================================== data
+
+    private void loadArchive() {
+        io.github.hardin22.javachess.Utils.AppExecutors.io().execute(() -> {
+            List<Row> rows = readRows();
+            Platform.runLater(() -> {
+                allRows = rows;
+                applyFilters();
+            });
+        });
     }
 
-    static String describeType(String type) {
-        String t = type.replace("Plaver", "Player");
-        if (t.startsWith("Player vs Stockfish livello")) {
-            return "Contro Stockfish · livello " + t.substring("Player vs Stockfish livello".length()).trim();
+    /** Reads the archive (newest first) and maps each game to a {@link Row}. Runs off the FX thread. */
+    private List<Row> readRows() {
+        List<Row> rows = new ArrayList<>();
+        try {
+            GameArchiveService archive = GameArchiveService.getInstance();
+            String lichessUser = Prefs.string("lichess.username", "").trim().toLowerCase(Locale.ROOT);
+            for (ArchivedGame game : archive.list()) {
+                String time = game.playedAt() == null ? "" : game.playedAt().format(TIME);
+                StringBuilder meta = new StringBuilder(time);
+                appendMeta(meta, I18n.t("archive.moves", game.fullMoves()));
+                if (!game.timeControl().isEmpty()) {
+                    appendMeta(meta, game.timeControl().replace("+", " + "));
+                }
+                String openingName = "Opening Name".equals(game.opening()) || "Unknown".equalsIgnoreCase(game.opening())
+                        ? "" : game.opening();
+                String detail = !openingName.isEmpty() ? openingName
+                        : !game.termination().isEmpty() ? game.termination() : "";
+                Integer outcome = outcome(game, lichessUser);
+                boolean decisive = "1-0".equals(game.result()) || "0-1".equals(game.result());
+                String search = (describe(game) + " " + game.white() + " " + game.black() + " " + game.label() + " "
+                        + game.opening()).toLowerCase(Locale.ITALIAN);
+                rows.add(new Row(game.id(), describe(game), meta.toString(), detail, resultText(game, outcome),
+                        outcome, decisive, game.finalFen().isEmpty() ? START_FEN : game.finalFen(),
+                        game.playedAt() == null ? null : game.playedAt().toLocalDate(), game, search));
+            }
+            String problem = archive.takeLoadProblemNotice(); // once, not at every visit
+            if (problem != null) {
+                ErrorReporter.showError(I18n.t("archive.title"), problem);
+            }
+        } catch (RuntimeException e) {
+            LOG.warn("Cannot read the archive", e);
         }
-        if (t.startsWith("Player vs ") && !t.equals("Player vs Player")) {
-            return "Contro " + t.substring("Player vs ".length()).trim(); // e.g. "Player vs Maia 1500"
+        return rows;
+    }
+
+    private static void appendMeta(StringBuilder sb, String part) {
+        if (sb.length() > 0) {
+            sb.append(" · ");
         }
-        if (t.equals("Player vs Player")) {
-            return I18n.t("pvp.title");
+        sb.append(part);
+    }
+
+    /** Result from the local player's point of view (against the computer, online), null when there is none. */
+    static Integer outcome(ArchivedGame game, String lichessUser) {
+        Boolean localWhite = localPlaysWhite(game, lichessUser);
+        if (localWhite == null) {
+            return null;
         }
-        if (t.startsWith("Online")) {
-            return "Online · browser";
+        return switch (game.result()) {
+            case "1-0" -> localWhite ? 1 : -1;
+            case "0-1" -> localWhite ? -1 : 1;
+            case "1/2-1/2" -> 0;
+            default -> null;
+        };
+    }
+
+    private static Boolean localPlaysWhite(ArchivedGame game, String lichessUser) {
+        if (game.mode() == ArchivedGame.GameMode.PVC) {
+            if (isLocal(game.white())) {
+                return true;
+            }
+            if (isLocal(game.black())) {
+                return false;
+            }
+            return null;
         }
-        return t.isBlank() ? "Partita" : t;
+        if (game.mode() == ArchivedGame.GameMode.LICHESS && !lichessUser.isEmpty()) {
+            if (game.white().equalsIgnoreCase(lichessUser)) {
+                return true;
+            }
+            if (game.black().equalsIgnoreCase(lichessUser)) {
+                return false;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isLocal(String name) {
+        return "Giocatore".equalsIgnoreCase(name) || "Tu".equalsIgnoreCase(name);
+    }
+
+    private static String resultText(ArchivedGame game, Integer outcome) {
+        if (outcome != null) {
+            return I18n.t(outcome > 0 ? "archive.tile.won" : outcome < 0 ? "archive.tile.lost" : "archive.tile.draw");
+        }
+        return switch (game.result()) {
+            case "1-0" -> "1-0";
+            case "0-1" -> "0-1";
+            case "1/2-1/2" -> "½-½";
+            default -> "—";
+        };
+    }
+
+    /** "Persa · scacco matto", "1-0 · per tempo", "Interrotta" (home card, review header, preview). */
+    static String outcomeLine(ArchivedGame game) {
+        Integer outcome = outcome(game, Prefs.string("lichess.username", "").trim().toLowerCase(Locale.ROOT));
+        String head = outcome != null
+                ? I18n.t(outcome > 0 ? "archive.outcome.won" : outcome < 0 ? "archive.outcome.lost"
+                : "archive.outcome.draw")
+                : switch (game.result()) {
+                    case "1-0" -> I18n.t("archive.outcome.white");
+                    case "0-1" -> I18n.t("archive.outcome.black");
+                    case "1/2-1/2" -> I18n.t("archive.outcome.draw");
+                    default -> I18n.t("archive.outcome.none");
+                };
+        String termination = game.termination();
+        if (termination.isBlank() || termination.equalsIgnoreCase("Interrotta") && "*".equals(game.result())) {
+            return head;
+        }
+        return head + " · " + termination.toLowerCase(Locale.ITALIAN);
     }
 
     static String scoreOf(String raw) {
         String r = raw.toLowerCase(Locale.ROOT);
-        if (r.equals("*")) {
-            return "—";
-        }
         if (r.equals("1-0") || (r.contains("bianco") && r.contains("vince"))) {
             return "1-0";
         }
@@ -245,83 +612,38 @@ public class ArchiveController implements NavigationAware {
         return "—";
     }
 
-    static String describeOutcome(String raw) {
-        if (raw == null || raw.isBlank() || raw.equalsIgnoreCase("unknown")) {
-            return "Risultato non disponibile";
+    static String describeType(String type) {
+        String t = type.replace("Plaver", "Player");
+        if (t.startsWith("Player vs Stockfish livello")) {
+            return "Stockfish · livello " + t.substring("Player vs Stockfish livello".length()).trim();
         }
-        return raw.endsWith(".") ? raw.substring(0, raw.length() - 1) : raw;
-    }
-
-    private void loadArchive() {
-        io.github.hardin22.javachess.Utils.AppExecutors.io().execute(() -> {
-            List<Row> games = readRows();
-            Platform.runLater(() -> {
-                archiveListView.getItems().setAll(games);
-                emptyState.setVisible(games.isEmpty());
-                archiveListView.setVisible(!games.isEmpty());
-                header.setSubtitle(games.isEmpty() ? I18n.t("archive.subtitle") : I18n.t("archive.count", games.size()));
-            });
-        });
-    }
-
-    /** Reads the archive (newest first) and maps each game to a {@link Row}. Runs off the FX thread. */
-    private List<Row> readRows() {
-        List<Row> rows = new ArrayList<>();
-        try {
-            GameArchiveService archive = GameArchiveService.getInstance();
-            for (ArchivedGame game : archive.list()) {
-                String when = game.playedAt() == null ? "" : game.playedAt().format(DATE);
-                String meta = game.timeControl().isEmpty() ? when
-                        : (when.isEmpty() ? "" : when + "  ·  ")
-                                + game.timeControl().replace(":00m", " min").replace("m +", " min +").replace("+", " + ")
-                                        .replace("  ", " ");
-                String opening = "Opening Name".equals(game.opening()) || "Unknown".equalsIgnoreCase(game.opening())
-                        ? "" : game.opening();
-                String detail = !opening.isEmpty() ? opening
-                        : !game.termination().isEmpty() ? game.termination() : describeOutcome("");
-                rows.add(new Row(game.id(), describe(game), meta, detail, scoreOf(game.result()),
-                        game.finalFen().isEmpty() ? START_FEN : game.finalFen(), game.movesAsUciString(),
-                        game.initialFen().isEmpty() ? START_FEN : game.initialFen(), game.whiteRating(),
-                        game.blackRating()));
-            }
-            String problem = archive.takeLoadProblemNotice(); // once, not at every visit
-            if (problem != null) {
-                ErrorReporter.showError("Archivio", problem);
-            }
-        } catch (RuntimeException e) {
-            LOG.warn("Cannot read the archive", e);
+        if (t.startsWith("Player vs ") && !t.equals("Player vs Player")) {
+            return t.substring("Player vs ".length()).trim(); // e.g. "Maia 1500"
         }
-        return rows;
+        if (t.equals("Player vs Player")) {
+            return I18n.t("pvp.title");
+        }
+        if (t.startsWith("Online")) {
+            return I18n.t("archive.mode.browser");
+        }
+        return t.isBlank() ? I18n.t("archive.game") : t;
     }
 
-    private static final java.time.format.DateTimeFormatter DATE =
-            java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm");
-
-    /** Title of a row: how the game was played. */
+    /** Title of a row: the opponent, or how the game was played. */
     static String describe(ArchivedGame game) {
         String label = game.label();
         if (label.startsWith("Player") || label.startsWith("Plaver") || label.startsWith("Online")) {
             return describeType(label);
         }
         return switch (game.mode()) {
-            case PVC -> label.isEmpty() ? I18n.t("pvc.title") : "Contro " + label.replace(" livello", " · livello");
+            case PVC -> label.isEmpty() ? I18n.t("pvc.title") : label.replace(" livello", " · livello");
             case PVP -> I18n.t("pvp.title");
-            case LICHESS -> label.isEmpty() ? "Lichess" : "Lichess · " + label;
-            case BROWSER -> "Online · browser";
+            case LICHESS -> !"?".equals(game.white()) && !"?".equals(game.black())
+                    ? game.white() + " – " + game.black() : label.isEmpty() ? "Lichess" : "Lichess · " + label;
+            case BROWSER -> I18n.t("archive.mode.browser");
             case PUZZLE -> I18n.t("puzzle.title");
-            case IMPORTED -> label.isEmpty() ? "Partita importata" : label;
-            default -> label.isEmpty() ? "Partita" : label;
+            case IMPORTED -> label.isEmpty() ? I18n.t("archive.imported") : label;
+            default -> label.isEmpty() ? I18n.t("archive.game") : label;
         };
-    }
-
-    private void showReview(Row game) {
-        ReviewController reviewController = (ReviewController) mainController.getController("REVIEW");
-        mainController.navigateTo("REVIEW");
-        reviewController.loadGame(game.moves(), game.initialFen(), game.whiteRating(), game.blackRating());
-    }
-
-    @FXML
-    private void backToHome() {
-        mainController.navigateTo("HOME");
     }
 }

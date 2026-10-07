@@ -754,8 +754,11 @@ public class BoardStateManager implements BoardHardware.SensorListener {
             }
         }
         String[] parts = logical.getFen().split(" ");
+        boolean partial = !fen.toString().equals(parts[0]);
         for (int i = 1; i < parts.length; i++) {
-            fen.append(' ').append(parts[i]);
+            // with pieces in the air (e.g. the king lifted) an en passant square makes the FEN unreadable for
+            // chesslib (it checks the capture against the king): drop it from the picture of the board
+            fen.append(' ').append(i == 3 && partial ? "-" : parts[i]);
         }
         return fen.toString();
     }
