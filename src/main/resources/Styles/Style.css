@@ -877,7 +877,7 @@
 
 .move-san {
     -fx-font-size: 17px;
-    -fx-font-family: "Geist Mono Medium";
+    -fx-font-family: "Geist Medium";
     -fx-text-fill: -color-fg;
     -fx-padding: 6 10;
     -fx-background-radius: 6;
@@ -1121,7 +1121,7 @@
     -fx-font-family: "Geist Mono SemiBold";
     -fx-padding: 4 10;
     -fx-background-radius: 4;
-    -fx-min-width: 64px;
+    -fx-pref-width: 80px;
     -fx-alignment: center;
 }
 
@@ -1142,7 +1142,7 @@
 }
 
 .analysis-moves {
-    -fx-font-family: "Geist Mono";
+    -fx-font-family: "Geist";
     -fx-font-size: 16px;
     -fx-text-fill: -color-fg;
 }

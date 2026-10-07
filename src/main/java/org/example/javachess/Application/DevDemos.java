@@ -28,6 +28,10 @@ final class DevDemos {
                 case "game" -> game(main);
                 case "review" -> review(main);
                 case "puzzle" -> puzzle(main);
+                case "settings-advanced" -> {
+                    main.navigateTo("SETTINGS");
+                    ((org.example.javachess.Controllers.SettingsController) main.getController("SETTINGS")).openAdvanced();
+                }
                 default -> LOG.warn("Unknown demo {}", demo);
             }
         } catch (RuntimeException e) {

@@ -183,7 +183,7 @@ public class PuzzleController implements NavigationAware {
     /** Stores the result once per puzzle (progress file I/O off the FX thread). */
     private void recordAttempt(boolean solvedCleanly) {
         Puzzle puzzle = currentPuzzle;
-        if (puzzle == null || currentRecorded) {
+        if (puzzle == null || currentRecorded || System.getProperty("javachess.snapshot") != null) {
             return;
         }
         currentRecorded = true;
