@@ -106,6 +106,8 @@ public final class ReviewClassifier {
          * pawn race), not Brilliant.
          */
         final boolean brilliantNoLiquidation;
+        /** Phase 4 B-E10: a recapture is a sacrifice only when the recapturing piece is lost for at least sacMin. */
+        final boolean brilliantRecaptureNet;
         final double brilliantTopRegain;
         /** v2.3 R9: a quiet move starting a forced mate is Great when the alternative does not win. */
         final boolean greatStartsMate;
@@ -249,6 +251,7 @@ public final class ReviewClassifier {
             greatPunishCaptureLoss = get("greatPunishCaptureLoss", 0.20);
             brilliantTopException = get("brilliantTopException", 1) != 0;
             brilliantNoLiquidation = get("brilliantNoLiquidation", 1) != 0;
+            brilliantRecaptureNet = get("brilliantRecaptureNet", 1) != 0;
             brilliantTopRegain = get("brilliantTopRegain", 1);
             greatInCheckGap = get("greatInCheckGap", 0.10);
             greatLowRating = get("greatLowRating", 1500);
@@ -790,7 +793,11 @@ public final class ReviewClassifier {
         Board b0 = board(replay.fens().get(i));
         String uci = replay.uci().get(i);
         if (t.brilliantRule == 2 && brilliantV19(b0, uci, me, isTop, alternative, played, epBefore, epAfter, t, k,
-                playedLine(uci, p0, p1))) {
+                playedLine(uci, p0, p1)) && !(t.brilliantRecaptureNet && i > 0 && isRecapture(replay, i)
+                && Sacrifice.of(b0, uci, me).movedNet() < t.sacMin)) {
+            // B-E10: taking back on the square of the opponent's capture is a sacrifice only when the recapturing
+            // piece itself is lost for at least sacMin (live_173981415730 19...Nxd4 cxd4 Rxd4: a knight for two pawns
+            // at +7.8, chess.com Best; Nxe6+ and Carlsen's Rxh6+ give up 2 and 4: Brilliant)
             return MoveClassification.BRILLIANT;
         }
         if (t.brilliantRule == 1 && brilliantBySee(b0, uci, me, alternative, played, epBefore, epAfter, t, k)) {

@@ -483,6 +483,17 @@ class BrilliantGreatExclusionsTest {
         assertEquals(MoveClassification.BRILLIANT, label(nxf4, Tuning.DEFAULT.with("brilliantNoLiquidation", 0)));
     }
 
+    @Test
+    void bE10ARecaptureIsASacrificeOnlyWhenThePieceItselfIsLost() {
+        // live_173981415730 ply 38, 19.exd4 Nxd4 (+7.8 for Black, chess.com Best): cxd4 Rxd4 gives a knight for two
+        // pawns, counted as a sacrifice only by the v2.1 piece rule
+        ReviewInput nxd4 = rated(twoMoves("3r1rk1/2p2ppp/bpn5/2q5/3pP1n1/pPP1P3/P1BQ2PP/1NK3RR w - - 0 19", "e3d4",
+                Eval.cp(-786), "e3d4", "c6d4", Eval.cp(-784), "c6d4", Eval.cp(-428), "c5e7", Eval.cp(-784)),
+                1927, 1957);
+        assertNotEquals(MoveClassification.BRILLIANT, label(nxd4, Tuning.DEFAULT));
+        assertEquals(MoveClassification.BRILLIANT, label(nxd4, Tuning.DEFAULT.with("brilliantRecaptureNet", 0)));
+    }
+
     private static ReviewInput rated(ReviewInput in, int white, int black) {
         return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
     }
