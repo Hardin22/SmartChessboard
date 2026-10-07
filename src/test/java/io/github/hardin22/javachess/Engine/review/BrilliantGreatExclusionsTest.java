@@ -455,6 +455,15 @@ class BrilliantGreatExclusionsTest {
         return new ReviewInput(in.initialFen(), in.uciMoves(), ps, in.book(), in.whiteRating(), in.blackRating());
     }
 
+    @Test
+    void takingAFreeCheckingPieceIsNotGreat() {
+        // live_170725680910 ply 76, 38.Re8+?! Rxe8 (Black 1520, chess.com Best): the checking rook is simply en prise
+        ReviewInput rxe8 = rated(oneMove("3rR1k1/p2r2p1/1p6/6p1/P7/6P1/8/3R2K1 b - - 1 38", "d8e8", Eval.cp(-378),
+                "d8e8", Eval.cp(646), "g8h7", Eval.cp(-397)), 1660, 1520);
+        assertEquals(MoveClassification.BEST, label(rxe8, Tuning.DEFAULT));
+        assertEquals(MoveClassification.GREAT, label(rxe8, Tuning.DEFAULT.with("greatInCheckFreeMaterial", 0)));
+    }
+
     private static ReviewInput rated(ReviewInput in, int white, int black) {
         return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
     }

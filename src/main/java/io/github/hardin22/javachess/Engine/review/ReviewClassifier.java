@@ -140,6 +140,8 @@ public final class ReviewClassifier {
         final double greatKingFlightGap;
         /** v2.5: pushing again the passed pawn moved on the mover's previous turn is not Great (the plan goes on). */
         final boolean greatPawnFollowUp;
+        /** Phase 4: an answer to check taking free material (SEE > 0) follows the free material rule of captures. */
+        final boolean greatInCheckFreeMaterial;
         /** v1.9: no capture is Great (G-E1). */
         final boolean greatNoCapture;
         /**
@@ -250,6 +252,7 @@ public final class ReviewClassifier {
             greatInCheckMaxEp = get("greatInCheckMaxEp", 0.90);
             greatKingFlightGap = get("greatKingFlightGap", 0.17);
             greatPawnFollowUp = get("greatPawnFollowUp", 1) != 0;
+            greatInCheckFreeMaterial = get("greatInCheckFreeMaterial", 1) != 0;
             pieceSacrifice = get("pieceSacrifice", 1) != 0;
             outcomeLow = get("outcomeLow", 0.40);
             outcomeHigh = get("outcomeHigh", 0.60);
@@ -858,7 +861,11 @@ public final class ReviewClassifier {
                 return t.greatKingFlightGap > 0 && !Tactics.isCapture(b0, uci)
                         && second.move().startsWith(uci.substring(0, 2)) && gap >= t.greatKingFlightGap;
             }
-            return t.greatInCheck && m != null && !recapture && gap >= t.greatInCheckGap
+            // Phase 4: taking a checking piece that is simply en prise is free material, routine like any other
+            // capture of free material from 1000 (177 games: 4 of 4 Best, 75...Rxe8 live_170725680910)
+            boolean freeChecker = t.greatInCheckFreeMaterial && m != null && b0.getPiece(m.getTo()) != Piece.NONE
+                    && Tactics.see(b0, m.getTo()) > 0 && r >= t.greatFreeMaterialRating;
+            return t.greatInCheck && m != null && !recapture && !freeChecker && gap >= t.greatInCheckGap
                     && epBefore <= t.greatInCheckMaxEp;
         }
         boolean capture = Tactics.isCapture(b0, uci);

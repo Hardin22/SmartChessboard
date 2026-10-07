@@ -1,6 +1,6 @@
 # Brilliant/Great errors accepted today by SpecialLabelsGateTest (Phase 4). It only shrinks: regenerate
 # (-Dreview.special.regen=true) after fixing errors. Allowlisted exceptions are not repeated here.
-# exact 0.6820 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
+# exact 0.6823 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
 id	ply	kind	set	san	ours	chesscom
 daily_1008989784	49	fp-brilliant	ex-holdout49	Bf8	brilliant	excellent
 daily_1009092152	30	fn-great	cv93	Bxb5	best	great
@@ -64,7 +64,6 @@ live_169307682848	22	fn-great	cv93	Ne3	excellent	great
 live_170651071526	39	fn-brilliant	ex-holdout49	Nxf7	best	brilliant
 live_170725680910	49	fn-brilliant	ex-holdout49	Rd5	good	brilliant
 live_170725680910	74	fn-great	ex-holdout49	Rfxd7	best	great
-live_170725680910	76	fp-great	ex-holdout49	Rxe8	great	best
 live_170725680910	122	fn-great	ex-holdout49	Kh6	best	great
 live_170725680910	139	fn-great	ex-holdout49	Rh8+	best	great
 live_170725680910	144	fn-great	ex-holdout49	Rg6+	excellent	great
@@ -149,7 +148,6 @@ live_184218578888	63	fn-great	cv93	Ke3	best	great
 live_184225478128	38	fn-great	cv93	Nxd1	best	great
 live_184274854214	33	fn-great	ex-holdout49	O-O	best	great
 live_184274854214	52	fn-great	ex-holdout49	Rf8	excellent	great
-live_184274854214	54	fp-great	ex-holdout49	Qxg6	great	best
 live_184308204442	55	fp-great	ex-holdout49	Nxf4	great	best
 live_184308204442	66	fp-great	ex-holdout49	Nf4	great	best
 live_184308204442	115	fn-great	ex-holdout49	h6+	best	great
@@ -176,7 +174,6 @@ live_20637053973	38	fn-brilliant	cv93	Qxf2	inaccuracy	brilliant
 anderssen_dufresne_1852	15	fn-great	famous-brilliant	Qb3	best	great
 anderssen_dufresne_1852	16	fn-great	famous-brilliant	Qf6	best	great
 anderssen_dufresne_1852	20	fn-great	famous-brilliant	Nge7	best	great
-anderssen_dufresne_1852	34	fp-great	famous-brilliant	gxf6	great	best
 anderssen_dufresne_1852	39	fn-great	famous-brilliant	Rxe7+	best	great
 aronian_anand_2013	26	fn-brilliant	famous-brilliant	Ng4	excellent	brilliant
 aronian_anand_2013	28	fn-great	famous-brilliant	cxd4	best	great
@@ -215,7 +212,6 @@ kasparov_topalov_1999	63	fn-great	famous-brilliant	Qxa6+	best	great
 kasparov_topalov_1999	65	fn-brilliant	famous-brilliant	c3+	excellent	brilliant
 levitsky_marshall_1912	37	fn-great	famous-brilliant	Rxd5	best	great
 levitsky_marshall_1912	44	fn-brilliant	famous-brilliant	Rxh3	best	brilliant
-nezhmetdinov_chernikov_1962	25	fp-great	famous-brilliant	Nxe2	great	best
 nezhmetdinov_chernikov_1962	40	fn-great	famous-brilliant	Qd8	best	great
 nezhmetdinov_chernikov_1962	41	fn-great	famous-brilliant	Nxf6	best	great
 polugaevsky_nezhmetdinov_1958	26	fn-great	famous-brilliant	Bh6	excellent	great
