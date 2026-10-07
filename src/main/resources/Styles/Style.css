@@ -555,7 +555,7 @@
     -fx-border-width: 1;
     -fx-background-insets: 0;
     -fx-padding: 0 16;
-    -fx-min-height: 44px;
+    -fx-min-height: 48px;
     -fx-font-size: 15px;
     -fx-font-family: "Geist Medium";
     -fx-text-fill: -color-fg;
@@ -689,7 +689,7 @@
 .switch {
     -fx-background-color: transparent;
     -fx-background-insets: 0;
-    -fx-padding: 4;
+    -fx-padding: 8;
     -fx-cursor: hand;
     -fx-border-color: transparent;
     -fx-border-radius: 999;

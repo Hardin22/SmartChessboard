@@ -32,7 +32,8 @@ public class MoveListView extends ListView<MoveListView.Row> {
     }
 
     private final ObservableList<Row> rows = FXCollections.observableArrayList();
-    private int currentPly;
+    /** Cells listen to this instead of a full refresh() on every move (cheaper with software rendering). */
+    private final javafx.beans.property.IntegerProperty currentPly = new javafx.beans.property.SimpleIntegerProperty();
     private boolean blackStarts;
     private IntConsumer onPlySelected;
 
@@ -52,7 +53,7 @@ public class MoveListView extends ListView<MoveListView.Row> {
 
     public void clear() {
         rows.clear();
-        currentPly = 0;
+        currentPly.set(0);
     }
 
     /** Recomputes SAN for the given moves played from {@code startFen}; keeps unchanged rows. */
@@ -99,8 +100,7 @@ public class MoveListView extends ListView<MoveListView.Row> {
 
     /** Highlights the move that leads to the position after {@code ply} half-moves (0 = start position). */
     public void setCurrentPly(int ply) {
-        this.currentPly = ply;
-        refresh();
+        this.currentPly.set(ply);
         if (!rows.isEmpty()) {
             int rowIndex = Math.max(0, Math.min(rows.size() - 1, rowOfPly(ply)));
             scrollTo(Math.max(0, rowIndex - 3));
@@ -130,6 +130,20 @@ public class MoveListView extends ListView<MoveListView.Row> {
             black.setMaxWidth(Double.MAX_VALUE);
             white.setOnMouseClicked(e -> select(true));
             black.setOnMouseClicked(e -> select(false));
+            currentPly.addListener((obs, o, n) -> updateCurrent());
+        }
+
+        private void updateCurrent() {
+            Row row = getItem();
+            if (row == null || isEmpty()) {
+                white.pseudoClassStateChanged(CURRENT, false);
+                black.pseudoClassStateChanged(CURRENT, false);
+                return;
+            }
+            int whitePly = (blackStarts && getIndex() == 0) ? -1 : row.whitePly();
+            int blackPly = (blackStarts && getIndex() == 0) ? 1 : row.whitePly() + 1;
+            white.pseudoClassStateChanged(CURRENT, whitePly > 0 && whitePly == currentPly.get());
+            black.pseudoClassStateChanged(CURRENT, !row.black().isEmpty() && blackPly == currentPly.get());
         }
 
         private void select(boolean whiteMove) {
@@ -151,15 +165,13 @@ public class MoveListView extends ListView<MoveListView.Row> {
             super.updateItem(row, empty);
             if (empty || row == null) {
                 setGraphic(null);
+                updateCurrent();
                 return;
             }
             number.setText(row.number() + ".");
             white.setText(row.white());
             black.setText(row.black());
-            int whitePly = (blackStarts && getIndex() == 0) ? -1 : row.whitePly();
-            int blackPly = (blackStarts && getIndex() == 0) ? 1 : row.whitePly() + 1;
-            white.pseudoClassStateChanged(CURRENT, whitePly > 0 && whitePly == currentPly);
-            black.pseudoClassStateChanged(CURRENT, !row.black().isEmpty() && blackPly == currentPly);
+            updateCurrent();
             setGraphic(box);
         }
     }

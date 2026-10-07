@@ -95,13 +95,32 @@ public class AnalysisPanel extends VBox {
         statusLabel.setVisible(!currentStatusMessage.isEmpty());
     }
 
-    /** Game messages sometimes arrive in capitals ("SCACCHIERA PRONTA!"): show them in sentence case. */
-    private static String prettify(String s) {
-        if (s.length() > 3 && s.equals(s.toUpperCase()) && s.chars().anyMatch(Character::isLetter)) {
-            String lower = s.toLowerCase();
-            return Character.toUpperCase(lower.charAt(0)) + lower.substring(1);
+    /**
+     * Game messages often arrive (partly) in capitals ("SCACCHIERA PRONTA! Partita Iniziata"): show them in
+     * sentence case, capitalising after . ! ? as well. Square names (e2, F8) are kept upper-case.
+     */
+    static String prettify(String s) {
+        long letters = s.chars().filter(Character::isLetter).count();
+        long upper = s.chars().filter(Character::isUpperCase).count();
+        if (letters < 4 || upper < letters * 0.5) {
+            return s;
         }
-        return s;
+        StringBuilder out = new StringBuilder(s.length());
+        boolean capitalizeNext = true;
+        for (String word : s.toLowerCase().split("(?<=\\s)")) {
+            String w = word;
+            if (w.trim().matches("[a-h][1-8][,.!?:]?")) {
+                w = w.toUpperCase();
+            } else if (capitalizeNext && !w.isBlank()) {
+                w = Character.toUpperCase(w.charAt(0)) + w.substring(1);
+            }
+            out.append(w);
+            String t = w.trim();
+            if (!t.isEmpty()) {
+                capitalizeNext = t.endsWith(".") || t.endsWith("!") || t.endsWith("?");
+            }
+        }
+        return out.toString();
     }
 
     private void updateVisibility() {
