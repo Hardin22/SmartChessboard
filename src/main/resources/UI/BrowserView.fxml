@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.ProgressBar?>
@@ -8,7 +7,7 @@
 <?import javafx.scene.layout.FlowPane?>
 <?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
-<?import io.github.hardin22.javachess.Components.ScreenHeader?>
+<?import io.github.hardin22.javachess.Components.*?>
 <?import org.kordamp.ikonli.javafx.FontIcon?>
 
 <!--
@@ -36,7 +35,6 @@
                     </Button>
                 </FlowPane>
                 <Button fx:id="btnToggleVision" onAction="#onToggleVision" visible="false" managed="false"/>
-                <VBox.margin><Insets top="-120"/></VBox.margin>
             </VBox>
         </StackPane>
     </center>

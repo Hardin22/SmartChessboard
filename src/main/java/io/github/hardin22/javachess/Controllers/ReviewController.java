@@ -299,10 +299,10 @@ public class ReviewController implements Screen, GameNavigationListener {
         }
         root.setBottom(null);
         root.setTop(null);
-        body.getChildren().addAll(header, summary, moveCard, linesBox, evaluationGraph, Ui.vgrow(), bottomBar);
+        body.getChildren().addAll(header, summary, moveCard, evaluationGraph, Ui.vgrow(), bottomBar);
         body.setPrefWidth(620);
         body.setMinWidth(480);
-        VBox moves = new VBox(12, followStatus, tabBarNode, tabContent);
+        VBox moves = new VBox(12, followStatus, linesBox, tabBarNode, tabContent);
         moves.setPadding(new Insets(24, 0, 24, 0));
         moves.setPrefWidth(520);
         moves.setMinWidth(380);

@@ -24,6 +24,8 @@ e cosa è cambiato nel codice.
 | **Tipografia**: Geist e Geist Light per i numeri grandi; niente cifre monospaziate visibili (lo zero barrato di Geist Mono stona negli orologi e nei punteggi). Testo corrente 22–24 px, titoli 38–44, numeri 52–76, orologi fino a 230. | Leggibilità a distanza e un'aria elegante senza effetti costosi. |
 | **Prestazioni**: nessuna ombra né sfocatura, nessuna animazione continua; transizioni da 160–240 ms solo dopo un tocco (`-Djavachess.animations=off` le toglie); l'orologio aggiorna un'etichetta per cella al secondo; liste virtualizzate. | Il Pi usa spesso il rendering software, dove ogni effetto si paga a ogni ridisegno. |
 | **Lichess nel browser integrato** come Chess.com (tile «Online» → foglio con le due voci). | Richiesta dell'utente; il flusso via Board API resta in Impostazioni → Avanzate. |
+| **Linee del computer nella revisione**, sempre visibili sotto la carta della mossa (2 di default, 1–3), con tocco = variante; «Vedi la migliore» sugli errori; varianti con «Torna alla partita». | Era la lamentela esplicita dell'utente. La logica è il view-model `AnalysisSession` di features (package `Analysis`); la schermata lo presenta e basta. |
+| **Mosse dallo schermo** (tocco sul pezzo → punti sulle case possibili → tocco sulla destinazione) solo senza scacchiera collegata; in revisione creano varianti. | Senza scacchiera (o se si scollega) la partita non deve essere un vicolo cieco; con la scacchiera collegata una mossa sullo schermo disallineerebbe i sensori. |
 
 ## Architettura UI
 
@@ -47,6 +49,22 @@ e cosa è cambiato nel codice.
 - Abbandono e patta d'accordo usano l'API esistente `endGame(messaggio, salva)` con messaggi che l'archivio già
   interpreta («Il Bianco abbandona: vince il Nero» → 0-1, Abbandono; «Patta d'accordo» → ½-½).
 
+## Integrazioni con le altre sessioni
+
+- **features** (package `Analysis`, su main 2c68808): `ReviewController` usa `AnalysisSession` per navigazione,
+  varianti, linee del computer (`EngineLines`), apertura offline, «mostra la migliore», scacchiera fisica che segue
+  l'analisi (`BoardFollower`, dal menu ⋯) e `ReviewInsights` (precisione per fase, momenti chiave nel Riepilogo).
+  La scacchiera si ridisegna solo su `positionProperty()` (una notifica per mossa). Il package `Play` (cadenze,
+  livelli in Elo, ripresa della partita, posizione da FEN) è su main ma la sua specifica UI (spec 03) non era ancora
+  arrivata: da collegare in `PvcSetupController`/`ActiveGameController`.
+- **qa**: le mosse dallo schermo usano l'API esistente `handleMoveInput`; quando qa porterà su main
+  `AbstractGame.isAwaitingHumanMove()` e l'UCI a 5 caratteri, sostituire la regola in
+  `ActiveGameController.screenMovesAllowed()` e aggiungere il selettore di promozione (oggi auto-donna, come la
+  logica). Il messaggio di risincronizzazione («Rimetti i pezzi…») è già riconosciuto come fase di preparazione.
+- **browser**: `BrowserView.fxml` è mia per l'aspetto, con il contratto concordato (`statusTitle`,
+  `statusDetail`, `statusProgress`, `actionBox` riempito con pulsanti `btn btn-lg` + variante); logica, stati e
+  barra Swing sono della sessione browser.
+
 ## Verifica
 
 - Screenshot sul monitor reale (schermo 1) per ogni schermata e stato, scuro e chiaro, verticale, ruotato e
@@ -56,4 +74,17 @@ e cosa è cambiato nel codice.
 - Archivio dimostrativo: `-Djavachess.home=<cartella vuota> -Djavachess.demo.seed=240` lo riempie con partite
   storiche di pubblico dominio (`src/main/resources/demo/famous-games.tsv`) registrate come partite locali di ogni
   modalità. Le etichette e la precisione della revisione sono calcolate dal classificatore reale.
-- Test: unitari e E2E verdi (vedi il commit finale).
+- Prestazioni con `-Dprism.order=sw` (Mac, scena della partita a due con l'orologio che scorre, Home): CPU dell'app
+  1–3% a riposo; nessuna animazione continua.
+- Test: `./mvnw test` → 454 test (6 E2E), 0 falliti, 10 saltati (test di motore/dati opzionali). Gli E2E non sono
+  stati indeboliti: stessi scenari e controlli (partita fino al matto archiviata, cambio motore, tempo scaduto,
+  puzzle, revisione con precisione, archivio apri/esporta/elimina).
+
+## Aperti
+
+- Spec 03 di features (partita contro il computer: livelli in Elo, orologio, annulla, suggerimento a richiesta,
+  patta al bot, ripresa dopo riavvio, partita da posizione) e spec 02 (rigioca i tuoi errori): da collegare quando
+  arrivano.
+- Due giocatori in orizzontale: le metà stanno diritte ai lati della scacchiera (in un montaggio orizzontale i
+  giocatori non siedono alle due estremità); ruotarle di ±90° è possibile ma non è stato necessario.
+- La schermata del browser (segnaposto mentre JCEF parte) andrà ricontrollata dopo il merge della sessione browser.
