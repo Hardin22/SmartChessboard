@@ -81,8 +81,11 @@ class CoachLatencyTest {
                 MoveFeedback first = verdicts.get(0);
                 latency.add(first.latencyMs());
                 depths.add(first.depth());
-                // depth 0 = the move ended the game (mate/stalemate): exact verdict without search
-                assertTrue(first.depth() >= b.coachMinDepth() || first.depth() == 0, "depth " + first.depth());
+                // depth 0 = the move ended the game (mate/stalemate): exact verdict without search; the engine's top
+                // move is BEST at once with the depth of the position before (trusted from coachMinDepth - 2)
+                boolean instantTop = first.quality() == MoveQuality.BEST && first.depth() >= b.coachMinDepth() - 2;
+                assertTrue(first.depth() >= b.coachMinDepth() || first.depth() == 0 || instantTop,
+                        "depth " + first.depth() + " " + first.quality());
                 await(coach::isIdle);
             }
             analyzer.stop();
