@@ -18,7 +18,8 @@ import java.util.List;
 /**
  * The review core of {@code Engine.review} ({@link GameReviewer}) with explicit, reproducible settings:
  * {@code -Dreview.nodes} (default: the Stockfish Lite budget), {@code -Dreview.processes}, {@code -Dreview.hash}.
- * Evaluations are cached in {@code target/review-cache} (keyed by position, MultiPV and nodes), so re-running the
+ * Evaluations are cached in {@code target/review-cache/n<nodes>-<secondLineNodes>} (one directory per budget, since
+ * the cache serves a request from any deeper entry), so re-running the
  * harness after a classifier change costs no engine time; {@code -Dreview.cache=false} measures cold runs.
  */
 public final class CoreReviewer implements Reviewer {
@@ -37,10 +38,10 @@ public final class CoreReviewer implements Reviewer {
                 base.hashMb()));
         PositionEvaluator pool = new StockfishPool(stockfish, settings.processes(), settings.hashMb());
         boolean cache = !"false".equals(System.getProperty("review.cache"));
-        PositionEvaluator evaluator = cache
-                ? new CachingEvaluator(pool, EvalCache.in(Path.of(System.getProperty("review.cacheDir",
-                "target/review-cache")), pool.id()))
-                : pool;
+        // one cache per budget: EvalCache serves any request from a deeper entry, which would mix budgets
+        Path cacheDir = Path.of(System.getProperty("review.cacheDir", "target/review-cache"))
+                .resolve("n" + settings.nodes() + "-" + settings.secondLineNodes());
+        PositionEvaluator evaluator = cache ? new CachingEvaluator(pool, EvalCache.in(cacheDir, pool.id())) : pool;
         reviewer = new GameReviewer(evaluator, settings, OpeningBook.standard());
         name = String.format("GameReviewer core, %dk nodes (2nd line %dk), %d processes x 1 thread, hash %d%s",
                 settings.nodes() / 1000, settings.secondLineNodes() / 1000, settings.processes(), settings.hashMb(),
