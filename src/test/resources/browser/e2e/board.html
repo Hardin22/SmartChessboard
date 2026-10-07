@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>javaChess test board</title>
+<!--
+  Local stand-in for chess.com / lichess used by the opt-in JCEF end-to-end test. Query parameters:
+    site=lichess|chesscom   markup to imitate (lichess: cg-board + piece transforms; chess.com: wc-chess-board + square-XY)
+    fen=<placement>         position (default: start)
+    orientation=white|black
+    top=<px>                space above the board (to push it out of view)
+  Moves are made like on the sites: click a piece, then a square; a promotion opens a menu on the promotion square.
+-->
+<style>
+  html, body { margin: 0; background: #262421; font-family: sans-serif; }
+  #spacer { height: 0; }
+  .wrap { position: relative; width: 640px; height: 640px; margin: 8px auto; }
+  .board-bg { position: absolute; inset: 0; }
+  .board-bg div { position: absolute; width: 80px; height: 80px; }
+  cg-board, wc-chess-board { position: absolute; inset: 0; display: block; }
+  piece, .piece { position: absolute; width: 80px; height: 80px; background-size: cover; pointer-events: none; }
+  square { position: absolute; width: 80px; height: 80px; pointer-events: none; }
+  square.last-move, .highlight { background: rgba(155, 199, 0, 0.41); position: absolute; width: 80px; height: 80px; }
+  .promotion { position: absolute; width: 80px; height: 80px; background: #fff; z-index: 3; background-size: cover; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="spacer"></div>
+<main id="main"><div class="wrap" id="wrap"><div class="board-bg"></div></div></main>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const site = q.get('site') || 'lichess';
+  const black = q.get('orientation') === 'black';
+  document.getElementById('spacer').style.height = (q.get('top') || '0') + 'px';
+  const SQ = 80;
+  const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
+  const pieces = {}; // "e2" -> "P"
+  const ranks = (q.get('fen') || START).split(' ')[0].split('/');
+  ranks.forEach((row, i) => {
+    let f = 0;
+    for (const c of row) {
+      if (/\d/.test(c)) { f += Number(c); } else { pieces['abcdefgh'[f] + (8 - i)] = c; f++; }
+    }
+  });
+  const NAMES = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
+  const img = (c) => 'url("../../vision/pieces/Classico/' + (c === c.toUpperCase() ? 'w' : 'b') + c.toLowerCase() + '.png")';
+  const xy = (sq) => {
+    const f = sq.charCodeAt(0) - 97, r = Number(sq[1]) - 1;
+    return black ? [(7 - f) * SQ, r * SQ] : [f * SQ, (7 - r) * SQ];
+  };
+  const wrap = document.getElementById('wrap');
+  const bg = wrap.querySelector('.board-bg'); // a1 (and h8) dark, like every real board
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) {
+      const d = document.createElement('div');
+      d.style.cssText = 'left:' + col * SQ + 'px;top:' + row * SQ + 'px;background:' + ((row + col) % 2 ? '#b58863' : '#f0d9b5');
+      bg.appendChild(d);
+    }
+  }
+  document.body.setAttribute('data-javachess-site', site);
+  let board;
+  if (site === 'chesscom') {
+    board = document.createElement('wc-chess-board');
+    board.className = 'board' + (black ? ' flipped' : '');
+  } else {
+    document.getElementById('main').className = 'analyse';
+    const cgWrap = document.createElement('div');
+    cgWrap.className = 'cg-wrap orientation-' + (black ? 'black' : 'white');
+    cgWrap.style.cssText = 'position:absolute;inset:0';
+    const container = document.createElement('cg-container');
+    container.style.cssText = 'position:absolute;inset:0;display:block';
+    board = document.createElement('cg-board');
+    container.appendChild(board);
+    cgWrap.appendChild(container);
+    wrap.appendChild(cgWrap);
+  }
+  if (site === 'chesscom') wrap.appendChild(board);
+  let last = [];
+  function render() {
+    board.innerHTML = '';
+    for (const sq of last) {
+      const [x, y] = xy(sq);
+      if (site === 'chesscom') {
+        const h = document.createElement('div');
+        h.className = 'highlight square-' + (sq.charCodeAt(0) - 96) + sq[1];
+        h.style.cssText = 'left:' + x + 'px;top:' + y + 'px';
+        board.appendChild(h);
+      } else {
+        const s = document.createElement('square');
+        s.className = 'last-move';
+        s.style.transform = 'translate(' + x + 'px, ' + y + 'px)';
+        board.appendChild(s);
+      }
+    }
+    for (const [sq, c] of Object.entries(pieces)) {
+      const [x, y] = xy(sq);
+      const lower = c.toLowerCase();
+      const color = c === c.toUpperCase() ? 'w' : 'b';
+      let el;
+      if (site === 'chesscom') {
+        el = document.createElement('div');
+        el.className = 'piece ' + color + lower + ' square-' + (sq.charCodeAt(0) - 96) + sq[1];
+        el.style.cssText = 'left:' + x + 'px;top:' + y + 'px';
+      } else {
+        el = document.createElement('piece');
+        el.className = (color === 'w' ? 'white ' : 'black ') + NAMES[lower];
+        el.style.transform = 'translate(' + x + 'px, ' + y + 'px)';
+      }
+      el.style.backgroundImage = img(c);
+      board.appendChild(el);
+    }
+  }
+  render();
+  let selected = null, promo = null;
+  function squareAt(ev) {
+    const r = board.getBoundingClientRect();
+    const col = Math.floor((ev.clientX - r.left) / (r.width / 8)), row = Math.floor((ev.clientY - r.top) / (r.height / 8));
+    if (col < 0 || col > 7 || row < 0 || row > 7) return null;
+    const f = black ? 7 - col : col, rk = black ? row : 7 - row;
+    return 'abcdefgh'[f] + (rk + 1);
+  }
+  window.javachessMoves = [];
+  function play(from, to, promotion) {
+    const c = pieces[from];
+    delete pieces[from];
+    pieces[to] = promotion ? (c === c.toUpperCase() ? promotion.toUpperCase() : promotion) : c;
+    last = [from, to];
+    window.javachessMoves.push(from + to + (promotion || ''));
+    render();
+  }
+  board.addEventListener('mousedown', (ev) => {
+    if (!ev.isTrusted) return; // like the real sites, synthetic events are ignored
+    const sq = squareAt(ev);
+    if (!sq) return;
+    if (promo) {
+      const order = 'qnrb';
+      const idx = Math.abs(Number(sq[1]) - Number(promo.to[1]));
+      if (sq[0] === promo.to[0] && idx < 4) play(promo.from, promo.to, order[idx]);
+      document.querySelectorAll('.promotion').forEach((e) => e.remove());
+      promo = null;
+      return;
+    }
+    if (selected && sq !== selected && !(pieces[sq] && (pieces[sq] === pieces[sq].toUpperCase()) === (pieces[selected] === pieces[selected].toUpperCase()))) {
+      const from = selected;
+      selected = null;
+      const c = pieces[from];
+      if (c.toLowerCase() === 'p' && (sq[1] === '8' || sq[1] === '1')) {
+        promo = { from, to: sq };
+        for (let i = 0; i < 4; i++) {
+          const target = sq[0] + (sq[1] === '8' ? 8 - i : 1 + i);
+          const [x, y] = xy(target);
+          const m = document.createElement('div');
+          m.className = 'promotion';
+          m.style.cssText = 'left:' + x + 'px;top:' + y + 'px';
+          m.style.backgroundImage = img(c === 'P' ? 'QNRB'[i] : 'qnrb'[i]);
+          wrap.appendChild(m);
+        }
+        return;
+      }
+      play(from, sq);
+      return;
+    }
+    selected = pieces[sq] ? sq : null;
+  });
+})();
+</script>
+</body>
+</html>

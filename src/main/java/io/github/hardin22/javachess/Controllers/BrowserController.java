@@ -183,6 +183,7 @@ public class BrowserController implements NavigationAware {
         w.bar().show(session.status());
         session.engineReady();
         Platform.runLater(() -> showWindow(null)); // the page is already loading
+        io.github.hardin22.javachess.Browser.BrowserSnapshot.scheduleIfRequested(w, Platform::exit);
     }
 
     // ------------------------------------------------------------------ window
