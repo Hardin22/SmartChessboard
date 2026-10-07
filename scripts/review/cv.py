@@ -563,6 +563,7 @@ def cmd_fplist(a):
     nofolds = root / "nofolds.json"
     root.mkdir(parents=True, exist_ok=True)
     nofolds.write_text('{"folds": {}}')
+    knobs = dict(kv.split("=", 1) for kv in a.D)
     famous_kind = {f.stem: json.loads(f.read_text()).get("kind", "") for f in (DATA / "famous_chesscom").glob("*.json")}
     certified = chessigma_labels(root / "chessigma-labels")
     sets = [
@@ -578,7 +579,7 @@ def cmd_fplist(a):
         if not (Path(kw["dump"]) / kw["budget"]).is_dir():
             print(f"{name}: no dump, skipped")
             continue
-        run_java(cp, {}, root / name, kw["budget"], a.mode, kw["dataset"], kw["dump"], labels=kw["labels"],
+        run_java(cp, knobs, root / name, kw["budget"], a.mode, kw["dataset"], kw["dump"], labels=kw["labels"],
                  games=kw.get("games"), folds=kw.get("folds"), explain=True)
         rows = read_tsv(root / name / "specials.tsv") if (root / name / "specials.tsv").stat().st_size else []
         plies = read_tsv(root / name / "plies.tsv")
