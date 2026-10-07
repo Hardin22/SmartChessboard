@@ -69,6 +69,9 @@ public final class ErrorReporter {
                 Alert alert = new Alert(Alert.AlertType.ERROR, message, ButtonType.OK);
                 alert.setTitle(title);
                 alert.setHeaderText(title);
+                // Owned by the main window, otherwise it can open behind the full-screen stage on the Pi.
+                javafx.stage.Window.getWindows().stream().filter(javafx.stage.Window::isShowing).findFirst()
+                        .ifPresent(alert::initOwner);
                 alert.show();
             } catch (RuntimeException e) {
                 log.warn("Cannot show error dialog: {}", e.getMessage());

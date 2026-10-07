@@ -23,7 +23,7 @@ hardware, which is how most development happens.
 
 | Home | Game | Review | Puzzles |
 |---|---|---|---|
-| ![Home](docs/screenshots/home-dark.png) | ![Game](docs/screenshots/game-dark.png) | ![Review](docs/screenshots/review-dark.png) | ![Puzzles](docs/screenshots/puzzles-dark.png) |
+| ![Home](docs/screenshots/home.png) | ![Game](docs/screenshots/game.png) | ![Review](docs/screenshots/review.png) | ![Puzzles](docs/screenshots/puzzles.png) |
 
 ## Features
 
