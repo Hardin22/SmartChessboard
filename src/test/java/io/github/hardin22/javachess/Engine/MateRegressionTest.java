@@ -9,7 +9,6 @@ import io.github.hardin22.javachess.Engine.review.ReviewClassifier;
 import io.github.hardin22.javachess.Services.GameAnalyzer;
 import io.github.hardin22.javachess.review.MateProbe;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -30,9 +29,6 @@ import static org.junit.jupiter.api.Assertions.*;
  *   <li>In general: a move that allows a forced mate is never a good move, a move that gives mate is never an error,
  *       both in the review and in the fast LED verdict.</li>
  * </ul>
- *
- * Tests annotated with {@code review.pending} document a bug whose fix has not landed yet: run them with
- * {@code -Dreview.pending=true} (they fail until the fix), and drop the annotation together with the fix.
  */
 class MateRegressionTest {
 
@@ -86,8 +82,6 @@ class MateRegressionTest {
     }
 
     @Test
-    @EnabledIfSystemProperty(named = "review.pending", matches = "true",
-            disabledReason = "pending fix (realtime): mate 0 loses its side on negate(), bar shows the loser's colour")
     void evalBarIsWhiteWhenWhiteGaveMate() {
         AnalysisUpdate u = terminal(fenAfter(GXH5_GAME));
         assertTrue(u.whitePawns() > 900, "bar must be all white after 7.Bxh5#, was " + u.whitePawns());
@@ -107,8 +101,6 @@ class MateRegressionTest {
     }
 
     @Test
-    @EnabledIfSystemProperty(named = "review.pending", matches = "true",
-            disabledReason = "pending fix (realtime): terminal mate published as mate 0 without a side")
     void liveAnalysisOfAMatedPositionShowsTheWinnerForBothColours() throws Exception {
         try (UciClient engine = new UciClient(UciClientTest.fake("normal"))) {
             PositionAnalyzer analyzer = new PositionAnalyzer(() -> engine, () -> StockfishTestSupport.budget(3, 6));
@@ -159,9 +151,6 @@ class MateRegressionTest {
     }
 
     @Test
-    @EnabledIfSystemProperty(named = "review.pending", matches = "true",
-            disabledReason = "pending (realtime): LEDs still use MoveClassifier, whose lost-position rule downgrades a "
-                    + "mate blunder; drop with the switch to ReviewClassifier.fast")
     void allowingMateIsNeverAGoodMove() {
         // Clearly lost (-6) but not yet mated: allowing mate in one must still be an error, never "good"/"best".
         assertTrue(MoveClassifier.classify(Score.cp(-600), Score.mate(-1), false).quality().isError());
@@ -175,12 +164,10 @@ class MateRegressionTest {
         // 6...gxh5??: Black's best about -1.5 (White POV +150), after it White mates in one
         assertEquals(MoveClassification.BLUNDER,
                 ReviewClassifier.fast(Eval.cp(150), Eval.whiteMates(1), false, false).label());
-        // allowing a new mate is a blunder even when already clearly lost
-        assertEquals(MoveClassification.BLUNDER,
-                ReviewClassifier.fast(Eval.cp(600), Eval.whiteMates(1), false, false).label());
-        assertEquals(MoveClassification.BLUNDER,
-                ReviewClassifier.fast(Eval.cp(-1500), Eval.blackMates(2), true, false).label());
-        // throwing away one's own forced mate is a blunder too
+        // allowing a new mate from a lost position (SPEC R6): still an error, never a good move
+        assertTrue(ERRORS.contains(ReviewClassifier.fast(Eval.cp(600), Eval.whiteMates(1), false, false).label()));
+        assertTrue(ERRORS.contains(ReviewClassifier.fast(Eval.cp(-1500), Eval.blackMates(2), true, false).label()));
+        // throwing away one's own forced mate is never Best
         assertTrue(ReviewClassifier.fast(Eval.whiteMates(2), Eval.cp(0), true, false).label() != MoveClassification.BEST);
         // 7.Bxh5# / 2...Qh4#: mate on the board is never an error, whatever the search said before
         for (boolean playedIsBest : new boolean[] { true, false }) {
