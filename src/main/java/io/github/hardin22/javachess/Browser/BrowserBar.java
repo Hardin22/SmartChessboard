@@ -88,6 +88,7 @@ public final class BrowserBar extends JPanel {
     private final ToneDot dot = new ToneDot();
     private final JPanel actions = new JPanel();
     private final ProgressStrip progress = new ProgressStrip();
+    private final JPanel statusRow;
     private BrowserStatus status;
 
     public BrowserBar(Consumer<Nav> onNav, Consumer<BrowserStatus.Action> onAction) {
@@ -127,7 +128,7 @@ public final class BrowserBar extends JPanel {
         actions.setOpaque(false);
         actions.setLayout(new BoxLayout(actions, BoxLayout.X_AXIS));
 
-        JPanel statusRow = new JPanel(new BorderLayout(GAP, GAP));
+        statusRow = new JPanel(new BorderLayout(GAP, GAP));
         statusRow.setOpaque(false);
         statusRow.setBorder(BorderFactory.createEmptyBorder(GAP, 0, PAD, 0));
         statusRow.add(text, BorderLayout.CENTER);
@@ -164,7 +165,10 @@ public final class BrowserBar extends JPanel {
         dot.color = theme.tone(s.tone());
         dot.repaint();
         actions.removeAll();
-        actions.add(Box.createHorizontalGlue());
+        if (s.actions().stream().filter(a -> a != BrowserStatus.Action.BACK_HOME && a != BrowserStatus.Action.RELOAD)
+                .count() != 1) {
+            actions.add(Box.createHorizontalGlue());
+        }
         List<BrowserStatus.Action> list = new ArrayList<>(s.actions());
         list.remove(BrowserStatus.Action.BACK_HOME); // always on the navigation row
         list.remove(BrowserStatus.Action.RELOAD);
@@ -185,6 +189,9 @@ public final class BrowserBar extends JPanel {
             actions.add(b);
         }
         actions.setVisible(!list.isEmpty());
+        // one button: beside the text (the page keeps more room); more: on their own row
+        statusRow.remove(actions);
+        statusRow.add(actions, list.size() == 1 ? BorderLayout.EAST : BorderLayout.SOUTH);
         boolean errorReload = s.actions().contains(BrowserStatus.Action.RELOAD);
         PillButton reload = navButtons.get(Nav.RELOAD);
         reload.setColors(errorReload ? theme.accent() : theme.surface2(), errorReload ? theme.onAccent() : theme.text(),
