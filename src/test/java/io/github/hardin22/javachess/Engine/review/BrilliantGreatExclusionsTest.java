@@ -12,7 +12,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * SPEC v1.9 exclusions of Brilliant and Great, one real false positive each ({@code notes/fp/CATALOG.md}; chess.com
+ * SPEC v1.9 rules of Brilliant and Great, and the rule fixes of the same round. The exclusions of Brilliant and Great, one real false positive each ({@code notes/fp/CATALOG.md}; chess.com
  * Stockfish 16 depth 22 gave Best/Excellent there). Each test also switches its exclusion off to show it is the reason,
  * and two real chess.com Brilliant / Great moves stay labelled.
  */
@@ -102,6 +102,52 @@ class BrilliantGreatExclusionsTest {
         ReviewInput in = twoMoves("2kr4/1pp2p1p/p3p1p1/4n1b1/1PN5/2P2P2/P1K3PP/4R3 w - - 0 24",
                 "c4e5", Eval.cp(-176), "e1e5", "d8d2", Eval.cp(-441), "d8d2", Eval.cp(-146), "g5f4", Eval.cp(-441));
         assertEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT));
+    }
+
+    @Test
+    void gPlus1QuietForcingCheckInAWonAttackIsGreat() {
+        // Botvinnik - Capablanca 1938, 32.Qg5+ at +8.3, chess.com Great: G+1 holds above the ordinary Great range
+        ReviewInput botvinnik = oneMove("8/p5kp/1p2Pn2/3pQ2p/2pP4/qnP5/6PP/6K1 w - - 0 32", "e5g5", Eval.cp(827),
+                "e5g5", Eval.cp(-682), "h2h3", Eval.cp(827));
+        Tuning narrow = Tuning.DEFAULT.with("greatMaxEp", 0.90);
+        assertEquals(MoveClassification.GREAT, label(botvinnik, narrow));
+        assertNotEquals(MoveClassification.GREAT, label(botvinnik, narrow.with("greatForcingCheck", 0)));
+        // Torre - Lasker 1925, 28.Rg7+ (the windmill) and D. Byrne - Fischer 1956, 19...Ne2+: chess.com Great
+        assertEquals(MoveClassification.GREAT, label(oneMove("r3rnk1/pb3R2/3ppB1p/7q/1P1P4/4N3/P4PPP/4R1K1 w - - 1 28",
+                "f7g7", Eval.cp(662), "f7g7", Eval.cp(-656), "f7b7", Eval.cp(662)), Tuning.DEFAULT));
+        assertEquals(MoveClassification.GREAT, label(oneMove("r3r1k1/pp3pbp/1Bp3p1/8/2bP4/Q1n2N2/P4PPP/3R2KR b - - 1 19",
+                "c3e2", Eval.cp(-693), "c3e2", Eval.cp(99), "c3d1", Eval.cp(-693)), Tuning.DEFAULT));
+    }
+
+    // ------------------------------------------------------------------ rule fixes (SPEC v1.9 §4)
+
+    @Test
+    void ratingsBelowTheFloorAreJudgedAsTheFloor() {
+        Tuning t = Tuning.DEFAULT;
+        assertEquals(t.slope(800), t.slope(128), 1e-12); // live_174559261938: a 128-rated player
+        assertTrue(t.slope(1200) > t.slope(800));
+    }
+
+    @Test
+    void losingAFurtherPawnAndAHalfFromALostPositionIsAMistake() {
+        // live_138835439112 ply 41, 21.Re7 at -7.8: -9.3 after it (chess.com Mistake), the win chance barely moves
+        ReviewInput in = oneMove("r2r2k1/pp5p/6p1/2P2p2/3B4/8/qP3PPP/3RR1K1 w - - 0 21", "e1e7", Eval.cp(-781),
+                "d1a1", Eval.cp(-800), "d4e3", Eval.cp(-934));
+        assertEquals(MoveClassification.MISTAKE, label(in, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.MISTAKE, label(in, Tuning.DEFAULT.with("lostDrop", 0)));
+    }
+
+    @Test
+    void allowingAMuchFasterMateIsAnInaccuracy() {
+        // chess.com: M-7 -> M-2 (Kd8), M-5 -> M-2, M-6 -> M-2 are Inaccuracies; shortening by 1-2 moves is Excellent
+        assertEquals(MoveClassification.INACCURACY,
+                ReviewClassifier.fast(Eval.blackMates(7), Eval.blackMates(2), true, false).label());
+        assertEquals(MoveClassification.INACCURACY,
+                ReviewClassifier.fast(Eval.blackMates(5), Eval.blackMates(2), true, false).label());
+        assertEquals(MoveClassification.EXCELLENT,
+                ReviewClassifier.fast(Eval.blackMates(4), Eval.blackMates(2), true, false).label());
+        assertEquals(MoveClassification.EXCELLENT,
+                ReviewClassifier.fast(Eval.blackMates(6), Eval.blackMates(4), true, false).label());
     }
 
     // ------------------------------------------------------------------ helpers
