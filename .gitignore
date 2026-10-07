@@ -59,3 +59,15 @@ webview-data/
 /jcef-bundle
 /data
 .worktrees/
+
+### Engine binaries installed by scripts/install-engines.sh ###
+engines/stockfish/
+engines/lc0/
+### Dati utente (ora in ~/.javachess/) ###
+# NB: archive.json and .idea/ are still tracked on purpose: removing them from git would delete the user's local copies
+# on the next `git pull`. Untrack them (git rm --cached) once the archive has been migrated to ~/.javachess.
+archive.json
+!src/test/resources/**/archive*.json
+dependency-reduced-pom.xml
+.idea/
+*.onnx.tmp

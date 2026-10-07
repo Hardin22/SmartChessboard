@@ -96,7 +96,9 @@ public class PvpGame extends AbstractGame {
             Move move = withAutoQueen(parseMoveInput(moveInput));
 
             if (move != null && MoveGenerator.generateLegalMoves(board).contains(move)) {
+                String fenBefore = board.getFen();
                 board.doMove(move);
+                onHumanMove(fenBefore, move);
                 updatePgn(move);
 
                 // Sync logical board to manager
@@ -107,10 +109,7 @@ public class PvpGame extends AbstractGame {
                 Platform.runLater(() -> {
                     chessBoardUI.setPosition(board.getFen(), move);
 
-                    openingName = stockfish.getOpeningName(board.getFen());
-                    if (!openingName.equals("Unknown Opening") && !openingName.equals("Error in API Call")) {
-                        openingNameLabel.setText(openingName);
-                    }
+                    updateOpeningLabel(openingNameLabel);
 
                     if (board.isMated()) {
                         notifyMate(); // Trigger Victory Animation
@@ -173,6 +172,7 @@ public class PvpGame extends AbstractGame {
         if (moveCalculationTask != null && moveCalculationTask.isRunning()) {
             moveCalculationTask.cancel();
         }
+        stopAnalysis();
 
         updateStatus(endMessage);
         // Removed label clearing

@@ -1,0 +1,48 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Play ...
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Raspberry Pi 5
+        - Raspberry Pi 4
+        - macOS
+        - Linux (desktop)
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: board
+    attributes:
+      label: Physical board connected?
+      options:
+        - "Yes"
+        - "No"
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: Relevant lines from ~/.javachess/logs/javachess.log (check that no personal data is included).
+      render: text

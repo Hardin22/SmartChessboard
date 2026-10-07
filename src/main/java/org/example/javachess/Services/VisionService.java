@@ -1,286 +1,295 @@
 package org.example.javachess.Services;
 
-import org.example.javachess.Vision.BotMover;
+import org.example.javachess.Utils.AppPaths;
+import org.example.javachess.Vision.BoardReading;
 import org.example.javachess.Vision.PieceClassifier;
-import javafx.concurrent.Service;
-import javafx.concurrent.Task;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.awt.Rectangle;
 import java.awt.Robot;
+import java.awt.Toolkit;
 import java.awt.image.BufferedImage;
+import java.nio.file.Path;
 import java.util.function.Consumer;
 
+/**
+ * Watches the screen for a chess board (chess.com / lichess in the integrated browser) and reports the position.
+ *
+ * <ol>
+ *   <li>Search: full-screen captures until the model finds the same board rectangle on 3 consecutive frames.</li>
+ *   <li>Monitor: captures only the board; frames that changed since the previous one are skipped (piece
+ *       animations), static frames are classified. A position is reported once it is stable on 2 frames.</li>
+ * </ol>
+ * Runs on its own daemon thread; callbacks are invoked on that thread (never the JavaFX thread).
+ * Debug images are written only with {@code -Djavachess.vision.debug=true}, to {@code ~/.javachess/vision-debug/}.
+ */
 public class VisionService {
 
-    private PieceClassifier classifier;
-    // private BotMover botMover;
-    private volatile boolean running = false;
-    private Rectangle boardRect = null;
-    private Rectangle candidateRect = null;
-    private int boardStabilityCount = 0;
+    private static final Logger log = LoggerFactory.getLogger(VisionService.class);
+    private static final int LOCK_FRAMES = 3;
+    private static final int STABLE_FRAMES = 2;
+    private static final int LOST_FRAMES_BEFORE_SEARCH = 15;
+
+    private final boolean debug = Boolean.getBoolean("javachess.vision.debug");
+    private volatile PieceClassifier classifier;
+    private volatile boolean running;
+    private volatile boolean isFlipped;
+    private volatile Rectangle boardRect;
     private Thread scanThread;
 
-    private Consumer<String> onFenChanged;
-    private Consumer<Rectangle> onBoardFound;
+    private volatile Consumer<String> onFenChanged;
+    private volatile Consumer<BoardReading> onReading;
+    private volatile Consumer<Rectangle> onBoardFound;
+    private volatile Consumer<String> onError;
+
+    /** Placement + reading of the last reported position. */
+    private volatile BoardReading lastReading;
 
     public VisionService() {
-        try {
-            // Initialize components
-            this.classifier = new PieceClassifier("models/best.onnx");
-            // this.botMover = new BotMover(); // Removed
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        // The model is loaded lazily on the scan thread (never on the JavaFX thread).
     }
 
+    /** Called with the FEN placement (rank 8 first) when a new stable position is seen. */
     public void setOnFenChanged(Consumer<String> callback) {
         this.onFenChanged = callback;
+    }
+
+    /** Called with the full reading (probabilities, confidence) when a new stable position is seen. */
+    public void setOnReading(Consumer<BoardReading> callback) {
+        this.onReading = callback;
     }
 
     public void setOnBoardFound(Consumer<Rectangle> callback) {
         this.onBoardFound = callback;
     }
 
-    public void startScanning() {
-        if (running)
-            return;
-        running = true;
-
-        scanThread = new Thread(this::scanLoop);
-        scanThread.setDaemon(true);
-        scanThread.start();
-        System.out.println("[VisionService] Scanning started.");
+    /** Called with a user message when vision cannot work (model missing, no screen capture permission...). */
+    public void setOnError(Consumer<String> callback) {
+        this.onError = callback;
     }
-
-    public void stopScanning() {
-        running = false;
-        if (scanThread != null) {
-            try {
-                scanThread.join(1000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-        System.out.println("[VisionService] Scanning stopped.");
-    }
-
-    // executeMove removed as BotMover now requires CefBrowser injection
-
-    private volatile boolean isFlipped = false;
 
     public void setFlipped(boolean flipped) {
         this.isFlipped = flipped;
-        System.out.println("[VisionService] Orientation set to: " + (flipped ? "FLIPPED (Black)" : "STANDARD (White)"));
+        log.info("Vision orientation: {}", flipped ? "black at the bottom" : "white at the bottom");
     }
 
-    /**
-     * Hard reset of the vision state.
-     * Clears any locked board rectangle and forces a full-screen search.
-     * Call this when navigating away or disabling vision.
-     */
-    public void resetState() {
-        this.boardRect = null;
-        this.candidateRect = null;
-        this.boardStabilityCount = 0;
-        System.out.println("[VisionService] State HARD RESET via Manual Trigger.");
-    }
-
-    // ...
-
-    private void scanLoop() {
-        String lastSeenFen = "";
-        String lastNotifiedFen = "";
-        int stabilityCount = 0;
-        int lostBoardFrames = 0; // NEW: Counter for lost board detection
-        BufferedImage lastImage = null;
-
-        Robot robot = null;
-        try {
-            robot = new Robot();
-        } catch (Exception e) {
-            System.err.println("[VisionService] Failed to create Robot: " + e.getMessage());
-            running = false;
+    public synchronized void startScanning() {
+        if (running) {
             return;
         }
+        running = true;
+        scanThread = new Thread(this::scanLoop, "vision-scan");
+        scanThread.setDaemon(true);
+        scanThread.start();
+        log.info("Vision scanning started");
+    }
 
-        while (running) {
+    public void stopScanning() {
+        Thread t;
+        synchronized (this) {
+            running = false;
+            t = scanThread;
+        }
+        if (t != null && t != Thread.currentThread()) {
             try {
-                // Phase A: Find Board
-                if (boardRect == null) {
-                    lostBoardFrames = 0; // Reset counter
-                    java.awt.Rectangle screenRect = new java.awt.Rectangle(
-                            java.awt.Toolkit.getDefaultToolkit().getScreenSize());
-                    BufferedImage screen = robot.createScreenCapture(screenRect);
-
-                    // DEBUG: Save the first screenshot to check what the bot sees
-                    try {
-                        String desktopPath = System.getProperty("user.home") + "/Desktop/debug_screen.png";
-                        java.io.File debugFile = new java.io.File(desktopPath);
-                        if (!debugFile.exists()) {
-                            javax.imageio.ImageIO.write(screen, "png", debugFile);
-                            System.out.println(
-                                    "[VisionService] DEBUG: Saved screen dump to " + debugFile.getAbsolutePath());
-                        }
-                    } catch (Exception e) {
-                        System.out.println("[VisionService] Failed to save debug screenshot: " + e.getMessage());
-                    }
-
-                    Rectangle found = classifier.findBoard(screen);
-
-                    if (found != null) {
-                        // STABILITY CHECK: Don't lock immediately. Verify consistency.
-                        if (candidateRect != null && isSimilarRect(candidateRect, found)) {
-                            boardStabilityCount++;
-                            System.out
-                                    .println("[VisionService] Board Candidate Stable (" + boardStabilityCount + "/5)");
-                        } else {
-                            candidateRect = found;
-                            boardStabilityCount = 1;
-                            System.out.println("[VisionService] New Board Candidate Found: " + found);
-                        }
-
-                        // LOCK CONDITION: 5 Consecutive Stable Frames
-                        if (boardStabilityCount >= 5) {
-                            boardRect = candidateRect;
-                            System.out.println("[VisionService] Board LOCKED at: " + boardRect);
-                            if (onBoardFound != null)
-                                onBoardFound.accept(boardRect);
-                        }
-                    } else {
-                        // Reset if we lose the board completely
-                        boardStabilityCount = 0;
-                        candidateRect = null;
-
-                        System.out.println("[VisionService] Searching for board... (Screen Size: " + screen.getWidth()
-                                + "x" + screen.getHeight() + ")");
-                        Thread.sleep(1000);
-                    }
-                }
-                // Phase B: Monitor Board
-                else {
-                    // Phase B: Monitor Board with Pixel-Perfect Motion Detection
-                    BufferedImage currentImage = robot.createScreenCapture(boardRect);
-
-                    // DEBUG: Save the CROPPED board to check alignment
-                    try {
-                        String cropPath = System.getProperty("user.home") + "/Desktop/debug_board_crop.png";
-                        java.io.File debugCrop = new java.io.File(cropPath);
-                        // Save only if it's the first time or every 5 seconds (to avoid lag)?
-                        // For now, just overwrite to see the LATEST state.
-                        javax.imageio.ImageIO.write(currentImage, "png", debugCrop);
-                    } catch (Exception e) {
-                        System.out.println("[VisionService] Debug Crop Save Failed");
-                    }
-
-                    boolean isMoving = false;
-                    if (lastImage != null) {
-                        isMoving = hasImageChanged(lastImage, currentImage);
-                    }
-
-                    if (isMoving) {
-                        // ANIMATION DETECTED - IGNORE FRAME
-                        stabilityCount = 0; // Reset stability
-                        lastImage = currentImage; // Update last image to detect when motion stops
-                        lostBoardFrames = 0; // Motion implies activity, assume board is somewhat valid or transitioning
-                    } else {
-                        // STATIC IMAGE - SAFE TO CLASSIFY
-                        PieceClassifier.VisionResult result = classifier.getFenFromImage(currentImage, null, isFlipped);
-
-                        if (result != null) {
-                            // CHECK FOR BOARD PRESENCE
-                            if (!result.hasBoard) {
-                                lostBoardFrames++;
-
-                                // FORCE RESET IF BOARD IS LOST FOR > 30 FRAMES (approx 1s)
-                                // Let's check the context.
-                                // I will replace the WHOLE scanLoop method to be safe and add the variable.
-                            }
-
-                            if (result.hasBoard) {
-                                String currentFen = result.fen;
-                                if (currentFen.equals(lastSeenFen)) {
-                                    stabilityCount++;
-                                } else {
-                                    stabilityCount = 0;
-                                    lastSeenFen = currentFen;
-                                }
-
-                                // Aggressive Threshold: 2 frames of identical static image = Valid
-                                if (stabilityCount >= 2) {
-                                    if (!currentFen.equals(lastNotifiedFen)) {
-                                        System.out.println("[VisionService] FEN STABLE (Static): " + currentFen);
-                                        lastNotifiedFen = currentFen;
-                                        if (onFenChanged != null)
-                                            onFenChanged.accept(currentFen);
-                                    }
-                                }
-                            }
-                        }
-                        // Keep lastImage for next comparison
-                        lastImage = currentImage;
-                    }
-
-                    Thread.sleep(30); // 33fps scan rate
-                }
-            } catch (Exception e) {
-                System.err.println("[VisionService] Error in scan loop: " + e.getMessage());
-                boardRect = null; // Reset on error
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException ie) {
-                }
+                t.join(1500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
         }
+        log.info("Vision scanning stopped");
+    }
+
+    /** Forgets the locked board so the next scan searches the whole screen again. */
+    public void resetState() {
+        boardRect = null;
+        lastReading = null;
+        log.debug("Vision state reset");
     }
 
     public Rectangle getBoardRect() {
         return boardRect;
     }
 
-    private boolean hasImageChanged(BufferedImage img1, BufferedImage img2) {
-        if (img1.getWidth() != img2.getWidth() || img1.getHeight() != img2.getHeight())
-            return true;
-
-        // Fast Pixel Comparison
-        // We don't need to check every single pixel. Checking a grid or random sample
-        // is faster.
-        // But for 640x640, checking all is fast enough in Java.
-        // Let's check center and corners first for speed.
-
-        int w = img1.getWidth();
-        int h = img1.getHeight();
-
-        // Check center pixel
-        if (img1.getRGB(w / 2, h / 2) != img2.getRGB(w / 2, h / 2))
-            return true;
-
-        // Check stride (e.g., every 10th pixel) to be super fast
-        for (int y = 0; y < h; y += 10) {
-            for (int x = 0; x < w; x += 10) {
-                if (img1.getRGB(x, y) != img2.getRGB(x, y))
-                    return true;
-            }
-        }
-
-        return false;
+    public BoardReading getLastReading() {
+        return lastReading;
     }
 
-    private boolean isSimilarRect(Rectangle r1, Rectangle r2) {
-        // Calculate Intersection over Union (IoU)
-        int x1 = Math.max(r1.x, r2.x);
-        int y1 = Math.max(r1.y, r2.y);
-        int x2 = Math.min(r1.x + r1.width, r2.x + r2.width);
-        int y2 = Math.min(r1.y + r1.height, r2.y + r2.height);
+    private PieceClassifier classifier() {
+        PieceClassifier c = classifier;
+        if (c == null) {
+            synchronized (this) {
+                c = classifier;
+                if (c == null) {
+                    try {
+                        c = new PieceClassifier(PieceClassifier.DEFAULT_MODEL);
+                        classifier = c;
+                    } catch (Throwable e) {
+                        log.error("Vision model cannot be loaded", e);
+                        report("Riconoscimento della scacchiera non disponibile: " + e.getMessage());
+                        return null;
+                    }
+                }
+            }
+        }
+        return c;
+    }
 
-        if (x2 < x1 || y2 < y1)
+    private void scanLoop() {
+        Robot robot;
+        try {
+            robot = new Robot();
+        } catch (Exception e) {
+            log.error("Screen capture not available", e);
+            report("Cattura dello schermo non disponibile (permessi di registrazione dello schermo?)");
+            running = false;
+            return;
+        }
+        PieceClassifier pc = classifier();
+        if (pc == null) {
+            running = false;
+            return;
+        }
+        Rectangle candidate = null;
+        int candidateFrames = 0;
+        BufferedImage previous = null;
+        String lastSeen = null;
+        int stableFrames = 0;
+        int lostFrames = 0;
+        long frame = 0;
+
+        while (running) {
+            try {
+                if (boardRect == null) {
+                    BufferedImage screen = robot.createScreenCapture(
+                            new Rectangle(Toolkit.getDefaultToolkit().getScreenSize()));
+                    Rectangle found = pc.findBoard(screen);
+                    if (found != null && candidate != null && similar(candidate, found)) {
+                        candidateFrames++;
+                    } else {
+                        candidate = found;
+                        candidateFrames = found == null ? 0 : 1;
+                    }
+                    if (candidateFrames >= LOCK_FRAMES) {
+                        boardRect = candidate;
+                        previous = null;
+                        stableFrames = 0;
+                        lastSeen = null;
+                        lostFrames = 0;
+                        log.info("Board locked at {}", boardRect);
+                        Consumer<Rectangle> cb = onBoardFound;
+                        if (cb != null) {
+                            cb.accept(boardRect);
+                        }
+                    } else {
+                        sleep(found == null ? 1000 : 150);
+                    }
+                    continue;
+                }
+
+                BufferedImage current = robot.createScreenCapture(boardRect);
+                if (previous != null && hasImageChanged(previous, current)) {
+                    previous = current; // animation in progress: wait for a still frame
+                    stableFrames = 0;
+                    sleep(30);
+                    continue;
+                }
+                previous = current;
+                String debugPath = debug ? debugFile(frame++) : null;
+                BoardReading reading = pc.read(current, isFlipped, debugPath).withPlacementRules();
+                if (!reading.hasBoard()) {
+                    if (++lostFrames >= LOST_FRAMES_BEFORE_SEARCH) {
+                        log.info("Board lost, searching again");
+                        boardRect = null;
+                        candidate = null;
+                        candidateFrames = 0;
+                    }
+                    sleep(100);
+                    continue;
+                }
+                lostFrames = 0;
+                String placement = reading.placement();
+                if (placement.equals(lastSeen)) {
+                    stableFrames++;
+                } else {
+                    lastSeen = placement;
+                    stableFrames = 1;
+                }
+                BoardReading reported = lastReading;
+                if (stableFrames >= STABLE_FRAMES && (reported == null || !reported.placement().equals(placement))) {
+                    lastReading = reading;
+                    log.info("Stable position {} (confidence min {}, mean {}, {} ms)", placement,
+                            String.format("%.2f", reading.minConfidence()),
+                            String.format("%.2f", reading.meanConfidence()), reading.inferenceMs());
+                    Consumer<BoardReading> rc = onReading;
+                    if (rc != null) {
+                        rc.accept(reading);
+                    }
+                    Consumer<String> fc = onFenChanged;
+                    if (fc != null) {
+                        fc.accept(placement);
+                    }
+                }
+                sleep(60);
+            } catch (Exception e) {
+                log.warn("Vision frame failed: {}", e.toString());
+                boardRect = null;
+                sleep(1000);
+            }
+        }
+    }
+
+    private String debugFile(long frame) {
+        Path dir = AppPaths.resolve("vision-debug");
+        dir.toFile().mkdirs();
+        return dir.resolve("frame-" + (frame % 50) + ".png").toString(); // ring of 50 files
+    }
+
+    private void report(String message) {
+        Consumer<String> cb = onError;
+        if (cb != null) {
+            cb.accept(message);
+        }
+    }
+
+    private static void sleep(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /** True when the two captures differ (sampled every 6 pixels, small tolerance for compression noise). */
+    static boolean hasImageChanged(BufferedImage a, BufferedImage b) {
+        if (a.getWidth() != b.getWidth() || a.getHeight() != b.getHeight()) {
+            return true;
+        }
+        int changed = 0;
+        int samples = 0;
+        for (int y = 0; y < a.getHeight(); y += 6) {
+            for (int x = 0; x < a.getWidth(); x += 6) {
+                int p = a.getRGB(x, y);
+                int q = b.getRGB(x, y);
+                samples++;
+                if (Math.abs(((p >> 16) & 0xFF) - ((q >> 16) & 0xFF)) + Math.abs(((p >> 8) & 0xFF) - ((q >> 8) & 0xFF))
+                        + Math.abs((p & 0xFF) - (q & 0xFF)) > 24) {
+                    changed++;
+                }
+            }
+        }
+        return changed > Math.max(2, samples / 2000);
+    }
+
+    /** Intersection over union above 0.9. */
+    static boolean similar(Rectangle r1, Rectangle r2) {
+        Rectangle i = r1.intersection(r2);
+        if (i.isEmpty()) {
             return false;
-
-        double intersection = (long) (x2 - x1) * (y2 - y1);
-        double area1 = (long) r1.width * r1.height;
-        double area2 = (long) r2.width * r2.height;
-        double union = area1 + area2 - intersection;
-
-        double iou = intersection / union;
-        return iou > 0.90; // 90% Overlap required
+        }
+        double inter = (double) i.width * i.height;
+        double union = (double) r1.width * r1.height + (double) r2.width * r2.height - inter;
+        return inter / union > 0.90;
     }
 }

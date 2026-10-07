@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and test (Java 21, Ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # No display on the runner: tests that need a GUI skip themselves; AWT/JavaFX run headless.
+      JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Install Stockfish (engine tests are skipped when it is missing)
+        run: sudo apt-get update -q && sudo apt-get install -y -q stockfish || echo "Stockfish not available, engine tests will be skipped"
+
+      - name: Build and test
+        run: ./mvnw -B -ntp verify
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/
