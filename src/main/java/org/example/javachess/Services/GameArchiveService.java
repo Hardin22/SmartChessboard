@@ -71,6 +71,8 @@ public class GameArchiveService {
     private final List<JSONObject> preserved = new ArrayList<>();
     /** Original schema-1 record of games whose migration could not keep every move (written back as "legacy"). */
     private final Map<Integer, JSONObject> legacyOriginals = new java.util.HashMap<>();
+    /** PGN text per game id: generating SAN for the whole archive at every save is slow on a Raspberry Pi. */
+    private final Map<Integer, String> pgnCache = new java.util.HashMap<>();
     private int nextId = 1;
     private boolean readOnly;
     private boolean backedUpThisSession;
@@ -154,6 +156,7 @@ public class GameArchiveService {
         for (int i = 0; i < games.size(); i++) {
             if (games.get(i).id() == game.id()) {
                 games.set(i, sanitize(game));
+                pgnCache.remove(game.id());
                 persist();
                 return true;
             }
@@ -166,6 +169,7 @@ public class GameArchiveService {
         boolean removed = games.removeIf(g -> g.id() == id);
         if (removed) {
             legacyOriginals.remove(id);
+            pgnCache.remove(id);
             persist();
             log.info("Deleted archived game #{}", id);
         }
@@ -307,6 +311,7 @@ public class GameArchiveService {
         games.clear();
         preserved.clear();
         legacyOriginals.clear();
+        pgnCache.clear();
         nextId = 1;
         readOnly = false;
         loadProblem = null;
@@ -368,6 +373,10 @@ public class GameArchiveService {
                 try {
                     ArchivedGame game = fromV2(g);
                     games.add(game);
+                    String storedPgn = g.optString("pgn", "");
+                    if (!storedPgn.isEmpty()) {
+                        pgnCache.put(game.id(), storedPgn);
+                    }
                     JSONObject original = g.optJSONObject("legacy");
                     if (original != null) {
                         legacyOriginals.put(game.id(), original);
@@ -466,7 +475,7 @@ public class GameArchiveService {
             List<ArchivedGame> ordered = new ArrayList<>(games);
             ordered.sort(Comparator.comparingInt(ArchivedGame::id));
             for (ArchivedGame g : ordered) {
-                JSONObject o = toJson(g);
+                JSONObject o = toJson(g, pgnCache.computeIfAbsent(g.id(), id -> toPgn(g)));
                 JSONObject original = legacyOriginals.get(g.id());
                 if (original != null) {
                     o.put("legacy", original);
@@ -486,6 +495,10 @@ public class GameArchiveService {
     // =================================================================== JSON mapping
 
     static JSONObject toJson(ArchivedGame g) {
+        return toJson(g, toPgn(g));
+    }
+
+    static JSONObject toJson(ArchivedGame g, String pgn) {
         JSONObject o = new JSONObject();
         o.put("id", g.id());
         o.put("mode", g.mode().name());
@@ -500,7 +513,7 @@ public class GameArchiveService {
         o.put("initialFen", g.initialFen());
         o.put("finalFen", g.finalFen());
         o.put("moves", new JSONArray(g.movesUci()));
-        o.put("pgn", toPgn(g));
+        o.put("pgn", pgn);
         return o;
     }
 
