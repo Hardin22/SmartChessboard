@@ -1,9 +1,8 @@
 # Brilliant/Great errors accepted today by SpecialLabelsGateTest (Phase 4). It only shrinks: regenerate
 # (-Dreview.special.regen=true) after fixing errors. Allowlisted exceptions are not repeated here.
-# exact 0.6850 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
+# exact 0.6853 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
 id	ply	kind	set	san	ours	chesscom
 daily_1009092152	36	fn-great	cv93	Qxe1	best	great
-daily_1009092152	48	fp-great	cv93	g6	great	best
 daily_1011205894	10	fn-great	cv93	Qxd1+	best	great
 daily_1011205894	55	fn-great	cv93	Re8	best	great
 daily_1012805338	36	fn-great	cv93	Bg4	best	great
@@ -62,11 +61,9 @@ live_171977517802	32	fn-great	cv93	Bxc3	best	great
 live_171977517802	58	fn-great	cv93	Rc1+	best	great
 live_172493057862	18	fn-great	ex-holdout49	Bxh6	best	great
 live_172493057862	35	fn-great	ex-holdout49	Nc3	best	great
-live_172493057862	39	fp-great	ex-holdout49	g5	great	best
 live_172502515518	58	fn-great	cv93	Qxa2	best	great
 live_173845722776	20	fn-great	ex-holdout49	O-O	best	great
 live_173845722776	39	fn-great	ex-holdout49	Qg6+	best	great
-live_173888395572	45	fp-great	ex-holdout49	g5	great	best
 live_173888395572	49	fn-great	ex-holdout49	Bc2	best	great
 live_173888395572	51	fn-great	ex-holdout49	g6	best	great
 live_173888395572	64	fn-great	ex-holdout49	Rg5	best	great
@@ -162,7 +159,6 @@ capablanca_marshall_1918	71	fn-brilliant	famous-control	Bxf7+	best	brilliant
 deepblue_kasparov_1997_g6	15	fp-brilliant	famous-control	Nxe6	brilliant	book
 fischer_petrosian_1971_g7	59	fn-great	famous-control	Kd2	best	great
 fischer_spassky_1972_g6	41	fn-great	famous-control	f4	best	great
-ivanchuk_yusupov_1991_g9	24	fp-great	famous-brilliant	e3	great	best
 ivanchuk_yusupov_1991_g9	38	fn-great	famous-brilliant	gxf4	best	great
 ivanchuk_yusupov_1991_g9	56	fn-great	famous-brilliant	Rg6	excellent	great
 ivanchuk_yusupov_1991_g9	62	fn-great	famous-brilliant	Kh7	best	great
@@ -206,7 +202,6 @@ topalov_shirov_1998	52	fp-brilliant	famous-brilliant	Nb4	brilliant	great
 topalov_shirov_1998	52	fn-great	famous-brilliant	Nb4	brilliant	great
 topalov_shirov_1998	61	fn-great	famous-brilliant	Re3	best	great
 topalov_shirov_1998	75	fn-great	famous-brilliant	Rf3	best	great
-topalov_shirov_1998	88	fp-great	famous-brilliant	a4	great	best
 topalov_shirov_1998	92	fn-great	famous-brilliant	Ke6	best	great
 topalov_shirov_1998	93	fp-great	famous-brilliant	Kg1	great	best
 topalov_shirov_1998	100	fp-great	famous-brilliant	d4	great	best

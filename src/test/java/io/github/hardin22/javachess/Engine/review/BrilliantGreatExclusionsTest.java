@@ -581,6 +581,15 @@ class BrilliantGreatExclusionsTest {
         assertNotEquals(MoveClassification.GREAT, label(bxe6, Tuning.DEFAULT));
     }
 
+    @Test
+    void movingAnAttackedPawnIsGreatOnlyAsAClearOnlyMove() {
+        // Ivanchuk - Yusupov 1991 g9, 12...e3 (chess.com Best): the attacked e4 pawn goes forward, 12...Nf8 is -1.5
+        ReviewInput e3 = rated(oneMove("r1b1r1k1/pp1nqpbp/2pp1np1/6N1/2PPp3/BPN3P1/P1Q1PPBP/R2R2K1 b - - 1 12",
+                "e4e3", Eval.cp(33), "e4e3", Eval.cp(183), "d7f8", Eval.cp(33)), 2500, 2500);
+        assertNotEquals(MoveClassification.GREAT, label(e3, Tuning.DEFAULT));
+        assertEquals(MoveClassification.GREAT, label(e3, Tuning.DEFAULT.with("greatPawnEscapeGap", 0)));
+    }
+
     private static ReviewInput rated(ReviewInput in, int white, int black) {
         return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
     }

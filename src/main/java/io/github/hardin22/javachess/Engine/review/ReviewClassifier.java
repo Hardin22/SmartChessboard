@@ -118,6 +118,8 @@ public final class ReviewClassifier {
          * least this much (0 = off) is Great from {@link #greatCaptureGapLow}, without the outcome tests.
          */
         final double greatCapturePunishLoss;
+        /** Phase 4: moving an attacked pawn out of the attack is Great only from this gap (0 = off). */
+        final double greatPawnEscapeGap;
         final double brilliantTopRegain;
         /** v2.3 R9: a quiet move starting a forced mate is Great when the alternative does not win. */
         final boolean greatStartsMate;
@@ -272,6 +274,7 @@ public final class ReviewClassifier {
             brilliantRecaptureNet = get("brilliantRecaptureNet", 1) != 0;
             greatNoOnlyEscape = get("greatNoOnlyEscape", 1) != 0;
             greatCapturePunishLoss = get("greatCapturePunishLoss", 0.10);
+            greatPawnEscapeGap = get("greatPawnEscapeGap", 0.25);
             brilliantTopRegain = get("brilliantTopRegain", 1);
             greatInCheckGap = get("greatInCheckGap", 0.10);
             greatLowRating = get("greatLowRating", 1500);
@@ -974,6 +977,11 @@ public final class ReviewClassifier {
                 return true;
             }
         }
+        if (t.greatPawnEscapeGap > 0 && !capture && pawnEnPrise(b0, uci, me) && gap < t.greatPawnEscapeGap) {
+            // Phase 4: taking an attacked pawn out of the attack is routine unless it is the only move by a wide margin
+            // (177 games, attacked pawns moved by the engine: Great from gap 0.30 3 of 3, Best below 0.25 5 of 5)
+            return false;
+        }
         boolean changesOutcome = outcomeClass(epBefore, t) > outcomeClass(epBefore - gap, t) && gap >= t.greatClassGap
                 && cpGap >= t.greatClassCp;
         // v2.3: a quiet move whose alternative only keeps about equality (second line at most greatQuietCp)
@@ -1099,6 +1107,20 @@ public final class ReviewClassifier {
             }
         }
         return safe == 1;
+    }
+
+    /** True when move {@code uci} moves a pawn the opponent could win by static exchange where it stood. */
+    private static boolean pawnEnPrise(Board b0, String uci, boolean me) {
+        Move m = Tactics.find(b0, uci);
+        if (m == null || b0.getPiece(m.getFrom()).getPieceType() != PieceType.PAWN) {
+            return false;
+        }
+        String[] f = b0.getFen().split(" ");
+        f[1] = me ? "b" : "w";
+        f[3] = "-";
+        Board o = new Board();
+        o.loadFromFen(String.join(" ", f));
+        return Tactics.see(o, m.getFrom()) > 0;
     }
 
     /** 0 losing, 1 about equal, 2 winning (SPEC v2.1). */
