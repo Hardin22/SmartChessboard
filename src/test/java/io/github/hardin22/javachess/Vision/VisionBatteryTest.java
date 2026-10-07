@@ -265,6 +265,7 @@ class VisionBatteryTest {
         List<Outcome> model = new ArrayList<>();
         List<Outcome> calibrated = new ArrayList<>();
         List<Outcome> fused = new ArrayList<>();
+        List<Outcome> progressive = new ArrayList<>();
         int skipped = 0;
         for (List<Fixture> g : groups.values()) {
             Fixture cal = g.stream().filter(f -> f.meta().optBoolean("calibration")).findFirst().orElse(null);
@@ -273,6 +274,16 @@ class VisionBatteryTest {
             }
             TemplateReader reader = new TemplateReader();
             reader.learn(cal.image(), cal.placement(), cal.flipped());
+            // as in the app: vision keeps learning from positions known for sure (the page), one after the other
+            TemplateReader learning = new TemplateReader();
+            learning.learn(cal.image(), cal.placement(), cal.flipped());
+            for (Fixture f : g) {
+                if (f == cal || !learning.fits(f.image())) {
+                    continue;
+                }
+                progressive.add(compare(f, learning.read(f.image(), f.flipped()).withPlacementRules()));
+                learning.learn(f.image(), f.placement(), f.flipped());
+            }
             for (Fixture f : g) {
                 if (f == cal) {
                     continue;
@@ -290,6 +301,7 @@ class VisionBatteryTest {
         }
         String report = report("Model on calibration groups", model) + "\n" + report("Calibrated reader", calibrated)
                 + "\n" + report("Calibrated reader fused with the model", fused)
+                + "\n" + report("Calibrated reader that keeps learning (as with the page)", progressive)
                 + "\nPictures of another size than their calibration (skipped): " + skipped + "\n";
         System.out.println(report);
         write("report-calibrated.md", report);

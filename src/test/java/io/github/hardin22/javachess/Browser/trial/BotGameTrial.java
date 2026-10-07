@@ -341,7 +341,7 @@ public final class BotGameTrial {
     private void checkVision(BoardSnapshot s, Board known, JSONObject stats) {
         try {
             BoardSnapshot.BoardView b = s.board();
-            if (b != null && !b.rect().inside(s.viewportWidth(), s.viewportHeight())) {
+            if (b != null && !b.rect().mostlyInside(s.viewportWidth(), s.viewportHeight())) {
                 // the page scrolled the board away (chess.com follows the move list): bring it back, like the app
                 page.evaluate(BotMover.SCROLL_BOARD_INTO_VIEW).get(5, TimeUnit.SECONDS);
                 Thread.sleep(400);
@@ -349,12 +349,17 @@ public final class BotGameTrial {
                 b = s.board();
                 stats.put("scrolledBack", stats.optInt("scrolledBack") + 1);
             }
-            if (b == null || !b.rect().inside(s.viewportWidth(), s.viewportHeight()) || b.animating()
+            if (b == null || !b.rect().mostlyInside(s.viewportWidth(), s.viewportHeight()) || b.animating()
                     || b.placement() == null) {
                 stats.put("visionSkipped", stats.optInt("visionSkipped") + 1);
+                if (stats.optInt("visionSkipped") <= 3) {
+                    System.out.println("SKIP " + (b == null ? "no board" : b.rect() + " animating " + b.animating()
+                            + " placement " + b.placement()) + " viewport " + s.viewportWidth() + "x"
+                            + s.viewportHeight());
+                }
                 return;
             }
-            BufferedImage img = page.screenshot(b.rect()).get(10, TimeUnit.SECONDS);
+            BufferedImage img = io.github.hardin22.javachess.Browser.BoardPicture.take(page, s).get(10, TimeUnit.SECONDS);
             long t0 = System.nanoTime();
             BoardReading r = classifier.read(img, b.flipped(), null).withPlacementRules();
             long ms = (System.nanoTime() - t0) / 1_000_000;

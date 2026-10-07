@@ -223,6 +223,26 @@ class BrowserJcefE2E {
     }
 
     @Test
+    void theBoardIsPicturedRightOnAScrolledPage() throws Exception {
+        VisionService vision = new VisionService();
+        try {
+            BoardSnapshot start = open("?site=chesscom&top=500");
+            page.evaluate("window.scrollTo(0, 450)").get(5, TimeUnit.SECONDS);
+            BoardSnapshot s = waitFor(x -> x.board() != null && x.board().rect().y() < 450, "scrolled page");
+            assertTrue(s.board().rect().inside(s.viewportWidth(), s.viewportHeight()));
+            BufferedImage img = BoardPicture.take(page, s).get(10, TimeUnit.SECONDS);
+            vision.learn(img, s.board().placement(), false);
+            // the picture must hold the board exactly: the start position, read back by the calibrated reader
+            // after learning only the empty middle and the pieces, and the corners show pieces, not the page
+            assertEquals(s.board().placement(), vision.readBoard(img, false).placement());
+            int corner = img.getRGB(3, 3) & 0xFFFFFF;
+            assertTrue(corner != 0x262421, "the top-left corner is the board, not the page background");
+        } finally {
+            vision.close();
+        }
+    }
+
+    @Test
     void theWatcherReportsMovesFromVisionAndPage() throws Exception {
         open("?site=chesscom");
         ScheduledExecutorService exec = Executors.newSingleThreadScheduledExecutor();

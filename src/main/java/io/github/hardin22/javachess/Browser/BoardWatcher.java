@@ -261,7 +261,7 @@ public final class BoardWatcher {
             publish(snapshot);
             return CompletableFuture.completedFuture(null);
         }
-        if (board != null && !board.rect().inside(snapshot.viewportWidth(), snapshot.viewportHeight())) {
+        if (board != null && !board.rect().mostlyInside(snapshot.viewportWidth(), snapshot.viewportHeight())) {
             long now = System.currentTimeMillis();
             if (now - lastAutoScroll > AUTO_SCROLL_EVERY_MS) {
                 // vision needs to see the board, and so does the user: some pages scroll it away (chess.com
@@ -276,8 +276,9 @@ public final class BoardWatcher {
             return CompletableFuture.completedFuture(null);
         }
         // board known from the page: a picture of the board only; otherwise the visible page, searched
-        BoardSnapshot.Rect clip = board != null ? board.rect() : null;
-        return page.screenshot(clip).handleAsync((image, error) -> {
+        CompletableFuture<BufferedImage> picture = board != null ? BoardPicture.take(page, snapshot)
+                : page.screenshot(null);
+        return picture.handleAsync((image, error) -> {
             if (error != null) {
                 log.debug("Screenshot failed: {}", error.toString());
                 report(Problem.PAGE_UNREADABLE);

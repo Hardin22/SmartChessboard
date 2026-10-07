@@ -66,11 +66,21 @@ public final class CdpPageDriver implements PageDriver {
 
     @Override
     public CompletableFuture<BufferedImage> screenshot(BoardSnapshot.Rect clip) {
-        JSONObject params = new JSONObject().put("format", "png").put("captureBeyondViewport", false);
-        if (clip != null) {
-            params.put("clip", new JSONObject().put("x", clip.x()).put("y", clip.y()).put("width", clip.w())
-                    .put("height", clip.h()).put("scale", 1));
+        if (clip == null) {
+            return capture(new JSONObject().put("format", "png").put("captureBeyondViewport", false));
         }
+        // the clip of Page.captureScreenshot is in page coordinates: add how far the page is scrolled
+        return call("Page.getLayoutMetrics", new JSONObject()).thenCompose(metrics -> {
+            JSONObject vv = new JSONObject(metrics).optJSONObject("cssVisualViewport");
+            double sx = vv == null ? 0 : vv.optDouble("pageX", 0);
+            double sy = vv == null ? 0 : vv.optDouble("pageY", 0);
+            return capture(new JSONObject().put("format", "png").put("captureBeyondViewport", false)
+                    .put("clip", new JSONObject().put("x", clip.x() + sx).put("y", clip.y() + sy)
+                            .put("width", clip.w()).put("height", clip.h()).put("scale", 1)));
+        });
+    }
+
+    private CompletableFuture<BufferedImage> capture(JSONObject params) {
         return call("Page.captureScreenshot", params).thenApply(answer -> {
             byte[] png = Base64.getDecoder().decode(new JSONObject(answer).getString("data"));
             try {

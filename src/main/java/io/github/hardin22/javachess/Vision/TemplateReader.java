@@ -46,6 +46,13 @@ public final class TemplateReader {
     private final Map<Parity, List<Example>>[] examples;
     /** Colour distance that the texture of empty squares reaches (per parity), learned; the piece threshold is above. */
     private final double[] texture = new double[2];
+    /**
+     * How each square looks when empty, by screen position (row * 8 + column): a theme's square textures never move
+     * on the screen, so a square compared with its own empty look shows even a dark piece on a dark textured square.
+     */
+    private final int[][] emptyLook = new int[64][];
+    /** Colour distance from the remembered empty look above which a pixel belongs to a piece. */
+    private static final int MEMORY_THRESHOLD = 40;
     private int boardWidth;
     private int boardHeight;
     private double lastQuality;
@@ -102,6 +109,7 @@ public final class TemplateReader {
                 char symbol = grid[file][rank];
                 int[] rgb = cell(board, col, row);
                 if (symbol == BoardReading.EMPTY) {
+                    emptyLook[row * 8 + col] = rgb;
                     // the background's own texture (wood, marble, patterns): pieces must stand out more than this
                     Parity p = parity(file, rank);
                     texture[p.ordinal()] = Math.max(texture[p.ordinal()], 0.9 * texture[p.ordinal()]
@@ -131,6 +139,7 @@ public final class TemplateReader {
         }
         texture[0] = 0;
         texture[1] = 0;
+        java.util.Arrays.fill(emptyLook, null);
         boardWidth = 0;
         boardHeight = 0;
     }
@@ -151,7 +160,9 @@ public final class TemplateReader {
                 int file = flipped ? 7 - col : col;
                 int rank = flipped ? row : 7 - row;
                 int[] rgb = cell(board, col, row);
-                boolean[] mask = pieceMask(rgb, threshold(parity(file, rank)));
+                int[] empty = emptyLook[row * 8 + col];
+                boolean[] mask = empty != null ? differenceMask(rgb, empty)
+                        : pieceMask(rgb, threshold(parity(file, rank)));
                 int area = count(mask);
                 double[] score = new double[n];
                 double best = Double.MAX_VALUE;
@@ -165,8 +176,8 @@ public final class TemplateReader {
                     score[s] = sc;
                     best = Math.min(best, sc);
                 }
-                // empty: few piece pixels
-                double emptyScore = Math.min(3, 4.0 * area / (N * N));
+                // empty: few piece pixels (compared with the square's own empty look when known: more reliable)
+                double emptyScore = Math.min(3, (empty != null ? 6.0 : 4.0) * area / (N * N));
                 score[n - 1] = emptyScore;
                 best = Math.min(best, emptyScore);
                 qualitySum += best;
@@ -262,6 +273,44 @@ public final class TemplateReader {
         g.drawImage(board, 0, 0, N, N, x0, y0, Math.max(x0 + 1, x1), Math.max(y0 + 1, y1), null);
         g.dispose();
         return out.getRGB(0, 0, N, N, null, 0, N);
+    }
+
+    /**
+     * Pixels that differ from the square's empty look. A highlight drawn over the square (last move, check) shifts
+     * every pixel by about the same colour: the median shift is removed first.
+     */
+    static boolean[] differenceMask(int[] rgb, int[] empty) {
+        int[] dr = new int[rgb.length];
+        int[] dg = new int[rgb.length];
+        int[] db = new int[rgb.length];
+        for (int i = 0; i < rgb.length; i++) {
+            dr[i] = ((rgb[i] >> 16) & 0xFF) - ((empty[i] >> 16) & 0xFF);
+            dg[i] = ((rgb[i] >> 8) & 0xFF) - ((empty[i] >> 8) & 0xFF);
+            db[i] = (rgb[i] & 0xFF) - (empty[i] & 0xFF);
+        }
+        int mr = signedMedian(dr);
+        int mg = signedMedian(dg);
+        int mb = signedMedian(db);
+        boolean[] mask = new boolean[rgb.length];
+        for (int i = 0; i < rgb.length; i++) {
+            mask[i] = Math.abs(dr[i] - mr) + Math.abs(dg[i] - mg) + Math.abs(db[i] - mb) > MEMORY_THRESHOLD;
+        }
+        return mask;
+    }
+
+    /** Median of the border ring of a difference map: the shift of the background (a highlight), not the piece. */
+    private static int signedMedian(int[] d) {
+        int[] ring = new int[4 * (N - 1)];
+        int k = 0;
+        for (int i = 0; i < N; i++) {
+            for (int j = 0; j < N; j++) {
+                if (i == 0 || j == 0 || i == N - 1 || j == N - 1) {
+                    ring[k++] = d[i * N + j];
+                }
+            }
+        }
+        java.util.Arrays.sort(ring);
+        return ring[ring.length / 2];
     }
 
     /** Pixels that differ from the square's background (median colour of its border ring) by more than threshold. */

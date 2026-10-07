@@ -32,11 +32,22 @@ fi
 
 # Integrated browser (JCEF) on arm64 Linux: libcef.so needs more static TLS than glibc reserves for libraries
 # opened later ("cannot allocate memory in static TLS block"), so it must be preloaded. The bundle is downloaded
-# the first time the browser is opened; from the next start it is preloaded here.
-JCEF_LIB="$HOME/.jcef-bundle-v141/libcef.so"
-if [ "$(uname -m)" = aarch64 ] && [ -f "$JCEF_LIB" ]; then
-  export LD_PRELOAD="$JCEF_LIB${LD_PRELOAD:+:$LD_PRELOAD}"
+# the first time the browser is opened, into ~/.jcef-bundle-<CEF version of this jar>; from the next start it is
+# preloaded here (the app asks for that restart itself). JAVACHESS_JCEF_DIR overrides the folder.
+JCEF_META=$(unzip -p "$JAR" build_meta.json 2>/dev/null \
+  || python3 -c 'import sys, zipfile; print(zipfile.ZipFile(sys.argv[1]).read("build_meta.json").decode())' "$JAR" 2>/dev/null \
+  || true)
+JCEF_VERSION=$(printf '%s' "$JCEF_META" | grep -o 'cef-[0-9][0-9.]*' | head -1 | cut -c5- || true)
+JCEF_DIR=${JAVACHESS_JCEF_DIR:-$HOME/.jcef-bundle-${JCEF_VERSION:-unknown}}
+if [ ! -f "$JCEF_DIR/libcef.so" ] && [ -z "${JAVACHESS_JCEF_DIR:-}" ]; then
+  JCEF_DIR=$(ls -td "$HOME"/.jcef-bundle-*/ 2>/dev/null | head -1 || true)  # unzip missing: newest bundle
+  JCEF_DIR=${JCEF_DIR%/}
 fi
+if [ "$(uname -m)" = aarch64 ] && [ -n "$JCEF_DIR" ] && [ -f "$JCEF_DIR/libcef.so" ]; then
+  export LD_PRELOAD="$JCEF_DIR/libcef.so${LD_PRELOAD:+:$LD_PRELOAD}"
+fi
+# the browser's "Riavvia l'app" button starts this script again when the app is not run by systemd
+export JAVACHESS_LAUNCHER="$(pwd)/$(basename "$0")"
 
 # Class data sharing archive: created on the first run, then loaded at every start (much faster class
 # loading on the Pi). It is rebuilt automatically when the jar or the JDK change.
@@ -56,6 +67,9 @@ JVM_OPTS=(
   -Djavafx.animation.pulse="${JAVACHESS_FPS:-60}"
   -Djavachess.kiosk=true
 )
+if [ -n "${JAVACHESS_JCEF_DIR:-}" ]; then
+  JVM_OPTS+=(-Djavachess.jcef.dir="$JAVACHESS_JCEF_DIR")
+fi
 if [ "${JAVACHESS_DEBUG:-0}" = "1" ]; then
   JVM_OPTS+=(-Dprism.verbose=true -Djavachess.metrics=true -Djavachess.log.level=DEBUG)
 fi

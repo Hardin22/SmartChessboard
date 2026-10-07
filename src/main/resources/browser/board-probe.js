@@ -9,7 +9,9 @@
     title: document.title || '',
     site: 'other',
     page: '',
-    viewport: { w: window.innerWidth, h: window.innerHeight },
+    // the visible area, without scroll bars
+    viewport: { w: document.documentElement.clientWidth || window.innerWidth,
+                h: document.documentElement.clientHeight || window.innerHeight },
     dpr: window.devicePixelRatio || 1,
     challenge: false,
     login: false,

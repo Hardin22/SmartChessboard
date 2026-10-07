@@ -31,6 +31,24 @@ public record BoardSnapshot(String url, ChessSite site, String pageHint, String 
         public boolean inside(double viewportWidth, double viewportHeight) {
             return x >= -1 && y >= -1 && x + w <= viewportWidth + 1 && y + h <= viewportHeight + 1;
         }
+
+        /** The part of the rectangle inside the viewport (possibly empty: zero width or height). */
+        public Rect visiblePart(double viewportWidth, double viewportHeight) {
+            double x0 = Math.max(0, x);
+            double y0 = Math.max(0, y);
+            double x1 = Math.min(viewportWidth, x + w);
+            double y1 = Math.min(viewportHeight, y + h);
+            return new Rect(x0, y0, Math.max(0, x1 - x0), Math.max(0, y1 - y0));
+        }
+
+        /**
+         * True when the board can be pictured: at least 97% of its width and height visible (the hidden strip
+         * falls in the margin the readers ignore).
+         */
+        public boolean mostlyInside(double viewportWidth, double viewportHeight) {
+            Rect v = visiblePart(viewportWidth, viewportHeight);
+            return w > 0 && h > 0 && v.w() >= 0.97 * w && v.h() >= 0.97 * h;
+        }
     }
 
     /**
