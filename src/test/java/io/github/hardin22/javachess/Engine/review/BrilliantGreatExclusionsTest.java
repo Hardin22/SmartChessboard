@@ -543,6 +543,19 @@ class BrilliantGreatExclusionsTest {
         assertEquals(MoveClassification.GREAT, label(ba7, Tuning.DEFAULT.with("greatNoOnlyEscape", 0)));
     }
 
+    @Test
+    void anExchangePunishingTheOpponentsErrorIsGreat() {
+        // Torre - Lasker 1925, 19.Bxg5? Nxd3 (chess.com Great): the knight takes the bishop now, 19...f6 would be -0.25
+        ReviewInput nxd3 = rated(twoMoves("r3rnk1/pbq2ppp/3pp3/6bQ/1n1P4/N2B4/PP3PPP/2BRR1K1 w - - 0 19", "c1g5",
+                Eval.cp(-31), "h5g5", "b4d3", Eval.cp(-173), "b4d3", Eval.cp(-25), "f7f6", Eval.cp(-205)), 2500, 2500);
+        assertEquals(MoveClassification.GREAT, label(nxd3, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.GREAT, label(nxd3, Tuning.DEFAULT.with("greatCapturePunishLoss", 0)));
+        // live_184435729088 ply 11, 5...Nb4? 6.Bxe6 (chess.com Best): the bishop on c4 was en prise to Be6 itself
+        ReviewInput bxe6 = rated(twoMoves("rn1qkb1r/ppp1pppp/4b3/3n4/2B5/5Q2/PPPPNPPP/RNB1K2R b KQkq - 3 5", "d5b4",
+                Eval.cp(8), "b8c6", "c4e6", Eval.cp(292), "c4e6", Eval.cp(-6), "c4b3", Eval.cp(300)), 1901, 1960);
+        assertNotEquals(MoveClassification.GREAT, label(bxe6, Tuning.DEFAULT));
+    }
+
     private static ReviewInput rated(ReviewInput in, int white, int black) {
         return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
     }

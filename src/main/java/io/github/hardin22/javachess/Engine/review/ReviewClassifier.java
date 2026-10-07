@@ -113,6 +113,11 @@ public final class ReviewClassifier {
          * legal move).
          */
         final boolean greatNoOnlyEscape;
+        /**
+         * Phase 4: an exchange (not free material from 1000, not a recapture) right after an opponent's move losing at
+         * least this much (0 = off) is Great from {@link #greatCaptureGapLow}, without the outcome tests.
+         */
+        final double greatCapturePunishLoss;
         final double brilliantTopRegain;
         /** v2.3 R9: a quiet move starting a forced mate is Great when the alternative does not win. */
         final boolean greatStartsMate;
@@ -264,6 +269,7 @@ public final class ReviewClassifier {
             brilliantNoLiquidation = get("brilliantNoLiquidation", 1) != 0;
             brilliantRecaptureNet = get("brilliantRecaptureNet", 1) != 0;
             greatNoOnlyEscape = get("greatNoOnlyEscape", 1) != 0;
+            greatCapturePunishLoss = get("greatCapturePunishLoss", 0.10);
             brilliantTopRegain = get("brilliantTopRegain", 1);
             greatInCheckGap = get("greatInCheckGap", 0.10);
             greatLowRating = get("greatLowRating", 1500);
@@ -920,8 +926,13 @@ public final class ReviewClassifier {
             return false;
         }
         if (capture) {
-            // v2.3: players under 1500 get Great for a capture from a smaller gap
-            double capGap = r < t.greatLowRating ? t.greatCaptureGapLow : t.greatCaptureGap;
+            // v2.3: players under 1500 get Great for a capture from a smaller gap; Phase 4: so does an exchange that
+            // punishes the opponent's error, unless the capturing piece was en prise itself (trading it off is the
+            // way out: 6.Bxe6 live_184435729088, Bc4 attacked by Be6, chess.com Best)
+            Move cm = Tactics.find(b0, uci);
+            boolean punishing = t.greatCapturePunishLoss > 0 && oppLoss >= t.greatCapturePunishLoss && cm != null
+                    && !Tactics.hanging(b0, me ? Side.WHITE : Side.BLACK).containsKey(cm.getFrom());
+            double capGap = r < t.greatLowRating || punishing ? t.greatCaptureGapLow : t.greatCaptureGap;
             if (recapture || gap < capGap) {
                 return false;
             }
@@ -942,6 +953,9 @@ public final class ReviewClassifier {
             }
             if (t.greatNoCollect && collectsAfterCheck(replay, i, prevLabel)) {
                 return false;
+            }
+            if (punishing) {
+                return true;
             }
             if (t.greatBeginnerCapture && r < t.greatFreeMaterialRating) {
                 // Phase 4: under 1000 a capture the second best move cannot replace is Great even in a won position
