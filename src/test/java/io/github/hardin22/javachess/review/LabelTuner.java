@@ -252,9 +252,26 @@ class LabelTuner {
         Files.writeString(file, sb.toString(), StandardCharsets.UTF_8);
     }
 
-    /** Deterministic fold of a game (until the validator's fold definition replaces it). */
+    /** The validator's frozen folds ({@code data/evals_labeled/folds.json}); games not listed are hold-out. */
+    static final Map<String, Integer> FOLDS = readFolds();
+
+    static Map<String, Integer> readFolds() {
+        Path f = Path.of(System.getProperty("user.home"), ".javachess-orchestrator", "review-team", "data",
+                "evals_labeled", "folds.json");
+        Map<String, Integer> m = new LinkedHashMap<>();
+        try {
+            org.json.JSONObject o = new org.json.JSONObject(Files.readString(f)).getJSONObject("folds");
+            for (String k : o.keySet()) {
+                m.put(k, o.getInt(k));
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("folds.json not readable: " + f, e);
+        }
+        return m;
+    }
+
     static int fold(String id, int folds) {
-        return Math.floorMod(id.hashCode(), folds);
+        return FOLDS.get(id) % folds;
     }
 
     /** "name=v1,v2;name2=v3" */
@@ -284,12 +301,24 @@ class LabelTuner {
         OpeningBook book = OpeningBook.standard();
         List<Sample> out = new ArrayList<>();
         for (ChessComDataset.Game g : ChessComDataset.load()) {
-            if (!g.hasLabels() || !g.labels().stream().allMatch(Objects::nonNull)) {
+            if (!FOLDS.containsKey(g.id()) || !g.hasLabels() || !g.labels().stream().allMatch(Objects::nonNull)) {
                 continue;
             }
             List<PositionEval> pos = positions(g, lookup);
             if (pos != null) {
-                out.add(new Sample(g, new ReviewInput(null, g.uci(), pos, book, g.whiteRating(), g.blackRating())));
+                int wr = g.whiteRating();
+                int br = g.blackRating();
+                String ratings = System.getProperty("review.ratings", "true");
+                if ("none".equals(ratings)) {
+                    wr = 0;
+                    br = 0;
+                } else if ("accuracy".equals(ratings)) {
+                    // what the app could do without ratings: guess them from the accuracy of the game
+                    GameReview r0 = ReviewClassifier.classifyGame(new ReviewInput(null, g.uci(), pos, book));
+                    wr = (int) Math.max(400, Math.min(2600, -363 + 25.6 * r0.whiteAccuracy()));
+                    br = (int) Math.max(400, Math.min(2600, -363 + 25.6 * r0.blackAccuracy()));
+                }
+                out.add(new Sample(g, new ReviewInput(null, g.uci(), pos, book, wr, br)));
             }
         }
         return out;

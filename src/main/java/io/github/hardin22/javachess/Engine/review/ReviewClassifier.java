@@ -70,7 +70,14 @@ public final class ReviewClassifier {
         final int bookMaxGap;
         /** Book labels stop after this many plies. */
         final int bookMaxPly;
-        /** Win chance curve: logistic slope per centipawn for an unknown or 1500 rating ... */
+        /** Book also covers this many plies after the last named position when each loses less than ... */
+        final int bookExtend;
+        /** ... this win chance. */
+        final double bookExtendLoss;
+        /**
+         * Win chance curve: logistic slope per centipawn for an unknown or 1500 rating ... (chess.com's expected
+         * points depend on the rating: on its labels the best slope is ~0.0015 under 1000 and ~0.007 over 2000)
+         */
         final double slope;
         /** ... multiplied by exp(slopeRating * (rating - 1500) / 1000) when the mover's rating is known. */
         final double slopeRating;
@@ -96,8 +103,10 @@ public final class ReviewClassifier {
             giveAwayDrawEp = get("giveAwayDrawEp", 0.6);
             bookMaxGap = (int) get("bookMaxGap", 4);
             bookMaxPly = (int) get("bookMaxPly", 20);
-            slope = get("slope", WinModel.SLOPE);
-            slopeRating = get("slopeRating", 0);
+            bookExtend = (int) get("bookExtend", 2);
+            bookExtendLoss = get("bookExtendLoss", 0.02);
+            slope = get("slope", 0.0035);
+            slopeRating = get("slopeRating", 0.5);
         }
 
         private double get(String name, double def) {
@@ -363,6 +372,14 @@ public final class ReviewClassifier {
                 break;
             }
         }
+        // chess.com's book is larger than the named openings: the few accurate moves right after the last named
+        // position are theory too (43 labelled games: Book ends 1-4 plies after ours in 30 of them)
+        int theoryEnd = bookEnd;
+        while (bookEnd >= 0 && theoryEnd + 1 < Math.min(n, t.bookMaxPly) && theoryEnd - bookEnd < t.bookExtend
+                && replay.legalMoveCounts().get(theoryEnd + 1) > 1
+                && epBefore[theoryEnd + 1] - epAfter[theoryEnd + 1] < t.bookExtendLoss) {
+            theoryEnd++;
+        }
 
         List<MoveReview> out = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
@@ -375,7 +392,7 @@ public final class ReviewClassifier {
             MoveClassification label = null;
             // named traps (Fool's Mate...) are in the opening list: a book move never allows or gives mate, nor
             // throws away a Mistake's worth of win chance
-            if (i <= bookEnd && !played[i].isMate() && epBefore[i] - epAfter[i] < t.inaccuracyMax) {
+            if (i <= theoryEnd && !played[i].isMate() && epBefore[i] - epAfter[i] < t.inaccuracyMax) {
                 label = MoveClassification.BOOK_MOVE;
             }
             boolean mates = played[i].isCheckmate() && played[i].isMateFor(me);
