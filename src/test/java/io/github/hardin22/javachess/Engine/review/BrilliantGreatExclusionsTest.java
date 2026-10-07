@@ -103,6 +103,23 @@ class BrilliantGreatExclusionsTest {
     }
 
     @Test
+    void aDeclinedOfferWonBackAtOnceAndGainingNothingIsNotBrilliant() {
+        // Topalov - Shirov 1998, 26...Nb4 (chess.com Great): cxb4 would lose the piece back at once, the engine's line
+        // declines (27.Qxa4 Nxa2 28.Qxa2) and wins nothing
+        String fen = "r2rb1k1/5pbp/2p3p1/p1qnPP2/p2N4/2P4P/B1QB2P1/4RR1K b - - 2 26";
+        List<PositionEval> ps = new ArrayList<>();
+        ps.add(new PositionEval(fen, Eval.cp(-35), List.of(
+                new EngineLine("d5b4", Eval.cp(-35), List.of("d5b4", "c2a4", "b4a2", "a4a2", "g7e5", "d2c1", "d8d5",
+                        "a2b3"), 20),
+                new EngineLine("a4a3", Eval.cp(183), List.of("a4a3"), 20)), 20, 0, false));
+        ps.add(after(fen, "d5b4", Eval.cp(-2)));
+        ReviewInput nb4 = rated(new ReviewInput(fen, List.of("d5b4"), ps, OpeningBook.NONE, RATING, RATING), 2500,
+                2500);
+        assertEquals(MoveClassification.GREAT, label(nb4, Tuning.DEFAULT));
+        assertEquals(MoveClassification.BRILLIANT, label(nb4, Tuning.DEFAULT.with("brilliantNoEmptyOffer", 0)));
+    }
+
+    @Test
     void realBrilliantStaysBrilliant() {
         // live_146777979394 ply 11, 6.Bxf7+ (chess.com Brilliant with both engines)
         String fen = "r1bqk1nr/pppp1ppp/2n5/2b5/2B1P3/2p2N2/PP3PPP/RNBQK2R w KQkq - 0 6";

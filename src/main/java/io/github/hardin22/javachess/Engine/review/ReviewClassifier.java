@@ -171,6 +171,8 @@ public final class ReviewClassifier {
          * sacrifice although it is worth 1 (Kasparov - Topalov 1999, 33.c3+).
          */
         final boolean brilliantPawnCheckSac;
+        /** v2.5 B-E12: a declined offer that would be won back at once and after which the line wins nothing. */
+        final boolean brilliantNoEmptyOffer;
         /** Phase 4: an answer to check taking free material (SEE > 0) follows the free material rule of captures. */
         final boolean greatInCheckFreeMaterial;
         /** Phase 4: no Great for a bishop retreating from the pawn that has just advanced against it. */
@@ -296,6 +298,7 @@ public final class ReviewClassifier {
             brilliantKingMarchPieces = get("brilliantKingMarchPieces", 6);
             brilliantNoCheckingCounter = get("brilliantNoCheckingCounter", 1) != 0;
             brilliantPawnCheckSac = get("brilliantPawnCheckSac", 1) != 0;
+            brilliantNoEmptyOffer = get("brilliantNoEmptyOffer", 1) != 0;
             greatInCheckFreeMaterial = get("greatInCheckFreeMaterial", 1) != 0;
             greatKickedBishop = get("greatKickedBishop", 1) != 0;
             greatNoCashIn = get("greatNoCashIn", 1) != 0;
@@ -1296,6 +1299,12 @@ public final class ReviewClassifier {
                 played, me))) {
             return false; // B-E1: nothing new is offered
         }
+        if (t.brilliantNoEmptyOffer && sac.regain() >= sac.offered() && !acceptedInLine(b0, m, line)
+                && lineGain(b0, line, me ? Side.WHITE : Side.BLACK, 8) <= 0) {
+            // B-E12: an offer the opponent declines, that would be won back at once if taken, and after which the
+            // line wins nothing: no material is really given (Topalov - Shirov 1998, 26...Nb4: chess.com Great)
+            return false;
+        }
         if (t.brilliantNoCheckingCounter && checkingCounter(b0, m, line)) {
             // B-E11: the opponent's best answer leaves the piece and captures something else with check (Spassky -
             // Bronstein 16.Nxf7 exf1=Q+, live_174521739268 24.Ndxb5 gxf4+): the move did not really offer the piece,
@@ -1340,6 +1349,30 @@ public final class ReviewClassifier {
         Move reply = Tactics.find(b1, line.get(1));
         return b1.isKingAttacked() && reply != null && reply.getTo() == m.getTo()
                 && b1.getPiece(reply.getFrom()).getPieceType() == PieceType.KING;
+    }
+
+    /** Material the side wins along the first {@code plies} moves of {@code line} (all of them, quiet or not). */
+    private static int lineGain(Board b0, List<String> line, Side side, int plies) {
+        Board b = b0.clone();
+        for (int i = 0; i < Math.min(plies, line.size()); i++) {
+            Move mv = Tactics.find(b, line.get(i));
+            if (mv == null) {
+                break;
+            }
+            b.doMove(mv);
+        }
+        return Tactics.material(b, side) - Tactics.material(b0, side);
+    }
+
+    /** True when the opponent's answer in {@code line} captures on the square the move went to. */
+    private static boolean acceptedInLine(Board b0, Move m, List<String> line) {
+        if (line.size() < 2 || !line.get(0).equals(m.toString())) {
+            return false;
+        }
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        Move reply = Tactics.find(b1, line.get(1));
+        return reply != null && reply.getTo() == m.getTo();
     }
 
     /** True when the second move of {@code line} (the opponent's answer) is a capture elsewhere that gives check. */
