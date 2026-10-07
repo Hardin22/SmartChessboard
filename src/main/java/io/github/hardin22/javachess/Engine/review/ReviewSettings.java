@@ -19,11 +19,14 @@ public record ReviewSettings(long nodes, long secondLineNodes, int processes, in
     }
 
     /**
-     * Stockfish Lite (default, Raspberry Pi 5): 300k nodes per position (depth ~16-19). The processes and hash used
-     * by the app come from {@code EngineManager.Budget.review()} (3 x 64 MB on a Pi 5 8 GB).
+     * Stockfish Lite (default, Raspberry Pi 5): 200k nodes per position (depth ~15-18). Measured against a 1M-node
+     * reference on 25 chess.com games: 150k nodes give the same label on 75.9% of the moves (error vs not-error
+     * 96.6%), 300k on 78.4% (97.5%) for twice the time, so the knee is around 200k; the accuracy MAE vs chess.com
+     * does not change. The processes and hash used by the app come from {@code EngineManager.Budget.review()}
+     * (3 x 64 MB on a Pi 5 8 GB).
      */
     public static ReviewSettings lite() {
-        return new ReviewSettings(300_000, 100_000, 3, 64);
+        return new ReviewSettings(200_000, 100_000, 3, 64);
     }
 
     /** Full Stockfish: 1M nodes per position, like Lichess user analysis. */
