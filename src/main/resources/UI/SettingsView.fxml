@@ -12,11 +12,11 @@
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
-<?import org.example.javachess.Components.*?>
+<?import io.github.hardin22.javachess.Components.*?>
 <?import org.kordamp.ikonli.javafx.FontIcon?>
 
 <BorderPane styleClass="page" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
-            fx:controller="org.example.javachess.Controllers.SettingsController">
+            fx:controller="io.github.hardin22.javachess.Controllers.SettingsController">
     <top>
         <PageHeader fx:id="header" title="%settings.title" subtitle="%settings.subtitle" onBack="#goBack">
             <padding><Insets top="16" right="16" bottom="8" left="16"/></padding>

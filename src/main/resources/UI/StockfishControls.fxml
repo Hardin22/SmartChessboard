@@ -8,7 +8,7 @@
 
 <!-- Analysis settings, shown inside a bottom sheet by the game and review screens. -->
 <VBox fx:id="root" styleClass="card, card-flush" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
-      fx:controller="org.example.javachess.Controllers.StockfishControlsController">
+      fx:controller="io.github.hardin22.javachess.Controllers.StockfishControlsController">
     <HBox styleClass="setting-row, first">
         <VBox spacing="2" HBox.hgrow="ALWAYS" minWidth="0">
             <Label text="%analysis.depth" styleClass="setting-title"/>

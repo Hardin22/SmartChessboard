@@ -8,11 +8,11 @@
 <?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
-<?import org.example.javachess.Components.*?>
+<?import io.github.hardin22.javachess.Components.*?>
 <?import org.kordamp.ikonli.javafx.FontIcon?>
 
 <GameLayout fx:id="reviewView" styleClass="page" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
-            fx:controller="org.example.javachess.Controllers.ReviewController">
+            fx:controller="io.github.hardin22.javachess.Controllers.ReviewController">
     <fx:define>
         <fx:include fx:id="stockfishControls" source="StockfishControls.fxml"/>
     </fx:define>

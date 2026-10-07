@@ -5,7 +5,7 @@
  *
  * The mark: a rounded tile holding a 2x2 board; the two light squares sit on the anti-diagonal and the
  * remaining dark square carries a dot, the LED of the smart board. Geometry on a 64-unit grid (same as
- * org.example.javachess.Components.Logo). The wordmark is "javaChess" in Geist SemiBold, converted to
+ * io.github.hardin22.javachess.Components.Logo). The wordmark is "javaChess" in Geist SemiBold, converted to
  * outlines so the SVGs do not depend on installed fonts.
  *
  * Outputs

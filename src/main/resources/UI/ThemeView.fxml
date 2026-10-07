@@ -7,10 +7,10 @@
 <?import javafx.scene.layout.FlowPane?>
 <?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
-<?import org.example.javachess.Components.*?>
+<?import io.github.hardin22.javachess.Components.*?>
 
 <BorderPane fx:id="rootPane" styleClass="page" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
-            fx:controller="org.example.javachess.Controllers.ThemeController">
+            fx:controller="io.github.hardin22.javachess.Controllers.ThemeController">
     <top>
         <PageHeader title="%theme.title" subtitle="%theme.subtitle" onBack="#backToHome">
             <padding><Insets top="16" right="16" bottom="8" left="16"/></padding>

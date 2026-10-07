@@ -35,4 +35,4 @@ else
   CP="target/classes:$(cat target/classpath.txt)"
 fi
 JAVA=${JAVA_HOME:+$JAVA_HOME/bin/}java
-exec "$JAVA" -Xmx512m -XX:+UseSerialGC -cp "$CP" org.example.javachess.Services.PuzzleIndexer "$IN" "$OUT" "$@"
+exec "$JAVA" -Xmx512m -XX:+UseSerialGC -cp "$CP" io.github.hardin22.javachess.Services.PuzzleIndexer "$IN" "$OUT" "$@"

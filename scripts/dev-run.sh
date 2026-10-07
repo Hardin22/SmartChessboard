@@ -9,4 +9,4 @@ cd "$(dirname "$0")/.."
 if [ ! -f target/classpath.txt ] || [ pom.xml -nt target/classpath.txt ]; then
   ./mvnw -q dependency:build-classpath -Dmdep.outputFile=target/classpath.txt
 fi
-exec java -cp "target/classes:$(cat target/classpath.txt)" "$@" org.example.javachess.Application.Main
+exec java -cp "target/classes:$(cat target/classpath.txt)" "$@" io.github.hardin22.javachess.Application.Main

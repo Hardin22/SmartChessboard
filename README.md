@@ -226,7 +226,7 @@ display: CI runs everything under `xvfb-run`; on a machine without a display the
 ### Architecture
 
 ```
-org.example.javachess
+io.github.hardin22.javachess
 ├── Application   entry point (App, Main), start-up (Bootstrap), lazy native libraries (NativeLibraries),
 │                 developer switches and scripted scenarios (DevOptions, DevScenario, DevDemos), StartupMetrics
 ├── Components    UI building blocks and theming: ThemeManager (light/dark), I18n, GameLayout, MoveListView,
@@ -264,8 +264,6 @@ org.example.javachess
   conditions (square accuracy 99.8%).
 - **Data**: settings, archive and puzzle progress are written atomically (temporary file + rename) with automatic
   backups; unreadable files are moved aside, never overwritten.
-
-The Java package is still `org.example.javachess` for historical reasons.
 
 ## Contributing
 

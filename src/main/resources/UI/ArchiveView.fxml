@@ -6,11 +6,11 @@
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
-<?import org.example.javachess.Components.*?>
+<?import io.github.hardin22.javachess.Components.*?>
 <?import org.kordamp.ikonli.javafx.FontIcon?>
 
 <BorderPane fx:id="rootPane" styleClass="page" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
-            fx:controller="org.example.javachess.Controllers.ArchiveController">
+            fx:controller="io.github.hardin22.javachess.Controllers.ArchiveController">
     <top>
         <PageHeader fx:id="header" title="%archive.title" subtitle="%archive.subtitle" onBack="#backToHome">
             <padding><Insets top="16" right="16" bottom="8" left="16"/></padding>

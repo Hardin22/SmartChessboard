@@ -5,7 +5,7 @@
 
 <!-- Root of the scene. ThemeManager adds the stylesheet and the theme-dark / theme-light class. -->
 <StackPane fx:id="rootPane" styleClass="app-root" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
-           fx:controller="org.example.javachess.Controllers.MainController">
+           fx:controller="io.github.hardin22.javachess.Controllers.MainController">
 
     <!-- Current view -->
     <StackPane fx:id="mainContainer" styleClass="view-container" maxHeight="Infinity" maxWidth="Infinity"/>

@@ -6,12 +6,12 @@
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
-<?import org.example.javachess.Components.*?>
+<?import io.github.hardin22.javachess.Components.*?>
 <?import org.kordamp.ikonli.javafx.FontIcon?>
 
 <!-- Placeholder shown while the JCEF browser runs in its own (Swing) window. -->
 <BorderPane styleClass="page" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
-            fx:controller="org.example.javachess.Controllers.BrowserController">
+            fx:controller="io.github.hardin22.javachess.Controllers.BrowserController">
     <top>
         <PageHeader title="%browser.title" subtitle="%browser.subtitle" onBack="#onBack">
             <padding><Insets top="16" right="16" bottom="8" left="16"/></padding>

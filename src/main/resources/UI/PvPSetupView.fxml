@@ -9,11 +9,11 @@
 <?import javafx.scene.layout.FlowPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
-<?import org.example.javachess.Components.*?>
+<?import io.github.hardin22.javachess.Components.*?>
 <?import org.kordamp.ikonli.javafx.FontIcon?>
 
 <BorderPane fx:id="pvpSetup" styleClass="page" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
-            fx:controller="org.example.javachess.Controllers.GameSetupController">
+            fx:controller="io.github.hardin22.javachess.Controllers.GameSetupController">
     <top>
         <PageHeader title="%pvp.title" subtitle="%pvp.subtitle" onBack="#backToHome">
             <padding><Insets top="16" right="16" bottom="8" left="16"/></padding>
