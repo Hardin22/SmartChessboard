@@ -155,6 +155,8 @@ public final class ReviewClassifier {
         final boolean greatWonQuiet;
         /** v2.5: a pawn taking a pawn is Great only after an opponent's move losing at least this much (0 = off). */
         final double greatPawnTradeOppLoss;
+        /** v2.5 B+K: a king march is Brilliant with at least this many pieces (no pawns, no kings) on the board (0 = off). */
+        final double brilliantKingMarchPieces;
         /** Phase 4: an answer to check taking free material (SEE > 0) follows the free material rule of captures. */
         final boolean greatInCheckFreeMaterial;
         /** Phase 4: no Great for a bishop retreating from the pawn that has just advanced against it. */
@@ -277,6 +279,7 @@ public final class ReviewClassifier {
             greatPawnFollowUp = get("greatPawnFollowUp", 1) != 0;
             greatWonQuiet = get("greatWonQuiet", 1) != 0;
             greatPawnTradeOppLoss = get("greatPawnTradeOppLoss", 0.15);
+            brilliantKingMarchPieces = get("brilliantKingMarchPieces", 6);
             greatInCheckFreeMaterial = get("greatInCheckFreeMaterial", 1) != 0;
             greatKickedBishop = get("greatKickedBishop", 1) != 0;
             greatNoCashIn = get("greatNoCashIn", 1) != 0;
@@ -1191,7 +1194,11 @@ public final class ReviewClassifier {
                                         Eval played, double epBefore, double epAfter, Tuning t, double k,
                                         List<String> line) {
         Move m = Tactics.find(b0, uci);
-        if (m == null || m.getPromotion() != Piece.NONE || b0.getPiece(m.getFrom()).getPieceType() == PieceType.KING) {
+        if (m == null || m.getPromotion() != Piece.NONE) {
+            return false;
+        }
+        boolean kingMarch = b0.getPiece(m.getFrom()).getPieceType() == PieceType.KING;
+        if (kingMarch && !kingMarch(b0, m, isTop, t)) {
             return false;
         }
         double loss = epBefore - epAfter;
@@ -1222,6 +1229,9 @@ public final class ReviewClassifier {
         if (!played.isMate() && played.cpFor(me) < t.brilliantMinCpAfter) {
             return false;
         }
+        if (kingMarch) {
+            return true; // the king itself is what is offered
+        }
         if (sac.value() < t.sacMin) {
             return false; // B-E1: nothing new is offered
         }
@@ -1244,6 +1254,60 @@ public final class ReviewClassifier {
             }
         }
         return true;
+    }
+
+    /**
+     * v2.5 B+K: the engine's king move walking into the opponent's half of a board still full of pieces, next to squares
+     * the opponent attacks (Short - Timman 1991, 34.Kg5!!): the king's safety is the sacrifice. Endgame king marches
+     * (few pieces) are technique: chess.com Best on the 177 games (30 of 30 forward king moves with at most 3 pieces).
+     */
+    private static boolean kingMarch(Board b0, Move m, boolean isTop, Tuning t) {
+        if (t.brilliantKingMarchPieces <= 0 || !isTop || b0.isKingAttacked() || b0.getPiece(m.getTo()) != Piece.NONE) {
+            return false;
+        }
+        boolean white = b0.getSideToMove() == Side.WHITE;
+        int from = m.getFrom().getRank().ordinal();
+        int to = m.getTo().getRank().ordinal();
+        int ahead = white ? to : 7 - to;
+        if (ahead < 4 || (white ? to <= from : to >= from)) {
+            return false;
+        }
+        int pieces = 0;
+        for (Square sq : Square.values()) {
+            Piece p = sq == Square.NONE ? Piece.NONE : b0.getPiece(sq);
+            if (p != Piece.NONE && p.getPieceType() != PieceType.PAWN && p.getPieceType() != PieceType.KING) {
+                pieces++;
+            }
+        }
+        if (pieces < t.brilliantKingMarchPieces) {
+            return false;
+        }
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        Side opponent = white ? Side.BLACK : Side.WHITE;
+        for (Square sq : kingZone(m.getTo())) {
+            if (b1.squareAttackedBy(sq, opponent) != 0L) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The squares a king on {@code sq} attacks. */
+    private static List<Square> kingZone(Square sq) {
+        List<Square> out = new ArrayList<>();
+        int f = sq.getFile().ordinal();
+        int r = sq.getRank().ordinal();
+        for (int df = -1; df <= 1; df++) {
+            for (int dr = -1; dr <= 1; dr++) {
+                int nf = f + df;
+                int nr = r + dr;
+                if ((df != 0 || dr != 0) && nf >= 0 && nf < 8 && nr >= 0 && nr < 8) {
+                    out.add(Square.squareAt(nr * 8 + nf));
+                }
+            }
+        }
+        return out;
     }
 
     /**

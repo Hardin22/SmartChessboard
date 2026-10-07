@@ -62,6 +62,16 @@ class BrilliantGreatExclusionsTest {
     }
 
     @Test
+    void aKingMarchIntoAFullBoardIsBrilliant() {
+        // Short - Timman 1991, 34.Kg5!! (chess.com Brilliant): the king walks to the fifth rank with queens and rooks
+        // on, mate in 6; the second best move keeps only +2.48
+        ReviewInput kg5 = rated(oneMove("2b1rrk1/2pR1p2/1pq1pQp1/p3P2p/P1PR1K1P/5N2/2P2PP1/8 w - - 6 34", "f4g5",
+                Eval.whiteMates(6), "f4g5", Eval.cp(248), "d7e7", Eval.whiteMates(5)), 2500, 2500);
+        assertEquals(MoveClassification.BRILLIANT, label(kg5, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.BRILLIANT, label(kg5, Tuning.DEFAULT.with("brilliantKingMarchPieces", 0)));
+    }
+
+    @Test
     void realBrilliantStaysBrilliant() {
         // live_146777979394 ply 11, 6.Bxf7+ (chess.com Brilliant with both engines)
         String fen = "r1bqk1nr/pppp1ppp/2n5/2b5/2B1P3/2p2N2/PP3PPP/RNBQK2R w KQkq - 0 6";
