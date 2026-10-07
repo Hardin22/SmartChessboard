@@ -212,6 +212,14 @@ public final class PlayerStats {
 
     // ------------------------------------------------------------------ helpers
 
+    /**
+     * The local player's side in an archived game (TRUE = White), empty when it cannot be told (two players at the
+     * board, someone else's game). For "Rigioca i tuoi errori" and per-game results.
+     */
+    public static java.util.Optional<Boolean> localSide(ArchivedGame g) {
+        return java.util.Optional.ofNullable(mySide(g, Identity.fromSettings()));
+    }
+
     /** True/false when the local player had White/Black, null when the game is not "mine". */
     static Boolean mySide(ArchivedGame g, Identity me) {
         if (g.mode() == GameMode.PVP || g.mode() == GameMode.PUZZLE) {
