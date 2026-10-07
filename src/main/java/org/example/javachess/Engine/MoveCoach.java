@@ -95,6 +95,7 @@ public final class MoveCoach {
                 c = instance;
                 if (c == null) {
                     c = new MoveCoach(PositionAnalyzer.get(), () -> EngineManager.get().budget());
+                    c.setFallbackListener(new HardwareMoveFeedback()); // board LEDs by default
                     instance = c;
                 }
             }
@@ -118,7 +119,7 @@ public final class MoveCoach {
         return listener != null;
     }
 
-    /** Renderer used while no listener is registered (the legacy direct-to-Arduino rendering). */
+    /** Renderer used while no listener is registered (default: the board LEDs via the hardware layer). */
     public void setFallbackListener(MoveFeedbackListener l) {
         this.fallbackListener = l;
     }
