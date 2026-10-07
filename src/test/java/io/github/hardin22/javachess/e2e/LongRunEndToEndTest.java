@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.lang.management.ManagementFactory;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Random;
 import java.util.TreeMap;
@@ -43,6 +44,7 @@ class LongRunEndToEndTest {
 
     private record Usage(int threads, int nonDaemon, long processes, long heapMb, TreeMap<String, Long> byName) {
         static Usage now() throws InterruptedException {
+            clearSoftReferences();
             for (int i = 0; i < 3; i++) {
                 System.gc();
                 Thread.sleep(200);
@@ -53,6 +55,24 @@ class LongRunEndToEndTest {
             long heap = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getUsed() / (1024 * 1024);
             return new Usage(threads.size(), (int) threads.stream().filter(t -> !t.isDaemon()).count(),
                     ProcessHandle.current().descendants().filter(ProcessHandle::isAlive).count(), heap, byName);
+        }
+    }
+
+    /**
+     * JavaFX keeps render images in softly referenced pools; with the software pipeline (Raspberry Pi, headless CI)
+     * they are Java arrays and fill the heap until memory gets tight, which is not a leak. An allocation larger than
+     * the heap makes the JVM clear every soft reference first (and then fail), so only what is really held remains.
+     */
+    private static void clearSoftReferences() {
+        long max = Runtime.getRuntime().maxMemory();
+        if (max / 8 + 1024 >= Integer.MAX_VALUE - 16) {
+            return; // the request could succeed on a huge heap
+        }
+        try {
+            long[] tooBig = new long[(int) (max / 8 + 1024)];
+            tooBig[0] = 1;
+        } catch (OutOfMemoryError expected) {
+            // soft references were cleared before this error
         }
     }
 
@@ -68,6 +88,7 @@ class LongRunEndToEndTest {
         for (int g = 0; g < games; g++) {
             if (g == 2) {
                 baseline = Usage.now(); // after the first games: views, engines and pools are warm
+                histogram("baseline");
             }
             sim().setOccupancy(0xFFFF_0000_0000_FFFFL);
             ActiveGameController game = app.startPvc(g % 2 == 0);
@@ -83,6 +104,7 @@ class LongRunEndToEndTest {
         long seconds = (System.currentTimeMillis() - start) / 1000;
         waitFor("every game archived", () -> archive().size() == archivedBefore + games);
         Usage after = Usage.now();
+        histogram("after");
         String report = String.format("%d games (%d finished) in %d s; threads %d -> %d, non-daemon %d -> %d, "
                         + "child processes %d -> %d, heap after GC %d MB -> %d MB%nthreads before %s%nthreads after  %s",
                 games, finished, seconds, baseline.threads(), after.threads(), baseline.nonDaemon(), after.nonDaemon(),
@@ -93,6 +115,23 @@ class LongRunEndToEndTest {
         assertTrue(after.nonDaemon() <= baseline.nonDaemon(), "non-daemon threads grow: " + report);
         assertTrue(after.processes() <= baseline.processes(), "engine processes pile up: " + report);
         assertTrue(after.heapMb() - baseline.heapMb() <= 48, "heap grows: " + report);
+    }
+
+    /** With {@code -De2e.longrun.histogram=true}: the 40 biggest classes on the heap (jcmd), to find a leak. */
+    private static void histogram(String when) {
+        if (!Boolean.getBoolean("e2e.longrun.histogram")) {
+            return;
+        }
+        try {
+            Process p = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "jcmd").toString(),
+                    String.valueOf(ProcessHandle.current().pid()), "GC.class_histogram").redirectErrorStream(true).start();
+            List<String> lines = new String(p.getInputStream().readAllBytes()).lines().limit(44).toList();
+            Object cache = field(io.github.hardin22.javachess.Utils.ImageCache.getInstance(), "cache");
+            System.out.println("[long run] image cache entries " + when + ": " + ((java.util.Map<?, ?>) cache).size());
+            System.out.println("[long run] heap histogram " + when + ":\n" + String.join("\n", lines));
+        } catch (Exception e) {
+            System.out.println("[long run] no histogram: " + e);
+        }
     }
 
     /** Plays random moves on the board until mate/draw or {@link #MAX_PLIES}; true when the game ended. */

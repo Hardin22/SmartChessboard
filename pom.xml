@@ -120,6 +120,13 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <!-- headless JavaFX for the end-to-end tests: -De2e.headless=true (no window, no display needed) -->
+            <groupId>org.testfx</groupId>
+            <artifactId>openjfx-monocle</artifactId>
+            <version>21.0.2</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-graphics</artifactId>
             <version>21.0.1</version>

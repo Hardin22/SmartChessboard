@@ -202,6 +202,7 @@ browser. The session is kept in `~/.javachess/jcef-cache`. **Passwords are never
 ```bash
 ./mvnw test                     # unit + end-to-end tests (~1 min; engine tests skip without Stockfish)
 ./mvnw test -DskipE2E=true      # without the end-to-end tests (they open a window)
+./mvnw test -De2e.headless=true # end-to-end tests without a window or display (JavaFX Monocle, software rendering)
 ./mvnw -DskipTests package      # runnable jar in target/
 scripts/dev-run.sh              # run from the build directory, with developer switches:
 scripts/dev-run.sh -Djavachess.windowed=1920x720 -Djavachess.view=REVIEW
@@ -214,8 +215,12 @@ layer (a fake UCI process; Stockfish when installed), the board protocol and sta
 LED renderer and the clocks. The end-to-end tests in `src/test/java/**/e2e` start the real views and game classes
 with no board and a deterministic UCI engine as a child process, and play: a game against the bot until checkmate
 (archived), an engine switch during a game, a two-player game lost on time, puzzles solved and failed (progress
-stored), the review of an archived game with accuracies, and the archive screen (open, export, delete). They need a
-display: CI runs everything under `xvfb-run`; on a machine without a display they are skipped.
+stored), the review of an archived game with accuracies, and the archive screen (open, export, delete). Further E2E
+classes play every local mode to the end on the simulated board (`SimBoardEndToEndTest`: moves lifted and placed on
+the sensors, bot moves reproduced, cable unplugged and plugged back, take-back, puzzle set up on the board) and run 20
+games in a row checking that threads, engine processes and heap do not grow (`LongRunEndToEndTest`). They need a
+display (CI runs everything under `xvfb-run`) or `-De2e.headless=true`; on a machine without a display they are
+skipped. QA notes: [docs/qa](docs/qa/SUMMARY.md).
 
 | Switch | Effect |
 |---|---|

@@ -76,6 +76,7 @@ class GameFeaturesEndToEndTest {
         EngineManager.get().refreshProfiles();
         EngineManager.get().select(EngineManager.STOCKFISH);
 
+        E2eHarness.configureHeadlessIfRequested();
         CountDownLatch started = new CountDownLatch(1);
         try {
             Platform.startup(started::countDown);

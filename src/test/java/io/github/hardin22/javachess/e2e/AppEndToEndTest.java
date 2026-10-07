@@ -95,6 +95,7 @@ class AppEndToEndTest {
         PuzzleProgressService.resetInstance();
         EngineManager.get().refreshProfiles();
 
+        E2eHarness.configureHeadlessIfRequested();
         CountDownLatch started = new CountDownLatch(1);
         try {
             Platform.startup(started::countDown);

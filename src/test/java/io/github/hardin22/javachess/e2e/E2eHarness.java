@@ -60,6 +60,26 @@ final class E2eHarness {
         this.script = script;
     }
 
+    /**
+     * With {@code -De2e.headless=true} JavaFX runs on Monocle's headless platform with software rendering: no window,
+     * no display (CI without xvfb, or locally without windows popping up). Must run before the toolkit starts.
+     */
+    static void configureHeadlessIfRequested() {
+        String prism = System.getProperty("e2e.prism"); // e.g. "sw": the software pipeline of the Raspberry Pi
+        if (prism != null && !prism.isBlank()) {
+            System.setProperty("prism.order", prism);
+        }
+        if (Boolean.getBoolean("e2e.headless")) {
+            System.setProperty("glass.platform", "Monocle");
+            System.setProperty("monocle.platform", "Headless");
+            // the virtual screen must hold the 720x1280 window, or every frame fails to upload
+            System.setProperty("headless.geometry", "1920x1920-32");
+            System.setProperty("prism.order", "sw");
+            System.setProperty("prism.text", "t2k");
+            System.setProperty("java.awt.headless", "true");
+        }
+    }
+
     /** Starts JavaFX and the main layout; skips the test class when there is no display. */
     static E2eHarness start(String boardMode) throws Exception {
         assumeTrue(!System.getProperty("os.name").toLowerCase().contains("win"), "engine wrapper is a shell script");
@@ -86,6 +106,7 @@ final class E2eHarness {
         PuzzleProgressService.resetInstance();
         EngineManager.get().refreshProfiles();
 
+        configureHeadlessIfRequested();
         CountDownLatch started = new CountDownLatch(1);
         try {
             Platform.startup(started::countDown);
