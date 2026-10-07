@@ -222,6 +222,23 @@ public class PvcGame extends AbstractGame {
         }
     }
 
+    private String botName() {
+        if (botType == null || botType == EngineService.EngineType.STOCKFISH) {
+            return "Stockfish livello " + skillLevel;
+        }
+        return "Maia " + botType.name().replace("MAIA_", "");
+    }
+
+    @Override
+    protected String whitePlayerName() {
+        return isPlayerWhite ? "Giocatore" : botName();
+    }
+
+    @Override
+    protected String blackPlayerName() {
+        return isPlayerWhite ? botName() : "Giocatore";
+    }
+
     private boolean isPromotionMove(Move move) {
         Piece piece = board.getPiece(move.getFrom());
         return piece.getPieceType() == PieceType.PAWN &&
@@ -232,7 +249,7 @@ public class PvcGame extends AbstractGame {
         log.info(message);
         updateStatus(message);
 
-        saveGameToJson(message, openingPvc.getText(), "Player vs Stockfish livello " + skillLevel, "∞");
+        saveGameToJson(message, openingPvc.getText(), "Player vs " + botName(), "");
 
         saveGame = false;
         endGame(false);
@@ -261,7 +278,7 @@ public class PvcGame extends AbstractGame {
         if (saveGame) {
             final boolean finalSave = saveGame;
             Platform.runLater(() -> saveGameToJson("Partita interrotta.", openingPvc.getText(),
-                    "Player vs Stockfish livello " + skillLevel, "∞"));
+                    "Player vs " + botName(), ""));
         }
         openingPvc.setText("");
     }

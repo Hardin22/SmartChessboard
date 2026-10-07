@@ -44,7 +44,7 @@ hardware, which is how most development happens.
 ## Hardware
 
 The board is a grid of 64 Hall sensors read through four 16-channel multiplexers by an Arduino, which also drives a
-WS2812B LED strip. The Arduino talks to the Raspberry Pi over USB serial at 115200 baud. The custom PCB is being
+WS2812B LED strip. The Arduino talks to the Raspberry Pi over USB serial (250000 baud). The custom PCB is being
 manufactured; the prototype below uses off-the-shelf modules.
 
 ### Bill of materials (indicative)
@@ -53,7 +53,7 @@ manufactured; the prototype below uses off-the-shelf modules.
 |---|---|---|
 | 1 | Raspberry Pi 4 or 5 (4–8 GB) | Runs the app. A desktop computer works too. |
 | 1 | Display, 720×1920 (e.g. 8.8" IPS bar) or any HDMI screen | Touch is optional (mouse works). |
-| 1 | Arduino Uno / Nano (ATmega328) | Firmware in [`arduinoscript.ino`](arduinoscript.ino). |
+| 1 | Arduino Uno / Nano (ATmega328) | Firmware in [`firmware/smartboard/`](firmware/smartboard/smartboard.ino). |
 | 4 | CD74HC4067 16-channel analog multiplexer | One per 16 squares. |
 | 64 | A3144 (or similar) unipolar Hall-effect sensor | Active low; the Arduino enables internal pull-ups. |
 | 32 | Neodymium magnet, ~6×3 mm | One glued under each piece (same pole facing down). |
@@ -71,61 +71,61 @@ manufactured; the prototype below uses off-the-shelf modules.
 | D12 | WS2812B data in (through the 330 Ω resistor) |
 | 5 V / GND | Multiplexers, sensors; LEDs from the external 5 V supply with a common ground |
 
-The square-to-channel map is the `mapScacchiera` table at the top of the firmware: multiplexers 1 and 2 cover ranks
-1–4, multiplexers 3 and 4 ranks 5–8. Change it there if your board is wired differently.
+The channel-to-square map is the `SQUARE_OF` table in the firmware; the order of the LEDs on the strip is set on
+the app side (`led.layout`, `led.origin`, `led.direction`). `firmware/board-test/board-test.ino` is a bring-up
+sketch for a new board: LED walk, colour order check and a live sensor monitor to fill in `SQUARE_OF`.
 
 ### Firmware and serial protocol
 
-Flash [`arduinoscript.ino`](arduinoscript.ino) with the Arduino IDE (library: *Adafruit NeoPixel*).
-[`LedTest/`](LedTest) contains two sketches to check the LED strip on its own.
+Flash [`firmware/smartboard/smartboard.ino`](firmware/smartboard/smartboard.ino) with the Arduino IDE or
+`arduino-cli` (library: *Adafruit NeoPixel*). The board and the app speak a checksummed line protocol (v2) at
+250000 baud: `+E4` / `-E4` when a piece is placed or lifted, a full occupancy heartbeat every second, LED frames
+sent as deltas and acknowledged by the board. Everything — commands, flow control, latency budget, configuration —
+is described in [docs/hardware-protocol.md](docs/hardware-protocol.md).
 
-| Direction | Message | Meaning |
-|---|---|---|
-| Arduino → app | `READY` | Firmware started |
-| Arduino → app | `+E4` / `-E4` | A piece was placed on / lifted from E4 |
-| app → Arduino | `R` | Re-send the state of every square |
-| app → Arduino | `L:E4:R:G:B` | Set the LED of E4 and show it |
-| app → Arduino | `P:E4:R:G:B`, then `S` | Prepare several LEDs, then show them together |
-| app → Arduino | `C` | Turn every LED off |
-
-Without the board connected the app still starts and works on screen; for development a simulated board is
-available (`-Djavachess.board=sim -Djavachess.simulator.window=true`).
+The app finds the Arduino by itself (ttyACM/ttyUSB on Linux, cu.usbmodem on macOS), reconnects when the cable is
+unplugged, and works normally without a board: set-up and opponent-move steps complete on their own. For
+development there is a software board (`-Djavachess.board=sim -Djavachess.simulator.window=true`) and a firmware
+emulator on a pseudo-terminal (`firmware/emulator/board_emulator.py`).
 
 ## Installation
 
-You need **Java 21** and **Stockfish**. Maia bots additionally need **lc0** (the network weights are in
-`engines/maia/`).
+You need **Java 21** and **Stockfish**; the Maia bots additionally need **lc0** (their network weights are in
+`engines/maia/`). `scripts/install-engines.sh` puts Stockfish (and with `--lc0` also lc0) in `engines/`; otherwise
+the app looks in the `PATH`, `/opt/homebrew/bin`, `/usr/local/bin` and `/usr/games`, or where `stockfish.path` /
+`lc0.path` point.
 
-### macOS
+### macOS / Linux desktop
 
 ```bash
-brew install openjdk@21 stockfish        # optional: brew install lc0
+brew install openjdk@21 stockfish        # Debian/Ubuntu: sudo apt install openjdk-21-jdk stockfish
 git clone https://github.com/Hardin22/SmartChessboard.git && cd SmartChessboard
 ./mvnw -DskipTests package
 java -jar target/javaChess-1.0-SNAPSHOT.jar
 ```
 
-### Linux / Raspberry Pi OS (64-bit)
+### Raspberry Pi
+
+Full guide: [docs/raspberry-pi.md](docs/raspberry-pi.md) (Java 21 from Temurin — Raspberry Pi OS Bookworm ships
+17 —, display rotation, `run_pi.sh` options, systemd kiosk service in `deploy/`). In short:
 
 ```bash
-sudo apt install openjdk-21-jdk stockfish git
-sudo usermod -aG dialout "$USER"   # access to the Arduino serial port (log out and in again)
-git clone https://github.com/Hardin22/SmartChessboard.git && cd SmartChessboard
-./mvnw -DskipTests package         # build on the Pi itself: JavaFX jars are platform specific
-./run_pi.sh                        # software rendering, 512 MB heap, full screen
+sudo apt install -y stockfish zstd unclutter
+sudo usermod -aG dialout "$USER"                     # serial port access (log out and in again)
+./mvnw -Ppi -Djavafx.platform=linux-aarch64 -DskipTests package   # the "pi" profile drops other platforms' natives
+./run_pi.sh
 ```
-
-Point the app at your engines in `~/.javachess/config.properties` if they are not in the default locations
-(`stockfish.path=/usr/games/stockfish`, `lc0.path=/usr/local/bin/lc0`).
-
-For a kiosk setup, start `run_pi.sh` from the desktop autostart (`~/.config/autostart/javachess.desktop`) and rotate
-the display in *Screen Configuration* for a portrait monitor.
 
 ### Puzzles
 
-Download the puzzle database from [database.lichess.org](https://database.lichess.org/#puzzles)
-(`lichess_db_puzzle.csv.zst`, CC0), decompress it and put it in the `data/` folder next to the application.
-The file is large (~1 GB uncompressed) and is never committed to the repository.
+Puzzles come from the [Lichess puzzle database](https://database.lichess.org/#puzzles) (CC0) and are never
+committed or packaged. Build the compact database once (about 410 MB, searches in well under a millisecond):
+
+```bash
+scripts/build-puzzle-db.sh --download data/puzzles.db
+```
+
+The app looks for it in `-Djavachess.puzzles=<file>`, `data/puzzles.db`, then `~/.javachess/puzzles.db`.
 
 ## Configuration
 
@@ -140,6 +140,7 @@ Everything the app stores lives in **`~/.javachess/`** (override with `-Djavache
 | `logs/javachess.log` | Log file, rotated daily (attach it to bug reports) |
 | `jcef-cache/` | Integrated browser profile (cookies, chess.com / lichess login) |
 | `cookies.json` | Cookies of the app's own HTTP requests |
+| `puzzle-progress.json` | Puzzle attempts, puzzle rating, streaks |
 
 Settings and archive written by older versions in the working directory are migrated automatically on first start
 (the old archive is left untouched).
@@ -148,7 +149,7 @@ Most settings are changed from the *Settings* screen. Useful keys:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `stockfish.path`, `lc0.path` | platform dependent | Engine executables |
+| `stockfish.path`, `lc0.path` | searched | Engine executables (optional, see Installation) |
 | `stockfish.threads`, `stockfish.hash` | 2, 64 | Engine resources (1–256 threads, MB of hash) |
 | `game.bot.level` | 10 | Stockfish skill level (0–20) |
 | `game.bot.movetime` | 2000 | Bot thinking time in ms |
@@ -157,6 +158,9 @@ Most settings are changed from the *Settings* screen. Useful keys:
 | `game.evaluation`, `game.suggestions` | true | Show evaluation bar / best-move arrows |
 | `hardware.led.brightness` | 100 | LED brightness in % |
 | `lichess.username`, `lichess.token` | — | Lichess account and API token |
+| `board.mode` | auto | `auto` (detect the Arduino), `sim` (software board), `off` |
+| `board.port`, `board.baud` | detected, 250000 | Serial port of the Arduino and its speed |
+| `led.layout`, `led.origin`, `led.direction` | snake, a1, ranks | How the LED strip is laid out under the board |
 
 ### Lichess
 
@@ -193,35 +197,48 @@ scripts/dev-run.sh -Djavachess.screen=1 -Djavachess.snapshot=/tmp/home.png -Djav
 | `-Djavachess.log.level=DEBUG` | More logging |
 | `-Djavachess.vision.debug=true` | Write annotated vision frames to `~/.javachess/vision-debug/` |
 | `-Djavachess.board=sim` | Simulated sensor board (add `-Djavachess.simulator.window=true` to show it) |
+| `-Djavachess.dev.pvc=e2e4,g1f3,...` | Scripted game against the bot without a board (see `DevScenario`) |
+| `-Djavachess.reviewGame=latest` | Open the newest archived game in the review screen |
+| `-Djavachess.metrics=true` | Log frame times and heap every 5 s |
 
 ### Architecture
 
 ```
 org.example.javachess
-├── Application   entry point (App, Main), start-up (Bootstrap), developer switches (DevOptions)
-├── Controllers   JavaFX controllers, one per FXML view in src/main/resources/UI; ArduinoController (serial)
+├── Application   entry point (App, Main), start-up (Bootstrap), lazy native libraries (NativeLibraries),
+│                 developer switches and scripted scenarios (DevOptions, DevScenario), StartupMetrics
+├── Controllers   JavaFX controllers, one per FXML view in src/main/resources/UI;
+│                 ArduinoController (compatibility facade over Hardware)
+├── Engine        everything that talks to chess engines: EngineManager (owns the Stockfish/lc0 processes,
+│                 profiles), UciClient (asynchronous UCI), PositionAnalyzer (live analysis), MoveCoach and
+│                 MoveClassifier (move quality for the LEDs and the review), OpeningExplorer, EngineLocator
+├── Hardware      the smart board: SerialBoard (USB serial, detection, reconnection), BoardProtocol (v2 lines),
+│                 LedRenderer / LedMapping (layered LED frames), SimulatedBoard and its window
 ├── Oggetti       game model and board widgets: AbstractGame → PvcGame, PvpGame, OnlineGame, PuzzleGame;
-│                 ChessBoardUI, EvalBar, ArchivedGame, UCIEngine (UCI protocol)
-├── Engine        engine selection contract used by the UI (EngineSelection, EngineProfile)
-├── Services      EngineService, GameAnalyzer (review/accuracy), BoardStateManager (physical board state machine),
-│                 GameArchiveService (archive + PGN), LichessClient / LichessGameManager / LichessOAuth (Board API),
-│                 PuzzleService, PuzzleProgressService, VisionService (screen reading loop)
+│                 ChessBoardUI, EvalBar, ChessClock, ArchivedGame
+├── Services      BoardStateManager (physical board state machine), GameAnalyzer (review/accuracy),
+│                 GameArchiveService (archive + PGN), LichessClient / LichessGameManager / LichessOAuth,
+│                 PuzzleService / PuzzleDatabase / PuzzleProgressService, VisionService (screen reading loop)
 ├── Vision        PieceClassifier (YOLOv8 ONNX model), GridFinder (checker-pattern grid), BoardReading
-│                 (per-square probabilities), PositionResolver (uses legal moves to correct misread squares),
-│                 BotMover (plays moves in the browser)
-└── Utils         ConfigManager, AppPaths, AtomicFiles, PgnCodec (UCI/SAN/FEN/PGN), ErrorReporter, ...
+│                 (per-square probabilities), PositionResolver (legal moves correct misread squares), BotMover
+└── Utils         AppExecutors (io / compute / scheduler / storage threads), ConfigManager, AppPaths,
+                  AtomicFiles, PgnCodec (UCI/SAN/FEN/PGN), ErrorReporter, ...
 ```
 
-- **Threads**: the JavaFX thread only updates the UI. Engines, serial I/O, network, vision and file writes run on
-  background threads and report back with `Platform.runLater`.
-- **Physical board**: `BoardStateManager` turns `+E4`/`-E4` events into moves, checks them against the rules
-  (chesslib) and drives the LEDs for set-up, hints and the opponent's replies.
+- **Threads**: the JavaFX thread only updates the UI. Engines (`UciClient` control/reader threads), serial I/O
+  (`SerialBoard`), LED rendering, network, vision and file writes (`AppExecutors.storage()`, drained on exit) run
+  in the background and report back with `Platform.runLater`.
+- **Engines** are started lazily and reused (never one process per move); a missing or crashing engine is reported
+  and restarted instead of freezing the game.
+- **Physical board**: `BoardStateManager` turns sensor events into legal moves (castling and en passant in any
+  lifting order) and drives the LEDs for set-up, hints, move quality and the opponent's replies.
 - **Vision**: the screen is captured, the YOLOv8 model finds the board and the pieces (grey scale with contrast
   normalisation), `GridFinder` snaps the board to the exact 8×8 checker pattern, each square gets a probability for
   each piece, and `PositionResolver` picks the legal move that best explains the picture, so a misread square does not
   break the sync. Tests measure it on real lichess screenshots and on synthetic boards in several themes and lighting
   conditions (square accuracy 99.8%).
-- **Data**: settings and archive are written atomically (temporary file + rename) with automatic backups.
+- **Data**: settings, archive and puzzle progress are written atomically (temporary file + rename) with automatic
+  backups; unreadable files are moved aside, never overwritten.
 
 The Java package is still `org.example.javachess` for historical reasons.
 

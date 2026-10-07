@@ -84,6 +84,7 @@ public class ReviewController implements NavigationAware, GameNavigationListener
     private EvaluationGraph evaluationGraph;
     private List<MoveAnalysis> currentAnalysis;
     private String currentPgn;
+    private String currentInitialFen;
 
     @FXML
     public void initialize() {
@@ -130,6 +131,7 @@ public class ReviewController implements NavigationAware, GameNavigationListener
 
     public void loadGame(String pgn, String initialFen) {
         this.currentPgn = pgn;
+        this.currentInitialFen = initialFen;
 
         String boardStyle = ConfigManager.getProperty("theme.board", "Marghiacciato.png");
         String pieceStyle = ConfigManager.getProperty("theme.piece", "Classico");
@@ -168,11 +170,13 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         progressContainer.setManaged(true);
 
         String pgnToAnalyze = currentPgn;
+        String fenToAnalyze = currentInitialFen;
         Thread analysisThread = new Thread(() -> {
             try {
                 // Built here, not on the FX thread: starting the engine blocks until it answers.
                 GameAnalyzer analyzer = new GameAnalyzer();
-                List<MoveAnalysis> analysis = analyzer.analyzeGame(pgnToAnalyze, analysisDepth, progress -> {
+                // initial position matters for games that did not start from the standard position
+                List<MoveAnalysis> analysis = analyzer.analyzeGame(pgnToAnalyze, fenToAnalyze, analysisDepth, progress -> {
                     Platform.runLater(() -> analysisProgressIndicator.setProgress(progress));
                 });
 

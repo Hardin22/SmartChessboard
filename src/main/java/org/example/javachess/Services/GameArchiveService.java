@@ -286,6 +286,12 @@ public class GameArchiveService {
     @Deprecated
     public static void saveGame(String type, String opening, String pgn, String initialFen, String finalFen,
                                 String result, String timeControl) {
+        saveGame(type, opening, pgn, initialFen, finalFen, result, timeControl, null, null);
+    }
+
+    /** As {@link #saveGame(String, String, String, String, String, String, String)} with the players' names. */
+    public static void saveGame(String type, String opening, String pgn, String initialFen, String finalFen,
+                                String result, String timeControl, String white, String black) {
         try {
             JSONObject legacy = new JSONObject();
             legacy.put("type", type == null ? "" : type);
@@ -296,7 +302,8 @@ public class GameArchiveService {
             legacy.put("result", result == null ? "" : result);
             legacy.put("time", timeControl == null ? "" : timeControl);
             ArchivedGame g = fromLegacy(legacy, 0);
-            g = new ArchivedGame(0, g.mode(), g.label(), g.white(), g.black(), g.result(), g.termination(),
+            g = new ArchivedGame(0, g.mode(), g.label(), white != null ? white : g.white(),
+                    black != null ? black : g.black(), g.result(), g.termination(),
                     g.opening(), g.timeControl(), LocalDateTime.now(), g.initialFen(), g.finalFen(), g.movesUci());
             if (g.movesUci().isEmpty()) {
                 log.info("Game without moves not archived ({})", type);

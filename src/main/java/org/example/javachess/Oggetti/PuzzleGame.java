@@ -22,6 +22,9 @@ public class PuzzleGame extends AbstractGame {
     private int currentMoveIndex = 0;
     private Label instructionLabel;
     private boolean isSolving = false;
+    /** A wrong move, a hint or giving up: the puzzle no longer counts as solved cleanly. */
+    private boolean hadMistake;
+    private boolean progressRecorded;
 
     public PuzzleGame(ChessBoardUI chessBoardUI, EvalBar evalBar, Label instructionLabel) {
         super(chessBoardUI, evalBar);
@@ -43,6 +46,8 @@ public class PuzzleGame extends AbstractGame {
         this.currentPuzzle = puzzle;
         this.currentMoveIndex = 0;
         this.isSolving = false;
+        this.hadMistake = false;
+        this.progressRecorded = false;
         // Reset Hints
         this.hintLevel = 0;
         this.persistentHintMove = null;
@@ -238,6 +243,7 @@ public class PuzzleGame extends AbstractGame {
                         currentMoveIndex++;
 
                         if (currentMoveIndex >= puzzle.getMoves().size()) {
+                            recordProgress(!hadMistake);
                             updateStatus("PUZZLE COMPLETATO!");
                             instructionLabel.setText("COMPLIMENTI!");
                             chessBoardUI.showVictoryAnimation("OTTIMO!", "Puzzle Risolto");
@@ -245,6 +251,7 @@ public class PuzzleGame extends AbstractGame {
                         }
                     });
                 } else {
+                    recordProgress(!hadMistake);
                     updateStatus("PUZZLE COMPLETATO!");
                     instructionLabel.setText("COMPLIMENTI!");
                     chessBoardUI.showVictoryAnimation("OTTIMO!", "Puzzle Risolto");
@@ -255,6 +262,7 @@ public class PuzzleGame extends AbstractGame {
             } else {
                 // Incorrect Move
                 log.info("Wrong puzzle move {} (expected {})", move, expectedUci);
+                hadMistake = true;
                 updateStatus("Mossa Errata! Riprova.");
                 // the board manager already took the move: tell it the position did not change
                 org.example.javachess.Controllers.ArduinoController.getInstance().getBoardStateManager()
@@ -272,6 +280,18 @@ public class PuzzleGame extends AbstractGame {
         }
     }
 
+    /** Stores the attempt once per puzzle (rating, streak, themes) on the storage thread. */
+    private void recordProgress(boolean solved) {
+        if (progressRecorded || currentPuzzle == null) {
+            return;
+        }
+        progressRecorded = true;
+        Puzzle p = currentPuzzle;
+        org.example.javachess.Utils.AppExecutors.storage().execute(() ->
+                org.example.javachess.Services.PuzzleProgressService.getInstance()
+                        .record(p.getId(), p.getRating(), p.getThemes(), solved));
+    }
+
     private Move parseMoveUci(String uci) {
         Square from = Square.valueOf(uci.substring(0, 2).toUpperCase());
         Square to = Square.valueOf(uci.substring(2, 4).toUpperCase());
@@ -287,6 +307,7 @@ public class PuzzleGame extends AbstractGame {
     public void showHint() {
         if (!isSolving || currentPuzzle == null)
             return;
+        hadMistake = true;
 
         if (currentMoveIndex < currentPuzzle.getMoves().size()) {
             String expectedUci = currentPuzzle.getMoves().get(currentMoveIndex);
@@ -311,6 +332,8 @@ public class PuzzleGame extends AbstractGame {
     public void giveUp() {
         if (!isSolving || currentPuzzle == null)
             return;
+        hadMistake = true;
+        recordProgress(false);
 
         if (currentMoveIndex < currentPuzzle.getMoves().size()) {
             String expectedUci = currentPuzzle.getMoves().get(currentMoveIndex);
