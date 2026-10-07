@@ -92,7 +92,9 @@ public class PvcGame extends AbstractGame {
 
             @Override
             public void onSetupProgress(String message) {
-                updateStatus(message);
+                if (gameRunning) { // after the end the result stays on screen (the LEDs still guide)
+                    updateStatus(message);
+                }
             }
 
             @Override
