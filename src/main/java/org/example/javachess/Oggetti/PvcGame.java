@@ -79,8 +79,11 @@ public class PvcGame extends AbstractGame {
 
             @Override
             public void onBoardStateUpdated(String fen, String errorSquare) {
-                // Called on the FX thread: mirror the physical board
-                chessBoardUI.setPosition(fen, null);
+                // Called on the FX thread: mirror the physical board (skip if the UI already shows it,
+                // which also keeps the last-move highlight)
+                if (!fen.split(" ")[0].equals(chessBoardUI.getFen().split(" ")[0])) {
+                    chessBoardUI.setPosition(fen, null);
+                }
                 if (errorSquare != null) {
                     chessBoardUI.highlightErrorSquare(errorSquare);
                     updateStatus("ERRORE: Controlla " + errorSquare);

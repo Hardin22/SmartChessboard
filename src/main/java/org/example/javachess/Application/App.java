@@ -38,6 +38,7 @@ public class App extends Application {
             Font.loadFont(App.class.getResource("/Font/Poppins/Poppins-Medium.ttf").toExternalForm(), 10);
             Font.loadFont(App.class.getResource("/Font/Poppins/Poppins-Bold.ttf").toExternalForm(), 10);
 
+            applyRenderingProfile(scene);
             // Configura la scena
             primaryStage.setScene(scene);
             scene.getStylesheets().add(App.class.getResource("/Styles/Style.css").toExternalForm());
@@ -66,6 +67,25 @@ public class App extends Application {
         } catch (IOException e) {
             log.error("Cannot start the user interface", e);
             Platform.exit();
+        }
+    }
+
+    /**
+     * Without a GPU (Raspberry Pi with -Dprism.order=sw) drop shadows and blurs are computed by the CPU on every
+     * repaint (in a profiled game ~60% of the renderer's CPU samples). The root gets the style class
+     * "software-rendering" for the stylesheets; {@code -Djavachess.effects=off} removes every effect
+     * ("auto" = off for software rendering on ARM; default "on" until measured on the Pi).
+     */
+    private static void applyRenderingProfile(Scene scene) {
+        boolean software = !Platform.isSupported(javafx.application.ConditionalFeature.SCENE3D);
+        if (software) {
+            scene.getRoot().getStyleClass().add("software-rendering");
+        }
+        String effects = System.getProperty("javachess.effects", "on");
+        boolean arm = System.getProperty("os.arch", "").matches("(?i)aarch64|arm.*");
+        if ("off".equalsIgnoreCase(effects) || ("auto".equalsIgnoreCase(effects) && software && arm)) {
+            scene.getStylesheets().add("data:text/css,*%7B-fx-effect:null;%7D");
+            log.info("Visual effects disabled (software rendering)");
         }
     }
 
