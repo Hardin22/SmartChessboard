@@ -28,6 +28,11 @@ public final class CachingEvaluator implements PositionEvaluator {
         return p;
     }
 
+    @Override
+    public void newGame() {
+        engine.newGame();
+    }
+
     public int hits() {
         return hits.get();
     }

@@ -435,7 +435,8 @@ public class ReviewController implements NavigationAware, GameNavigationListener
             reviewChessBoard.drawIconOnSquare(squareIndex % 8, 7 - (squareIndex / 8), iconName);
         }
         if (analysis.getClassification() == MoveAnalysis.MoveClassification.BLUNDER
-                || analysis.getClassification() == MoveAnalysis.MoveClassification.MISTAKE) {
+                || analysis.getClassification() == MoveAnalysis.MoveClassification.MISTAKE
+                || analysis.getClassification() == MoveAnalysis.MoveClassification.MISS) {
             String best = analysis.getBestMove();
             if (best != null && best.length() >= 4) {
                 reviewChessBoard.drawArrowOnBoard(best.charAt(0) - 'a', '8' - best.charAt(1), best.charAt(2) - 'a',

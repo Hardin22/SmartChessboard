@@ -1,5 +1,10 @@
 package io.github.hardin22.javachess.Engine.review;
 
+import com.github.bhlangonijr.chesslib.Board;
+import com.github.bhlangonijr.chesslib.Piece;
+import com.github.bhlangonijr.chesslib.Side;
+import com.github.bhlangonijr.chesslib.Square;
+import com.github.bhlangonijr.chesslib.move.Move;
 import io.github.hardin22.javachess.Engine.MoveQuality;
 import io.github.hardin22.javachess.Oggetti.MoveAnalysis.MoveClassification;
 
@@ -8,20 +13,37 @@ import java.util.BitSet;
 import java.util.List;
 
 /**
- * Move classification shared by the game review ({@link #classifyGame}, full: Book, Brilliant, Great, Miss) and
- * the board LEDs ({@link #fast}, no MultiPV and no history). Pure functions: no engine, no I/O.
+ * Move classification shared by the game review ({@link #classifyGame}, full: Book, Forced, Brilliant, Great, Miss)
+ * and the board LEDs ({@link #fast}, no MultiPV and no history). Pure functions: no engine, no I/O. Rules and numbers
+ * follow {@code research/SPEC.md} §4-§5.
  *
  * <p>Every evaluation is an {@link Eval} (White's point of view, explicit mates), so the side to move, the sign of
  * a score and "mate 0" can no longer be confused. A move that delivers checkmate is always Best (or better); a move
- * that allows a forced mate that did not exist before is always a Blunder.</p>
+ * that allows a forced mate is never better than an Inaccuracy, and a Blunder from a position that was not lost.</p>
  */
 public final class ReviewClassifier {
 
-    /** Win chance loss thresholds (0..1), upper bounds of each label. */
+    /** Win chance loss thresholds (0..1): a label applies below its bound. */
     public static final double EXCELLENT_MAX = 0.02;
     public static final double GOOD_MAX = 0.05;
     public static final double INACCURACY_MAX = 0.10;
     public static final double MISTAKE_MAX = 0.20;
+
+    /** Second best line this good (cp, mover POV) means the position was winning anyway: no Great/Brilliant. */
+    static final int WINNING_ANYWAY_CP = 700;
+    /** Great: the second best move loses at least this much win chance. */
+    static final double GREAT_GAP = 0.10;
+    /** Miss: the opponent's previous move lost at least this much. */
+    static final double MISS_OPPONENT_LOSS = 0.10;
+    /** Miss: the mover ends no worse than before the opponent's error, within this tolerance. */
+    static final double MISS_NO_WORSE = 0.05;
+    /** A Blunder must lose at least this much material (pawns) along the line, or allow mate. */
+    static final int BLUNDER_MATERIAL = 2;
+    /** MultiPV 2 is only worth it in this win chance range (outside, no Great/Brilliant is possible). */
+    static final double SECOND_LINE_MIN_EP = 0.20;
+    static final double SECOND_LINE_MAX_EP = 0.97;
+    /** Book labels stop after this many plies. */
+    static final int BOOK_MAX_PLY = 30;
 
     private ReviewClassifier() {
     }
@@ -42,7 +64,7 @@ public final class ReviewClassifier {
     public static FastVerdict fast(Eval best, Eval played, boolean whiteMoved, boolean playedIsBest) {
         double wb = best.winChance(whiteMoved);
         double wa = played.winChance(whiteMoved);
-        return new FastVerdict(standardLabel(best, played, whiteMoved, playedIsBest), wb, wa, Math.max(0, wb - wa));
+        return new FastVerdict(baseLabel(best, played, whiteMoved, playedIsBest), wb, wa, Math.max(0, wb - wa));
     }
 
     /** LED quality of a review label. */
@@ -57,42 +79,47 @@ public final class ReviewClassifier {
     }
 
     /**
-     * Best / Excellent / Good / Inaccuracy / Mistake / Blunder from the two evaluations, with the mate rules.
-     * Used by both the fast and the full classification.
+     * Best .. Blunder from the two evaluations with the mate rules (SPEC §4 R1, R3-R7). Shared by the fast and the
+     * full classification.
      */
-    static MoveClassification standardLabel(Eval best, Eval played, boolean whiteMoved, boolean playedIsBest) {
-        boolean me = whiteMoved;
+    static MoveClassification baseLabel(Eval best, Eval played, boolean me, boolean isTop) {
         if (played.isCheckmate() && played.isMateFor(me)) {
-            return MoveClassification.BEST; // delivered mate
+            return MoveClassification.BEST; // R1: delivering mate
         }
-        if (playedIsBest) {
-            return MoveClassification.BEST;
-        }
-        // forced mate for the mover before the move
-        if (best.isMateFor(me)) {
-            if (played.isMateFor(me)) {
-                int optimal = Math.max(0, best.mateIn() - 1);
-                int extra = played.mateIn() - optimal;
-                if (extra <= 0) {
-                    return MoveClassification.BEST;
-                }
-                return extra <= 2 ? MoveClassification.EXCELLENT : MoveClassification.GOOD;
-            }
-            // the mate is gone: judged on win chance below
-        }
-        // the mover was already getting mated
-        if (best.isMateAgainst(me)) {
-            if (played.isMateAgainst(me)) {
-                return played.mateIn() >= best.mateIn() ? MoveClassification.BEST : MoveClassification.GOOD;
-            }
-            return MoveClassification.BEST; // the engine found a better defence than its own best line
-        }
-        // allowed a forced mate that did not exist
-        if (played.isMateAgainst(me)) {
-            return MoveClassification.BLUNDER;
+        if (isTop) {
+            return MoveClassification.BEST; // R3
         }
         double loss = Math.max(0, best.winChance(me) - played.winChance(me));
-        return labelForLoss(loss);
+        // R4: mate -> mate
+        if (best.isMateFor(me) && played.isMateFor(me)) {
+            int d = played.mateIn() - (best.mateIn() - 1);
+            return d <= 0 ? MoveClassification.BEST : d <= 1 ? MoveClassification.EXCELLENT
+                    : d <= 6 ? MoveClassification.GOOD : MoveClassification.INACCURACY;
+        }
+        if (best.isMateAgainst(me) && played.isMateAgainst(me)) {
+            int n = best.mateIn();
+            int m = played.mateIn();
+            return m >= n ? MoveClassification.BEST
+                    : n - m == 1 ? MoveClassification.EXCELLENT : MoveClassification.GOOD;
+        }
+        if (best.isMateFor(me) && played.isMateAgainst(me)) {
+            return MoveClassification.BLUNDER;
+        }
+        // R5: forced mate lost
+        if (best.isMateFor(me) && !played.isMate()) {
+            int c = played.cpFor(me);
+            return c >= 800 ? MoveClassification.EXCELLENT : c >= 400 ? MoveClassification.GOOD
+                    : c >= 200 ? MoveClassification.INACCURACY : c >= 0 ? MoveClassification.MISTAKE
+                    : MoveClassification.BLUNDER;
+        }
+        // R6: forced mate conceded
+        if (!best.isMateAgainst(me) && played.isMateAgainst(me)) {
+            double before = best.winChance(me);
+            MoveClassification floor = before >= 0.20 ? MoveClassification.BLUNDER
+                    : before >= 0.05 ? MoveClassification.MISTAKE : MoveClassification.INACCURACY;
+            return worst(labelForLoss(loss), floor);
+        }
+        return labelForLoss(loss); // R7
     }
 
     /** Label for a win chance loss (0..1). */
@@ -100,39 +127,66 @@ public final class ReviewClassifier {
         if (loss <= 0.0) {
             return MoveClassification.BEST;
         }
-        if (loss <= EXCELLENT_MAX) {
+        if (loss < EXCELLENT_MAX) {
             return MoveClassification.EXCELLENT;
         }
-        if (loss <= GOOD_MAX) {
+        if (loss < GOOD_MAX) {
             return MoveClassification.GOOD;
         }
-        if (loss <= INACCURACY_MAX) {
+        if (loss < INACCURACY_MAX) {
             return MoveClassification.INACCURACY;
         }
-        if (loss <= MISTAKE_MAX) {
+        if (loss < MISTAKE_MAX) {
             return MoveClassification.MISTAKE;
         }
         return MoveClassification.BLUNDER;
+    }
+
+    private static int severity(MoveClassification c) {
+        return switch (c) {
+            case BRILLIANT, GREAT, BEST, BOOK_MOVE, FORCED -> 0;
+            case EXCELLENT -> 1;
+            case GOOD -> 2;
+            case INACCURACY -> 3;
+            case MISTAKE, MISS -> 4;
+            case BLUNDER -> 5;
+        };
+    }
+
+    private static MoveClassification worst(MoveClassification a, MoveClassification b) {
+        return severity(a) >= severity(b) ? a : b;
     }
 
     // ------------------------------------------------------------------------------------------
     // Full (game review)
 
     /**
-     * Positions (index i = position before move i) whose second best line is needed to decide Great / Brilliant /
-     * Miss. The reviewer re-searches only those with MultiPV 2; all the others keep their single line.
+     * Positions (index i = position before move i) whose second best line is needed to decide Great / Brilliant:
+     * the played move is the engine's best, the mover is not in check, and the position is neither lost nor won
+     * already. The reviewer re-searches only those with MultiPV 2.
      */
     public static BitSet needsSecondLine(ReviewInput in) {
+        GameReplay replay = GameReplay.of(in.initialFen(), in.uciMoves());
         BitSet need = new BitSet(in.uciMoves().size());
-        for (int i = 0; i < in.uciMoves().size(); i++) {
+        for (int i = 0; i < replay.uci().size(); i++) {
             PositionEval before = in.positions().get(i);
-            if (before.terminal() || before.secondBest() != null) {
+            if (before.terminal() || before.secondBest() != null || replay.legalMoveCounts().get(i) <= 1) {
                 continue;
             }
-            // only the engine's own choice can be Great/Brilliant
-            if (in.uciMoves().get(i).equals(before.bestMove())) {
-                need.set(i);
+            String uci = replay.uci().get(i);
+            if (!uci.equals(before.bestMove())) {
+                continue;
             }
+            boolean me = before.whiteToMove();
+            double ep = before.eval().winChance(me);
+            if (ep < SECOND_LINE_MIN_EP || ep > SECOND_LINE_MAX_EP || before.eval().isMate()) {
+                continue;
+            }
+            Board b = board(replay.fens().get(i));
+            if (b.isKingAttacked() || uci.endsWith("q")) {
+                continue;
+            }
+            need.set(i);
         }
         return need;
     }
@@ -140,59 +194,219 @@ public final class ReviewClassifier {
     /** Classifies every move of the game and computes the accuracy of both players. */
     public static GameReview classifyGame(ReviewInput in) {
         GameReplay replay = GameReplay.of(in.initialFen(), in.uciMoves());
-        List<MoveReview> out = new ArrayList<>(in.uciMoves().size());
+        int n = replay.uci().size();
+        List<PositionEval> pos = in.positions();
+        double[] epBefore = new double[n];
+        double[] epAfter = new double[n];
+        Eval[] played = new Eval[n];
+        for (int i = 0; i < n; i++) {
+            PositionEval p0 = pos.get(i);
+            boolean me = p0.whiteToMove();
+            played[i] = playedEval(p0, pos.get(i + 1), replay.uci().get(i));
+            epBefore[i] = p0.eval().winChance(me);
+            epAfter[i] = played[i].winChance(me);
+        }
+        double[][] acc = Accuracy.perMove(in.initialFen(), pos);
+
+        List<MoveReview> out = new ArrayList<>(n);
         boolean inBook = true;
         String opening = null;
-        for (int i = 0; i < in.uciMoves().size(); i++) {
-            String uci = in.uciMoves().get(i);
-            String fenBefore = replay.fens().get(i);
-            PositionEval before = in.positions().get(i);
-            PositionEval after = in.positions().get(i + 1);
-            boolean white = before.whiteToMove();
-            Eval best = before.eval();
-            Eval played = playedEval(before, after, uci);
-            boolean playedIsBest = uci.equals(before.bestMove());
+        for (int i = 0; i < n; i++) {
+            String uci = replay.uci().get(i);
+            PositionEval p0 = pos.get(i);
+            boolean me = p0.whiteToMove();
+            Eval best = p0.eval();
+            boolean isTop = uci.equals(p0.bestMove());
 
             MoveClassification label = null;
-            if (inBook) {
+            if (inBook && i < BOOK_MAX_PLY) {
                 String name = in.book().nameAfter(replay.fens().get(i + 1)).orElse(null);
                 if (name != null) {
                     label = MoveClassification.BOOK_MOVE;
                     opening = name;
-                } else {
-                    inBook = false;
                 }
             }
-            if (label == null && replay.legalMoveCounts().get(i) == 1) {
+            if (label == null) {
+                inBook = false;
+            }
+            boolean mates = played[i].isCheckmate() && played[i].isMateFor(me);
+            if (label == null && !mates && replay.legalMoveCounts().get(i) == 1) {
                 label = MoveClassification.FORCED;
             }
             if (label == null) {
-                label = standardLabel(best, played, white, playedIsBest);
+                label = baseLabel(best, played[i], me, isTop);
+                if (pos.get(i + 1).terminal() && !played[i].isMate() && epBefore[i] >= 0.8) {
+                    label = MoveClassification.BLUNDER; // stalemate (or dead draw) from a won position
+                }
+                if (label == MoveClassification.MISTAKE || label == MoveClassification.BLUNDER) {
+                    label = maybeMiss(label, i, pos, played, epBefore, epAfter, me);
+                }
+                if (label == MoveClassification.BLUNDER
+                        && !losesMaterialOrAllowsMate(replay.fens().get(i), uci, p0, pos.get(i + 1), played[i], me,
+                        epBefore[i])) {
+                    label = MoveClassification.MISTAKE;
+                }
+                if ((label == MoveClassification.BEST || label == MoveClassification.EXCELLENT) && !mates) {
+                    MoveClassification special = special(label, isTop, i, replay, p0, played[i], epBefore[i],
+                            epAfter[i], me);
+                    if (special != null) {
+                        label = special;
+                    }
+                }
             }
-            double wb = best.winChance(white);
-            double wa = played.winChance(white);
-            EngineLine bestLine = before.best();
-            out.add(new MoveReview(i, uci, replay.sans().get(i), fenBefore, white, label, best, played,
-                    before.bestMove(), bestLine == null ? List.of() : bestLine.pv(), wb, wa,
-                    Accuracy.moveAccuracy(wb, wa)));
+            EngineLine bestLine = p0.best();
+            out.add(new MoveReview(i, uci, replay.sans().get(i), replay.fens().get(i), me, label, best, played[i],
+                    p0.bestMove(), bestLine == null ? List.of() : bestLine.pv(), epBefore[i], epAfter[i],
+                    acc[0][i]));
         }
-        return new GameReview(in.initialFen(), out, in.positions(), Accuracy.forPlayer(out, true),
-                Accuracy.forPlayer(out, false), opening, GameReview.Stats.NONE);
+        return new GameReview(in.initialFen(), out, pos, Accuracy.forPlayer(out, acc, true),
+                Accuracy.forPlayer(out, acc, false), opening, GameReview.Stats.NONE);
     }
 
     /**
-     * Evaluation after the played move: the evaluation of the next position, except when the played move is one of
-     * the lines searched in the position before at least as deep (then its own line is used, so a best move is never
-     * penalised by search noise between two positions).
+     * Evaluation after the played move (SPEC §4): its own line in the MultiPV search of the position before when
+     * there is one, else the best line of the next position, or the next position's terminal result.
      */
     static Eval playedEval(PositionEval before, PositionEval after, String uci) {
         if (after.terminal()) {
             return after.eval();
         }
         EngineLine own = before.lineFor(uci);
-        if (own != null && uci.equals(before.bestMove())) {
-            return own.eval();
+        return own != null ? own.eval() : after.eval();
+    }
+
+    /** SPEC §5.4: a Mistake/Blunder that fails to punish the opponent's error becomes a Miss. */
+    private static MoveClassification maybeMiss(MoveClassification label, int i, List<PositionEval> pos,
+                                                Eval[] played, double[] epBefore, double[] epAfter, boolean me) {
+        Eval best = pos.get(i).eval();
+        if (pos.get(i + 1).terminal()) {
+            return label; // a stalemate that throws the win away stays a Blunder
         }
-        return after.eval();
+        if (i > 0) {
+            double oppLoss = Math.max(0, epBefore[i - 1] - epAfter[i - 1]);
+            boolean opportunity = oppLoss >= MISS_OPPONENT_LOSS || best.isMateFor(me);
+            double epBeforeOpp = pos.get(i - 1).eval().winChance(me);
+            if (opportunity && epAfter[i] >= epBeforeOpp - MISS_NO_WORSE) {
+                return MoveClassification.MISS;
+            }
+        }
+        if (best.isMateFor(me) && !played[i].isMateAgainst(me) && played[i].cpFor(me) >= 0) {
+            return MoveClassification.MISS;
+        }
+        return label;
+    }
+
+    /** SPEC §5.5: a Blunder must lose material along the line, allow mate, or throw a win away into a draw. */
+    private static boolean losesMaterialOrAllowsMate(String fen, String uci, PositionEval p0, PositionEval p1,
+                                                     Eval played, boolean me, double epBefore) {
+        if (played.isMateAgainst(me)) {
+            return true;
+        }
+        if (p1.terminal() && !played.isMate() && epBefore >= 0.8) {
+            return true; // stalemate or dead draw from a won position
+        }
+        Side side = me ? Side.WHITE : Side.BLACK;
+        List<String> playedLine = new ArrayList<>();
+        playedLine.add(uci);
+        EngineLine own = p0.lineFor(uci);
+        if (own != null) {
+            playedLine = own.pv();
+        } else if (p1.best() != null) {
+            playedLine.addAll(p1.best().pv());
+        }
+        EngineLine bestLine = p0.best();
+        if (bestLine == null) {
+            return true;
+        }
+        int mPlayed = Tactics.materialAfter(fen, playedLine, side, 6);
+        int mBest = Tactics.materialAfter(fen, bestLine.pv(), side, 6);
+        return mBest - mPlayed >= BLUNDER_MATERIAL;
+    }
+
+    /** SPEC §5.2-5.3: Brilliant or Great for a Best/Excellent move, null when neither applies. */
+    private static MoveClassification special(MoveClassification label, boolean isTop, int i, GameReplay replay,
+                                              PositionEval p0, Eval played, double epBefore, double epAfter,
+                                              boolean me) {
+        EngineLine second = p0.secondBest();
+        if (second == null) {
+            return null; // no MultiPV here: the reviewer judged it not worth it
+        }
+        Board b0 = board(replay.fens().get(i));
+        String uci = replay.uci().get(i);
+        if (!candidate(b0, uci, second.eval(), played, epAfter, me)) {
+            return null;
+        }
+        if (brilliant(b0, uci, me)) {
+            return MoveClassification.BRILLIANT;
+        }
+        if (label != MoveClassification.BEST || !isTop || played.isMateFor(me)) {
+            return null;
+        }
+        Move m = Tactics.find(b0, uci);
+        if (m != null && b0.getPiece(m.getTo()) != Piece.NONE && !Tactics.isSafe(b0, m.getTo())) {
+            return null; // taking a hanging piece is not "great"
+        }
+        if (i > 0 && isRecapture(replay, i)) {
+            return null;
+        }
+        double gap = epBefore - second.eval().winChance(me);
+        return gap >= GREAT_GAP ? MoveClassification.GREAT : null;
+    }
+
+    /** Shared precondition of Brilliant and Great (WintrChess "critical candidate"). */
+    private static boolean candidate(Board b0, String uci, Eval second, Eval played, double epAfter, boolean me) {
+        if (b0.isKingAttacked() || uci.endsWith("q")) {
+            return false;
+        }
+        if (second.isMateFor(me) || (!second.isMate() && second.cpFor(me) >= WINNING_ANYWAY_CP)) {
+            return false; // winning anyway
+        }
+        return epAfter >= 0.5;
+    }
+
+    /** SPEC §5.2: the move leaves a piece en prise that is not simply lost (a sound sacrifice). */
+    private static boolean brilliant(Board b0, String uci, boolean me) {
+        Move m = Tactics.find(b0, uci);
+        if (m == null || m.getPromotion() != Piece.NONE) {
+            return false;
+        }
+        Side side = me ? Side.WHITE : Side.BLACK;
+        int captured = Tactics.value(b0.getPiece(m.getTo()));
+        List<Square> unsafeBefore = Tactics.unsafePieces(b0, side, 0);
+        boolean movedWasTrapped = Tactics.isTrapped(b0, m.getFrom());
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        List<Square> unsafeAfter = Tactics.unsafePieces(b1, side, captured);
+        if (!b1.isKingAttacked() && unsafeAfter.size() < unsafeBefore.size()) {
+            return false; // saving pieces, not sacrificing
+        }
+        if (unsafeAfter.isEmpty() || movedWasTrapped) {
+            return false;
+        }
+        int trapped = 0;
+        for (Square sq : unsafeAfter) {
+            if (Tactics.isTrapped(b1, sq)) {
+                trapped++;
+            }
+        }
+        return trapped < unsafeAfter.size();
+    }
+
+    /** True when move i captures on the square where the opponent just captured (a plain recapture). */
+    private static boolean isRecapture(GameReplay replay, int i) {
+        String prev = replay.uci().get(i - 1);
+        String cur = replay.uci().get(i);
+        if (!prev.substring(2, 4).equals(cur.substring(2, 4))) {
+            return false;
+        }
+        Board before = board(replay.fens().get(i - 1));
+        Move pm = Tactics.find(before, prev);
+        return pm != null && before.getPiece(pm.getTo()) != Piece.NONE;
+    }
+
+    private static Board board(String fen) {
+        Board b = new Board();
+        b.loadFromFen(fen);
+        return b;
     }
 }

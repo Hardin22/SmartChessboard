@@ -20,20 +20,20 @@ public record ReviewSettings(long nodes, long secondLineNodes, int processes, in
     }
 
     /**
-     * Stockfish Lite (default, Raspberry Pi 5): all cores but one while nobody plays, small hash.
-     * Budgets are placeholders until calibrated against chess.com by the validation harness.
+     * Stockfish Lite (default, Raspberry Pi 5): 300k nodes per position (depth ~16-19), one process per core
+     * (up to 4) while nobody plays. SPEC §9; calibrated by the validation harness.
      */
     public static ReviewSettings lite(ProcessPlan plan, int cores) {
-        return new ReviewSettings(250_000, 250_000, Math.max(1, Math.min(4, cores - 1)), 32);
+        return new ReviewSettings(300_000, 450_000, Math.max(1, Math.min(4, cores)), 64);
     }
 
-    /** Full Stockfish: deeper searches. */
+    /** Full Stockfish: 1M nodes per position, like Lichess user analysis. */
     public static ReviewSettings full(ProcessPlan plan, int cores) {
-        return new ReviewSettings(1_000_000, 1_000_000, Math.max(1, Math.min(8, cores - 1)), 64);
+        return new ReviewSettings(1_000_000, 1_500_000, Math.max(1, Math.min(8, cores)), 64);
     }
 
     public ReviewSettings withNodes(long n) {
-        return new ReviewSettings(n, n, processes, hashMb);
+        return new ReviewSettings(n, n * 3 / 2, processes, hashMb);
     }
 
     public ReviewSettings withProcesses(int p) {

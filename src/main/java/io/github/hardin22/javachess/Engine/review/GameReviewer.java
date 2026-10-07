@@ -84,15 +84,23 @@ public final class GameReviewer implements AutoCloseable {
         try {
             AtomicInteger done = new AtomicInteger();
             List<Future<?>> jobs = new ArrayList<>();
-            for (int i = 0; i <= n; i++) {
-                final int idx = i;
-                String fen = replay.fens().get(i);
+            evaluator.newGame();
+            // contiguous blocks: each engine walks consecutive positions and reuses its hash
+            int chunk = (n + 1 + threads - 1) / threads;
+            for (int from = 0; from <= n; from += chunk) {
+                final int start = from;
+                final int end = Math.min(n + 1, from + chunk);
                 jobs.add(pool.submit(() -> {
-                    PositionEval p = evaluator.evaluate(fen, 1, settings.nodes());
-                    positions[idx] = p;
-                    nodes.addAndGet(p.nodes());
-                    l.onPosition(idx, p);
-                    l.onProgress(0.9 * done.incrementAndGet() / (n + 1));
+                    for (int idx = start; idx < end; idx++) {
+                        if (Thread.currentThread().isInterrupted()) {
+                            throw new InterruptedException();
+                        }
+                        PositionEval p = evaluator.evaluate(replay.fens().get(idx), 1, settings.nodes());
+                        positions[idx] = p;
+                        nodes.addAndGet(p.nodes());
+                        l.onPosition(idx, p);
+                        l.onProgress(0.9 * done.incrementAndGet() / (n + 1));
+                    }
                     return null;
                 }));
             }

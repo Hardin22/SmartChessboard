@@ -28,6 +28,8 @@ public final class StockfishPool implements PositionEvaluator {
     private final BlockingQueue<UciClient> idle;
     private final String id;
     private volatile boolean closed;
+    /** The process each review thread used last: consecutive positions reuse its warm hash. */
+    private final ThreadLocal<UciClient> affinity = new ThreadLocal<>();
 
     /**
      * @param stockfish executable
@@ -60,7 +62,9 @@ public final class StockfishPool implements PositionEvaluator {
         if (terminal.isPresent() && board.legalMoves().isEmpty()) {
             return PositionEval.terminal(fen, terminal.get());
         }
-        UciClient c = idle.take();
+        UciClient preferred = affinity.get();
+        UciClient c = preferred != null && idle.remove(preferred) ? preferred : idle.take();
+        affinity.set(c);
         try {
             // generous client-side cap: a node budget normally ends long before (protects against a hung engine)
             long capMs = Math.max(10_000, nodes / 20);
@@ -86,6 +90,14 @@ public final class StockfishPool implements PositionEvaluator {
             throw new EngineException("no line for " + fen);
         }
         return new PositionEval(fen, lines.get(0).eval(), lines, r.depth(), r.nodes(), false);
+    }
+
+    /** Clears the hash of every process (start of a game). */
+    @Override
+    public void newGame() {
+        for (UciClient c : clients) {
+            c.newGame();
+        }
     }
 
     @Override
