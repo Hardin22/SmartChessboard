@@ -1,6 +1,6 @@
 # Brilliant/Great errors accepted today by SpecialLabelsGateTest (Phase 4). It only shrinks: regenerate
 # (-Dreview.special.regen=true) after fixing errors. Allowlisted exceptions are not repeated here.
-# exact 0.6837 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
+# exact 0.6840 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
 id	ply	kind	set	san	ours	chesscom
 daily_1008989784	49	fp-brilliant	ex-holdout49	Bf8	brilliant	excellent
 daily_1009092152	30	fn-great	cv93	Bxb5	best	great
@@ -13,7 +13,6 @@ daily_1012805338	40	fn-great	cv93	Bxd4	best	great
 daily_1014523396	19	fn-great	cv93	Nf5	best	great
 daily_1017137676	11	fn-great	cv93	a3	best	great
 daily_1017235912	22	fn-great	ex-holdout49	Nxg4	best	great
-daily_1017236144	23	fp-great	cv93	fxg6	great	best
 daily_1023306212	70	fn-great	cv93	Bxg2	best	great
 daily_1023306212	94	fn-great	cv93	Rf2+	best	great
 daily_1024819088	43	fp-great	cv93	Nd4	great	best
@@ -67,7 +66,6 @@ live_171070526170	19	fn-great	cv93	Nxe5	best	great
 live_171070526170	32	fn-great	cv93	Bxe3	best	great
 live_171070526170	56	fn-brilliant	cv93	Rg6	excellent	brilliant
 live_171306358850	8	fn-great	cv93	g5	best	great
-live_171306358850	29	fp-great	cv93	dxc5	great	best
 live_171306358850	33	fn-brilliant	cv93	Qxd6	best	brilliant
 live_171977517802	32	fn-great	cv93	Bxc3	best	great
 live_171977517802	58	fn-great	cv93	Rc1+	best	great
@@ -140,7 +138,6 @@ live_184350007554	31	fn-great	ex-holdout49	Nxd6	best	great
 live_184350007554	40	fp-brilliant	ex-holdout49	Nc3	brilliant	best
 live_184350007554	42	fn-great	ex-holdout49	Qxf3	best	great
 live_184350007554	50	fn-great	ex-holdout49	h5	best	great
-live_184350007554	52	fp-great	ex-holdout49	hxg4	great	best
 live_184355907802	48	fn-great	cv93	Bxg2	best	great
 live_184435729088	28	fn-brilliant	cv93	Nxd3	excellent	brilliant
 live_184440015284	57	fn-great	ex-holdout49	Kf3	best	great

@@ -91,11 +91,13 @@ class BrilliantGreatExclusionsTest {
     @Test
     void gE1CaptureIsNotGreat() {
         // daily_1017236144 ply 23, 12.fxg6: the capture keeps the material, chess.com Best. v2.1 (a capture only when
-        // it punishes a blunder) excludes it; v2.2 admits exchanges to be made now and accepts this one as a known
-        // false positive (CV: +2 true Greats, -2 false positives overall)
+        // it punishes a blunder) excludes it; v2.2 admits exchanges to be made now, and v2.5 excludes it again as a
+        // pawn exchange that punishes no error (greatPawnTradeOppLoss)
         String fen = "r1bqkb1r/pp2n2p/3p2p1/4pPPQ/4p2P/8/PPP2PB1/R1B1K1NR w KQkq - 0 12";
         ReviewInput in = oneMove(fen, "f5g6", Eval.cp(401), "f5g6", Eval.cp(-245), "h5d1", Eval.cp(401));
-        Tuning v21 = Tuning.DEFAULT.with("greatCaptureRule", 0);
+        assertNotEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT));
+        assertEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT.with("greatPawnTradeOppLoss", 0)));
+        Tuning v21 = Tuning.DEFAULT.with("greatCaptureRule", 0).with("greatPawnTradeOppLoss", 0);
         assertNotEquals(MoveClassification.GREAT, label(in, v21));
         assertEquals(MoveClassification.GREAT, label(in, v21.with("greatCaptureOppLoss", 0)));
     }
@@ -322,6 +324,16 @@ class BrilliantGreatExclusionsTest {
                 qe5.positions().get(1));
         assertTrue(ReviewClassifier.needsSecondLine(new ReviewInput(fen, List.of("e7e5"), mainOnly, OpeningBook.NONE,
                 2500, 2500)).get(0));
+    }
+
+    @Test
+    void aPawnExchangeIsGreatOnlyWhenItPunishesAnError() {
+        // live_184350007554 ply 52, 26...hxg4 after the sound 26.Kg2 (chess.com Best): the only move, but a pawn
+        // exchange that does not punish anything
+        ReviewInput hxg4 = rated(oneMove("5rk1/1p3pp1/p5b1/4B2p/1P4P1/P4P1r/6K1/R4R2 b - - 1 26", "h5g4",
+                Eval.cp(-357), "h5g4", Eval.cp(225), "f8e8", Eval.cp(-385)), 2399, 2366);
+        assertNotEquals(MoveClassification.GREAT, label(hxg4, Tuning.DEFAULT));
+        assertEquals(MoveClassification.GREAT, label(hxg4, Tuning.DEFAULT.with("greatPawnTradeOppLoss", 0)));
     }
 
     @Test

@@ -154,6 +154,8 @@ public final class ReviewClassifier {
         final boolean greatPawnFollowUp;
         /** v2.5: second line also for a quiet top move in a won position (above the MultiPV range). */
         final boolean greatWonQuiet;
+        /** v2.5: a pawn taking a pawn is Great only after an opponent's move losing at least this much (0 = off). */
+        final double greatPawnTradeOppLoss;
         /** Phase 4: an answer to check taking free material (SEE > 0) follows the free material rule of captures. */
         final boolean greatInCheckFreeMaterial;
         /** Phase 4: no Great for a bishop retreating from the pawn that has just advanced against it. */
@@ -274,6 +276,7 @@ public final class ReviewClassifier {
             greatKingFlightGap = get("greatKingFlightGap", 0.17);
             greatPawnFollowUp = get("greatPawnFollowUp", 1) != 0;
             greatWonQuiet = get("greatWonQuiet", 1) != 0;
+            greatPawnTradeOppLoss = get("greatPawnTradeOppLoss", 0.15);
             greatInCheckFreeMaterial = get("greatInCheckFreeMaterial", 1) != 0;
             greatKickedBishop = get("greatKickedBishop", 1) != 0;
             greatStartsMatePunish = get("greatStartsMatePunish", 0.15);
@@ -920,6 +923,11 @@ public final class ReviewClassifier {
             // v2.3: players under 1500 get Great for a capture from a smaller gap
             double capGap = r < t.greatLowRating ? t.greatCaptureGapLow : t.greatCaptureGap;
             if (recapture || gap < capGap) {
+                return false;
+            }
+            if (Tactics.isPawnTakesPawn(b0, uci) && oppLoss < t.greatPawnTradeOppLoss) {
+                // v2.5: a pawn exchange is Great only when it punishes the opponent's error (177 games: 7 of 7 Great
+                // after an error >= 0.15; fxg6, dxc5, hxg4 Best after a sound move, however bad the alternatives)
                 return false;
             }
             if (t.greatCaptureRule == 2) {
