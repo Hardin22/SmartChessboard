@@ -94,6 +94,18 @@ new OnlineImport().importRecent(OnlineImport.Source.LICHESS, user, 50)
 - Le partite entrano in archivio come Lichess / Online (browser), con il rating nel nome e l'apertura; reimportare
   non crea doppioni. Solo API pubbliche in lettura: nessun accesso all'account.
 
+## 4b. PGN da chiavetta USB — `Stats.PgnTransfer`
+
+Nell'Archivio (menu ⋯): **Importa da chiavetta** / **Esporta su chiavetta**.
+- `new PgnTransfer().drives()` → chiavette inserite (`Drive.label()`); nessuna → "Inserisci una chiavetta USB".
+- `pgnFiles(drive)` → `PgnFile.description()` "torneo.pgn · 120 KB" (più recenti prima).
+- Prima di importare: `PgnTransfer.countGames(file)`; sopra ~500 partite avvisa ("12.000 partite: sul Raspberry
+  richiede alcuni minuti") e proponi "Importa le prime 500 / tutte".
+- `importFile(file, archive, maxGames, fraction -> ...)` (fuori dal thread FX; l'avanzamento 0..1 arriva sullo
+  stesso thread: passalo con `Platform.runLater`) → `PgnTransfer.describe(report)` "1.240 partite importate,
+  3 ignorate" + `report.warnings()`.
+- Esporta: `exportAll(drive, archive)` → file `javachess-partite-AAAA-MM-GG.pgn` sulla chiavetta.
+
 ## 5. Puzzle: ripasso e serie a tempo
 
 **Ripasso dei puzzle sbagliati** — `Play.PuzzleReview`: i puzzle non risolti "puliti" (errore, aiuto, soluzione)
