@@ -19,7 +19,6 @@ public class OnlineGame extends AbstractGame {
     private LichessGameManager lichessGameManager;
     private String gameId;
     private boolean isGameSaved = false;
-    private String finalResult;
 
     public OnlineGame(ChessBoardUI chessBoardUI, EvalBar evalBar, String gameId) {
         super(chessBoardUI, evalBar);

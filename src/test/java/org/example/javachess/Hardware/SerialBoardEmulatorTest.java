@@ -49,10 +49,13 @@ class SerialBoardEmulatorTest {
 
     private void stopEmulator() throws InterruptedException {
         if (emulator != null && emulator.isAlive()) {
+            List<ProcessHandle> children = emulator.descendants().toList(); // python3 may be a launcher shim
             emulatorInput.println("quit");
             if (!emulator.waitFor(3, TimeUnit.SECONDS)) {
                 emulator.destroyForcibly();
+                emulator.waitFor(2, TimeUnit.SECONDS);
             }
+            children.forEach(ProcessHandle::destroyForcibly);
         }
     }
 

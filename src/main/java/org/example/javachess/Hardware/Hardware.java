@@ -66,6 +66,12 @@ public final class Hardware {
             }
         });
         log.info("Board hardware: {} (LED mapping {})", board.getClass().getSimpleName(), mapping);
+        try {
+            // the engine's move-quality feedback is drawn on the LEDs from now on
+            org.example.javachess.Engine.MoveCoach.get().setFeedbackListener(new MoveLedsFeedback(moveLeds));
+        } catch (RuntimeException | LinkageError e) {
+            log.warn("Move feedback LEDs unavailable: {}", e.toString());
+        }
     }
 
     public static Hardware get() {
