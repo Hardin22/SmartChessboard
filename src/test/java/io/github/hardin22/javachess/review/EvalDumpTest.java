@@ -126,6 +126,7 @@ class EvalDumpTest {
             h.put("processes", s.processes());
             h.put("hash_mb", s.hashMb());
             h.put("engine", pool.id());
+            h.put("cold_hash", pool.coldHash());
             h.put("product_ms", mainMs);
             List<String> lines = new ArrayList<>();
             List<PositionEval> ps = r.positions();
