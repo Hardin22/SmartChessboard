@@ -63,6 +63,11 @@ public class SettingsController implements NavigationAware {
         loadSettings();
     }
 
+    @Override
+    public void onNavigatedTo() {
+        loadSettings(); // the view is cached: discard unsaved edits from a previous visit
+    }
+
     @FXML
     public void initialize() {
         // Bind slider labels
@@ -135,9 +140,7 @@ public class SettingsController implements NavigationAware {
         moveEvalDepthLabel.setText(String.valueOf(moveEvalDepth));
 
         lichessUsernameField.setText(ConfigManager.getProperty("lichess.username", ""));
-        lichessPasswordField.setText(ConfigManager.getProperty("lichess.password", ""));
         chessComEmailField.setText(ConfigManager.getProperty("chess.com.username", ""));
-        chessComPasswordField.setText(ConfigManager.getProperty("chess.com.password", ""));
         lichessApiKeyField.setText(ConfigManager.getProperty("lichess.token", ""));
 
         int brightness = ConfigManager.getIntProperty("hardware.led.brightness", 100);
@@ -147,22 +150,30 @@ public class SettingsController implements NavigationAware {
 
     @FXML
     private void saveSettings() {
-        ConfigManager.setProperty("game.suggestions", String.valueOf(suggestionsToggle.isSelected()));
-        ConfigManager.setProperty("game.evaluation", String.valueOf(evaluationToggle.isSelected()));
-        ConfigManager.setProperty("ui.mate.animation", String.valueOf(mateAnimationToggle.isSelected()));
-        ConfigManager.setProperty("game.bot.level", String.valueOf((int) botLevelSlider.getValue()));
-        ConfigManager.setProperty("game.bot.movetime", String.valueOf((int) botThinkingTimeSlider.getValue()));
-        ConfigManager.setProperty("game.default.duration", String.valueOf((int) pvpDefaultDurationSlider.getValue()));
-        ConfigManager.setProperty("game.default.increment", String.valueOf((int) pvpDefaultIncrementSlider.getValue()));
-        ConfigManager.setProperty("game.depth", String.valueOf((int) gameDepthSlider.getValue()));
-        ConfigManager.setProperty("analysis.depth", String.valueOf((int) analysisDepthSlider.getValue()));
-        ConfigManager.setProperty("move.eval.depth", String.valueOf((int) moveEvalDepthSlider.getValue()));
-        ConfigManager.setProperty("lichess.username", lichessUsernameField.getText());
-        ConfigManager.setProperty("lichess.password", lichessPasswordField.getText());
-        ConfigManager.setProperty("chess.com.username", chessComEmailField.getText());
-        ConfigManager.setProperty("chess.com.password", chessComPasswordField.getText());
-        ConfigManager.setProperty("lichess.token", lichessApiKeyField.getText());
-        ConfigManager.setProperty("hardware.led.brightness", String.valueOf((int) ledBrightnessSlider.getValue()));
+        // One atomic write for all values. Passwords are not stored any more: the integrated browser keeps
+        // its own login session (see ConfigManager), so the password fields are ignored.
+        java.util.Map<String, String> values = new java.util.LinkedHashMap<>();
+        values.put("game.suggestions", String.valueOf(suggestionsToggle.isSelected()));
+        values.put("game.evaluation", String.valueOf(evaluationToggle.isSelected()));
+        values.put("ui.mate.animation", String.valueOf(mateAnimationToggle.isSelected()));
+        values.put("game.bot.level", String.valueOf((int) botLevelSlider.getValue()));
+        values.put("game.bot.movetime", String.valueOf((int) botThinkingTimeSlider.getValue()));
+        values.put("game.default.duration", String.valueOf((int) pvpDefaultDurationSlider.getValue()));
+        values.put("game.default.increment", String.valueOf((int) pvpDefaultIncrementSlider.getValue()));
+        values.put("game.depth", String.valueOf((int) gameDepthSlider.getValue()));
+        values.put("analysis.depth", String.valueOf((int) analysisDepthSlider.getValue()));
+        values.put("move.eval.depth", String.valueOf((int) moveEvalDepthSlider.getValue()));
+        values.put("lichess.username", lichessUsernameField.getText());
+        values.put("chess.com.username", chessComEmailField.getText());
+        values.put("lichess.token", lichessApiKeyField.getText());
+        values.put("hardware.led.brightness", String.valueOf((int) ledBrightnessSlider.getValue()));
+        ConfigManager.setProperties(values);
+        if (lichessPasswordField != null) {
+            lichessPasswordField.clear();
+        }
+        if (chessComPasswordField != null) {
+            chessComPasswordField.clear();
+        }
 
         backToHome();
     }

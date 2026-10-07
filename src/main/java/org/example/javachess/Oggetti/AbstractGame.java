@@ -10,15 +10,6 @@ import javafx.application.Platform;
 import javafx.concurrent.Task;
 
 import org.example.javachess.Services.EngineService;
-import org.json.JSONArray;
-import org.json.JSONObject;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
 
 public abstract class AbstractGame {
@@ -30,8 +21,6 @@ public abstract class AbstractGame {
     protected boolean gameRunning;
     protected UCIEngine stockfish;
     protected StringBuilder pgn;
-    protected int gameId;
-    protected Path archivePath;
     protected boolean saveGame = true;
     protected String initialFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
     protected Task<Void> moveCalculationTask;
@@ -46,8 +35,6 @@ public abstract class AbstractGame {
         // Removed move labels assignment
         this.stockfish = EngineService.getInstance().getEngine();
         this.pgn = new StringBuilder();
-        this.archivePath = copyArchiveJsonToWritableLocation();
-        this.gameId = getNextGameId();
     }
 
     public void setStatusCallback(java.util.function.Consumer<String> callback) {
@@ -69,41 +56,6 @@ public abstract class AbstractGame {
     public abstract void handleMoveInput(String moveInput);
 
     public abstract void endGame(String endMessage, boolean saveGame);
-
-    protected Path copyArchiveJsonToWritableLocation() {
-        Path targetPath = Paths.get("archive.json");
-        if (!Files.exists(targetPath)) {
-            try (InputStream resourceStream = getClass().getResourceAsStream("/archive.json")) {
-                if (resourceStream == null) {
-                    throw new IllegalArgumentException("archive.json not found in resources");
-                }
-                Files.copy(resourceStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-        return targetPath;
-    }
-
-    protected int getNextGameId() {
-        int nextId = 1;
-        try {
-            if (Files.exists(archivePath)) {
-                String content = new String(Files.readAllBytes(archivePath));
-                JSONArray gamesArray = new JSONArray(content);
-                for (int i = 0; i < gamesArray.length(); i++) {
-                    JSONObject game = gamesArray.getJSONObject(i);
-                    int id = game.getInt("id");
-                    if (id >= nextId) {
-                        nextId = id + 1;
-                    }
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return nextId;
-    }
 
     protected int analysisDepth = org.example.javachess.Utils.ConfigManager.getIntProperty("game.depth", 18);
     protected int analysisMultiPV = 1;

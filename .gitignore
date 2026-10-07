@@ -59,3 +59,10 @@ webview-data/
 /jcef-bundle
 /data
 .worktrees/
+
+### Dati utente (ora in ~/.javachess/) ###
+archive.json
+!src/test/resources/**/archive*.json
+dependency-reduced-pom.xml
+.idea/
+*.onnx.tmp

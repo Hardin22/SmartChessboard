@@ -8,6 +8,28 @@
     <artifactId>javaChess</artifactId>
     <version>1.0-SNAPSHOT</version>
     <name>javaChess</name>
+    <description>Smart chessboard software: play against Stockfish/Maia, online on Lichess and chess.com, puzzles,
+        game review and archive, driven by a sensor/LED board connected to an Arduino.</description>
+    <url>https://github.com/Hardin22/SmartChessboard</url>
+    <inceptionYear>2024</inceptionYear>
+
+    <licenses>
+        <license>
+            <name>GNU General Public License v3.0 or later</name>
+            <url>https://www.gnu.org/licenses/gpl-3.0.html</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <name>Francesco Albano</name>
+        </developer>
+    </developers>
+
+    <scm>
+        <url>https://github.com/Hardin22/SmartChessboard</url>
+    </scm>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -68,7 +90,8 @@
         <dependency>
             <groupId>org.json</groupId>
             <artifactId>json</artifactId>
-            <version>20220924</version>
+            <!-- 20231013+ is public domain; older releases use the GPL-incompatible "JSON License" -->
+            <version>20240303</version>
         </dependency>
         <dependency>
             <groupId>me.friwi</groupId>
@@ -142,11 +165,17 @@
         </dependency>
 
 
-        <!-- Dipendenza per SLF4J Simple Logger (per risolvere l'errore SLF4J) -->
+        <!-- Logging: SLF4J API + Logback (configuration in src/main/resources/logback.xml).
+             slf4j-api is declared explicitly so that no transitive 1.7.x API wins. -->
         <dependency>
             <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-simple</artifactId>
-            <version>2.0.9</version>
+            <artifactId>slf4j-api</artifactId>
+            <version>2.0.16</version>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.5.12</version>
         </dependency>
 
         <!-- Computer Vision & AI Dependencies -->
@@ -171,6 +200,21 @@
                 <configuration>
                     <source>21</source>
                     <target>21</target>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <!-- Maven 3.8 defaults to surefire 2.12, which does not run JUnit 5 tests -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+                <configuration>
+                    <systemPropertyVariables>
+                        <java.awt.headless>true</java.awt.headless>
+                        <!-- tests never read or write the real ~/.javachess nor the working directory files -->
+                        <javachess.home>${project.build.directory}/test-home</javachess.home>
+                        <javachess.legacyDir>${project.build.directory}/test-legacy</javachess.legacyDir>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
 

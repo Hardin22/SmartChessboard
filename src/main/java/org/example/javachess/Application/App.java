@@ -60,6 +60,7 @@ public class App extends Application {
     }
 
     public static void main(String[] args) {
+        Bootstrap.init(); // logging, ~/.javachess data folder + migration, global exception handler
         try {
             nu.pattern.OpenCV.loadLocally();
             System.out.println("[App] OpenCV loaded successfully.");
