@@ -18,19 +18,18 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
  * Owns every engine process of the application and implements {@link EngineSelection}.
  *
- * <p>Processes (each started lazily, then reused; never one per move):</p>
+ * <p>Processes (each started lazily, reused, closed when idle; never one per move), sized by {@link ProcessPlan}:</p>
  * <ul>
- *   <li><b>analysis</b>: Stockfish shared by the eval bar, live analysis and the LED coach
- *       ({@link PositionAnalyzer}, {@link MoveCoach}); its hash is reused from move to move;</li>
+ *   <li><b>analysis</b>: Stockfish shared by the eval bar, live analysis, LED coach and full game review
+ *       ({@link PositionAnalyzer} schedules them: foreground searches by priority, live analysis in the
+ *       background); on 1 GB boards the Stockfish bot runs here too;</li>
  *   <li><b>bot</b>: the opponent of the active profile (Stockfish with Skill Level, or lc0 + Maia weights);
- *       swapped in the background when the profile changes, even in the middle of a game;</li>
- *   <li><b>review</b>: Stockfish for the full game review ({@code GameAnalyzer}), closed after 2 idle minutes.</li>
+ *       swapped in the background when the profile changes, even in the middle of a game.</li>
  * </ul>
  * Nothing here blocks the JavaFX thread; observable properties are updated on it.
  */
@@ -58,12 +57,12 @@ public final class EngineManager implements EngineSelection {
     private volatile EngineLocator.Lookup stockfishLookup;
     private volatile EngineLocator.Lookup lc0Lookup;
 
+    private final ProcessPlan plan;
     private UciClient analysis;                         // guarded by this
     private Budget analysisBudget;                       // guarded by this
+    private PositionAnalyzer analyzer;                   // guarded by this
     private volatile CompletableFuture<UciClient> bot;   // replaced on profile change
     private volatile String botProfileId;
-    private UciClient review;                            // guarded by this
-    private ScheduledFuture<?> reviewIdleClose;          // guarded by this
 
     public static EngineManager get() {
         EngineManager m = instance;
@@ -89,7 +88,12 @@ public final class EngineManager implements EngineSelection {
 
     /** @param persist save the chosen profile in config.properties (false in tests) */
     EngineManager(boolean persist) {
+        this(persist, ProcessPlan.detect());
+    }
+
+    EngineManager(boolean persist, ProcessPlan plan) {
         this.persist = persist;
+        this.plan = plan;
         refreshProfiles();
         String saved = ConfigManager.getProperty(CONFIG_KEY, "").trim();
         if (saved.isEmpty()) {
@@ -107,9 +111,12 @@ public final class EngineManager implements EngineSelection {
                 ? new EngineStatus(EngineStatus.State.READY, initial.id(), initial.displayName())
                 : EngineStatus.error(initial.id(), stockfishLookup.describeMissing()));
         Runtime.getRuntime().addShutdownHook(new Thread(this::shutdownNow, "engine-shutdown"));
+        long reapEvery = Math.max(1_000, Math.min(30_000, plan.idleCloseMs() / 4));
+        timer.scheduleWithFixedDelay(this::closeIdleEngines, reapEvery, reapEvery, TimeUnit.MILLISECONDS);
         log.info("engines: stockfish={}, lc0={}, active profile={}",
                 stockfishLookup.path().map(Path::toString).orElse("missing"),
                 lc0Lookup.path().map(Path::toString).orElse("missing"), initial.id());
+        log.info("engine memory plan: {}", plan.describe());
     }
 
     // ------------------------------------------------------------------------------------------
@@ -185,9 +192,22 @@ public final class EngineManager implements EngineSelection {
     // ------------------------------------------------------------------------------------------
     // Engines
 
-    /** Search budgets of the active tier (full or lite). */
+    /** Search budgets of the active tier (full or lite) on this machine's {@link ProcessPlan}. */
     public Budget budget() {
-        return isLite(activeProfile) ? Budget.lite() : Budget.full();
+        return isLite(activeProfile) ? Budget.lite(plan) : Budget.full(plan);
+    }
+
+    public ProcessPlan plan() {
+        return plan;
+    }
+
+    /** The scheduler of the analysis process (live analysis, LED coach, review and, on 1 GB, the bot). */
+    public synchronized PositionAnalyzer analyzer() {
+        if (analyzer == null) {
+            analyzer = new PositionAnalyzer(this::analysisClient, this::budget);
+            onAnalysisReconfigured(analyzer::refresh);
+        }
+        return analyzer;
     }
 
     /** Shared analysis engine (started lazily). Throws {@link EngineException} if Stockfish is missing. */
@@ -198,46 +218,15 @@ public final class EngineManager implements EngineSelection {
                 return new EngineException(stockfishLookup.describeMissing());
             });
             analysisBudget = budget();
-            analysis = new UciClient(EngineSpec.of("analysis", sf, stockfishOptions(analysisBudget.threads(),
-                    analysisBudget.hashMb())));
+            Map<String, String> opts = stockfishOptions(analysisBudget.threads(), analysisBudget.hashMb());
+            opts.put("Skill Level", "20"); // base value for the per-search override of a shared bot
+            analysis = new UciClient(EngineSpec.of("analysis", sf, opts));
             analysis.start().exceptionally(t -> {
                 setStatus(EngineStatus.error(activeProfile.id(), "Stockfish non si avvia: " + rootMessage(t)));
                 return null;
             });
         }
         return analysis;
-    }
-
-    /**
-     * Engine for the full-game review. Reused between reviews and closed after two idle minutes;
-     * call {@link #releaseReviewClient()} when done.
-     */
-    public synchronized UciClient acquireReviewClient() {
-        if (reviewIdleClose != null) {
-            reviewIdleClose.cancel(false);
-            reviewIdleClose = null;
-        }
-        if (review == null || review.isClosed()) {
-            Path sf = stockfishLookup.path().orElseThrow(() -> new EngineException(stockfishLookup.describeMissing()));
-            Budget b = budget();
-            review = new UciClient(EngineSpec.of("review", sf, stockfishOptions(b.threads(), Math.max(32, b.hashMb()))));
-        }
-        return review;
-    }
-
-    public synchronized void releaseReviewClient() {
-        if (review != null && reviewIdleClose == null) {
-            UciClient r = review;
-            reviewIdleClose = timer.schedule(() -> {
-                synchronized (EngineManager.this) {
-                    if (review == r) {
-                        review = null;
-                        reviewIdleClose = null;
-                    }
-                }
-                r.closeAsync();
-            }, 2, TimeUnit.MINUTES);
-        }
     }
 
     /**
@@ -261,35 +250,58 @@ public final class EngineManager implements EngineSelection {
 
     private CompletableFuture<String> botMoveOnce(String fen, int skillLevel) {
         EngineProfile p = activeProfile;
+        String skill = String.valueOf(Math.max(0, Math.min(20, skillLevel)));
+        if (!isMaia(p) && plan.botSharesAnalysis()) {
+            // Low-memory board: the bot is a high-priority search on the analysis process.
+            long t0 = System.nanoTime();
+            return analyzer().submit(PositionAnalyzer.Priority.BOT, fen, stockfishBotLimits(p), Map.of("Skill Level", skill))
+                    .thenApply(r -> logBotMove(p, r, t0));
+        }
         return ensureBot(p).thenCompose(client -> {
             SearchLimits limits;
             if (isMaia(p)) {
                 limits = SearchLimits.nodes(Math.max(1, ConfigManager.getIntProperty("maia.nodes", 1))).withTimeout(15_000);
             } else {
-                client.setOption("Skill Level", String.valueOf(Math.max(0, Math.min(20, skillLevel))));
-                int movetime = Math.max(100, ConfigManager.getIntProperty("game.bot.movetime", 2000));
-                Budget b = isLite(p) ? Budget.lite() : Budget.full();
-                limits = SearchLimits.movetime(Math.min(movetime, b.botMaxMovetimeMs()));
-                if (b.botMaxNodes() > 0) {
-                    limits = limits.withNodes(b.botMaxNodes());
-                }
-                limits = limits.withTimeout(limits.movetimeMs() + 3_000L);
+                client.setOption("Skill Level", skill);
+                limits = stockfishBotLimits(p);
             }
             long t0 = System.nanoTime();
-            return client.search(fen, limits).result().thenApply(r -> {
-                log.info("[bot {}] {} in {} ms (depth {}, {} nodes)", p.id(), r.bestMove(),
-                        (System.nanoTime() - t0) / 1_000_000, r.depth(), r.nodes());
-                if (r.bestMove() == null) {
-                    throw new CompletionException(new EngineException("bot returned no move"));
-                }
-                return r.bestMove();
-            });
+            return client.search(fen, limits).result().thenApply(r -> logBotMove(p, r, t0));
         });
+    }
+
+    private SearchLimits stockfishBotLimits(EngineProfile p) {
+        int movetime = Math.max(100, ConfigManager.getIntProperty("game.bot.movetime", 2000));
+        Budget b = isLite(p) ? Budget.lite(plan) : Budget.full(plan);
+        SearchLimits limits = SearchLimits.movetime(Math.min(movetime, b.botMaxMovetimeMs()));
+        if (b.botMaxNodes() > 0) {
+            limits = limits.withNodes(b.botMaxNodes());
+        }
+        return limits.withTimeout(limits.movetimeMs() + 3_000L);
+    }
+
+    private static String logBotMove(EngineProfile p, SearchResult r, long t0) {
+        log.info("[bot {}] {} in {} ms (depth {}, {} nodes)", p.id(), r.bestMove(),
+                (System.nanoTime() - t0) / 1_000_000, r.depth(), r.nodes());
+        if (r.bestMove() == null) {
+            throw new CompletionException(new EngineException("bot returned no move"));
+        }
+        return r.bestMove();
     }
 
     /** Returns (starting if needed) the bot engine for a profile; switching closes the old one. */
     private synchronized CompletableFuture<UciClient> ensureBot(EngineProfile p) {
         CompletableFuture<UciClient> current = bot;
+        if (!isMaia(p) && plan.botSharesAnalysis()) {
+            // no bot process on this board: close a Maia engine left over from a previous profile
+            bot = null;
+            botProfileId = null;
+            if (current != null) {
+                current.thenAccept(UciClient::closeAsync);
+            }
+            setStatus(EngineStatus.ready(p.id(), p.displayName()));
+            return CompletableFuture.failedFuture(new IllegalStateException("bot shares the analysis engine"));
+        }
         if (current != null && p.id().equals(botProfileId) && !current.isCompletedExceptionally()) {
             UciClient c = current.getNow(null);
             if (c == null || !c.isClosed()) {
@@ -372,9 +384,6 @@ public final class EngineManager implements EngineSelection {
             if (analysis != null) {
                 all.add(analysis);
             }
-            if (review != null) {
-                all.add(review);
-            }
         }
         CompletableFuture<UciClient> b = bot;
         if (b != null) {
@@ -385,6 +394,56 @@ public final class EngineManager implements EngineSelection {
         }
         CompletableFuture.allOf(all.stream().map(UciClient::closeAsync).toArray(CompletableFuture[]::new))
                 .orTimeout(3, TimeUnit.SECONDS).exceptionally(t -> null).join();
+    }
+
+    /** Closes engine processes idle for longer than the plan allows; they restart lazily on the next request. */
+    void closeIdleEngines() {
+        try {
+            long limit = plan.idleCloseMs();
+            CompletableFuture<UciClient> b = bot;
+            UciClient botClient = b == null ? null : b.getNow(null);
+            if (botClient != null && !botClient.isClosed() && botClient.idleMillis() > limit) {
+                synchronized (this) {
+                    if (bot == b) {
+                        bot = null;
+                        botProfileId = null;
+                    }
+                }
+                log.info("closing idle bot engine ({} s without searches)", botClient.idleMillis() / 1000);
+                botClient.closeAsync();
+            }
+            UciClient a;
+            PositionAnalyzer pa;
+            synchronized (this) {
+                a = analysis;
+                pa = analyzer;
+            }
+            if (a != null && !a.isClosed() && a.idleMillis() > limit && (pa == null || pa.isForegroundIdle())) {
+                synchronized (this) {
+                    if (analysis == a) {
+                        analysis = null;
+                    }
+                }
+                log.info("closing idle analysis engine ({} s without searches)", a.idleMillis() / 1000);
+                a.closeAsync();
+            }
+        } catch (RuntimeException e) {
+            log.warn("idle engine check failed: {}", e.toString());
+        }
+    }
+
+    /** Live engine processes (for diagnostics and tests). */
+    public synchronized List<UciClient> liveClients() {
+        List<UciClient> out = new ArrayList<>();
+        if (analysis != null && !analysis.isClosed()) {
+            out.add(analysis);
+        }
+        CompletableFuture<UciClient> b = bot;
+        UciClient c = b == null ? null : b.getNow(null);
+        if (c != null && !c.isClosed()) {
+            out.add(c);
+        }
+        return out;
     }
 
     private void shutdownNow() {
@@ -407,7 +466,7 @@ public final class EngineManager implements EngineSelection {
             return EngineSpec.of("bot-" + p.id(), lc0, opts).withReadyTimeout(30_000);
         }
         Path sf = stockfishLookup.path().orElseThrow(() -> new EngineException(stockfishLookup.describeMissing()));
-        Budget b = isLite(p) ? Budget.lite() : Budget.full();
+        Budget b = isLite(p) ? Budget.lite(plan) : Budget.full(plan);
         return EngineSpec.of("bot-" + p.id(), sf, stockfishOptions(b.botThreads(), b.botHashMb()));
     }
 
@@ -485,17 +544,24 @@ public final class EngineManager implements EngineSelection {
                          long coachCapMs, long candidateNodes, long candidateCapMs, int botThreads, int botHashMb,
                          int botMaxMovetimeMs, long botMaxNodes, int reviewMovetimeCapMs) {
 
-        /** Pi 5 / desktop: 2 analysis threads by default (config stockfish.threads), deep live analysis. */
-        public static Budget full() {
-            int cores = Runtime.getRuntime().availableProcessors();
-            int threads = ConfigManager.getIntProperty("stockfish.threads", Math.max(1, Math.min(cores / 2, 4)));
-            int hash = ConfigManager.getIntProperty("stockfish.hash", 64);
-            return new Budget(threads, hash, 30, 12, 16, 2_500, 150_000, 600, 1, 32, 10_000, 0, 1_500);
+        /** Pi 5 / desktop: threads and hash from the {@link ProcessPlan}, deep live analysis. */
+        public static Budget full(ProcessPlan plan) {
+            return new Budget(plan.analysisThreads(), plan.analysisHashMb(), 30, 12, 16, 2_500, 150_000, 600, 1,
+                    plan.botHashMb(), 10_000, 0, 1_500);
         }
 
         /** Pi 4 / weak hardware: 1 thread everywhere, same verdict depth (12), cheaper confirmation and hints. */
+        public static Budget lite(ProcessPlan plan) {
+            return new Budget(1, Math.min(16, plan.analysisHashMb()), 16, 12, 14, 1_500, 40_000, 500, 1,
+                    Math.min(16, plan.botHashMb()), 1_000, 300_000, 1_000);
+        }
+
+        public static Budget full() {
+            return full(ProcessPlan.detect());
+        }
+
         public static Budget lite() {
-            return new Budget(1, 16, 16, 12, 14, 1_500, 40_000, 500, 1, 16, 1_000, 300_000, 1_000);
+            return lite(ProcessPlan.detect());
         }
     }
 }

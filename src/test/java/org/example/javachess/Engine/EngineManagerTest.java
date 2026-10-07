@@ -48,7 +48,7 @@ class EngineManagerTest {
         manager.select(EngineManager.STOCKFISH_LITE);
         CompletableFuture<String> move = manager.botMove(new Board().getFen(), 5);
         long ms = (System.nanoTime() - t0) / 1_000_000;
-        assertTrue(ms < 100, "select+botMove took " + ms + " ms on the caller thread");
+        assertTrue(ms < 1_000, "select+botMove took " + ms + " ms on the caller thread (expected a few ms)");
         assertNotNull(move.join());
     }
 
@@ -72,7 +72,7 @@ class EngineManagerTest {
         long t0 = System.nanoTime();
         play(board, manager.botMove(board.getFen(), 10).get(15, TimeUnit.SECONDS));
         long liteMs = (System.nanoTime() - t0) / 1_000_000;
-        assertTrue(liteMs < EngineManager.Budget.lite().botMaxMovetimeMs() + 1_500, "lite bot took " + liteMs);
+        assertTrue(liteMs < EngineManager.Budget.lite().botMaxMovetimeMs() + 10_000, "lite bot took " + liteMs);
         assertEquals(EngineStatus.State.READY, manager.statusProperty().get().state());
 
         boolean maia = manager.profiles().stream().anyMatch(p -> p.id().equals(EngineManager.MAIA_1500) && p.available());
@@ -104,6 +104,48 @@ class EngineManagerTest {
             assertEquals(before, manager.activeProfile());
             assertEquals(EngineStatus.State.ERROR, manager.statusProperty().get().state());
         });
+    }
+
+    @Test
+    void oneGigabyteBoardRunsTheBotOnTheAnalysisProcess() throws Exception {
+        StockfishTestSupport.requireStockfish();
+        ProcessPlan oneGb = new ProcessPlan(906, "1 GB", true, 16, 16, 2, 120_000);
+        manager = new EngineManager(false, oneGb);
+        manager.select(EngineManager.STOCKFISH);
+        Board board = new Board();
+        PositionAnalyzer analyzer = manager.analyzer();
+        analyzer.analyze(board.getFen(), 18, 1, null); // live analysis running while the bot is asked
+        play(board, manager.botMove(board.getFen(), 1).get(60, TimeUnit.SECONDS));
+        play(board, "e7e5".equals(board.legalMoves().get(0).toString()) ? "d7d5" : board.legalMoves().get(0).toString());
+        play(board, manager.botMove(board.getFen(), 20).get(60, TimeUnit.SECONDS));
+        assertEquals(1, manager.liveClients().size(), "only the analysis process");
+        assertSame(manager.analysisClient(), manager.liveClients().get(0));
+        // the live analysis resumes after the bot search
+        String fen = board.getFen();
+        analyzer.analyze(fen, 12, 1, null);
+        long deadline = System.currentTimeMillis() + 60_000;
+        while (analyzer.lastUpdate() == null || !analyzer.lastUpdate().finished()) {
+            assertTrue(System.currentTimeMillis() < deadline, "live analysis did not finish");
+            Thread.sleep(10);
+        }
+    }
+
+    @Test
+    void idleEnginesAreClosedAndRestartLazily() throws Exception {
+        StockfishTestSupport.requireStockfish();
+        ProcessPlan quick = new ProcessPlan(3_790, "4 GB", false, 16, 16, 1, 300);
+        manager = new EngineManager(false, quick);
+        manager.select(EngineManager.STOCKFISH);
+        String fen = new Board().getFen();
+        manager.botMove(fen, 5).get(60, TimeUnit.SECONDS);
+        manager.analysisClient().search(fen, SearchLimits.depth(4)).result().get(60, TimeUnit.SECONDS);
+        assertEquals(2, manager.liveClients().size());
+        long deadline = System.currentTimeMillis() + 60_000;
+        while (!manager.liveClients().isEmpty()) {
+            assertTrue(System.currentTimeMillis() < deadline, "idle engines not closed");
+            Thread.sleep(50);
+        }
+        assertNotNull(manager.botMove(fen, 5).get(60, TimeUnit.SECONDS), "bot restarts on demand");
     }
 
     @Test

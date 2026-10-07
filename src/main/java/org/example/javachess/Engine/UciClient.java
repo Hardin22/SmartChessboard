@@ -73,9 +73,11 @@ public final class UciClient implements AutoCloseable {
     private volatile CompletableFuture<Void> uciOk = new CompletableFuture<>();
     private volatile CompletableFuture<Void> readyOk = new CompletableFuture<>();
     private final AtomicInteger generation = new AtomicInteger();
+    private volatile long lastActivityNanos = System.nanoTime();
     private final Set<String> optionNames = ConcurrentHashMap.newKeySet();
 
     // Control-thread only.
+    /** Options of the engine (spec + {@link #setOption}); per-search overrides are applied on top of these. */
     private final Map<String, String> desiredOptions = new LinkedHashMap<>();
     private final Map<String, String> appliedOptions = new LinkedHashMap<>();
     private final Deque<Long> restarts = new ArrayDeque<>();
@@ -103,6 +105,22 @@ public final class UciClient implements AutoCloseable {
 
     public boolean isClosed() {
         return closed;
+    }
+
+    /** True while a search is running (or waiting for its bestmove). */
+    public boolean isSearching() {
+        return current != null;
+    }
+
+    /** Milliseconds since the last search started or ended. */
+    public long idleMillis() {
+        return current != null ? 0 : (System.nanoTime() - lastActivityNanos) / 1_000_000;
+    }
+
+    /** Process id of the engine, or -1 when not running (diagnostics, memory measurements). */
+    public long pid() {
+        Process p = process;
+        return p != null && p.isAlive() ? p.pid() : -1;
     }
 
     /** True if the engine declared this option during the handshake (case-insensitive). */
@@ -165,10 +183,21 @@ public final class UciClient implements AutoCloseable {
      * @param onInfo optional listener for every parsed info line (reader thread)
      */
     public SearchHandle search(String fen, List<String> moves, SearchLimits limits, Consumer<InfoLine> onInfo) {
+        return search(fen, moves, limits, onInfo, Map.of());
+    }
+
+    /**
+     * Like {@link #search(String, List, SearchLimits, Consumer)} with UCI options valid for this search only
+     * (e.g. "Skill Level" for a bot move on a shared engine). An overridden option goes back to its base value
+     * (from the spec or {@link #setOption}) before the next search, so it must have one.
+     */
+    public SearchHandle search(String fen, List<String> moves, SearchLimits limits, Consumer<InfoLine> onInfo,
+                               Map<String, String> optionOverrides) {
         if (fen == null || fen.isBlank() || fen.indexOf('\n') >= 0 || fen.indexOf('\r') >= 0) {
             throw new IllegalArgumentException("invalid FEN: " + fen);
         }
-        ActiveSearch s = new ActiveSearch(fen, moves == null ? List.of() : List.copyOf(moves), limits, onInfo);
+        ActiveSearch s = new ActiveSearch(fen, moves == null ? List.of() : List.copyOf(moves), limits, onInfo,
+                optionOverrides == null ? Map.of() : Map.copyOf(optionOverrides));
         if (closed) {
             s.future.completeExceptionally(new EngineException("engine " + spec.name() + " is closed"));
             return s;
@@ -274,7 +303,8 @@ public final class UciClient implements AutoCloseable {
             if (hasOption("MultiPV")) {
                 desiredOptions.put("MultiPV", String.valueOf(s.limits.multiPv()));
             }
-            applyOptions();
+            applyOptions(s.overrides);
+            lastActivityNanos = System.nanoTime();
             StringBuilder pos = new StringBuilder("position fen ").append(s.fen);
             if (!s.moves.isEmpty()) {
                 pos.append(" moves");
@@ -407,8 +437,20 @@ public final class UciClient implements AutoCloseable {
     }
 
     private void applyOptions() {
+        applyOptions(Map.of());
+    }
+
+    private void applyOptions(Map<String, String> overrides) {
         boolean changed = false;
-        for (Map.Entry<String, String> e : desiredOptions.entrySet()) {
+        Map<String, String> effective = new LinkedHashMap<>(desiredOptions);
+        for (Map.Entry<String, String> o : overrides.entrySet()) {
+            if (desiredOptions.containsKey(o.getKey())) {
+                effective.put(o.getKey(), o.getValue());
+            } else {
+                log.warn("[{}] option '{}' has no base value, override ignored", spec.name(), o.getKey());
+            }
+        }
+        for (Map.Entry<String, String> e : effective.entrySet()) {
             if (e.getValue().equals(appliedOptions.get(e.getKey()))) {
                 continue;
             }
@@ -652,6 +694,7 @@ public final class UciClient implements AutoCloseable {
             ponder = null;
         }
         current = null;
+        lastActivityNanos = System.nanoTime();
         cancelTimer(s);
         List<InfoLine> lines;
         List<InfoLine> perMove;
@@ -673,6 +716,7 @@ public final class UciClient implements AutoCloseable {
         final List<String> moves;
         final SearchLimits limits;
         final Consumer<InfoLine> onInfo;
+        final Map<String, String> overrides;
         final CompletableFuture<SearchResult> future = new CompletableFuture<>();
         final TreeMap<Integer, InfoLine> lines = new TreeMap<>();
         final java.util.LinkedHashMap<String, InfoLine> byMove = new java.util.LinkedHashMap<>();
@@ -684,11 +728,13 @@ public final class UciClient implements AutoCloseable {
         int maxDepth;
         long nodes;
 
-        ActiveSearch(String fen, List<String> moves, SearchLimits limits, Consumer<InfoLine> onInfo) {
+        ActiveSearch(String fen, List<String> moves, SearchLimits limits, Consumer<InfoLine> onInfo,
+                     Map<String, String> overrides) {
             this.fen = fen;
             this.moves = moves;
             this.limits = limits;
             this.onInfo = onInfo;
+            this.overrides = overrides;
         }
 
         @Override

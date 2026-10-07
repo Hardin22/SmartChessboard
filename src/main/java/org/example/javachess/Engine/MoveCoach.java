@@ -337,7 +337,8 @@ public final class MoveCoach {
 
     private void guaranteedVerdict(Pending p) {
         EngineManager.Budget b = budget.get();
-        analyzer.scoreMoves(p.fenBefore, List.of(p.uci), b.candidateNodes(), b.coachCapMs()).thenAccept(r -> {
+        analyzer.scoreMoves(p.fenBefore, List.of(p.uci), b.candidateNodes(), b.coachCapMs(),
+                PositionAnalyzer.Priority.VERDICT).thenAccept(r -> {
             EngineEvents.EXECUTOR.execute(() -> {
                 InfoLine line = r == null ? null : r.lineFor(p.uci);
                 if (pending != p || p.emitted != null || line == null) {
