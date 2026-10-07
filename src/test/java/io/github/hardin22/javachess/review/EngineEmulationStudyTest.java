@@ -39,7 +39,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
  *     [-Demu.research=sf19:n200000>sf19:n1000000] [-Demu.out=target/emulation]
  * </pre>
  * Variant syntax {@code engine:limit[:mpvK][:2nd<limit>]}: engine {@code sf19} (native Stockfish 19,
- * {@code -Dstockfish.path}) or {@code lite} (chess.com's stockfish.js lite WASM under node, {@code -Demu.liteJs});
+ * {@code -Dstockfish.path}), {@code lite} (chess.com's stockfish.js lite WASM under node, {@code -Demu.liteJs}) or
+ * {@code sflite} (the same lite net built natively, {@code -Demu.litePath}: same nodes and moves as the WASM build);
  * limit {@code n<nodes>} or {@code d<depth>}; the second line (Great/Brilliant) defaults to half the nodes or the same
  * depth. Each variant's evaluations are dumped to {@code <out>/<variant>.jsonl} and reused on the next run.
  */
@@ -132,6 +133,8 @@ class EngineEmulationStudyTest {
                     System.getProperty("user.home") + "/Developer/javaChess/engines/stockfish/stockfish"));
             case "lite" -> List.of(System.getProperty("emu.node", "/opt/homebrew/bin/node"),
                     System.getProperty("emu.liteJs"));
+            // native build of the same lite net (sscg13/Stockfish sf19-1mb): bit-identical searches, ~2.6x faster
+            case "sflite" -> List.of(System.getProperty("emu.litePath"));
             default -> List.of(parts[0]); // any UCI executable
         };
         int processes = Integer.getInteger("emu.processes", 4);
@@ -177,7 +180,7 @@ class EngineEmulationStudyTest {
         Files.writeString(file, sb.toString(), StandardCharsets.UTF_8);
     }
 
-    private static Dump read(Path file) throws IOException {
+    static Dump read(Path file) throws IOException {
         List<List<PositionEval>> all = new ArrayList<>();
         long nodes = 0;
         long wall = 0;
