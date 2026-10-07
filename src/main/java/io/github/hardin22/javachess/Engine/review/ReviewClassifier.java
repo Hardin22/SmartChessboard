@@ -124,6 +124,11 @@ public final class ReviewClassifier {
         final double greatPawnEscapeGap;
         /** Phase 4: R9 also for an answer to check that does not move the king. */
         final boolean greatStartsMateInCheck;
+        /**
+         * Phase 4: the engine's quiet move that leaves en prise again the piece the mover's previous move sacrificed
+         * (declined by the opponent) renews the sacrifice: B-E1 does not exclude it.
+         */
+        final boolean brilliantRenewed;
         final double brilliantTopRegain;
         /** v2.3 R9: a quiet move starting a forced mate is Great when the alternative does not win. */
         final boolean greatStartsMate;
@@ -285,6 +290,7 @@ public final class ReviewClassifier {
             greatNoCashIn = get("greatNoCashIn", 1) != 0;
             greatStartsMatePunish = get("greatStartsMatePunish", 0.15);
             greatStartsMateInCheck = get("greatStartsMateInCheck", 1) != 0;
+            brilliantRenewed = get("brilliantRenewed", 1) != 0;
             pieceSacrifice = get("pieceSacrifice", 1) != 0;
             outcomeLow = get("outcomeLow", 0.40);
             outcomeHigh = get("outcomeHigh", 0.60);
@@ -821,7 +827,7 @@ public final class ReviewClassifier {
         Board b0 = board(replay.fens().get(i));
         String uci = replay.uci().get(i);
         if (t.brilliantRule == 2 && brilliantV19(b0, uci, me, isTop, alternative, played, epBefore, epAfter, t, k,
-                playedLine(uci, p0, p1)) && !(t.brilliantRecaptureNet && i > 0 && isRecapture(replay, i)
+                playedLine(uci, p0, p1), isTop && renewsSacrifice(replay, i, me, t)) && !(t.brilliantRecaptureNet && i > 0 && isRecapture(replay, i)
                 && Sacrifice.of(b0, uci, me).movedNet() < t.sacMin)) {
             // B-E10: taking back on the square of the opponent's capture is a sacrifice only when the recapturing
             // piece itself is lost for at least sacMin (live_173981415730 19...Nxd4 cxd4 Rxd4: a knight for two pawns
@@ -1121,6 +1127,39 @@ public final class ReviewClassifier {
         return m == null || b.getPiece(m.getFrom()).getPieceType() == PieceType.KING;
     }
 
+    /**
+     * Phase 4: move i (the engine's move, checked by the caller) is quiet (no capture, no check, not out of check)
+     * and leaves en prise the piece (bishop or more) that the mover's previous move offered as a sacrifice and the
+     * opponent declined: Bai Jinshi - Ding Liren 20...Rd4 21.h3 h5 (chess.com Brilliant, like Rotlewi - Rubinstein
+     * 23...Rd2, Kasparov - Topalov 37.Rd7 and Aronian - Anand 16...Nde5 after their own sacrifices).
+     */
+    private static boolean renewsSacrifice(GameReplay replay, int i, boolean me, Tuning t) {
+        if (!t.brilliantRenewed || i < 2) {
+            return false;
+        }
+        Board b0 = board(replay.fens().get(i));
+        String uci = replay.uci().get(i);
+        Move m = Tactics.find(b0, uci);
+        if (m == null || b0.isKingAttacked() || Tactics.isCapture(b0, uci)) {
+            return false;
+        }
+        String prev = replay.uci().get(i - 2);
+        Board bp = board(replay.fens().get(i - 2));
+        Move pm = Tactics.find(bp, prev);
+        if (pm == null || pm.getTo() == m.getFrom() || Sacrifice.of(bp, prev, me).value() < t.sacMin) {
+            return false;
+        }
+        Side side = me ? Side.WHITE : Side.BLACK;
+        Piece offered = b0.getPiece(pm.getTo());
+        if (offered == Piece.NONE || offered.getPieceSide() != side || Tactics.value(offered) < 3
+                || !Tactics.hanging(b0, side).containsKey(pm.getTo())) {
+            return false;
+        }
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        return !b1.isKingAttacked() && Tactics.hanging(b1, side).containsKey(pm.getTo());
+    }
+
     /** 0 losing, 1 about equal, 2 winning (SPEC v2.1). */
     private static int outcomeClass(double ep, Tuning t) {
         return ep < t.outcomeLow ? 0 : ep > t.outcomeHigh ? 2 : 1;
@@ -1192,7 +1231,7 @@ public final class ReviewClassifier {
      */
     private static boolean brilliantV19(Board b0, String uci, boolean me, boolean isTop, Eval alternative,
                                         Eval played, double epBefore, double epAfter, Tuning t, double k,
-                                        List<String> line) {
+                                        List<String> line, boolean renewed) {
         Move m = Tactics.find(b0, uci);
         if (m == null || m.getPromotion() != Piece.NONE) {
             return false;
@@ -1232,7 +1271,7 @@ public final class ReviewClassifier {
         if (kingMarch) {
             return true; // the king itself is what is offered
         }
-        if (sac.value() < t.sacMin) {
+        if (sac.value() < t.sacMin && !renewed) {
             return false; // B-E1: nothing new is offered
         }
         if (t.brilliantNoLiquidation && lastPieceOnTheBoard(b0, m)) {

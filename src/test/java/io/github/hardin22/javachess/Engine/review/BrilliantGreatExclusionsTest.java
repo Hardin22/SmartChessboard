@@ -610,6 +610,19 @@ class BrilliantGreatExclusionsTest {
         assertNotEquals(MoveClassification.GREAT, label(qxb8, Tuning.DEFAULT.with("greatStartsMateInCheck", 0)));
     }
 
+    @Test
+    void leavingThePreviousSacrificeEnPriseAgainRenewsIt() {
+        // Bai Jinshi - Ding Liren 2017, 20...Rd4 21.h3 h5 (chess.com Brilliant twice): the rook stays en prise to exd4
+        ReviewInput g = game("r1br2k1/pp3p2/2n4p/4N1p1/1bP5/2n1PKB1/P1Q2PPP/5B1R b - - 4 20", 2500, 2500,
+                List.of("d8d4", "h2h3", "h6h5"), List.of(Eval.cp(-477), Eval.cp(-379), Eval.cp(-409), Eval.cp(-409)),
+                List.of("h6h5", "h2h3", "h6h5"));
+        List<PositionEval> ps = new ArrayList<>(g.positions());
+        ps.set(2, withLines(ps.get(2).fen(), Eval.cp(-409), "h6h5", Eval.cp(-161), "b7b6"));
+        ReviewInput h5 = new ReviewInput(g.initialFen(), g.uciMoves(), ps, g.book(), 2500, 2500);
+        assertEquals(MoveClassification.BRILLIANT, label(h5, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.BRILLIANT, label(h5, Tuning.DEFAULT.with("brilliantRenewed", 0)));
+    }
+
     private static ReviewInput rated(ReviewInput in, int white, int black) {
         return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
     }
