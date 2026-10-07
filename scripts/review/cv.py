@@ -174,6 +174,8 @@ SPECIAL = ["brilliant", "great", "miss"]
 # win chance loss thresholds of ReviewClassifier.Tuning (defaults; -D overrides apply) for the "near a threshold" test
 # our top move called Good/Excellent by chess.com while our second line is this close: the engines' best moves differ
 TOP_TIE_PAWNS = 0.30
+# PHASE3 §20 targets: (precision, recall)
+TARGET = {"brilliant": (0.90, 0.70), "great": (0.85, 0.55)}
 THRESHOLDS = {"excellent": 0.02, "good": 0.05, "inaccuracy": 0.10, "mistake": 0.20, "blunderAnyway": 0.30}
 
 
@@ -573,9 +575,9 @@ def cmd_fplist(a):
     sets = [
         ("cv-sf22", dict(budget=a.budget, dataset="cv", dump=a.dump, labels=DATA / REFS["sf22"])),
         ("cv-torch18", dict(budget=a.budget, dataset="cv", dump=a.dump, labels=DATA / REFS["torch18"])),
-        ("famous", dict(budget="lite", dataset="all", dump=DATA / "evals_famous", labels=DATA / "famous_chesscom",
+        ("famous", dict(budget=a.side_evals, dataset="all", dump=DATA / "evals_famous", labels=DATA / "famous_chesscom",
                         folds=nofolds, games=DATA / "famous")),
-        ("chessigma", dict(budget="lite", dataset="all", dump=DATA / "evals_chessigma", labels=root / "chessigma-labels",
+        ("chessigma", dict(budget=a.side_evals, dataset="all", dump=DATA / "evals_chessigma", labels=root / "chessigma-labels",
                            folds=nofolds)),
     ]
     fp, fn, summary = [], [], []
@@ -681,32 +683,47 @@ def cmd_prcurve(a):
         for rating in (1500, 2500):
             kr = dict(k, defaultRating=str(rating))
             fr = rc if famous_deep else None
-            fp_, _ = run_java(cp, kr, root / nm / f"famous{rating}", "lite", a.mode, "all", DATA / "evals_famous",
+            fp_, _ = run_java(cp, kr, root / nm / f"famous{rating}", a.side_evals, a.mode, "all", DATA / "evals_famous",
                               labels=DATA / "famous_chesscom", games=DATA / "famous", folds=nofolds, recheck=fr)
             for kd in ("brilliant", "control"):
                 ps = [p for p in fp_ if kind.get(p["game"]) == kd]
                 out[f"f{rating}{kd}"] = {c: pr(ps, c) for c in ("brilliant", "great")}
             out[f"f{rating}recheck"] = bool(fr) or not rc
-        cs, _ = run_java(cp, k, root / nm / "chessigma", "lite", a.mode, "all", DATA / "evals_chessigma",
+        if not (DATA / "evals_chessigma" / a.side_evals).is_dir():
+            out["chessigma"] = f"no {a.side_evals} dump"
+            return out
+        cs, _ = run_java(cp, k, root / nm / "chessigma", a.side_evals, a.mode, "all", DATA / "evals_chessigma",
                          labels=root / "chessigma-labels", folds=nofolds)
         tp = sum(1 for p in cs if p["cc"] == "brilliant" and p["ours"] == "brilliant")
         pos = sum(1 for p in cs if p["cc"] == "brilliant")
         out["chessigma"] = f"{tp}/{pos} R {tp / pos:.2f}" if pos else "-"
         return out
 
+    def ok(r, c):
+        """✓ when the class meets its target on CV and on the famous games at 2500 (brilliant + control)."""
+        def meets(t):
+            tp, fp, fn = t
+            return tp + fp > 0 and tp / (tp + fp) >= TARGET[c][0] and tp / max(1, tp + fn) >= TARGET[c][1]
+        fam = tuple(x + y for x, y in zip(r["f2500brilliant"][c], r["f2500control"][c]))
+        return "✓" if meets(r["cv"][c]) and meets(fam) else "✗"
+
     with ThreadPoolExecutor(max_workers=a.jobs) as ex:
         res = list(ex.map(one, variants))
-    md = ["| variant | CV exact / ≥2 | CV Brilliant | CV Great | CV Miss | famous 1500 brilliant-kind B / G | "
-          "famous 1500 control B / G | famous 2500 brilliant-kind B / G | famous 2500 control B / G | Chessigma B | "
+    md = [f"Evals: {a.budget} (CV), {a.side_evals} (famous, Chessigma). Targets (PHASE3 §20): Brilliant P >= "
+          f"{TARGET['brilliant'][0]} & R >= {TARGET['brilliant'][1]}, Great P >= {TARGET['great'][0]} & R >= "
+          f"{TARGET['great'][1]}; famous main column = rating 2500. ✓/✗ = target met on CV and famous 2500.", "",
+          "| variant | CV exact / ≥2 | CV Brilliant | CV Great | CV Miss | **famous 2500 brilliant-kind B / G** | "
+          "famous 2500 control B / G | famous 1500 brilliant-kind B / G | famous 1500 control B / G | Chessigma B | "
           "Pi 5 s/40 mean / worst | worst game on Pi 5 |", "|---|---|---|---|---|---|---|---|---|---|---:|---|"]
     for r in res:
         star = "" if r["f1500recheck"] else " (no famous deep: lite)"
         md.append(f"| {r['name']}{star} | {r['exact']:.1%} / {r['far']} | {fmt_pr(r['cv']['brilliant'])} | "
                   f"{fmt_pr(r['cv']['great'])} | {fmt_pr(r['cv']['miss'])} | "
+                  f"{fmt_pr(r['f2500brilliant']['brilliant'])} {ok(r, 'brilliant')} / "
+                  f"{fmt_pr(r['f2500brilliant']['great'])} {ok(r, 'great')} | "
+                  f"{fmt_pr(r['f2500control']['brilliant'])} / {fmt_pr(r['f2500control']['great'])} | "
                   f"{fmt_pr(r['f1500brilliant']['brilliant'])} / {fmt_pr(r['f1500brilliant']['great'])} | "
                   f"{fmt_pr(r['f1500control']['brilliant'])} / {fmt_pr(r['f1500control']['great'])} | "
-                  f"{fmt_pr(r['f2500brilliant']['brilliant'])} / {fmt_pr(r['f2500brilliant']['great'])} | "
-                  f"{fmt_pr(r['f2500control']['brilliant'])} / {fmt_pr(r['f2500control']['great'])} | "
                   f"{r['chessigma']} | {r['pi5']:.1f} / {r['pi5max']:.1f} | {r['pi5game'][0]:.1f} s "
                   f"({r['pi5game'][1]}, {(r['pi5game'][2] + 1) // 2} moves) |")
     text = "\n".join(md)
@@ -735,11 +752,16 @@ def main():
                     help="fplist: folder of FP_LIST.csv / FN_LIST.csv")
     ap.add_argument("--recheck", choices=["second", "full"], help="candidates re-searched deeper, simulated with "
                     "the --deep dump: 'second' = deep second line when the deep best move is ours, 'full' = deep eval")
+    ap.add_argument("--evals", help="engine dump for every set: CV/hold-out <dump>/<evals>, famous and Chessigma "
+                    "evals_famous/<evals>, evals_chessigma/<evals> (e.g. sf16-lite); default --budget and 'lite'")
     ap.add_argument("--variants", help="prcurve: JSON list of {name, knobs: {...}, recheck} or a knob grid")
     ap.add_argument("--holdout", action="store_true")
     ap.add_argument("--final", action="store_true")
     ap.add_argument("--no-build", action="store_true", help="skip ./mvnw test-compile")
     a = ap.parse_args()
+    a.side_evals = a.evals or "lite"
+    if a.evals:
+        a.budget = a.evals
     global LABELS_DIR, FOLDS
     LABELS_DIR = DATA / REFS[a.ref]
     FOLDS = a.folds

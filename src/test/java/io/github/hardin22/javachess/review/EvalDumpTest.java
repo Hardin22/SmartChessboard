@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *     [-Dreview.dump.budget=lite|deep|NAME] [-Dreview.dump.nodes=N -Dreview.dump.secondNodes=N]
  *     [-Dreview.dump.processes=3 -Dreview.dump.hash=64] [-Dreview.dump.mpv3=true] [-Dreview.dump.parallelGames=3]
  *     [-Dreview.dump.force=false] [-Dreview.dump.only=id1,id2] [-Dreview.labels=DIR] [-Dreview.gamesDir=DIR] [-Dreview.dump.out=DIR]
- *     [-Dreview.dump.tag=TAG]
+ *     [-Dreview.dump.tag=TAG] [-Dreview.dump.source=games]
  * </pre>
  * With {@code tag} the games are the files of {@code gamesDir} carrying that tag (e.g. {@code brilliant_benchmark}),
  * labelled or not; otherwise the label files of {@code review.labels}.
@@ -75,7 +75,11 @@ class EvalDumpTest {
                 .map(String::trim).filter(x -> !x.isEmpty()).toList();
         List<Moves> games = new ArrayList<>();
         String tag = System.getProperty("review.dump.tag", "");
-        List<Moves> all = tag.isEmpty()
+        // -Dreview.dump.source=games: the moves of the game files of review.dump.only, the labels are never read
+        // (hold-out games)
+        boolean fromGames = "games".equals(System.getProperty("review.dump.source"));
+        List<Moves> all = fromGames ? games(gamesDir(), only)
+                : tag.isEmpty()
                 ? LabelledGame.loadAll(labelsDir(), gamesDir()).stream().map(g -> new Moves(g.id(), g.uci())).toList()
                 : tagged(gamesDir(), tag);
         for (Moves g : all) {
@@ -113,6 +117,16 @@ class EvalDumpTest {
 
     /** The moves of a game to dump. */
     record Moves(String id, List<String> uci) {
+    }
+
+    private static List<Moves> games(Path gamesDir, List<String> ids) throws java.io.IOException {
+        List<Moves> out = new ArrayList<>();
+        for (String id : ids) {
+            JSONObject g = new JSONObject(Files.readString(gamesDir.resolve(id + ".json")));
+            out.add(new Moves(id, g.has("moves_uci") ? ChessComDataset.strings(g.getJSONArray("moves_uci"))
+                    : ChessComDataset.parse(g).uci()));
+        }
+        return out;
     }
 
     private static List<Moves> tagged(Path gamesDir, String tag) throws java.io.IOException {
