@@ -127,20 +127,20 @@ public final class GameReviewer implements AutoCloseable {
                                 l.onProgress(0.9 * done.incrementAndGet() / (n + 1));
                                 progressive.evaluated();
                             }
-                            // Phase 4 "threat ignored": the position after the opponent takes the piece an engine
-                            // move of this block left en prise, with the same engine and hash (the block's main
-                            // evaluations are already done, so they do not depend on it)
-                            for (int idx = start; idx < Math.min(n, start + BLOCK); idx++) {
-                                String capture = ReviewClassifier.afterCaptureRequest(replay.fens().get(idx),
-                                        replay.uci().get(idx), positions[idx]);
-                                EngineLine line = capture == null ? null
-                                        : afterCapture(replay.fens().get(idx + 1), capture, nodes);
-                                if (line != null) {
-                                    afterCapture.put(idx, line);
-                                }
-                            }
                         } finally {
                             evaluator.endBlock();
+                        }
+                        // Phase 4 "threat ignored": the position after the opponent takes the piece an engine move of
+                        // this block left en prise, searched outside the block like the second lines (from a cleared
+                        // hash: the same search as the stored oracle answers of the gate)
+                        for (int idx = start; idx < Math.min(n, start + BLOCK); idx++) {
+                            String capture = ReviewClassifier.afterCaptureRequest(replay.fens().get(idx),
+                                    replay.uci().get(idx), positions[idx]);
+                            EngineLine line = capture == null ? null
+                                    : afterCapture(replay.fens().get(idx + 1), capture, nodes);
+                            if (line != null) {
+                                afterCapture.put(idx, line);
+                            }
                         }
                     }
                     return null;
