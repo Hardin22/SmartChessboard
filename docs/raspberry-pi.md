@@ -101,9 +101,10 @@ while the app runs, and the app works without it. Firmware, wiring constants and
 
 | | before | after |
 |---|---|---|
-| First frame after JVM start (3 runs) | 1.64-2.04 s | 1.08-1.11 s (0.93 s with AppCDS) |
+| First frame after JVM start (3 runs) | 1.64-2.04 s | 1.08-1.11 s; 0.84-1.34 s with all branches merged; 0.93 s with AppCDS |
 | First frame with Pi-like flags (sw rendering, 4 CPUs, 512 MB, SerialGC, C1) | 1.52-1.71 s | 0.69-1.04 s |
 | All main views ready | before the first frame (blocked it) | 2.1-2.6 s, built one per idle slot |
 | Heap 5 s after start | 53 MB | 52 MB (no engine started at boot any more) |
 | Worst frame during the first 5 s | 18-33 ms | 33-40 ms (idle preloading) |
+| Exit (Stopping → JVM gone) | engines and timers left running, `System.exit` | ~10 ms, engines quit over UCI, no non-daemon thread left |
 | LED event → serial frame (simulator) | 10 ms sleeps per LED, 70 ms per animation step | 0.13 ms average, 0.17 ms worst |

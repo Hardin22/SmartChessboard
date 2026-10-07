@@ -136,6 +136,9 @@ public final class SerialBoard implements BoardHardware {
         if (p != null) {
             p.closePort();
         }
+        if (readerThread != null) {
+            readerThread.interrupt(); // it may be waiting before the next port scan
+        }
         joinQuietly(readerThread);
         joinQuietly(writerThread);
     }
