@@ -248,8 +248,20 @@ public abstract class AbstractGame {
         String startFen = initialFen;
         String finalFen = board.getFen();
         log.info("Saving game: {}", pgnText);
+        String white = whitePlayerName();
+        String black = blackPlayerName();
         AppExecutors.storage().execute(() -> org.example.javachess.Services.GameArchiveService.saveGame(
-                type, openingName, pgnText, startFen, finalFen, result, timeControl));
+                type, openingName, pgnText, startFen, finalFen, result, timeControl, white, black));
+    }
+
+    /** Name stored in the archive for White ("?" when unknown). */
+    protected String whitePlayerName() {
+        return "?";
+    }
+
+    /** Name stored in the archive for Black ("?" when unknown). */
+    protected String blackPlayerName() {
+        return "?";
     }
 
     // --- delayed actions -----------------------------------------------------------------------------------

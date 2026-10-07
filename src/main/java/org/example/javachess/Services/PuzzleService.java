@@ -57,7 +57,7 @@ public class PuzzleService {
     // --- locations -----------------------------------------------------------------------------------------
 
     private static Path userHome() {
-        return org.example.javachess.Utils.AppPaths.dataDir();
+        return org.example.javachess.Utils.AppPaths.dataDir(); // honours -Djavachess.home and JAVACHESS_HOME
     }
 
     /** Where the compact database is looked for, in order. */

@@ -170,6 +170,18 @@ public final class ConfigManager {
         return defaultValue;
     }
 
+    /**
+     * Value stored in the settings file or defaults, ignoring environment overrides: use it to show and edit settings,
+     * so that a token given through {@link #LICHESS_TOKEN_ENV} is never copied into the file.
+     */
+    public static synchronized String getStoredProperty(String key, String defaultValue) {
+        String value = user.getProperty(key);
+        if (value == null) {
+            value = defaults.getProperty(key);
+        }
+        return value != null ? value : defaultValue;
+    }
+
     /** True when a non-empty Lichess token is configured (file or environment). */
     public static boolean hasLichessToken() {
         String token = getProperty(LICHESS_TOKEN);
@@ -269,13 +281,16 @@ public final class ConfigManager {
         return removed;
     }
 
-    private static void save() {
+    /** Writes the user settings; returns false (after logging) when the file could not be written. */
+    private static boolean save() {
         try {
             StringWriter out = new StringWriter();
             user.store(out, "javaChess user settings (contains the Lichess token: keep it private)");
             AtomicFiles.writeString(file, out.toString(), true);
+            return true;
         } catch (IOException e) {
             log.error("Cannot save settings to {}: {}", file, e.getMessage());
+            return false;
         }
     }
 
@@ -313,7 +328,10 @@ public final class ConfigManager {
         boolean hadSecrets = removeSecretKeys(old);
         user.clear();
         user.putAll(old);
-        save();
+        if (!save()) {
+            log.warn("Settings not migrated: the old file {} is left untouched", legacy);
+            return; // keep using the old values from memory, never drop the token
+        }
         log.info("Migrated settings from {} to {}{}", legacy, file, hadSecrets ? " (stored passwords dropped)" : "");
 
         // Scrub secrets from the old copy: it is outside the protected data folder.

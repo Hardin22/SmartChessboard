@@ -104,6 +104,9 @@ public class ReviewController implements NavigationAware, GameNavigationListener
     private List<MoveAnalysis> currentAnalysis;
     private String currentPgn;
     private String currentInitialFen = START_FEN;
+    /** Incremented when another game is loaded: a running full analysis of the previous game is discarded. */
+    private final java.util.concurrent.atomic.AtomicInteger analysisGeneration =
+            new java.util.concurrent.atomic.AtomicInteger();
     private int[] whiteCounts = new int[0];
     private int[] blackCounts = new int[0];
 
@@ -142,6 +145,7 @@ public class ReviewController implements NavigationAware, GameNavigationListener
 
     public void loadGame(String pgn, String initialFen) {
         this.currentPgn = pgn;
+        analysisGeneration.incrementAndGet();
         this.currentInitialFen = initialFen == null ? START_FEN : initialFen;
         if (arduinoController == null) {
             Thread.ofVirtual().start(() -> arduinoController = ArduinoController.getInstance());
@@ -208,15 +212,21 @@ public class ReviewController implements NavigationAware, GameNavigationListener
 
         GameAnalyzer analyzer = new GameAnalyzer();
         String pgn = currentPgn;
+        int generation = analysisGeneration.get();
+        String fenToAnalyze = currentInitialFen;
         Thread.ofPlatform().daemon().name("game-analysis").start(() -> {
             try {
-                List<MoveAnalysis> analysis = analyzer.analyzeGame(pgn, depth, progress -> Platform.runLater(() -> {
+                List<MoveAnalysis> analysis = analyzer.analyzeGame(pgn, fenToAnalyze, depth, progress -> Platform.runLater(() -> {
                     analysisProgressIndicator.setProgress(progress);
                     percentLabel.setText(I18n.t("review.analyzing", Math.round(progress * 100)));
                 }));
                 double whiteAccuracy = analyzer.calculateAccuracy(analysis, true);
                 double blackAccuracy = analyzer.calculateAccuracy(analysis, false);
-                Platform.runLater(() -> showAnalysis(analysis, whiteAccuracy, blackAccuracy));
+                Platform.runLater(() -> {
+                    if (generation == analysisGeneration.get()) { // another game may have been opened meanwhile
+                        showAnalysis(analysis, whiteAccuracy, blackAccuracy);
+                    }
+                });
             } catch (RuntimeException | Error e) {
                 LOG.error("Game analysis failed", e);
                 Platform.runLater(() -> {
@@ -254,7 +264,7 @@ public class ReviewController implements NavigationAware, GameNavigationListener
             if (move.getClassification() == null) {
                 continue;
             }
-            boolean isWhite = (move.getMoveNumber() % 2) != 0;
+            boolean isWhite = move.isWhiteMove();
             int ordinal = move.getClassification().ordinal();
             if (isWhite) {
                 whiteCounts[ordinal]++;
@@ -315,6 +325,11 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         javafx.scene.layout.ColumnConstraints side2 = new javafx.scene.layout.ColumnConstraints(64);
         grid.getColumnConstraints().addAll(side, mid, side2);
         mainController.showSheet(I18n.t("review.breakdown"), grid);
+    }
+
+    @Override
+    public void onNavigatedFrom() {
+        PositionAnalyzer.get().stop(); // do not keep the engine busy for a screen that is not shown
     }
 
     @FXML
@@ -473,11 +488,11 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         if (debounceHandle != null && !debounceHandle.isDone()) {
             debounceHandle.cancel(false);
         }
+        if (reviewChessBoard == null) {
+            return;
+        }
+        String currentFen = reviewChessBoard.getFen(); // read on the FX thread, which owns the board
         debounceHandle = scheduler.schedule(() -> {
-            if (reviewChessBoard == null) {
-                return;
-            }
-            String currentFen = reviewChessBoard.getFen();
             // Opening name: asynchronous, cached, never blocks.
             OpeningExplorer.lookup(currentFen).thenAccept(openingName -> Platform.runLater(() -> {
                 if (openingName.isPresent()) {

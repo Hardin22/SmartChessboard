@@ -34,6 +34,8 @@ public class VisionService {
     private final boolean debug = Boolean.getBoolean("javachess.vision.debug");
     private volatile PieceClassifier classifier;
     private volatile boolean running;
+    /** Incremented at every start: an old scan thread that is still finishing a frame sees it changed and quits. */
+    private volatile long generation;
     private volatile boolean isFlipped;
     private volatile Rectangle boardRect;
     private Thread scanThread;
@@ -79,10 +81,20 @@ public class VisionService {
             return;
         }
         running = true;
-        scanThread = new Thread(this::scanLoop, "vision-scan");
+        long myGeneration = ++generation;
+        scanThread = new Thread(() -> scanLoop(myGeneration), "vision-scan");
         scanThread.setDaemon(true);
         scanThread.start();
         log.info("Vision scanning started");
+    }
+
+    /**
+     * Stops scanning without waiting for the scan thread (safe on the JavaFX thread): a frame being classified is
+     * discarded thanks to the generation check.
+     */
+    public synchronized void requestStop() {
+        running = false;
+        generation++;
     }
 
     public void stopScanning() {
@@ -136,7 +148,11 @@ public class VisionService {
         return c;
     }
 
-    private void scanLoop() {
+    private boolean active(long myGeneration) {
+        return running && generation == myGeneration;
+    }
+
+    private void scanLoop(long myGeneration) {
         Robot robot;
         try {
             robot = new Robot();
@@ -148,7 +164,9 @@ public class VisionService {
         }
         PieceClassifier pc = classifier();
         if (pc == null) {
-            running = false;
+            if (generation == myGeneration) {
+                running = false;
+            }
             return;
         }
         Rectangle candidate = null;
@@ -159,7 +177,7 @@ public class VisionService {
         int lostFrames = 0;
         long frame = 0;
 
-        while (running) {
+        while (active(myGeneration)) {
             try {
                 if (boardRect == null) {
                     BufferedImage screen = robot.createScreenCapture(
@@ -217,6 +235,9 @@ public class VisionService {
                     stableFrames = 1;
                 }
                 BoardReading reported = lastReading;
+                if (!active(myGeneration)) {
+                    break; // stopped (or restarted) while this frame was being classified
+                }
                 if (stableFrames >= STABLE_FRAMES && (reported == null || !reported.placement().equals(placement))) {
                     lastReading = reading;
                     log.info("Stable position {} (confidence min {}, mean {}, {} ms)", placement,

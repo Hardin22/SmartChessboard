@@ -142,6 +142,8 @@ class GameArchiveServiceTest {
         assertNotNull(s.getLoadProblem());
         s.add(scholarsMate());
         assertEquals(content, Files.readString(file), "a newer file must never be overwritten");
+        String aside = Files.readString(file.resolveSibling("unsaved-games.pgn"));
+        assertTrue(aside.contains("4. Qxf7# 1-0"), "the game is kept aside instead of being lost");
     }
 
     @Test
@@ -154,7 +156,12 @@ class GameArchiveServiceTest {
         s.add(scholarsMate());
         String json = Files.readString(file);
         assertTrue(json.contains("\"broken\""), json);
-        assertEquals(3, service().list().get(0).id());
+        assertTrue(new JSONObject(json).has("unreadable"));
+        GameArchiveService again = service();
+        assertEquals(1, again.size(), "kept records are never read back as games");
+        assertEquals(3, again.list().get(0).id());
+        again.add(scholarsMate());
+        assertTrue(Files.readString(file).contains("\"broken\""), "still kept after another save");
     }
 
     @Test
@@ -271,6 +278,14 @@ class GameArchiveServiceTest {
         Path out = dir.resolve("export.pgn");
         s.exportAllPgn(out);
         assertEquals(2, PgnCodec.parsePgn(Files.readString(out)).size());
+    }
+
+    @Test
+    void repetitionIsNotAnAutomaticDraw() {
+        GameArchiveService s = service();
+        ArchivedGame g = s.add(new ArchivedGame(0, GameMode.PVP, "", "", "", "*", "", "", "", null, null, null,
+                List.of("g1f3", "g8f6", "f3g1", "f6g8", "g1f3", "g8f6", "f3g1", "f6g8")));
+        assertEquals("*", g.result(), "threefold repetition must be claimed");
     }
 
     @Test

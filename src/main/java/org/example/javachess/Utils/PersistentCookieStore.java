@@ -145,6 +145,9 @@ public class PersistentCookieStore implements CookieStore {
     public void add(URI uri, HttpCookie cookie) {
         if (cookie.getDomain() == null && uri != null) {
             cookie.setDomain(uri.getHost());
+        } else if (uri != null && uri.getHost() != null && !domainMatches(cookie.getDomain(), uri.getHost())) {
+            log.debug("Rejected cookie for a domain the site does not belong to");
+            return; // a site may only set cookies for itself or its parent domains
         }
         if (cookie.getMaxAge() == 0) {
             cookieJar.remove(generateKey(cookie));

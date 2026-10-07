@@ -145,6 +145,9 @@ public class GameArchiveService {
     public synchronized ArchivedGame add(ArchivedGame draft) {
         ArchivedGame stored = sanitize(draft).withId(nextId++);
         games.add(stored);
+        if (readOnly) {
+            saveAside(stored);
+        }
         persist();
         log.info("Archived game #{} ({}, {} moves, {})", stored.id(), stored.mode(), stored.movesUci().size(),
                 stored.result());
@@ -283,6 +286,12 @@ public class GameArchiveService {
     @Deprecated
     public static void saveGame(String type, String opening, String pgn, String initialFen, String finalFen,
                                 String result, String timeControl) {
+        saveGame(type, opening, pgn, initialFen, finalFen, result, timeControl, null, null);
+    }
+
+    /** As {@link #saveGame(String, String, String, String, String, String, String)} with the players' names. */
+    public static void saveGame(String type, String opening, String pgn, String initialFen, String finalFen,
+                                String result, String timeControl, String white, String black) {
         try {
             JSONObject legacy = new JSONObject();
             legacy.put("type", type == null ? "" : type);
@@ -293,7 +302,8 @@ public class GameArchiveService {
             legacy.put("result", result == null ? "" : result);
             legacy.put("time", timeControl == null ? "" : timeControl);
             ArchivedGame g = fromLegacy(legacy, 0);
-            g = new ArchivedGame(0, g.mode(), g.label(), g.white(), g.black(), g.result(), g.termination(),
+            g = new ArchivedGame(0, g.mode(), g.label(), white != null ? white : g.white(),
+                    black != null ? black : g.black(), g.result(), g.termination(),
                     g.opening(), g.timeControl(), LocalDateTime.now(), g.initialFen(), g.finalFen(), g.movesUci());
             if (g.movesUci().isEmpty()) {
                 log.info("Game without moves not archived ({})", type);
@@ -306,6 +316,25 @@ public class GameArchiveService {
     }
 
     // =================================================================== load / save
+
+    /**
+     * The archive cannot be written (damaged or newer file): keep the game anyway in a PGN file next to it and tell
+     * the user, instead of losing it silently.
+     */
+    private void saveAside(ArchivedGame game) {
+        Path aside = file.resolveSibling("unsaved-games.pgn");
+        try {
+            Files.writeString(aside, toPgn(game) + "\n", StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+            org.example.javachess.Utils.ErrorReporter.showError("Archivio",
+                    "L'archivio non può essere aggiornato (" + (loadProblem == null ? "sola lettura" : loadProblem)
+                            + ").\nLa partita è stata salvata in " + aside);
+        } catch (IOException e) {
+            log.error("Cannot save game aside to {}: {}", aside, e.getMessage());
+            org.example.javachess.Utils.ErrorReporter.showError("Archivio",
+                    "Impossibile salvare la partita: " + e.getMessage());
+        }
+    }
 
     private void load() {
         games.clear();
@@ -389,6 +418,16 @@ public class GameArchiveService {
                 }
             }
         }
+        JSONArray unreadable = obj.optJSONArray("unreadable");
+        if (unreadable != null) {
+            for (int i = 0; i < unreadable.length(); i++) {
+                Object o = unreadable.opt(i);
+                if (o instanceof JSONObject j) {
+                    preserved.add(j);
+                    maxId = Math.max(maxId, j.optInt("id", 0));
+                }
+            }
+        }
         nextId = Math.max(obj.optInt("nextId", 1), maxId + 1);
     }
 
@@ -420,7 +459,8 @@ public class GameArchiveService {
             }
         }
         // Keep old ids when they are valid and unique, renumber the rest after them.
-        int maxId = migrated.stream().mapToInt(ArchivedGame::id).filter(id -> id > 0).max().orElse(0);
+        int maxId = Math.max(migrated.stream().mapToInt(ArchivedGame::id).filter(id -> id > 0).max().orElse(0),
+                preserved.stream().mapToInt(j -> j.optInt("id", 0)).max().orElse(0));
         for (ArchivedGame g : migrated) {
             int id = g.id();
             if (id <= 0 || !usedIds.add(id)) {
@@ -482,8 +522,12 @@ public class GameArchiveService {
                 }
                 arr.put(o);
             }
-            preserved.forEach(arr::put);
             root.put("games", arr);
+            if (!preserved.isEmpty()) {
+                JSONArray unreadable = new JSONArray();
+                preserved.forEach(unreadable::put);
+                root.put("unreadable", unreadable); // kept verbatim, never parsed as games
+            }
             AtomicFiles.writeString(file, root.toString(2), true);
         } catch (IOException e) {
             log.error("Cannot save the archive to {}: {}", file, e.getMessage());
@@ -613,7 +657,7 @@ public class GameArchiveService {
     static String[] mapLegacyResult(String text, Board finalBoard) {
         String t = text == null ? "" : text.trim();
         String lower = t.toLowerCase(Locale.ROOT);
-        String boardResult = finalBoard == null ? null : PgnCodec.resultOf(finalBoard);
+        String boardResult = finalBoard == null ? null : PgnCodec.forcedResultOf(finalBoard);
         if (finalBoard != null && finalBoard.isMated()) {
             return new String[]{boardResult, "Scaccomatto"};
         }
@@ -734,7 +778,7 @@ public class GameArchiveService {
         }
         String result = g.result();
         String termination = g.termination();
-        String decided = PgnCodec.resultOf(replay.board());
+        String decided = PgnCodec.forcedResultOf(replay.board()); // repetition / 50 moves must be claimed
         if ("*".equals(result) && decided != null) {
             result = decided;
             if (termination.isEmpty() || termination.equalsIgnoreCase("Interrotta")) {

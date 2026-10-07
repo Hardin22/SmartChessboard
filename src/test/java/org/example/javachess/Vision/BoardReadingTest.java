@@ -25,6 +25,22 @@ class BoardReadingTest {
     }
 
     @Test
+    void bothKingsNeverEndOnTheSameSquare() {
+        // e1 looks more like a black king than anything, and is also the best white-king square
+        float[][][] p = BoardReading.certain("4k3/8/8/8/8/8/8/3QK3").probabilities();
+        java.util.Arrays.fill(p[4][0], 0f);
+        p[4][0][BoardReading.SYMBOLS.indexOf('K')] = 0.45f;
+        p[4][0][BoardReading.SYMBOLS.indexOf('k')] = 0.55f;
+        java.util.Arrays.fill(p[4][7], 0f);
+        p[4][7][BoardReading.SYMBOLS.indexOf('k')] = 0.5f;
+        p[4][7][BoardReading.SYMBOLS.indexOf('q')] = 0.5f;
+        BoardReading fixed = new BoardReading(p, true, 0).withPlacementRules();
+        String placement = fixed.placement();
+        assertEquals(1, placement.chars().filter(c -> c == 'K').count(), placement);
+        assertEquals(1, placement.chars().filter(c -> c == 'k').count(), placement);
+    }
+
+    @Test
     void tooManyPawnsAreTrimmedByConfidence() {
         float[][][] p = BoardReading.certain("4k3/8/8/8/8/PPPPPPPP/P7/4K3").probabilities();
         // the a2 pawn is the least certain one: it must be the one removed

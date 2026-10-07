@@ -117,18 +117,19 @@ public class LichessOAuth {
         server.createContext("/callback", exchange -> {
             Map<String, String> q = parseQuery(exchange.getRequestURI().getRawQuery());
             String page;
+            Runnable outcome;
+            String code = q.get("code");
             if (!state.equals(q.get("state"))) {
                 page = "Richiesta non valida.";
-                result.completeExceptionally(new LichessClient.LichessException(
+                outcome = () -> result.completeExceptionally(new LichessClient.LichessException(
                         "Risposta di Lichess non valida (state diverso): riprova.", 0, null));
-            } else if (q.containsKey("error")) {
+            } else if (q.containsKey("error") || code == null || code.isBlank()) {
                 page = "Autorizzazione negata. Puoi chiudere questa pagina.";
-                result.completeExceptionally(new LichessClient.LichessException(
+                outcome = () -> result.completeExceptionally(new LichessClient.LichessException(
                         "Autorizzazione Lichess negata.", 0, null));
             } else {
                 page = "Account Lichess collegato. Puoi tornare a javaChess.";
-                String code = q.get("code");
-                CompletableFuture.runAsync(() -> {
+                outcome = () -> CompletableFuture.runAsync(() -> {
                     try {
                         String token = exchangeCode(code, pkce.verifier(), redirect);
                         ConfigManager.setProperty(ConfigManager.LICHESS_TOKEN, token);
@@ -138,16 +139,24 @@ public class LichessOAuth {
                         result.complete(user);
                     } catch (LichessClient.LichessException e) {
                         result.completeExceptionally(e);
+                    } catch (Throwable e) {
+                        log.error("Lichess login failed", e);
+                        result.completeExceptionally(new LichessClient.LichessException(
+                                "Collegamento a Lichess non riuscito: " + ErrorReporter.userMessage(e), 0, e));
                     }
                 });
             }
             byte[] body = ("<!doctype html><meta charset=utf-8><title>javaChess</title>"
                     + "<body style='font-family:sans-serif;background:#111;color:#eee;padding:3em'><h2>"
                     + page + "</h2></body>").getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "text/html; charset=utf-8");
-            exchange.sendResponseHeaders(200, body.length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(body);
+            try {
+                exchange.getResponseHeaders().add("Content-Type", "text/html; charset=utf-8");
+                exchange.sendResponseHeaders(200, body.length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(body);
+                }
+            } finally {
+                outcome.run(); // after the page is sent: completing may stop this server
             }
         });
         server.start();
@@ -155,8 +164,11 @@ public class LichessOAuth {
                 "Tempo scaduto per il collegamento a Lichess: riprova.", 0, null)), timeout.toMillis(),
                 TimeUnit.MILLISECONDS);
         result.whenComplete((user, error) -> {
-            server.stop(1);
             timer.shutdownNow();
+            // stop asynchronously: this may run on the server's own handler thread
+            Thread stopper = new Thread(() -> server.stop(1), "lichess-oauth-stop");
+            stopper.setDaemon(true);
+            stopper.start();
         });
         try {
             openBrowser.accept(authorizationUri(redirect, pkce, state));

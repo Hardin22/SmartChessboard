@@ -50,6 +50,8 @@ public class PuzzleProgressService {
     private final List<Attempt> attempts = new ArrayList<>();
     private final Set<String> solved = new HashSet<>();
     private double rating = INITIAL_RATING;
+    /** True when the file must not be overwritten (newer schema, or a damaged file that could not be moved). */
+    private boolean readOnly;
 
     /** One attempt at a puzzle. */
     public record Attempt(String puzzleId, int puzzleRating, List<String> themes, boolean solved,
@@ -173,7 +175,8 @@ public class PuzzleProgressService {
         try {
             JSONObject root = new JSONObject(Files.readString(file, StandardCharsets.UTF_8));
             if (root.optInt("schemaVersion", 0) > SCHEMA_VERSION) {
-                log.warn("Puzzle progress written by a newer version; reading what is understood");
+                log.warn("Puzzle progress written by a newer version: read-only, it will not be overwritten");
+                readOnly = true;
             }
             rating = root.optDouble("rating", INITIAL_RATING);
             if (!Double.isFinite(rating)) {
@@ -216,7 +219,8 @@ public class PuzzleProgressService {
                                 + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))),
                         StandardCopyOption.REPLACE_EXISTING);
             } catch (IOException moveError) {
-                log.warn("Cannot move the damaged file: {}", moveError.getMessage());
+                log.warn("Cannot move the damaged file, progress will not be saved: {}", moveError.getMessage());
+                readOnly = true; // never overwrite the only copy
             }
             attempts.clear();
             solved.clear();
@@ -225,6 +229,9 @@ public class PuzzleProgressService {
     }
 
     private void save() {
+        if (readOnly) {
+            return;
+        }
         JSONObject root = new JSONObject();
         root.put("schemaVersion", SCHEMA_VERSION);
         root.put("rating", Math.round(rating * 10) / 10.0);

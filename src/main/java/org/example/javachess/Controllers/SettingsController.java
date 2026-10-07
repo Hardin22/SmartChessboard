@@ -198,7 +198,7 @@ public class SettingsController implements NavigationAware {
                         org.example.javachess.Utils.ErrorReporter.showError("Lichess", cause.getMessage());
                     } else {
                         lichessUsernameField.setText(username);
-                        lichessApiKeyField.setText(ConfigManager.getProperty("lichess.token", ""));
+                        lichessApiKeyField.setText(ConfigManager.getStoredProperty("lichess.token", ""));
                     }
                     showLichessAccount();
                 }));
@@ -244,7 +244,7 @@ public class SettingsController implements NavigationAware {
         boolean redact = isRedacted();
         lichessUsernameField.setText(redact ? "" : ConfigManager.getProperty("lichess.username", ""));
         chessComEmailField.setText(redact ? "" : ConfigManager.getProperty("chess.com.username", ""));
-        lichessApiKeyField.setText(redact ? "" : ConfigManager.getProperty("lichess.token", ""));
+        lichessApiKeyField.setText(redact ? "" : ConfigManager.getStoredProperty("lichess.token", ""));
         lichessUsernameField.setPromptText(redact ? "nome-utente" : "");
         chessComEmailField.setPromptText(redact ? "nome@esempio.it" : "");
     }
