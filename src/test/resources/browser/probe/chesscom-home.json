@@ -1,0 +1,16 @@
+{
+ "site": "chesscom",
+ "viewport": {
+  "w": 720,
+  "h": 967
+ },
+ "v": 1,
+ "dpr": 2,
+ "loggedIn": false,
+ "challenge": false,
+ "page": "home",
+ "title": "Chess.com - Play Chess Online - Free Games",
+ "login": false,
+ "url": "https://www.chess.com/",
+ "board": null
+}

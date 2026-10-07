@@ -378,7 +378,7 @@ public final class OnlineGameSync {
             }
         }
         BoardSnapshot.BoardView view = update.snapshot().board();
-        if (res.unchanged()) {
+        if (res.unchanged() && res.confident()) {
             unresolvedCount = 0;
             if (phase == Phase.UNCERTAIN) {
                 phase = pending != null ? Phase.SENDING : turnPhase();
@@ -436,8 +436,8 @@ public final class OnlineGameSync {
         detail = null;
         String forced = PgnCodec.forcedResultOf(internal);
         if (toReplicate != null) {
+            phase = Phase.REPLICATE; // before asking: a board without sensors answers at once
             board.replicate(internal, toReplicate.getFrom().name(), toReplicate.getTo().name());
-            phase = Phase.REPLICATE;
         } else {
             phase = turnPhase();
         }

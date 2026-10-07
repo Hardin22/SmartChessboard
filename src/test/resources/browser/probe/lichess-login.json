@@ -1,0 +1,16 @@
+{
+ "site": "lichess",
+ "viewport": {
+  "w": 720,
+  "h": 967
+ },
+ "v": 1,
+ "dpr": 2,
+ "loggedIn": false,
+ "challenge": false,
+ "page": "login",
+ "title": "Sign in • lichess.org",
+ "login": true,
+ "url": "https://lichess.org/login",
+ "board": null
+}
