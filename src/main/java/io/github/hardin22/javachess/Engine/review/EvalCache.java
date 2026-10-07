@@ -30,6 +30,8 @@ public final class EvalCache {
     private record Entry(int multiPv, long budget, PositionEval eval) {
     }
 
+    private static final Map<Path, EvalCache> SHARED = new java.util.concurrent.ConcurrentHashMap<>();
+
     private final Path file;
     private final Map<String, Entry> map = new HashMap<>();
     private boolean loaded;
@@ -39,9 +41,10 @@ public final class EvalCache {
         this.file = file;
     }
 
-    /** Cache file for an evaluator id in {@code dir}. */
+    /** Cache file for an evaluator id in {@code dir}, shared by every review of this JVM (loaded once). */
     public static EvalCache in(Path dir, String evaluatorId) {
-        return new EvalCache(dir.resolve("evals-" + evaluatorId.replaceAll("[^A-Za-z0-9._-]", "_") + ".tsv"));
+        Path f = dir.resolve("evals-" + evaluatorId.replaceAll("[^A-Za-z0-9._-]", "_") + ".tsv").toAbsolutePath();
+        return SHARED.computeIfAbsent(f, EvalCache::new);
     }
 
     /** A cached evaluation of {@code fen} good enough for the request, or null. */
