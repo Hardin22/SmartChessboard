@@ -120,6 +120,23 @@ class BrilliantGreatExclusionsTest {
     }
 
     @Test
+    void aPieceTakenBackAtOnceByADiscoveredAttackIsNotASacrifice() {
+        // live_184350007554 ply 40, 20...Nc3 (user, 22:20: never Brilliant): 21.Qxc3 Qxf3, the knight move uncovered
+        // the queen on the undefended Nf3; the material is level after the line
+        String fen = "3r1rk1/1pQ2pp1/p5bp/3q4/1P2n1P1/P3BN1P/5P2/R4RK1 b - - 0 20";
+        List<PositionEval> ps = new ArrayList<>();
+        ps.add(new PositionEval(fen, Eval.cp(-160), List.of(
+                new EngineLine("e4c3", Eval.cp(-160), List.of("e4c3", "c7c3", "d5f3", "e3d4", "g6d3", "d4g7", "d8c8",
+                        "c3f6", "f3f6", "g7f6"), 20),
+                new EngineLine("e4d6", Eval.cp(-134), List.of("e4d6"), 20)), 20, 0, false));
+        ps.add(after(fen, "e4c3", Eval.cp(-171)));
+        ReviewInput nc3 = rated(new ReviewInput(fen, List.of("e4c3"), ps, OpeningBook.NONE, RATING, RATING), 2399,
+                2366);
+        assertNotEquals(MoveClassification.BRILLIANT, label(nc3, Tuning.DEFAULT));
+        assertEquals(MoveClassification.BRILLIANT, label(nc3, Tuning.DEFAULT.with("brilliantNoDiscoveredTrade", 0)));
+    }
+
+    @Test
     void realBrilliantStaysBrilliant() {
         // live_146777979394 ply 11, 6.Bxf7+ (chess.com Brilliant with both engines)
         String fen = "r1bqk1nr/pppp1ppp/2n5/2b5/2B1P3/2p2N2/PP3PPP/RNBQK2R w KQkq - 0 6";

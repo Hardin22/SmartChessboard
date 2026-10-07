@@ -173,6 +173,8 @@ public final class ReviewClassifier {
         final boolean brilliantPawnCheckSac;
         /** v2.5 B-E12: a declined offer that would be won back at once and after which the line wins nothing. */
         final boolean brilliantNoEmptyOffer;
+        /** v2.5 B-E13: an offer taken back at once by a discovered attack, material level after the line: an exchange. */
+        final boolean brilliantNoDiscoveredTrade;
         /** Phase 4: an answer to check taking free material (SEE > 0) follows the free material rule of captures. */
         final boolean greatInCheckFreeMaterial;
         /** Phase 4: no Great for a bishop retreating from the pawn that has just advanced against it. */
@@ -299,6 +301,7 @@ public final class ReviewClassifier {
             brilliantNoCheckingCounter = get("brilliantNoCheckingCounter", 1) != 0;
             brilliantPawnCheckSac = get("brilliantPawnCheckSac", 1) != 0;
             brilliantNoEmptyOffer = get("brilliantNoEmptyOffer", 1) != 0;
+            brilliantNoDiscoveredTrade = get("brilliantNoDiscoveredTrade", 1) != 0;
             greatInCheckFreeMaterial = get("greatInCheckFreeMaterial", 1) != 0;
             greatKickedBishop = get("greatKickedBishop", 1) != 0;
             greatNoCashIn = get("greatNoCashIn", 1) != 0;
@@ -1305,6 +1308,12 @@ public final class ReviewClassifier {
             // line wins nothing: no material is really given (Topalov - Shirov 1998, 26...Nb4: chess.com Great)
             return false;
         }
+        if (t.brilliantNoDiscoveredTrade && discoveredTrade(b0, m, line)) {
+            // B-E13 (user, 22:20): accepting only lets the mover take back as much at once on a piece the move itself
+            // uncovered, and the line ends level: an exchange by discovered attack, not a sacrifice (live_184350007554
+            // 20...Nc3 Qxc3 Qxf3: never Brilliant)
+            return false;
+        }
         if (t.brilliantNoCheckingCounter && checkingCounter(b0, m, line)) {
             // B-E11: the opponent's best answer leaves the piece and captures something else with check (Spassky -
             // Bronstein 16.Nxf7 exf1=Q+, live_174521739268 24.Ndxb5 gxf4+): the move did not really offer the piece,
@@ -1362,6 +1371,44 @@ public final class ReviewClassifier {
             b.doMove(mv);
         }
         return Tactics.material(b, side) - Tactics.material(b0, side);
+    }
+
+    /**
+     * True when the line accepts the offered piece and the mover's next move takes back at least as much on a square
+     * that the moved piece was screening (a discovered attack), and the material is level 10 plies later.
+     */
+    private static boolean discoveredTrade(Board b0, Move m, List<String> line) {
+        if (line.size() < 3 || !acceptedInLine(b0, m, line)) {
+            return false;
+        }
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        Move accept = Tactics.find(b1, line.get(1));
+        int lost = Tactics.value(b1.getPiece(m.getTo()));
+        b1.doMove(accept);
+        Move back = Tactics.find(b1, line.get(2));
+        if (back == null || b1.getPiece(back.getTo()) == Piece.NONE || Tactics.value(b1.getPiece(back.getTo())) < lost) {
+            return false;
+        }
+        // the capturing piece's way to the target passed through the square the moved piece left
+        Side side = b0.getSideToMove();
+        return between(back.getFrom(), back.getTo(), m.getFrom()) && lineGain(b0, line, side, 10) <= 0;
+    }
+
+    /** True when {@code sq} lies strictly between {@code a} and {@code b} on a rank, file or diagonal. */
+    private static boolean between(Square a, Square b, Square sq) {
+        int af = a.getFile().ordinal(), ar = a.getRank().ordinal();
+        int bf = b.getFile().ordinal(), br = b.getRank().ordinal();
+        int df = Integer.signum(bf - af), dr = Integer.signum(br - ar);
+        if (!(af == bf || ar == br || Math.abs(bf - af) == Math.abs(br - ar))) {
+            return false;
+        }
+        for (int f = af + df, r = ar + dr; f != bf || r != br; f += df, r += dr) {
+            if (f == sq.getFile().ordinal() && r == sq.getRank().ordinal()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** True when the opponent's answer in {@code line} captures on the square the move went to. */
