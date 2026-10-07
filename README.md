@@ -37,7 +37,7 @@ hardware, which is how most development happens.
 - **Puzzles** from the Lichess puzzle database, filtered by theme and rating.
 - **Game review**: accuracy for both sides, move classification (best, excellent, inaccuracy, mistake, blunder...),
   evaluation graph, best-move arrows.
-- **Archive** of every game, stored as standard PGN data that can be exported and imported.
+- **Archive** of every game with result and termination, exportable to and importable from standard PGN.
 - **LED coaching**: legal moves when a piece is lifted, quality of the destination squares, check and mate effects.
 - **Themes** for board and pieces; works on a 720×1920 portrait display, a 1920×720 landscape one, or a desktop window.
 
@@ -204,10 +204,11 @@ org.example.javachess
 │                 ChessBoardUI, EvalBar, ArchivedGame, UCIEngine (UCI protocol)
 ├── Engine        engine selection contract used by the UI (EngineSelection, EngineProfile)
 ├── Services      EngineService, GameAnalyzer (review/accuracy), BoardStateManager (physical board state machine),
-│                 GameArchiveService (archive + PGN), LichessClient / LichessGameManager (Board API),
-│                 PuzzleService, VisionService (screen reading loop)
-├── Vision        PieceClassifier (YOLOv8 ONNX model), BoardReading (per-square probabilities),
-│                 PositionResolver (uses legal moves to correct misread squares), BotMover (clicks in the browser)
+│                 GameArchiveService (archive + PGN), LichessClient / LichessGameManager / LichessOAuth (Board API),
+│                 PuzzleService, PuzzleProgressService, VisionService (screen reading loop)
+├── Vision        PieceClassifier (YOLOv8 ONNX model), GridFinder (checker-pattern grid), BoardReading
+│                 (per-square probabilities), PositionResolver (uses legal moves to correct misread squares),
+│                 BotMover (plays moves in the browser)
 └── Utils         ConfigManager, AppPaths, AtomicFiles, PgnCodec (UCI/SAN/FEN/PGN), ErrorReporter, ...
 ```
 
@@ -215,9 +216,11 @@ org.example.javachess
   background threads and report back with `Platform.runLater`.
 - **Physical board**: `BoardStateManager` turns `+E4`/`-E4` events into moves, checks them against the rules
   (chesslib) and drives the LEDs for set-up, hints and the opponent's replies.
-- **Vision**: the browser view is captured, the YOLOv8 model detects pieces, each square gets a probability for each
-  piece, and `PositionResolver` picks the legal move that best explains the picture. Tests measure it on a real
-  lichess screenshot and on synthetic boards in several themes and lighting conditions.
+- **Vision**: the screen is captured, the YOLOv8 model finds the board and the pieces (grey scale with contrast
+  normalisation), `GridFinder` snaps the board to the exact 8×8 checker pattern, each square gets a probability for
+  each piece, and `PositionResolver` picks the legal move that best explains the picture, so a misread square does not
+  break the sync. Tests measure it on real lichess screenshots and on synthetic boards in several themes and lighting
+  conditions (square accuracy 99.8%).
 - **Data**: settings and archive are written atomically (temporary file + rename) with automatic backups.
 
 The Java package is still `org.example.javachess` for historical reasons.
