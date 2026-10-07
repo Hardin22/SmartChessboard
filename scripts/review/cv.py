@@ -13,6 +13,8 @@ fold. Numbers are always on games the chosen parameters never saw.
   scripts/review/cv.py --ref sf22                       # compare with chess.com Stockfish 16 depth 22 (default torch18)
   scripts/review/cv.py --mode second|mpv3               # second line everywhere / MultiPV 3 lines (diagnostic)
   scripts/review/cv.py stability lite lite-b            # our own noise: labels on two dumps of the same games
+  scripts/review/cv.py ceiling [--budget deep]          # best exact any thresholds could reach with these evals
+  scripts/review/cv.py noise                            # chess.com against itself (labels_chesscom_rerun)
   scripts/review/cv.py --holdout --final                # hold-out games (only for the final, frozen measure)
 
 grid.json: {"good": [0.04, 0.05, 0.06], "mistake": [0.18, 0.20]} (cartesian product) or a list of {knob: value}.
@@ -42,6 +44,7 @@ PI5_PROCESSES = 3      # EngineManager.Budget.review() on a Pi 5 8 GB
 # reference labels (--ref): chess.com Game Review with Torch Human depth 18 (first export) or Stockfish 16 depth 22
 REFS = {"torch18": "labels_chesscom", "sf22": "labels_chesscom_sf22"}
 LABELS_DIR = DATA / REFS["torch18"]
+FOLDS = None           # --folds: another fold file than <dump>/folds.json
 
 
 def dist(a, b):
@@ -63,6 +66,8 @@ def run_java(cp, knobs, out, budget, mode, dataset, dump):
     cmd = ["java", "-Xss8m"] + [f"-Djavachess.review.{k}={v}" for k, v in sorted(knobs.items())]
     cmd += ["-cp", cp, "io.github.hardin22.javachess.review.ReviewCv", "--out", str(out), "--budget", budget,
             "--mode", mode, "--set", dataset, "--dump", str(dump), "--labels", str(LABELS_DIR)]
+    if FOLDS:
+        cmd += ["--folds", str(FOLDS)]
     r = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(f"ReviewCv failed for {knobs}:\n{r.stdout[-2000:]}\n{r.stderr[-4000:]}")
@@ -247,8 +252,8 @@ def cmd_stability(a):
         subprocess.run([str(REPO / "mvnw"), "-q", "test-compile"], cwd=REPO, check=True)
     cp = classpath()
     root = REPO / "target" / "cv" / "runs"
-    pa, ga = run_java(cp, {}, root / f"stab-{a.a}", a.a, a.mode, "all", a.dump)
-    pb, gb = run_java(cp, {}, root / f"stab-{a.b}", a.b, a.mode, "all", a.dump)
+    pa, ga = run_java(cp, {}, root / f"stab-{a.a}", a.a, a.mode, "cv", a.dump)
+    pb, gb = run_java(cp, {}, root / f"stab-{a.b}", a.b, a.mode, "cv", a.dump)
     kb = {(p["game"], p["ply"]): p for p in pb}
     pairs = [(p, kb[(p["game"], p["ply"])]) for p in pa if (p["game"], p["ply"]) in kb]
     n = len(pairs)
@@ -270,13 +275,99 @@ def cmd_stability(a):
               f"vs {a.b} {y['ours']} ({y['eval_before']}→{y['eval_played']}), chess.com {x['cc']}")
 
 
+def pawns(e, white):
+    """Mover POV pawns of a formatted Eval ("+0.35", "M3", "-M2", "1-0"); None for mates."""
+    if "M" in e or e in ("1-0", "0-1"):
+        return None
+    v = float(e)
+    return v if white else -v
+
+
+def oracle(xs, classes):
+    """Best exact count of a monotone assignment of classes (in order) to the sorted values xs [(value, label)]."""
+    n = len(xs)
+    pref = {c: [0] * (n + 1) for c in classes}
+    for i, (_, c) in enumerate(xs):
+        for k in classes:
+            pref[k][i + 1] = pref[k][i] + (c == k)
+    prev = pref[classes[0]][:]
+    for c in classes[1:]:
+        pc = pref[c]
+        cur, run = [0] * (n + 1), -10 ** 9
+        for i in range(n + 1):
+            run = max(run, prev[i] - pc[i])   # best split point k <= i
+            cur[i] = run + pc[i]
+        prev = cur
+    return prev[n]
+
+
+def cmd_ceiling(a):
+    """In-sample oracle: best exact any monotone thresholds could reach on our loss, for non-top non-mate moves."""
+    if not a.no_build:
+        subprocess.run([str(REPO / "mvnw"), "-q", "test-compile"], cwd=REPO, check=True)
+    plies, _ = run_java(classpath(), {}, REPO / "target" / "cv" / "runs" / f"ceiling-{a.budget}-{a.mode}", a.budget,
+                        a.mode, "cv", a.dump)
+    std = ["best", "excellent", "good", "inaccuracy", "mistake", "blunder"]
+    sel = []
+    for p in plies:
+        if p["cc"] not in std or p["is_top"] == "true" or p["ours"] in ("book", "forced"):
+            continue
+        w = p["color"] == "w"
+        b, f = pawns(p["eval_before"], w), pawns(p["eval_played"], w)
+        if b is None or f is None:
+            continue
+        sel.append((p, float(p["ep_loss"]), max(0.0, b - f)))
+    n = len(sel)
+    cur = sum(p["ours"] == p["cc"] for p, _, _ in sel)
+    print(f"ceiling {a.budget}/{a.mode}: {n} non-top non-mate moves labelled best..blunder by chess.com; "
+          f"exact now {cur / n:.1%}")
+    for name, k in (("win% loss", 1), ("cp loss", 2)):
+        xs = sorted((x[k], x[0]["cc"]) for x in sel)
+        print(f"  oracle monotone thresholds on {name}: {oracle(xs, std) / n:.1%}")
+    for c in std:
+        v = sorted(x[1] for x in sel if x[0]["cc"] == c)
+        if v:
+            print(f"  {c:<11} n={len(v):<4} win% loss p10/p50/p90 {v[len(v) // 10]:.3f} {v[len(v) // 2]:.3f} "
+                  f"{v[9 * len(v) // 10]:.3f}")
+    top = Counter(p["cc"] for p in plies if p["is_top"] == "true")
+    print("  chess.com labels of our top moves:", dict(top.most_common()))
+
+
+def cmd_noise(a):
+    """chess.com against itself: labels_chesscom vs labels_chesscom_rerun (only reviews really recomputed)."""
+    rerun = DATA / "labels_chesscom_rerun"
+    n = same = w1 = 0
+    far, flips, acc, games = [], Counter(), [], 0
+    for f in sorted(rerun.glob("*.json")):
+        b = json.loads(f.read_text())
+        if not b.get("recomputed"):
+            continue  # identical to the original: a cached review tells nothing about the noise
+        o = json.loads((DATA / "labels_chesscom" / f.name).read_text())
+        games += 1
+        for x, y in zip(o["labels"], b["labels"]):
+            n += 1
+            same += x["label"] == y["label"]
+            w1 += dist(x["label"], y["label"]) <= 1
+            if x["label"] != y["label"]:
+                flips[(x["label"], y["label"])] += 1
+            if dist(x["label"], y["label"]) >= 2:
+                far.append(f"{o['id']} ply {x['ply']} {x['san']}: {x['label']} -> {y['label']}")
+        acc += [abs(o["accuracy_white"] - b["accuracy_white"]), abs(o["accuracy_black"] - b["accuracy_black"])]
+    print(f"chess.com vs chess.com ({games} recomputed games, {n} plies): same {same / n:.1%}, within 1 level "
+          f"{w1 / n:.1%}, >=2 levels {len(far)} ({len(far) / n:.1%}); accuracy |diff| mean {sum(acc) / len(acc):.2f}, "
+          f"max {max(acc):.2f}")
+    print("changes:", ", ".join(f"{k[0]}→{k[1]} {v}" for k, v in flips.most_common(12)))
+    print("\n".join("  " + x for x in far))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", nargs="?", default="cv", choices=["cv", "stability"])
+    ap.add_argument("command", nargs="?", default="cv", choices=["cv", "stability", "ceiling", "noise"])
     ap.add_argument("a", nargs="?", help="stability: first budget")
     ap.add_argument("b", nargs="?", help="stability: second budget")
     ap.add_argument("--dump", default=str(DATA / "evals_labeled"))
     ap.add_argument("--budget", default="lite")
+    ap.add_argument("--folds", help="fold file (default <dump>/folds.json)")
     ap.add_argument("--ref", default="torch18", choices=sorted(REFS), help="chess.com labels to compare with")
     ap.add_argument("--mode", default="product", choices=["product", "second", "mpv3"])
     ap.add_argument("--grid", help="JSON file: {knob: [values]} or [{knob: value}, ...]")
@@ -288,9 +379,10 @@ def main():
     ap.add_argument("--final", action="store_true")
     ap.add_argument("--no-build", action="store_true", help="skip ./mvnw test-compile")
     a = ap.parse_args()
-    global LABELS_DIR
+    global LABELS_DIR, FOLDS
     LABELS_DIR = DATA / REFS[a.ref]
-    cmd_stability(a) if a.command == "stability" else cmd_cv(a)
+    FOLDS = a.folds
+    {"stability": cmd_stability, "ceiling": cmd_ceiling, "noise": cmd_noise}.get(a.command, cmd_cv)(a)
 
 
 if __name__ == "__main__":

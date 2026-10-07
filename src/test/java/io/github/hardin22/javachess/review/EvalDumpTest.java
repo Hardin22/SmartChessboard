@@ -61,7 +61,8 @@ class EvalDumpTest {
                 Integer.getInteger("review.dump.hash", 64));
         Path root = Path.of(System.getProperty("review.dump.out", TEAM_DATA.resolve("evals_labeled").toString()));
         // games outside the frozen cross-validation set (folds.json) are the hold-out: kept apart, not for tuning
-        Map<String, Integer> folds = ReviewCv.folds(root.resolve("folds.json"));
+        Map<String, Integer> folds = ReviewCv.folds(Path.of(System.getProperty("review.dump.folds",
+                root.resolve("folds.json").toString())));
         Path cvOut = root.resolve(budget);
         Path holdOut = root.resolve("holdout").resolve(budget);
         Files.createDirectories(cvOut);
@@ -126,6 +127,8 @@ class EvalDumpTest {
             h.put("processes", s.processes());
             h.put("hash_mb", s.hashMb());
             h.put("engine", pool.id());
+            h.put("hash_mode", pool.hashMode().name().toLowerCase(Locale.ROOT));
+            h.put("cold_hash", pool.hashMode() == StockfishPool.HashMode.COLD);
             h.put("product_ms", mainMs);
             List<String> lines = new ArrayList<>();
             List<PositionEval> ps = r.positions();
@@ -223,6 +226,16 @@ class EvalDumpTest {
             PositionEval two = delegate.addSecondLine(p, mainNodes, secondNodes);
             seconds.put(p.fen(), two);
             return two;
+        }
+
+        @Override
+        public void startBlock() throws Exception {
+            delegate.startBlock();
+        }
+
+        @Override
+        public void endBlock() {
+            delegate.endBlock();
         }
 
         @Override
