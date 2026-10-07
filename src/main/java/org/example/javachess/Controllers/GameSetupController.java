@@ -1,17 +1,28 @@
 package org.example.javachess.Controllers;
 
+import javafx.css.PseudoClass;
 import javafx.fxml.FXML;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.Slider;
-import javafx.scene.layout.VBox;
-import org.example.javachess.Services.EngineService;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.control.ToggleGroup;
+import javafx.scene.layout.FlowPane;
+import org.example.javachess.Components.I18n;
+import org.example.javachess.Engine.EngineSelection;
 import org.example.javachess.Services.EngineService.EngineType;
+import org.example.javachess.Utils.ConfigManager;
 
+/** Presentation for the two local setup screens: PvCSetupView (computer) and PvPSetupView (two players). */
 public class GameSetupController implements NavigationAware {
+
+    private static final PseudoClass SELECTED = PseudoClass.getPseudoClass("selected");
+    private static final int[][] PRESETS = { { 1, 0 }, { 3, 0 }, { 3, 2 }, { 5, 0 }, { 5, 3 }, { 10, 0 }, { 10, 5 },
+            { 15, 10 }, { 30, 0 } };
 
     private MainController mainController;
 
-    // PvP Controls
+    // PvP
     @FXML
     private Label durataLabel;
     @FXML
@@ -20,46 +31,34 @@ public class GameSetupController implements NavigationAware {
     private Label incrementoLabel;
     @FXML
     private Slider incrementoSlider;
+    @FXML
+    private FlowPane presetPane;
+    @FXML
+    private Label timeSummary;
 
-    // PvC Controls
+    // PvC
     @FXML
     private Label difficoltàLabel;
     @FXML
     private Slider difficoltàSlider;
+    @FXML
+    private Label levelHint;
+    @FXML
+    private ToggleButton whiteButton;
+    @FXML
+    private ToggleButton randomButton;
+    @FXML
+    private ToggleButton blackButton;
+    @FXML
+    private Button botStockfishBox;
+    @FXML
+    private Button botMaia1100Box;
+    @FXML
+    private Button botMaia1500Box;
+    @FXML
+    private Button botMaia1900Box;
 
-    // New PvC Selection Controls
-    @FXML
-    private VBox whiteVbox;
-    @FXML
-    private VBox blackVbox;
-    @FXML
-    private VBox randomVbox;
-
-    @FXML
-    private org.kordamp.ikonli.javafx.FontIcon whiteIcon;
-    @FXML
-    private org.kordamp.ikonli.javafx.FontIcon blackIcon;
-    @FXML
-    private org.kordamp.ikonli.javafx.FontIcon randomIcon;
-
-    @FXML
-    private VBox botStockfishBox;
-    @FXML
-    private VBox botMaia1100Box;
-    @FXML
-    private VBox botMaia1500Box;
-    @FXML
-    private VBox botMaia1900Box;
-
-    @FXML
-    private org.kordamp.ikonli.javafx.FontIcon botStockfishIcon;
-    @FXML
-    private org.kordamp.ikonli.javafx.FontIcon botMaia1100Icon;
-    @FXML
-    private org.kordamp.ikonli.javafx.FontIcon botMaia1500Icon;
-    @FXML
-    private org.kordamp.ikonli.javafx.FontIcon botMaia1900Icon;
-
+    private final ToggleGroup presetGroup = new ToggleGroup();
     private String selectedColor = "random";
     private EngineType selectedBotType = EngineType.STOCKFISH;
 
@@ -75,47 +74,87 @@ public class GameSetupController implements NavigationAware {
 
     @FXML
     public void initialize() {
-        // Initialize PvP listeners
         if (durataSlider != null) {
-            durataSlider.valueProperty()
-                    .addListener((obs, oldVal, newVal) -> durataLabel.setText("Durata: " + newVal.intValue() + "min"));
+            durataSlider.valueProperty().addListener((obs, o, n) -> updateTimeLabels());
+            incrementoSlider.valueProperty().addListener((obs, o, n) -> updateTimeLabels());
+            buildPresets();
         }
-        if (incrementoSlider != null) {
-            incrementoSlider.valueProperty().addListener(
-                    (obs, oldVal, newVal) -> incrementoLabel.setText("Incremento: " + newVal.intValue() + "s"));
-        }
-
-        // Initialize PvC listeners
         if (difficoltàSlider != null) {
-            difficoltàSlider.valueProperty()
-                    .addListener((obs, oldVal, newVal) -> {
-                        if (selectedBotType == EngineType.STOCKFISH) {
-                            difficoltàLabel.setText("Difficoltà: " + newVal.intValue());
-                        }
-                    });
+            difficoltàSlider.valueProperty().addListener((obs, o, n) -> updateBotSelectionVisuals());
+            ToggleGroup colorGroup = new ToggleGroup();
+            whiteButton.setToggleGroup(colorGroup);
+            randomButton.setToggleGroup(colorGroup);
+            blackButton.setToggleGroup(colorGroup);
+            // Keep one segment always selected.
+            colorGroup.selectedToggleProperty().addListener((obs, o, n) -> {
+                if (n == null && o != null) {
+                    o.setSelected(true);
+                }
+            });
         }
-
         refreshDefaults();
         updateSelectionVisuals();
         updateBotSelectionVisuals();
+        markUnavailableBots();
+    }
+
+    /** Maia needs lc0 and its weights: rows of engines missing on this device are disabled, with the reason. */
+    private void markUnavailableBots() {
+        if (botStockfishBox == null) {
+            return;
+        }
+        Object[][] rows = { { botMaia1100Box, EngineType.MAIA_1100 }, { botMaia1500Box, EngineType.MAIA_1500 },
+                { botMaia1900Box, EngineType.MAIA_1900 } };
+        for (Object[] row : rows) {
+            Button button = (Button) row[0];
+            String id = ((EngineType) row[1]).profileId();
+            EngineSelection.get().profiles().stream().filter(p -> p.id().equals(id) && !p.available()).findFirst()
+                    .ifPresent(p -> {
+                        button.setDisable(true);
+                        if (button.getGraphic() != null
+                                && button.getGraphic().lookup(".option-description") instanceof Label desc) {
+                            desc.setText(I18n.t("engine.unavailable.short"));
+                        }
+                    });
+        }
+    }
+
+    private void buildPresets() {
+        for (int[] preset : PRESETS) {
+            ToggleButton chip = new ToggleButton(preset[0] + " + " + preset[1]);
+            chip.getStyleClass().setAll("chip", "mono");
+            chip.setMinWidth(96);
+            chip.setToggleGroup(presetGroup);
+            chip.setUserData(preset);
+            chip.setOnAction(e -> {
+                durataSlider.setValue(preset[0]);
+                incrementoSlider.setValue(preset[1]);
+            });
+            presetPane.getChildren().add(chip);
+        }
+    }
+
+    private void updateTimeLabels() {
+        int minutes = (int) durataSlider.getValue();
+        int increment = (int) incrementoSlider.getValue();
+        durataLabel.setText(I18n.t("pvp.value.minutes", minutes));
+        incrementoLabel.setText(I18n.t("pvp.value.seconds", increment));
+        timeSummary.setText(minutes + " + " + increment);
+        presetGroup.getToggles().forEach(t -> {
+            int[] p = (int[]) t.getUserData();
+            t.setSelected(p[0] == minutes && p[1] == increment);
+        });
     }
 
     private void refreshDefaults() {
         if (durataSlider != null) {
-            int defaultDuration = org.example.javachess.Utils.ConfigManager.getIntProperty("game.default.duration", 10);
-            durataSlider.setValue(defaultDuration);
-            durataLabel.setText("Durata: " + defaultDuration + "min");
-        }
-        if (incrementoSlider != null) {
-            int defaultIncrement = org.example.javachess.Utils.ConfigManager.getIntProperty("game.default.increment",
-                    0);
-            incrementoSlider.setValue(defaultIncrement);
-            incrementoLabel.setText("Incremento: " + defaultIncrement + "s");
+            durataSlider.setValue(ConfigManager.getIntProperty("game.default.duration", 10));
+            incrementoSlider.setValue(ConfigManager.getIntProperty("game.default.increment", 0));
+            updateTimeLabels();
         }
         if (difficoltàSlider != null) {
-            int defaultLevel = org.example.javachess.Utils.ConfigManager.getIntProperty("game.bot.level", 10);
-            difficoltàSlider.setValue(defaultLevel);
-            difficoltàLabel.setText("Difficoltà: " + defaultLevel);
+            difficoltàSlider.setValue(ConfigManager.getIntProperty("game.bot.level", 10));
+            updateBotSelectionVisuals();
         }
     }
 
@@ -162,83 +201,33 @@ public class GameSetupController implements NavigationAware {
     }
 
     private void updateBotSelectionVisuals() {
-        if (botStockfishBox == null)
-            return; // Safety check
-
-        // Reset
-        botStockfishBox.setStyle("-fx-border-color: transparent;");
-        botMaia1100Box.setStyle("-fx-border-color: transparent;");
-        botMaia1500Box.setStyle("-fx-border-color: transparent;");
-        botMaia1900Box.setStyle("-fx-border-color: transparent;");
-
-        botStockfishIcon.setIconColor(javafx.scene.paint.Color.web("#E0E0E0"));
-        botMaia1100Icon.setIconColor(javafx.scene.paint.Color.web("#E0E0E0"));
-        botMaia1500Icon.setIconColor(javafx.scene.paint.Color.web("#E0E0E0"));
-        botMaia1900Icon.setIconColor(javafx.scene.paint.Color.web("#E0E0E0"));
-
-        // Highlight
-        String highlightColor = "#03DAC6"; // Teal accent for Bot
-        String borderStyle = "-fx-border-color: " + highlightColor + "; -fx-border-width: 2; -fx-border-radius: 10;";
-
-        switch (selectedBotType) {
-            case STOCKFISH:
-                botStockfishBox.setStyle(borderStyle);
-                botStockfishIcon.setIconColor(javafx.scene.paint.Color.web(highlightColor));
-                difficoltàSlider.setDisable(false);
-                difficoltàLabel.setText("Difficoltà: " + (int) difficoltàSlider.getValue());
-                break;
-            case MAIA_1100:
-                botMaia1100Box.setStyle(borderStyle);
-                botMaia1100Icon.setIconColor(javafx.scene.paint.Color.web(highlightColor));
-                difficoltàSlider.setDisable(true);
-                difficoltàLabel.setText("Rating: 1100");
-                break;
-            case MAIA_1500:
-                botMaia1500Box.setStyle(borderStyle);
-                botMaia1500Icon.setIconColor(javafx.scene.paint.Color.web(highlightColor));
-                difficoltàSlider.setDisable(true);
-                difficoltàLabel.setText("Rating: 1500");
-                break;
-            case MAIA_1900:
-                botMaia1900Box.setStyle(borderStyle);
-                botMaia1900Icon.setIconColor(javafx.scene.paint.Color.web(highlightColor));
-                difficoltàSlider.setDisable(true);
-                difficoltàLabel.setText("Rating: 1900");
-                break;
+        if (botStockfishBox == null) {
+            return;
         }
+        botStockfishBox.pseudoClassStateChanged(SELECTED, selectedBotType == EngineType.STOCKFISH);
+        botMaia1100Box.pseudoClassStateChanged(SELECTED, selectedBotType == EngineType.MAIA_1100);
+        botMaia1500Box.pseudoClassStateChanged(SELECTED, selectedBotType == EngineType.MAIA_1500);
+        botMaia1900Box.pseudoClassStateChanged(SELECTED, selectedBotType == EngineType.MAIA_1900);
+
+        boolean stockfish = selectedBotType == EngineType.STOCKFISH;
+        difficoltàSlider.setDisable(!stockfish);
+        levelHint.setVisible(!stockfish);
+        levelHint.setManaged(!stockfish);
+        difficoltàLabel.setText(stockfish ? I18n.t("pvc.level.value", (int) difficoltàSlider.getValue())
+                : switch (selectedBotType) {
+                    case MAIA_1100 -> "Elo 1100";
+                    case MAIA_1500 -> "Elo 1500";
+                    default -> "Elo 1900";
+                });
     }
 
     private void updateSelectionVisuals() {
-        if (whiteVbox == null || blackVbox == null || randomVbox == null)
+        if (whiteButton == null) {
             return;
-
-        // Reset all
-        whiteVbox.setStyle("-fx-border-color: transparent;");
-        blackVbox.setStyle("-fx-border-color: transparent;");
-        randomVbox.setStyle("-fx-border-color: transparent;");
-
-        whiteIcon.setIconColor(javafx.scene.paint.Color.web("#E0E0E0"));
-        blackIcon.setIconColor(javafx.scene.paint.Color.web("#121212")); // Keep black icon black/dark
-        randomIcon.setIconColor(javafx.scene.paint.Color.web("#D4AF37"));
-
-        // Highlight selected
-        String highlightColor = "#BB86FC"; // Purple accent
-        String borderStyle = "-fx-border-color: " + highlightColor + "; -fx-border-width: 2; -fx-border-radius: 10;";
-
-        switch (selectedColor) {
-            case "white":
-                whiteVbox.setStyle(borderStyle);
-                whiteIcon.setIconColor(javafx.scene.paint.Color.web(highlightColor));
-                break;
-            case "black":
-                blackVbox.setStyle(borderStyle);
-                blackIcon.setIconColor(javafx.scene.paint.Color.web(highlightColor));
-                break;
-            case "random":
-                randomVbox.setStyle(borderStyle);
-                randomIcon.setIconColor(javafx.scene.paint.Color.web(highlightColor));
-                break;
         }
+        whiteButton.setSelected("white".equals(selectedColor));
+        blackButton.setSelected("black".equals(selectedColor));
+        randomButton.setSelected("random".equals(selectedColor));
     }
 
     @FXML
@@ -250,28 +239,22 @@ public class GameSetupController implements NavigationAware {
     private void startGamePvP() {
         int duration = (int) durataSlider.getValue();
         int increment = (int) incrementoSlider.getValue();
-
-        mainController.loadView("GAME", "/UI/GameView.fxml");
         ActiveGameController gameController = (ActiveGameController) mainController.getController("GAME");
-        gameController.startPvP(duration, increment);
         mainController.navigateTo("GAME");
+        gameController.startPvP(duration, increment);
     }
 
     @FXML
     private void startGamePvC() {
-        // Set Engine Type Global
-        // REMOVED: EngineService.getInstance().setEngineType(selectedBotType);
-
         int difficulty = (int) difficoltàSlider.getValue();
         boolean isWhite = true;
-        if ("black".equals(selectedColor))
+        if ("black".equals(selectedColor)) {
             isWhite = false;
-        else if ("random".equals(selectedColor))
+        } else if ("random".equals(selectedColor)) {
             isWhite = Math.random() < 0.5;
-
-        mainController.loadView("GAME", "/UI/GameView.fxml");
+        }
         ActiveGameController gameController = (ActiveGameController) mainController.getController("GAME");
-        gameController.startPvC(difficulty, isWhite, selectedBotType);
         mainController.navigateTo("GAME");
+        gameController.startPvC(difficulty, isWhite, selectedBotType);
     }
 }

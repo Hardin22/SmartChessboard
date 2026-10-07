@@ -4,7 +4,6 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
-import javafx.scene.text.Font;
 import javafx.stage.Stage;
 import org.example.javachess.Controllers.MainController;
 import org.example.javachess.Hardware.Hardware;
@@ -33,16 +32,13 @@ public class App extends Application {
                 throw new IllegalStateException("Cannot find /UI/MainLayout.fxml");
             }
             FXMLLoader fxmlLoader = new FXMLLoader(resource);
+            org.example.javachess.Components.ThemeManager.loadFonts();
             Scene scene = new Scene(fxmlLoader.load(), 720, 1280);
-            Font.loadFont(App.class.getResource("/Font/Poppins/Poppins-Regular.ttf").toExternalForm(), 10);
-            Font.loadFont(App.class.getResource("/Font/Poppins/Poppins-Medium.ttf").toExternalForm(), 10);
-            Font.loadFont(App.class.getResource("/Font/Poppins/Poppins-Bold.ttf").toExternalForm(), 10);
+            // Fonts, stylesheet, light/dark theme, window title and icons (UI layer).
+            org.example.javachess.Components.ThemeManager.install(scene, primaryStage);
 
             applyRenderingProfile(scene);
-            // Configura la scena
             primaryStage.setScene(scene);
-            scene.getStylesheets().add(App.class.getResource("/Styles/Style.css").toExternalForm());
-            primaryStage.setTitle("Chess Application");
             boolean fullScreen = DevOptions.placeStage(primaryStage);
             primaryStage.setFullScreenExitHint("");
             if (Boolean.getBoolean("javachess.kiosk")) {

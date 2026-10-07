@@ -2,35 +2,53 @@ package org.example.javachess.Oggetti;
 
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
-import javafx.scene.layout.Pane;
+import javafx.scene.layout.Region;
 import javafx.scene.paint.Color;
-import javafx.scene.paint.CycleMethod;
-import javafx.scene.paint.LinearGradient;
-import javafx.scene.paint.Stop;
+import org.example.javachess.Components.ThemeManager;
 
 import java.util.List;
+import java.util.function.IntConsumer;
 
-public class EvaluationGraph extends Pane {
+/**
+ * Evaluation over the game: white's advantage as a light area above a dark baseline area (Lichess style),
+ * a 1.5px line, the zero axis and a cursor on the current move. Theme-aware, repainted only on data,
+ * cursor, size or theme changes. Tapping the graph reports the move index.
+ */
+public class EvaluationGraph extends Region {
+
+    private static final double MAX_EVAL = 500.0; // centipawns shown at the edges
 
     private final Canvas canvas;
     private List<MoveAnalysis> analysisData;
+    private int currentMoveIndex = -1;
+    private IntConsumer onMoveSelected;
 
     public EvaluationGraph(double width, double height) {
-        this.setPrefSize(width, height);
-        this.setStyle("-fx-background-color: #1a1a1a; -fx-border-color: #000000; -fx-border-width: 2px;");
-
+        getStyleClass().add("eval-graph");
+        setPrefSize(width, height);
+        setMinHeight(80);
         canvas = new Canvas(width, height);
-        this.getChildren().add(canvas);
+        getChildren().add(canvas);
+        widthProperty().addListener((obs, o, n) -> draw());
+        heightProperty().addListener((obs, o, n) -> draw());
+        ThemeManager.get().darkProperty().addListener((obs, o, n) -> draw());
+        setOnMouseClicked(e -> {
+            if (onMoveSelected != null && analysisData != null && analysisData.size() > 1) {
+                double step = getWidth() / (analysisData.size() - 1);
+                int index = (int) Math.round(e.getX() / step);
+                onMoveSelected.accept(Math.max(0, Math.min(analysisData.size() - 1, index)));
+            }
+        });
+    }
 
-        // Redraw on resize
-        this.widthProperty().addListener((obs, oldVal, newVal) -> {
-            canvas.setWidth(newVal.doubleValue());
-            draw();
-        });
-        this.heightProperty().addListener((obs, oldVal, newVal) -> {
-            canvas.setHeight(newVal.doubleValue());
-            draw();
-        });
+    public void setOnMoveSelected(IntConsumer listener) {
+        this.onMoveSelected = listener;
+    }
+
+    @Override
+    protected void layoutChildren() {
+        canvas.setWidth(Math.floor(getWidth()));
+        canvas.setHeight(Math.floor(getHeight()));
     }
 
     public void setData(List<MoveAnalysis> data) {
@@ -38,101 +56,74 @@ public class EvaluationGraph extends Pane {
         draw();
     }
 
-    private int currentMoveIndex = -1;
-
     public void setHighlightMove(int moveIndex) {
-        this.currentMoveIndex = moveIndex;
-        draw();
+        if (moveIndex != currentMoveIndex) {
+            this.currentMoveIndex = moveIndex;
+            draw();
+        }
+    }
+
+    private static double clampScore(MoveAnalysis move) {
+        double score = move.getScore();
+        if (move.isMate()) {
+            return score > 0 ? MAX_EVAL : -MAX_EVAL;
+        }
+        return Math.max(-MAX_EVAL, Math.min(MAX_EVAL, score));
     }
 
     private void draw() {
+        double width = Math.floor(getWidth());
+        double height = Math.floor(getHeight());
+        if (width <= 0 || height <= 0) {
+            return;
+        }
+        canvas.setWidth(width);
+        canvas.setHeight(height);
         GraphicsContext gc = canvas.getGraphicsContext2D();
-        double width = canvas.getWidth();
-        double height = canvas.getHeight();
+        ThemeManager.Palette p = ThemeManager.get().palette();
+        boolean dark = ThemeManager.get().isDark();
 
-        // Clear
-        gc.clearRect(0, 0, width, height);
-
-        // Background
-        gc.setFill(Color.web("#1a1a1a"));
+        // Lower part (black's side) and upper part (white's side) of the area chart.
+        Color blackArea = dark ? Color.web("#1C1C1C") : Color.web("#3A3A3A");
+        Color whiteArea = dark ? Color.web("#D4D4D4") : Color.web("#FFFFFF");
+        gc.setFill(blackArea);
         gc.fillRect(0, 0, width, height);
 
-        if (analysisData == null || analysisData.isEmpty()) {
+        if (analysisData == null || analysisData.size() < 2) {
+            gc.setStroke(p.borderStrong());
+            gc.setLineWidth(1);
+            gc.strokeLine(0, height / 2, width, height / 2);
             return;
         }
 
-        // Draw center line (0.0 evaluation)
-        gc.setStroke(Color.web("#555555"));
-        gc.setLineWidth(1);
-        gc.strokeLine(0, height / 2, width, height / 2);
-
-        // Draw graph
-        gc.setStroke(Color.web("#D4AF37")); // Interface Yellow
-        gc.setLineWidth(2);
-
-        double xStep = width / (analysisData.size() - 1);
-
-        // Cap evaluation for display purposes (e.g., +/- 5.0 pawns = 500 cp)
-        double maxEval = 500.0;
-
-        gc.beginPath();
-        for (int i = 0; i < analysisData.size(); i++) {
-            MoveAnalysis move = analysisData.get(i);
-            double score = move.getScore();
-
-            if (move.isMate()) {
-                // If mate, force to max/min
-                score = (score > 0) ? maxEval : -maxEval;
-            } else {
-                // Clamp score
-                if (score > maxEval)
-                    score = maxEval;
-                if (score < -maxEval)
-                    score = -maxEval;
-            }
-
-            // Map score to Y (invert because canvas Y is down)
-            // +maxEval -> 0 (top)
-            // 0 -> height/2
-            // -maxEval -> height (bottom)
-
-            double normalizedScore = (score + maxEval) / (2 * maxEval); // 0.0 to 1.0
-            double y = height - (normalizedScore * height);
-            double x = i * xStep;
-
-            if (i == 0) {
-                gc.moveTo(x, y);
-            } else {
-                gc.lineTo(x, y);
-            }
+        int n = analysisData.size();
+        double step = width / (n - 1);
+        double[] xs = new double[n + 2];
+        double[] ys = new double[n + 2];
+        for (int i = 0; i < n; i++) {
+            double normalized = (clampScore(analysisData.get(i)) + MAX_EVAL) / (2 * MAX_EVAL);
+            xs[i] = i * step;
+            ys[i] = height - normalized * height;
         }
-        gc.stroke();
+        xs[n] = width;
+        ys[n] = height;
+        xs[n + 1] = 0;
+        ys[n + 1] = height;
+        gc.setFill(whiteArea);
+        gc.fillPolygon(xs, ys, n + 2);
 
-        // Draw Cursor
-        if (currentMoveIndex >= 0 && currentMoveIndex < analysisData.size()) {
-            double cursorX = currentMoveIndex * xStep;
-            gc.setStroke(Color.WHITE);
-            gc.setLineWidth(1);
-            gc.setLineDashes(5);
-            gc.strokeLine(cursorX, 0, cursorX, height);
-            gc.setLineDashes(null); // Reset
+        gc.setStroke(Color.web("#808080", 0.6));
+        gc.setLineWidth(1);
+        gc.strokeLine(0, Math.round(height / 2) + 0.5, width, Math.round(height / 2) + 0.5);
 
-            // Draw dot at intersection
-            MoveAnalysis move = analysisData.get(currentMoveIndex);
-            double score = move.getScore();
-            if (move.isMate()) {
-                score = (score > 0) ? maxEval : -maxEval;
-            } else {
-                if (score > maxEval)
-                    score = maxEval;
-                if (score < -maxEval)
-                    score = -maxEval;
-            }
-            double normalizedScore = (score + maxEval) / (2 * maxEval);
-            double cursorY = height - (normalizedScore * height);
-
-            gc.setFill(Color.WHITE);
-            gc.fillOval(cursorX - 4, cursorY - 4, 8, 8);
+        if (currentMoveIndex >= 0 && currentMoveIndex < n) {
+            double x = Math.round(currentMoveIndex * step) + 0.5;
+            gc.setStroke(p.accent());
+            gc.setLineWidth(2);
+            gc.strokeLine(x, 0, x, height);
+            double y = ys[currentMoveIndex];
+            gc.setFill(p.accent());
+            gc.fillOval(x - 5, y - 5, 10, 10);
         }
     }
 }

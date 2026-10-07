@@ -1,19 +1,43 @@
 package org.example.javachess.Controllers;
 
 import javafx.fxml.FXML;
-import javafx.scene.control.*;
+import javafx.scene.control.Label;
+import javafx.scene.control.PasswordField;
+import javafx.scene.control.Slider;
+import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.control.ToggleGroup;
+import org.example.javachess.Components.HardwareStatus;
+import org.example.javachess.Components.I18n;
+import org.example.javachess.Components.StatusChip;
+import org.example.javachess.Components.ThemeManager;
 import org.example.javachess.Utils.ConfigManager;
 
+import java.util.Locale;
+import java.util.function.IntFunction;
+
+/**
+ * Settings. Theme, engine and screen rotation apply immediately; the other values are written when the user taps
+ * "Salva impostazioni" (same config keys as before).
+ */
 public class SettingsController implements NavigationAware {
 
     private MainController mainController;
 
+    @FXML
+    private ToggleButton themeSystem;
+    @FXML
+    private ToggleButton themeDark;
+    @FXML
+    private ToggleButton themeLight;
     @FXML
     private ToggleButton suggestionsToggle;
     @FXML
     private ToggleButton evaluationToggle;
     @FXML
     private ToggleButton mateAnimationToggle;
+    @FXML
+    private ToggleButton rotateToggle;
     @FXML
     private Slider botLevelSlider;
     @FXML
@@ -45,17 +69,24 @@ public class SettingsController implements NavigationAware {
     @FXML
     private TextField lichessUsernameField;
     @FXML
-    private PasswordField lichessPasswordField;
-    @FXML
     private TextField chessComEmailField;
-    @FXML
-    private PasswordField chessComPasswordField;
     @FXML
     private PasswordField lichessApiKeyField;
     @FXML
     private Slider ledBrightnessSlider;
     @FXML
     private Label ledBrightnessLabel;
+    @FXML
+    private StatusChip boardStatus;
+    @FXML
+    private Label versionLabel;
+    @FXML
+    private Label lichessStatusLabel;
+    @FXML
+    private javafx.scene.control.Button lichessConnectButton;
+    private boolean lichessBusy;
+
+    private boolean updatingTheme;
 
     @Override
     public void setMainController(MainController mainController) {
@@ -63,95 +94,164 @@ public class SettingsController implements NavigationAware {
         loadSettings();
     }
 
-    @Override
-    public void onNavigatedTo() {
-        loadSettings(); // the view is cached: discard unsaved edits from a previous visit
-    }
-
     @FXML
     public void initialize() {
-        // Bind slider labels
-        botLevelSlider.valueProperty()
-                .addListener((obs, oldVal, newVal) -> botLevelLabel.setText(String.valueOf(newVal.intValue())));
+        bind(botLevelSlider, botLevelLabel, String::valueOf);
+        bind(botThinkingTimeSlider, botThinkingTimeLabel,
+                v -> String.format(Locale.ITALIAN, "%.1f s", v / 1000.0));
+        bind(pvpDefaultDurationSlider, pvpDefaultDurationLabel, v -> I18n.t("pvp.value.minutes", v));
+        bind(pvpDefaultIncrementSlider, pvpDefaultIncrementLabel, v -> I18n.t("pvp.value.seconds", v));
+        bind(gameDepthSlider, gameDepthLabel, String::valueOf);
+        bind(analysisDepthSlider, analysisDepthLabel, String::valueOf);
+        bind(moveEvalDepthSlider, moveEvalDepthLabel, String::valueOf);
+        bind(ledBrightnessSlider, ledBrightnessLabel, v -> v + "%");
 
-        botThinkingTimeSlider.valueProperty()
-                .addListener((obs, oldVal, newVal) -> botThinkingTimeLabel
-                        .setText(String.format("%.1fs", newVal.doubleValue() / 1000.0)));
+        ToggleGroup themeGroup = new ToggleGroup();
+        themeSystem.setToggleGroup(themeGroup);
+        themeDark.setToggleGroup(themeGroup);
+        themeLight.setToggleGroup(themeGroup);
+        selectThemeToggle(ThemeManager.get().getMode());
+        themeGroup.selectedToggleProperty().addListener((obs, o, n) -> {
+            if (n == null) {
+                if (o != null) {
+                    o.setSelected(true);
+                }
+                return;
+            }
+            if (!updatingTheme) {
+                ThemeManager.get().setMode(n == themeSystem ? ThemeManager.Mode.SYSTEM
+                        : n == themeLight ? ThemeManager.Mode.LIGHT : ThemeManager.Mode.DARK);
+            }
+        });
 
-        pvpDefaultDurationSlider.valueProperty()
-                .addListener((obs, oldVal, newVal) -> pvpDefaultDurationLabel.setText(newVal.intValue() + "min"));
+        rotateToggle.setOnAction(e -> {
+            if (mainController != null && mainController.isRotated() != rotateToggle.isSelected()) {
+                mainController.rotateScreen();
+            }
+        });
 
-        pvpDefaultIncrementSlider.valueProperty()
-                .addListener((obs, oldVal, newVal) -> pvpDefaultIncrementLabel.setText(newVal.intValue() + "s"));
-
-        gameDepthSlider.valueProperty()
-                .addListener((obs, oldVal, newVal) -> gameDepthLabel.setText(String.valueOf(newVal.intValue())));
-
-        analysisDepthSlider.valueProperty()
-                .addListener((obs, oldVal, newVal) -> analysisDepthLabel.setText(String.valueOf(newVal.intValue())));
-
-        moveEvalDepthSlider.valueProperty()
-                .addListener((obs, oldVal, newVal) -> moveEvalDepthLabel.setText(String.valueOf(newVal.intValue())));
-
-        ledBrightnessSlider.valueProperty()
-                .addListener((obs, oldVal, newVal) -> ledBrightnessLabel.setText(newVal.intValue() + "%"));
-
-        // Toggle text updates
-        setupToggle(suggestionsToggle);
-        setupToggle(evaluationToggle);
-        setupToggle(mateAnimationToggle);
+        String version = SettingsController.class.getPackage().getImplementationVersion();
+        versionLabel.setText(version == null ? "dev" : version);
     }
 
-    private void setupToggle(ToggleButton toggle) {
-        toggle.selectedProperty().addListener((obs, oldVal, newVal) -> toggle.setText(newVal ? "ON" : "OFF"));
+    private void selectThemeToggle(ThemeManager.Mode mode) {
+        updatingTheme = true;
+        switch (mode) {
+            case SYSTEM -> themeSystem.setSelected(true);
+            case LIGHT -> themeLight.setSelected(true);
+            default -> themeDark.setSelected(true);
+        }
+        updatingTheme = false;
+    }
+
+    private static void bind(Slider slider, Label label, IntFunction<String> format) {
+        slider.valueProperty().addListener((obs, o, n) -> label.setText(format.apply(n.intValue())));
+        label.setText(format.apply((int) slider.getValue()));
+    }
+
+    @Override
+    public void onNavigatedTo() {
+        loadSettings();
+        selectThemeToggle(ThemeManager.get().getMode());
+        if (mainController != null) {
+            rotateToggle.setSelected(mainController.isRotated());
+        }
+        HardwareStatus.bind(boardStatus);
+        showLichessAccount();
+    }
+
+    private void showLichessAccount() {
+        boolean connected = ConfigManager.hasLichessToken();
+        String user = isRedacted() ? "" : ConfigManager.getProperty("lichess.username", "");
+        lichessStatusLabel.setText(!connected ? I18n.t("settings.lichess.disconnected")
+                : user.isBlank() ? I18n.t("settings.lichess.connected.anon") : I18n.t("settings.lichess.connected", user));
+        lichessConnectButton.setText(I18n.t(connected ? "settings.lichess.disconnect" : "settings.lichess.connect"));
+        lichessConnectButton.setDisable(lichessBusy);
+    }
+
+    /** "Collega account" runs the Lichess OAuth (PKCE) login in a browser; "Scollega" revokes the token. */
+    @FXML
+    private void toggleLichessAccount() {
+        if (lichessBusy) {
+            return;
+        }
+        lichessBusy = true;
+        if (ConfigManager.hasLichessToken()) {
+            org.example.javachess.Utils.AppExecutors.io().execute(() -> {
+                new org.example.javachess.Services.LichessOAuth().logout(); // network: off the FX thread
+                javafx.application.Platform.runLater(() -> {
+                    lichessBusy = false;
+                    lichessApiKeyField.clear();
+                    showLichessAccount();
+                });
+            });
+            return;
+        }
+        lichessStatusLabel.setText(I18n.t("settings.lichess.waiting"));
+        lichessConnectButton.setDisable(true);
+        new org.example.javachess.Services.LichessOAuth()
+                .login(this::openLoginPage, java.time.Duration.ofMinutes(5))
+                .whenComplete((username, err) -> javafx.application.Platform.runLater(() -> {
+                    lichessBusy = false;
+                    if (err != null) {
+                        Throwable cause = err.getCause() != null ? err.getCause() : err;
+                        org.example.javachess.Utils.ErrorReporter.showError("Lichess", cause.getMessage());
+                    } else {
+                        lichessUsernameField.setText(username);
+                        lichessApiKeyField.setText(ConfigManager.getProperty("lichess.token", ""));
+                    }
+                    showLichessAccount();
+                }));
+    }
+
+    /** Desktop: system browser. Board (kiosk, no desktop browser): the integrated browser. */
+    private void openLoginPage(java.net.URI uri) {
+        boolean desktop = !Boolean.getBoolean("javachess.kiosk") && java.awt.Desktop.isDesktopSupported()
+                && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE);
+        if (desktop) {
+            org.example.javachess.Utils.AppExecutors.io().execute(() -> {
+                try {
+                    java.awt.Desktop.getDesktop().browse(uri);
+                } catch (Exception e) {
+                    org.example.javachess.Utils.ErrorReporter.showError("Lichess",
+                            org.example.javachess.Utils.ErrorReporter.userMessage(e));
+                }
+            });
+        } else {
+            javafx.application.Platform.runLater(() -> {
+                if (mainController.getController("BROWSER") instanceof BrowserController browser) {
+                    browser.loadPage(uri.toString());
+                }
+                mainController.navigateTo("BROWSER");
+            });
+        }
     }
 
     private void loadSettings() {
         suggestionsToggle.setSelected(ConfigManager.getBooleanProperty("game.suggestions", true));
         evaluationToggle.setSelected(ConfigManager.getBooleanProperty("game.evaluation", true));
         mateAnimationToggle.setSelected(ConfigManager.getBooleanProperty("ui.mate.animation", true));
+        botLevelSlider.setValue(ConfigManager.getIntProperty("game.bot.level", 10));
+        botThinkingTimeSlider.setValue(ConfigManager.getIntProperty("game.bot.movetime", 2000));
+        pvpDefaultDurationSlider.setValue(ConfigManager.getIntProperty("game.default.duration", 10));
+        pvpDefaultIncrementSlider.setValue(ConfigManager.getIntProperty("game.default.increment", 0));
+        gameDepthSlider.setValue(ConfigManager.getIntProperty("game.depth", 18));
+        analysisDepthSlider.setValue(ConfigManager.getIntProperty("analysis.depth", 12));
+        moveEvalDepthSlider.setValue(ConfigManager.getIntProperty("move.eval.depth", 8));
+        ledBrightnessSlider.setValue(ConfigManager.getIntProperty("hardware.led.brightness", 100));
 
-        int botLevel = ConfigManager.getIntProperty("game.bot.level", 10);
-        botLevelSlider.setValue(botLevel);
-        botLevelLabel.setText(String.valueOf(botLevel));
-
-        int botMovetime = ConfigManager.getIntProperty("game.bot.movetime", 2000);
-        botThinkingTimeSlider.setValue(botMovetime);
-        botThinkingTimeLabel.setText(String.format("%.1fs", botMovetime / 1000.0));
-
-        int pvpDuration = ConfigManager.getIntProperty("game.default.duration", 10);
-        pvpDefaultDurationSlider.setValue(pvpDuration);
-        pvpDefaultDurationLabel.setText(pvpDuration + "min");
-
-        int pvpIncrement = ConfigManager.getIntProperty("game.default.increment", 0);
-        pvpDefaultIncrementSlider.setValue(pvpIncrement);
-        pvpDefaultIncrementLabel.setText(pvpIncrement + "s");
-
-        int gameDepth = ConfigManager.getIntProperty("game.depth", 18);
-        gameDepthSlider.setValue(gameDepth);
-        gameDepthLabel.setText(String.valueOf(gameDepth));
-
-        int analysisDepth = ConfigManager.getIntProperty("analysis.depth", 12);
-        analysisDepthSlider.setValue(analysisDepth);
-        analysisDepthLabel.setText(String.valueOf(analysisDepth));
-
-        int moveEvalDepth = ConfigManager.getIntProperty("move.eval.depth", 8);
-        moveEvalDepthSlider.setValue(moveEvalDepth);
-        moveEvalDepthLabel.setText(String.valueOf(moveEvalDepth));
-
-        lichessUsernameField.setText(ConfigManager.getProperty("lichess.username", ""));
-        chessComEmailField.setText(ConfigManager.getProperty("chess.com.username", ""));
-        lichessApiKeyField.setText(ConfigManager.getProperty("lichess.token", ""));
-
-        int brightness = ConfigManager.getIntProperty("hardware.led.brightness", 100);
-        ledBrightnessSlider.setValue(brightness);
-        ledBrightnessLabel.setText(brightness + "%");
+        // Screenshots for the docs must never show real accounts.
+        boolean redact = isRedacted();
+        lichessUsernameField.setText(redact ? "" : ConfigManager.getProperty("lichess.username", ""));
+        chessComEmailField.setText(redact ? "" : ConfigManager.getProperty("chess.com.username", ""));
+        lichessApiKeyField.setText(redact ? "" : ConfigManager.getProperty("lichess.token", ""));
+        lichessUsernameField.setPromptText(redact ? "nome-utente" : "");
+        chessComEmailField.setPromptText(redact ? "nome@esempio.it" : "");
     }
 
     @FXML
     private void saveSettings() {
-        // One atomic write for all values. Passwords are not stored any more: the integrated browser keeps
-        // its own login session (see ConfigManager), so the password fields are ignored.
+        // One atomic write for all values. Passwords are not stored: the integrated browser keeps its own session.
         java.util.Map<String, String> values = new java.util.LinkedHashMap<>();
         values.put("game.suggestions", String.valueOf(suggestionsToggle.isSelected()));
         values.put("game.evaluation", String.valueOf(evaluationToggle.isSelected()));
@@ -163,19 +263,27 @@ public class SettingsController implements NavigationAware {
         values.put("game.depth", String.valueOf((int) gameDepthSlider.getValue()));
         values.put("analysis.depth", String.valueOf((int) analysisDepthSlider.getValue()));
         values.put("move.eval.depth", String.valueOf((int) moveEvalDepthSlider.getValue()));
-        values.put("lichess.username", lichessUsernameField.getText());
-        values.put("chess.com.username", chessComEmailField.getText());
-        values.put("lichess.token", lichessApiKeyField.getText());
         values.put("hardware.led.brightness", String.valueOf((int) ledBrightnessSlider.getValue()));
+        if (!isRedacted()) {
+            values.put("lichess.username", lichessUsernameField.getText());
+            values.put("chess.com.username", chessComEmailField.getText());
+            values.put("lichess.token", lichessApiKeyField.getText());
+        }
         ConfigManager.setProperties(values);
-        if (lichessPasswordField != null) {
-            lichessPasswordField.clear();
-        }
-        if (chessComPasswordField != null) {
-            chessComPasswordField.clear();
-        }
-
+        // Apply the brightness right away (non-blocking).
+        org.example.javachess.Hardware.Hardware.leds().setBrightnessPercent((int) ledBrightnessSlider.getValue());
+        mainController.showToast(I18n.t("settings.saved"));
         backToHome();
+    }
+
+    /** Screenshot/demo runs hide (and never overwrite) the stored accounts. */
+    private static boolean isRedacted() {
+        return System.getProperty("javachess.snapshot") != null || Boolean.getBoolean("javachess.redact");
+    }
+
+    @FXML
+    private void openThemes() {
+        mainController.navigateTo("THEME");
     }
 
     @FXML

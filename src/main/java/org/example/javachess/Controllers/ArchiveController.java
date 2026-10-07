@@ -1,30 +1,44 @@
 package org.example.javachess.Controllers;
 
+import javafx.application.Platform;
 import javafx.fxml.FXML;
-import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import org.example.javachess.Components.BoardThemes;
+import org.example.javachess.Components.I18n;
+import org.example.javachess.Components.Icons;
+import org.example.javachess.Components.PageHeader;
 import org.example.javachess.Oggetti.ArchivedGame;
 import org.example.javachess.Oggetti.ChessBoardUI;
 import org.example.javachess.Services.GameArchiveService;
-import org.example.javachess.Utils.ConfigManager;
 import org.example.javachess.Utils.ErrorReporter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
+/** Archive of played games; the file is read off the FX thread, rows are recycled by the ListView. */
 public class ArchiveController implements NavigationAware {
 
-    private static final Logger log = LoggerFactory.getLogger(ArchiveController.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ArchiveController.class);
+    private static final String START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
     private MainController mainController;
 
     @FXML
-    private ListView<ArchivedGame> archiveListView;
+    private ListView<Row> archiveListView;
+    @FXML
+    private VBox emptyState;
+    @FXML
+    private PageHeader header;
 
     @Override
     public void setMainController(MainController mainController) {
@@ -33,8 +47,9 @@ public class ArchiveController implements NavigationAware {
 
     @FXML
     public void initialize() {
-        setupListView();
-        loadArchive();
+        archiveListView.setCellFactory(list -> new GameCell());
+        archiveListView.setFocusTraversable(false);
+        archiveListView.setFixedCellSize(112);
     }
 
     @Override
@@ -42,119 +57,261 @@ public class ArchiveController implements NavigationAware {
         loadArchive();
     }
 
-    private void setupListView() {
-        archiveListView.setCellFactory(param -> new ListCell<ArchivedGame>() {
-            private HBox content;
-            private ChessBoardUI miniChessboard;
-            private Label typeLabel;
-            private Label resultLabel;
-            private Label timeControlLabel;
-            private Label datetimeLabel;
-            private Label openingLabel;
-            private Button chessboardButton;
+    /**
+     * What one archive row shows. Built from the stored games in {@link #readRows()}: that method is the only
+     * place that touches the archive data, so the data layer can change without touching the presentation.
+     */
+    public record Row(int id, String title, String meta, String detail, String score, String finalFen, String moves,
+                      String initialFen) {
+    }
 
-            {
-                // Initialize the UI structure once
-                content = new HBox(20);
-                content.getStyleClass().add("glass-card");
-                content.setAlignment(Pos.CENTER_LEFT);
-                content.setPadding(new Insets(15));
-                content.prefWidthProperty().bind(archiveListView.widthProperty().subtract(60));
-                content.setMaxWidth(Double.MAX_VALUE);
+    private final class GameCell extends ListCell<Row> {
+        private final ChessBoardUI miniBoard = new ChessBoardUI(BoardThemes.currentBoard(),
+                BoardThemes.currentPieces(), 11);
+        private final Label title = new Label();
+        private final Label meta = new Label();
+        private final Label opening = new Label();
+        private final Label result = new Label();
+        private final HBox row;
 
-                miniChessboard = new ChessBoardUI(
-                        ConfigManager.getProperty("theme.board", "Marghiacciato.png"),
-                        ConfigManager.getProperty("theme.piece", "Classico"),
-                        25);
-                miniChessboard.setStyle(
-                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 8, 0, 0, 4); -fx-border-color: rgba(255,255,255,0.1); -fx-border-width: 1;");
-
-                chessboardButton = new Button();
-                chessboardButton.setGraphic(miniChessboard);
-                chessboardButton.setStyle("-fx-background-color: transparent; -fx-cursor: hand;");
-
-                VBox gameDetails = new VBox(5);
-                gameDetails.setAlignment(Pos.CENTER_LEFT);
-                gameDetails.setMaxWidth(Double.MAX_VALUE);
-                HBox.setHgrow(gameDetails, javafx.scene.layout.Priority.ALWAYS);
-
-                typeLabel = new Label();
-                typeLabel.setStyle(
-                        "-fx-text-fill: #D4AF37; -fx-font-weight: bold; -fx-font-size: 16px; -fx-font-family: 'Poppins';");
-
-                resultLabel = new Label();
-                resultLabel.setAlignment(Pos.CENTER_LEFT);
-
-                HBox infoBox = new HBox(10);
-                infoBox.setAlignment(Pos.CENTER_LEFT);
-                timeControlLabel = new Label();
-                timeControlLabel.getStyleClass().add("body-label");
-                timeControlLabel.setStyle("-fx-text-fill: #E0E0E0; -fx-font-size: 13px;");
-                datetimeLabel = new Label();
-                datetimeLabel.setStyle("-fx-text-fill: #888888; -fx-font-size: 12px;");
-                infoBox.getChildren().addAll(timeControlLabel, datetimeLabel);
-
-                openingLabel = new Label();
-                openingLabel.setStyle("-fx-text-fill: #B0B0B0; -fx-font-style: italic; -fx-font-size: 12px;");
-                openingLabel.setWrapText(true);
-                openingLabel.maxWidthProperty().bind(content.widthProperty().subtract(250));
-
-                gameDetails.getChildren().addAll(typeLabel, resultLabel, infoBox, openingLabel);
-                content.getChildren().addAll(chessboardButton, gameDetails);
-            }
-
-            @Override
-            protected void updateItem(ArchivedGame game, boolean empty) {
-                super.updateItem(game, empty);
-                if (empty || game == null) {
-                    setGraphic(null);
-                } else {
-                    // Update existing nodes with new data
-                    String datetime = game.playedAt() == null ? ""
-                            : game.playedAt().format(java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm"));
-                    String result = game.result();
-                    String type = game.label().isEmpty() ? game.mode().name() : game.label();
-                    String opening = game.opening();
-                    String timeControl = game.timeControl().isEmpty() ? "∞" : game.timeControl();
-
-                    miniChessboard.setPosition(game.finalFen(), null);
-                    chessboardButton.setOnAction(event -> showReview(game));
-                    typeLabel.setText(type.toUpperCase());
-                    resultLabel.setText(game.termination().isEmpty() ? result : result + "  " + game.termination());
-
-                    String resultColor = result.equals("1-0") ? "#4CAF50"
-                            : (result.equals("0-1") ? "#CF6679" : "#FFC107");
-                    resultLabel.setStyle("-fx-text-fill: " + resultColor
-                            + "; -fx-font-weight: bold; -fx-font-size: 14px; -fx-border-color: "
-                            + resultColor + "; -fx-border-radius: 5; -fx-border-width: 1; -fx-padding: 2 8;");
-
-                    timeControlLabel.setText(timeControl);
-                    datetimeLabel.setText(datetime);
-                    openingLabel.setText(opening);
-
-                    setGraphic(content);
+        GameCell() {
+            getStyleClass().add("archive-cell");
+            title.getStyleClass().add("archive-title");
+            meta.getStyleClass().add("archive-meta");
+            opening.getStyleClass().add("archive-meta");
+            title.setMinWidth(0);
+            opening.setMinWidth(0);
+            VBox texts = new VBox(3, title, meta, opening);
+            texts.setAlignment(Pos.CENTER_LEFT);
+            texts.setMinWidth(0);
+            HBox.setHgrow(texts, Priority.ALWAYS);
+            result.setMinWidth(USE_PREF_SIZE);
+            Button more = new Button();
+            more.getStyleClass().addAll("btn", "btn-ghost", "icon-btn");
+            more.setGraphic(Icons.of("fth-more-horizontal", 22));
+            more.setAccessibleText(I18n.t("archive.actions"));
+            more.setOnAction(e -> {
+                if (getItem() != null) {
+                    showActions(getItem());
                 }
+                e.consume();
+            });
+            row = new HBox(miniBoard, texts, result, more);
+            row.getStyleClass().add("archive-row");
+            row.setOnMouseClicked(e -> {
+                Row game = getItem();
+                if (e.getTarget() instanceof javafx.scene.Node n && isInside(n, more)) {
+                    return;
+                }
+                if (game != null) {
+                    showReview(game.moves(), game.initialFen());
+                }
+            });
+        }
+
+        @Override
+        protected void updateItem(Row game, boolean empty) {
+            super.updateItem(game, empty);
+            if (empty || game == null) {
+                setGraphic(null);
+                return;
             }
+            try {
+                miniBoard.setPosition(game.finalFen(), null);
+            } catch (RuntimeException e) {
+                miniBoard.resetBoard();
+            }
+            title.setText(game.title());
+            meta.setText(game.meta());
+            opening.setText(game.detail());
+            setResult(game.score());
+            setGraphic(row);
+        }
+
+        private void setResult(String score) {
+            result.setText(score);
+            result.getStyleClass().setAll("badge", "mono");
+            if ("1-0".equals(score)) {
+                result.getStyleClass().add("badge-success");
+            } else if ("0-1".equals(score)) {
+                result.getStyleClass().add("badge-danger");
+            } else if ("½-½".equals(score)) {
+                result.getStyleClass().add("badge-warning");
+            }
+        }
+    }
+
+    private static boolean isInside(javafx.scene.Node node, javafx.scene.Node parent) {
+        for (javafx.scene.Node n = node; n != null; n = n.getParent()) {
+            if (n == parent) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Sheet with the actions on one game: open, export as PGN, delete (with confirmation). */
+    private void showActions(Row game) {
+        Button open = actionButton(I18n.t("archive.open"), "fth-play", "btn-secondary");
+        open.setOnAction(e -> {
+            mainController.closeSheet();
+            showReview(game.moves(), game.initialFen());
         });
+        Button export = actionButton(I18n.t("archive.export"), "fth-download", "btn-secondary");
+        export.setOnAction(e -> {
+            mainController.closeSheet();
+            org.example.javachess.Utils.AppExecutors.io().execute(() -> {
+                try {
+                    java.nio.file.Path file = java.nio.file.Path.of(System.getProperty("user.home"),
+                            "javachess-partita-" + game.id() + ".pgn");
+                    String pgn = GameArchiveService.getInstance().exportPgn(java.util.List.of(game.id()));
+                    java.nio.file.Files.writeString(file, pgn, java.nio.charset.StandardCharsets.UTF_8);
+                    mainController.showToast(I18n.t("archive.exported", file));
+                } catch (java.io.IOException | RuntimeException ex) {
+                    ErrorReporter.showError(I18n.t("archive.title"), ErrorReporter.userMessage(ex));
+                }
+            });
+        });
+        Button delete = actionButton(I18n.t("archive.delete"), "fth-trash-2", "btn-danger");
+        delete.setOnAction(e -> confirmDelete(game));
+        VBox content = new VBox(10, new Label(game.title() + " · " + game.meta()), open, export, delete);
+        content.getChildren().get(0).getStyleClass().add("card-description");
+        mainController.showSheet(I18n.t("archive.game"), content);
+    }
+
+    private void confirmDelete(Row game) {
+        Label text = new Label(I18n.t("archive.delete.confirm"));
+        text.getStyleClass().add("card-description");
+        text.setWrapText(true);
+        Button cancel = actionButton(I18n.t("common.cancel"), null, "btn-secondary");
+        cancel.setOnAction(e -> mainController.closeSheet());
+        Button confirm = actionButton(I18n.t("archive.delete"), "fth-trash-2", "btn-danger");
+        confirm.setOnAction(e -> {
+            mainController.closeSheet();
+            org.example.javachess.Utils.AppExecutors.io().execute(() -> {
+                GameArchiveService.getInstance().delete(game.id());
+                Platform.runLater(this::loadArchive);
+            });
+        });
+        HBox buttons = new HBox(12, cancel, confirm);
+        HBox.setHgrow(cancel, Priority.ALWAYS);
+        HBox.setHgrow(confirm, Priority.ALWAYS);
+        mainController.showSheet(I18n.t("archive.delete.title"), new VBox(20, text, buttons));
+    }
+
+    private static Button actionButton(String text, String icon, String variant) {
+        Button b = new Button(text);
+        b.getStyleClass().addAll("btn", variant, "btn-lg");
+        if (icon != null) {
+            b.setGraphic(Icons.of(icon, 20));
+        }
+        b.setMaxWidth(Double.MAX_VALUE);
+        b.setAlignment(Pos.CENTER_LEFT);
+        return b;
+    }
+
+    static String describeType(String type) {
+        String t = type.replace("Plaver", "Player");
+        if (t.startsWith("Player vs Stockfish livello")) {
+            return "Contro Stockfish · livello " + t.substring("Player vs Stockfish livello".length()).trim();
+        }
+        if (t.equals("Player vs Player")) {
+            return I18n.t("pvp.title");
+        }
+        if (t.startsWith("Online")) {
+            return "Online · browser";
+        }
+        return t.isBlank() ? "Partita" : t;
+    }
+
+    static String scoreOf(String raw) {
+        String r = raw.toLowerCase(Locale.ROOT);
+        if (r.equals("*")) {
+            return "—";
+        }
+        if (r.equals("1-0") || (r.contains("bianco") && r.contains("vince"))) {
+            return "1-0";
+        }
+        if (r.equals("0-1") || (r.contains("nero") && r.contains("vince"))) {
+            return "0-1";
+        }
+        if (r.contains("patta") || r.contains("1/2")) {
+            return "½-½";
+        }
+        return "—";
+    }
+
+    static String describeOutcome(String raw) {
+        if (raw == null || raw.isBlank() || raw.equalsIgnoreCase("unknown")) {
+            return "Risultato non disponibile";
+        }
+        return raw.endsWith(".") ? raw.substring(0, raw.length() - 1) : raw;
     }
 
     private void loadArchive() {
-        GameArchiveService archive = GameArchiveService.getInstance();
-        archiveListView.getItems().setAll(archive.list()); // newest first
-        if (archive.getLoadProblem() != null) {
-            ErrorReporter.showError("Archivio", archive.getLoadProblem());
-        }
+        org.example.javachess.Utils.AppExecutors.io().execute(() -> {
+            List<Row> games = readRows();
+            Platform.runLater(() -> {
+                archiveListView.getItems().setAll(games);
+                emptyState.setVisible(games.isEmpty());
+                archiveListView.setVisible(!games.isEmpty());
+                header.setSubtitle(games.isEmpty() ? I18n.t("archive.subtitle") : I18n.t("archive.count", games.size()));
+            });
+        });
     }
 
-    private void showReview(ArchivedGame game) {
-        mainController.loadView("REVIEW", "/UI/ReviewView.fxml");
-        ReviewController reviewController = (ReviewController) mainController.getController("REVIEW");
-        if (reviewController == null) {
-            log.error("Review view not available");
-            return;
+    /** Reads the archive (newest first) and maps each game to a {@link Row}. Runs off the FX thread. */
+    private List<Row> readRows() {
+        List<Row> rows = new ArrayList<>();
+        try {
+            GameArchiveService archive = GameArchiveService.getInstance();
+            for (ArchivedGame game : archive.list()) {
+                String when = game.playedAt() == null ? "" : game.playedAt().format(DATE);
+                String meta = game.timeControl().isEmpty() ? when
+                        : (when.isEmpty() ? "" : when + "  ·  ")
+                                + game.timeControl().replace(":00m", " min").replace("m +", " min +").replace("+", " + ")
+                                        .replace("  ", " ");
+                String opening = "Opening Name".equals(game.opening()) || "Unknown".equalsIgnoreCase(game.opening())
+                        ? "" : game.opening();
+                String detail = !opening.isEmpty() ? opening
+                        : !game.termination().isEmpty() ? game.termination() : describeOutcome("");
+                rows.add(new Row(game.id(), describe(game), meta, detail, scoreOf(game.result()),
+                        game.finalFen().isEmpty() ? START_FEN : game.finalFen(), game.movesAsUciString(),
+                        game.initialFen().isEmpty() ? START_FEN : game.initialFen()));
+            }
+            if (archive.getLoadProblem() != null) {
+                ErrorReporter.showError("Archivio", archive.getLoadProblem());
+            }
+        } catch (RuntimeException e) {
+            LOG.warn("Cannot read the archive", e);
         }
-        reviewController.loadGame(game.movesAsUciString(), game.initialFen());
+        return rows;
+    }
+
+    private static final java.time.format.DateTimeFormatter DATE =
+            java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm");
+
+    /** Title of a row: how the game was played. */
+    static String describe(ArchivedGame game) {
+        String label = game.label();
+        if (label.startsWith("Player") || label.startsWith("Plaver") || label.startsWith("Online")) {
+            return describeType(label);
+        }
+        return switch (game.mode()) {
+            case PVC -> label.isEmpty() ? I18n.t("pvc.title") : "Contro " + label.replace(" livello", " · livello");
+            case PVP -> I18n.t("pvp.title");
+            case LICHESS -> label.isEmpty() ? "Lichess" : "Lichess · " + label;
+            case BROWSER -> "Online · browser";
+            case PUZZLE -> I18n.t("puzzle.title");
+            case IMPORTED -> label.isEmpty() ? "Partita importata" : label;
+            default -> label.isEmpty() ? "Partita" : label;
+        };
+    }
+
+    private void showReview(String pgn, String initialFen) {
+        ReviewController reviewController = (ReviewController) mainController.getController("REVIEW");
         mainController.navigateTo("REVIEW");
+        reviewController.loadGame(pgn, initialFen);
     }
 
     @FXML
