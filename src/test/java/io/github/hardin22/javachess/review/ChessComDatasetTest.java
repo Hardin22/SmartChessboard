@@ -46,6 +46,15 @@ class ChessComDatasetTest {
                 }
                 if (g.hasLabels()) {
                     assertEquals(g.plies(), g.labels().size(), g.id());
+                    org.json.JSONArray raw = o.getJSONArray("labels");
+                    for (int k = 0; k < raw.length(); k++) {
+                        JSONObject l = raw.optJSONObject(k);
+                        if (l != null && l.has("ply") && l.has("san")) {
+                            assertEquals(l.getString("san"), g.san().get(l.getInt("ply") - 1),
+                                    g.id() + ": label ply is 1-based");
+                            assertNotNull(g.labels().get(l.getInt("ply") - 1), g.id() + ": unknown label");
+                        }
+                    }
                 }
             }
         }
