@@ -21,9 +21,19 @@ where the pieces are, 64 RGB LEDs show moves, hints and the opponent's replies, 
 board shows the clocks, the evaluation and the controls. It also runs on a normal desktop (macOS, Linux) without any
 hardware, which is how most development happens.
 
-| Home | Game | Review | Puzzles |
-|---|---|---|---|
-| ![Home](docs/screenshots/home.png) | ![Game](docs/screenshots/game.png) | ![Review](docs/screenshots/review.png) | ![Puzzles](docs/screenshots/puzzles.png) |
+<p align="center">
+  <img src="docs/screenshots/home.png" width="19%" alt="Home">
+  <img src="docs/screenshots/game.png" width="19%" alt="Game">
+  <img src="docs/screenshots/review.png" width="19%" alt="Game review">
+  <img src="docs/screenshots/puzzles.png" width="19%" alt="Puzzles">
+  <img src="docs/screenshots/archive.png" width="19%" alt="Archive">
+</p>
+<p align="center">
+  <img src="docs/screenshots/game-landscape.png" width="80%" alt="Game on a 1920x720 landscape display">
+</p>
+
+Dark and light themes (`*-light.png` in [docs/screenshots](docs/screenshots)), portrait 720×1920 board monitor,
+landscape 1920×720 or a desktop window.
 
 ## Features
 
@@ -39,7 +49,8 @@ hardware, which is how most development happens.
   evaluation graph, best-move arrows.
 - **Archive** of every game with result and termination, exportable to and importable from standard PGN.
 - **LED coaching**: legal moves when a piece is lifted, quality of the destination squares, check and mate effects.
-- **Themes** for board and pieces; works on a 720×1920 portrait display, a 1920×720 landscape one, or a desktop window.
+- **Themes**: light/dark interface, several board and piece sets; Italian UI (strings in
+  `src/main/resources/i18n/messages.properties`, ready for translations).
 
 ## Hardware
 
@@ -106,7 +117,8 @@ java -jar target/javaChess-1.0-SNAPSHOT.jar
 
 ### Raspberry Pi
 
-Full guide: [docs/raspberry-pi.md](docs/raspberry-pi.md) (Java 21 from Temurin — Raspberry Pi OS Bookworm ships
+Full guide (system packages, Java 21, display rotation, `run_pi.sh` options and why, kiosk start with systemd,
+measured performance): [docs/raspberry-pi.md](docs/raspberry-pi.md) (Java 21 from Temurin — Raspberry Pi OS Bookworm ships
 17 —, display rotation, `run_pi.sh` options, systemd kiosk service in `deploy/`). In short:
 
 ```bash
@@ -180,12 +192,22 @@ browser. The session is kept in `~/.javachess/jcef-cache`. **Passwords are never
 ## Development
 
 ```bash
-./mvnw test                     # unit tests (engine tests are skipped when Stockfish is not installed)
+./mvnw test                     # unit + end-to-end tests (~1 min; engine tests skip without Stockfish)
+./mvnw test -DskipE2E=true      # without the end-to-end tests (they open a window)
 ./mvnw -DskipTests package      # runnable jar in target/
 scripts/dev-run.sh              # run from the build directory, with developer switches:
 scripts/dev-run.sh -Djavachess.windowed=1920x720 -Djavachess.view=REVIEW
 scripts/dev-run.sh -Djavachess.screen=1 -Djavachess.snapshot=/tmp/home.png -Djavachess.snapshot.exit=true
 ```
+
+**Tests.** Unit tests cover the data layer (archive migration, PGN, settings, atomic files), the Lichess client against
+a local fake server (no network), the vision pipeline on a real lichess screenshot and synthetic boards, the engine
+layer (a fake UCI process; Stockfish when installed), the board protocol and state machine (a firmware emulator), the
+LED renderer and the clocks. The end-to-end tests in `src/test/java/**/e2e` start the real views and game classes
+with no board and a deterministic UCI engine as a child process, and play: a game against the bot until checkmate
+(archived), an engine switch during a game, a two-player game lost on time, puzzles solved and failed (progress
+stored), the review of an archived game with accuracies, and the archive screen (open, export, delete). They need a
+display: CI runs everything under `xvfb-run`; on a machine without a display they are skipped.
 
 | Switch | Effect |
 |---|---|
@@ -206,14 +228,17 @@ scripts/dev-run.sh -Djavachess.screen=1 -Djavachess.snapshot=/tmp/home.png -Djav
 ```
 org.example.javachess
 ├── Application   entry point (App, Main), start-up (Bootstrap), lazy native libraries (NativeLibraries),
-│                 developer switches and scripted scenarios (DevOptions, DevScenario), StartupMetrics
+│                 developer switches and scripted scenarios (DevOptions, DevScenario, DevDemos), StartupMetrics
+├── Components    UI building blocks and theming: ThemeManager (light/dark), I18n, GameLayout, MoveListView,
+│                 PageHeader, StatusChip, HardwareStatus, BoardThemes, Icons, Logo
 ├── Controllers   JavaFX controllers, one per FXML view in src/main/resources/UI;
 │                 ArduinoController (compatibility facade over Hardware)
 ├── Engine        everything that talks to chess engines: EngineManager (owns the Stockfish/lc0 processes,
 │                 profiles), UciClient (asynchronous UCI), PositionAnalyzer (live analysis), MoveCoach and
 │                 MoveClassifier (move quality for the LEDs and the review), OpeningExplorer, EngineLocator
 ├── Hardware      the smart board: SerialBoard (USB serial, detection, reconnection), BoardProtocol (v2 lines),
-│                 LedRenderer / LedMapping (layered LED frames), SimulatedBoard and its window
+│                 LedRenderer / LedMapping (layered LED frames), MoveLeds / MoveLedsFeedback (coach colours),
+│                 SimulatedBoard and its window
 ├── Oggetti       game model and board widgets: AbstractGame → PvcGame, PvpGame, OnlineGame, PuzzleGame;
 │                 ChessBoardUI, EvalBar, ChessClock, ArchivedGame
 ├── Services      BoardStateManager (physical board state machine), GameAnalyzer (review/accuracy),
@@ -247,9 +272,11 @@ The Java package is still `org.example.javachess` for historical reasons.
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) and the [code of conduct](CODE_OF_CONDUCT.md).
 Security issues: see [SECURITY.md](SECURITY.md).
 
-Known issues and ideas:
-- In online games played from Black's side, the board orientation and some labels are still from White's point of view.
-- After a checkmate by Black the evaluation bar can jump before settling (the graph in the review is correct).
+Known limitations:
+- Lichess games through the Board API are limited to rapid and classical time controls (Lichess rule); faster games
+  can be played on lichess.org in the integrated browser.
+- chess.com has no playing API: its games are followed by reading the screen, so the board must be visible.
+- The vision model was trained on 2D web boards; unusual piece sets may need the checker-pattern fallback or retraining.
 
 ## License
 
@@ -271,4 +298,5 @@ Third-party components:
 | Stockfish, lc0, Maia weights (`engines/maia/`) | GPL-3.0 |
 | Vision model `src/main/resources/models/best.onnx` | trained with Ultralytics YOLOv8 (AGPL-3.0); dataset "2D Chessboard and Chess Pieces" (Roboflow Universe) |
 | Lichess puzzle database | CC0 |
-| Fonts (`src/main/resources/Font/`) | SIL Open Font License 1.1 |
+| Fonts Geist and Geist Mono (Vercel, `src/main/resources/Font/`) | SIL Open Font License 1.1 |
+| Feather icons (via Ikonli) | MIT |
