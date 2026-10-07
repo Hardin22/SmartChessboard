@@ -128,6 +128,12 @@ class AppEndToEndTest {
         EngineManager.get().shutdown();
     }
 
+    /** Saves are asynchronous (storage thread): the game a previous test left must be stored before counting. */
+    @org.junit.jupiter.api.BeforeEach
+    void storedGamesSettled() throws Exception {
+        E2eHarness.awaitStorage();
+    }
+
     // ================================================================== scenarios
 
     @Test
@@ -368,6 +374,57 @@ class AppEndToEndTest {
         Thread.sleep(1000);
         assertNull(fxGet(() -> field(review, "currentReview")), "no final results from a cancelled review");
         Files.writeString(script, "");
+    }
+
+    @Test
+    @Order(9)
+    void withoutABoardTheGameIsPlayedByTappingTheScreen() throws Exception {
+        Files.writeString(script, "e7e5\nd8h4\n"); // 1.f3 e5 2.g4 Qh4#
+        int before = archive().size();
+        ActiveGameController game = startPvc(true);
+        waitFor("screen moves accepted", () -> fxGet(() -> currentGame(game).isAwaitingHumanMove()));
+        tapMove(game, "f2f3");
+        waitFor("bot reply", () -> fxGet(() -> currentGame(game).getBoard().getHistory().size() - 1) >= 2);
+        tapMove(game, "g2g4");
+        waitFor("bot reply 2", () -> fxGet(() -> currentGame(game).getBoard().getHistory().size() - 1) >= 4);
+        assertEquals(List.of("f2f3", "e7e5", "g2g4", "d8h4"), fxGet(() -> currentGame(game).getBoard().getBackup()
+                .stream().map(b -> b.getMove().toString()).toList()));
+        // a tap on a piece of the bot does nothing
+        tapSquare(game, "a7");
+        tapSquare(game, "a5");
+        Thread.sleep(300);
+        assertEquals(4, (int) fxGet(() -> currentGame(game).getBoard().getHistory().size() - 1));
+        ArchivedGame saved = waitForArchived(before + 1);
+        assertEquals("f2f3 e7e5 g2g4 d8h4", saved.movesAsUciString());
+        assertEquals("0-1", saved.result());
+        fx(() -> {
+            main.navigateTo("HOME");
+            return null;
+        });
+    }
+
+    /** Taps the from-square then the to-square of {@code uci} on the game board (no physical board). */
+    private static void tapMove(ActiveGameController game, String uci) throws Exception {
+        tapSquare(game, uci.substring(0, 2));
+        tapSquare(game, uci.substring(2, 4));
+    }
+
+    private static void tapSquare(ActiveGameController game, String square) throws Exception {
+        fx(() -> {
+            javafx.scene.Node board = (javafx.scene.Node) field(game, "chessBoard");
+            int tile = (int) field(board, "TILE_SIZE");
+            boolean flipped = (boolean) field(board, "flipped");
+            int file = square.charAt(0) - 'a';
+            int rank = square.charAt(1) - '1';
+            double x = ((flipped ? 7 - file : file) + 0.5) * tile;
+            double y = ((flipped ? rank : 7 - rank) + 0.5) * tile;
+            javafx.geometry.Point2D scene = board.localToScene(x, y); // the dispatch recomputes x/y from it
+            javafx.event.Event.fireEvent(board, new javafx.scene.input.MouseEvent(
+                    javafx.scene.input.MouseEvent.MOUSE_CLICKED, scene.getX(), scene.getY(), scene.getX(),
+                    scene.getY(), javafx.scene.input.MouseButton.PRIMARY,
+                    1, false, false, false, false, true, false, false, true, false, true, null));
+            return null;
+        });
     }
 
     private static long liveChildProcesses() {

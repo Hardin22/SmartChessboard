@@ -57,6 +57,7 @@ class SimBoardEndToEndTest {
         });
         sim().setConnected(true);
         sim().setOccupancy(0xFFFF_0000_0000_FFFFL); // pieces back in the starting position
+        awaitStorage(); // the game the previous test left is archived before this test counts the games
     }
 
     @Test
@@ -176,11 +177,12 @@ class SimBoardEndToEndTest {
     @Order(7)
     void leavingAGameAsksForConfirmationAndArchivesItAsInterrupted() throws Exception {
         app.bot("e7e5");
-        int before = archive().size();
         ActiveGameController game = app.startPvc(true);
         playOnBoard(game, "e2e4", 2);
         reproduceLastMove(game);
         playOnBoard(game, "g1f3", 3);
+        awaitStorage();
+        int before = archive().size();
         fx(() -> invoke(game, "requestLeave")); // back arrow / "Esci dalla partita"
         Thread.sleep(200);
         assertEquals("GAME", fxGet(app.main::getCurrentViewName), "nothing happens before the confirmation");
@@ -195,13 +197,14 @@ class SimBoardEndToEndTest {
     }
 
     @Test
-    @Order(7)
+    @Order(8)
     void resigningAgainstTheBotIsALossForTheHuman() throws Exception {
         app.bot("e7e5");
-        int before = archive().size();
         ActiveGameController game = app.startPvc(true);
         playOnBoard(game, "e2e4", 2);
         reproduceLastMove(game);
+        awaitStorage();
+        int before = archive().size();
         fx(() -> invoke(game, "requestResign"));
         Thread.sleep(200);
         assertEquals(before, archive().size(), "nothing happens before the confirmation");
@@ -213,7 +216,7 @@ class SimBoardEndToEndTest {
     }
 
     @Test
-    @Order(7)
+    @Order(9)
     void pvpDrawByAgreement() throws Exception {
         int before = archive().size();
         ActiveGameController game = app.startPvp(300, 0);
@@ -230,7 +233,7 @@ class SimBoardEndToEndTest {
     }
 
     @Test
-    @Order(8)
+    @Order(10)
     void puzzleSetUpAndSolvedOnTheBoard() throws Exception {
         PuzzleController puzzles = fx(() -> {
             PuzzleController c = (PuzzleController) app.main.getController("PUZZLE_GAME");
