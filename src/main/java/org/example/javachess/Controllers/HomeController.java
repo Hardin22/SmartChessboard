@@ -82,6 +82,13 @@ public class HomeController implements NavigationAware {
             return;
         }
         wideLayout = wide;
+        // Portrait has height to spare: a larger mark and wordmark.
+        hero.getStyleClass().remove("hero-tall");
+        if (!wide) {
+            hero.getStyleClass().add("hero-tall");
+        }
+        hero.getChildren().stream().filter(n -> n instanceof org.example.javachess.Components.Logo)
+                .forEach(n -> ((org.example.javachess.Components.Logo) n).setSize(wide ? 88 : 120));
         for (VBox block : new VBox[] { hero, overview, actions }) {
             if (block.getParent() instanceof Pane parent) {
                 parent.getChildren().remove(block);

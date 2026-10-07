@@ -1397,3 +1397,11 @@
     -fx-min-height: 48px;
     -fx-min-width: 120px;
 }
+
+.home-hero.hero-tall .wordmark {
+    -fx-font-size: 56px;
+}
+
+.home-hero.hero-tall .lead {
+    -fx-font-size: 20px;
+}
