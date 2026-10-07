@@ -109,6 +109,11 @@ public final class ReviewClassifier {
          */
         final double greatPunishRating;
         final double greatPunishMinEp;
+        /**
+         * ... also after an opponent's Mistake or Miss losing at least this much win chance (0 = off) when the engine's
+         * move takes the material it left en prise (a capture winning material by static exchange).
+         */
+        final double greatPunishCaptureLoss;
         /** v2.3: the 'winning anyway' tests of Brilliant only for a move that is not the engine's choice. */
         final boolean brilliantAltNonTopOnly;
         /** v2.3: players under this rating get Great for a capture from {@link #greatCaptureGapLow}. */
@@ -227,6 +232,7 @@ public final class ReviewClassifier {
             greatStartsMate = get("greatStartsMate", 1) != 0;
             greatPunishRating = get("greatPunishRating", 1000);
             greatPunishMinEp = get("greatPunishMinEp", 0.60);
+            greatPunishCaptureLoss = get("greatPunishCaptureLoss", 0.20);
             brilliantTopException = get("brilliantTopException", 1) != 0;
             brilliantTopRegain = get("brilliantTopRegain", 1);
             greatInCheckGap = get("greatInCheckGap", 0.10);
@@ -918,8 +924,25 @@ public final class ReviewClassifier {
     private static boolean punishesBlunder(int i, GameReplay replay, List<MoveReview> out, double epBefore,
                                            int rating, Tuning t) {
         return t.greatPunishRating > 0 && rating > 0 && Math.max(rating, t.ratingFloor) < t.greatPunishRating
-                && i > 0 && out.get(i - 1).label() == MoveClassification.BLUNDER && !isRecapture(replay, i)
+                && i > 0 && (out.get(i - 1).label() == MoveClassification.BLUNDER || takesWhatTheErrorLeft(i, replay,
+                out.get(i - 1), t)) && !isRecapture(replay, i)
                 && (i < 2 || out.get(i - 2).label() != MoveClassification.BLUNDER) && epBefore > t.greatPunishMinEp;
+    }
+
+    /**
+     * The opponent's move lost at least {@link Tuning#greatPunishCaptureLoss} without being labelled Blunder (a
+     * Mistake, or a Miss of its own chance) and move i takes the material it left en prise: 16.Nxg7+ after 15...Ke6
+     * and 43.Bxb7 after 42...Ke5 (live_138986716238, 445), 31.Qxb1 after 30...Ke6 (live_141789599574, 682), all
+     * chess.com Great, SF16 d22 rank 1.
+     */
+    private static boolean takesWhatTheErrorLeft(int i, GameReplay replay, MoveReview previous, Tuning t) {
+        if (t.greatPunishCaptureLoss <= 0 || previous.winLoss() < t.greatPunishCaptureLoss) {
+            return false;
+        }
+        Board b0 = board(replay.fens().get(i));
+        String uci = replay.uci().get(i);
+        Move m = Tactics.find(b0, uci);
+        return m != null && Tactics.isCapture(b0, uci) && Tactics.see(b0, m.getTo()) > 0;
     }
 
     /** 0 losing, 1 about equal, 2 winning (SPEC v2.1). */

@@ -396,6 +396,17 @@ class BrilliantGreatExclusionsTest {
     }
 
     @Test
+    void aBeginnerTakingWhatAMistakeLeftEnPriseIsGreat() {
+        // live_141789599574 ply 61, 30...Ke6 (a Miss: Black had mate in 4) 31.Qxb1 (White 682, chess.com Great): the
+        // queen taken, although 31.d5+ wins it too (SF16 d22 +594 / +560)
+        ReviewInput qxb1 = rated(twoMoves("b7/p4k1Q/1p3p2/8/2nP4/2P1P1PK/P4P1P/1q6 b - - 1 30", "f7e6",
+                Eval.blackMates(4), "b1h7", "h7b1", Eval.cp(737), "h7b1", Eval.cp(684), "d4d5", Eval.cp(733)), 682, 616);
+        assertEquals(MoveClassification.GREAT, label(qxb1, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.GREAT, label(qxb1, Tuning.DEFAULT.with("greatPunishCaptureLoss", 0)));
+        assertEquals(MoveClassification.BEST, label(rated(qxb1, 1100, 1100), Tuning.DEFAULT));
+    }
+
+    @Test
     void recoveringFromOwnBlunderIsNotGreat() {
         // live_180008683178, 7.Qc3?? Be7? (Bb4 wins the queen) 8.Qxg7 (White 260, chess.com Best): Black's error only
         // missed the punishment of White's blunder, chess.com calls it a Miss
