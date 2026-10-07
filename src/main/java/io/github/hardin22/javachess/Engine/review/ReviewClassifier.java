@@ -83,6 +83,11 @@ public final class ReviewClassifier {
         final double greatCaptureGap;
         /** v2.2 (greatCaptureRule 2): taking free material is Great only for players under this rating. */
         final double greatFreeMaterialRating;
+        /**
+         * Phase 4 (0 = off): a checkmate right after the opponent's move lost at least this much win chance is Great for
+         * a player under {@link #greatFreeMaterialRating}.
+         */
+        final double greatMatePunish;
         /** v2.1: a piece or the exchange given for pawns counts as a sacrifice of 2 (Brilliant). */
         final boolean pieceSacrifice;
         /**
@@ -219,6 +224,7 @@ public final class ReviewClassifier {
             greatCaptureOppLoss = get("greatCaptureOppLoss", 0.10);
             greatCaptureGap = get("greatCaptureGap", 0.30);
             greatFreeMaterialRating = get("greatFreeMaterialRating", 1000);
+            greatMatePunish = get("greatMatePunish", 0.20);
             greatCaptureRule = (int) get("greatCaptureRule", 2);
             brilliantWinningCp = get("brilliantWinningCp", 700);
             brilliantMinCpAfter = get("brilliantMinCpAfter", -15);
@@ -626,11 +632,19 @@ public final class ReviewClassifier {
                         || (t.brilliantFromGood && label == MoveClassification.GOOD);
                 // G-E4: a move played from an opening book position is known theory, never Brilliant or Great
                 boolean fromTheory = t.noSpecialInTheory && i > 0 && i - 1 <= theoryEnd;
+                int rating = me ? in.whiteRating() : in.blackRating();
+                if (mates && label == MoveClassification.BEST && !fromTheory && t.greatMatePunish > 0 && i > 0
+                        && (rating > 0 ? rating : t.defaultRating) < t.greatFreeMaterialRating
+                        && epBefore[i - 1] - epAfter[i - 1] >= t.greatMatePunish) {
+                    // chess.com is "more generous with new players": under 1000 the mate that punishes the opponent's
+                    // blunder is Great (177 games: 6 of 6 mates after an error >= 0.20, 0 of 14 other mates under 1000)
+                    label = MoveClassification.GREAT;
+                }
                 if (nearBest && !mates && !fromTheory) {
                     double oppLoss = i > 0 ? Math.max(0, epBefore[i - 1] - epAfter[i - 1]) : 0;
                     MoveClassification special = special(label, isTop, i, replay, p0, pos.get(i + 1), played[i],
                             epBefore[i], epAfter[i], me, oppLoss, t, me ? kWhite : kBlack,
-                            me ? in.whiteRating() : in.blackRating());
+                            rating);
                     if (special != null) {
                         label = special;
                     }

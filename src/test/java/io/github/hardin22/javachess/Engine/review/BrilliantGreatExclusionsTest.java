@@ -314,6 +314,23 @@ class BrilliantGreatExclusionsTest {
         assertNotEquals(MoveClassification.GREAT, label(bf5, Tuning.DEFAULT.with("greatStartsMate", 0)));
     }
 
+    @Test
+    void aMatePunishingABlunderIsGreatUnder1000() {
+        // live_184334494256 ply 9 (648 vs 777): 4...d6?? allows 5.Qxf7#, chess.com Great
+        String fen0 = "r1bqkbnr/pppp1p1p/2n3p1/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR b KQkq - 1 4";
+        String fen1 = play(fen0, "d7d6");
+        List<PositionEval> ps = List.of(
+                new PositionEval(fen0, Eval.cp(-25), List.of(new EngineLine("g8f6", Eval.cp(-25), List.of("g8f6"), 20)),
+                        20, 0, false),
+                withLines(fen1, Eval.whiteMates(1), "f3f7", Eval.cp(180), "c4f7"),
+                PositionEval.terminal(play(fen1, "f3f7"), Eval.whiteMates(0)));
+        ReviewInput qxf7 = new ReviewInput(fen0, List.of("d7d6", "f3f7"), ps, OpeningBook.NONE, 648, 777);
+        assertEquals(MoveClassification.GREAT, label(qxf7, Tuning.DEFAULT));
+        assertEquals(MoveClassification.BEST, label(qxf7, Tuning.DEFAULT.with("greatMatePunish", 0)));
+        // the same mate between stronger players stays Best (live_184180120868 ply 7, 2660: 4.Qxf7# after a blunder)
+        assertEquals(MoveClassification.BEST, label(rated(qxf7, 1500, 1500), Tuning.DEFAULT));
+    }
+
     private static ReviewInput rated(ReviewInput in, int white, int black) {
         return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
     }
