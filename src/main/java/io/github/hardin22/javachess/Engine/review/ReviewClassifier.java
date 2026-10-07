@@ -52,6 +52,14 @@ public final class ReviewClassifier {
         final double fakeRegain;
         /** v1.9: no Brilliant or Great right after a book position (G-E4). */
         final boolean noSpecialInTheory;
+        /** v1.9 G+1: a quiet forcing check in a won attack is Great ... */
+        final boolean greatForcingCheck;
+        /** ... from at least this win chance ... */
+        final double forcingCheckMinEp;
+        /** ... when the second best move is at least this much worse. */
+        final double forcingCheckGap;
+        /** Ratings below this are judged as this (chess.com's curve does not flatten further). */
+        final double ratingFloor;
         /** v1.9: no capture is Great (G-E1). */
         final boolean greatNoCapture;
         /**
@@ -140,6 +148,10 @@ public final class ReviewClassifier {
             brilliantNonTopLoss = get("brilliantNonTopLoss", 0.01);
             fakeRegain = get("fakeRegain", 2);
             greatNoCapture = get("greatNoCapture", 1) != 0;
+            greatForcingCheck = get("greatForcingCheck", 1) != 0;
+            forcingCheckMinEp = get("forcingCheckMinEp", 0.85);
+            forcingCheckGap = get("forcingCheckGap", 0.25);
+            ratingFloor = get("ratingFloor", 800);
             noSpecialInTheory = get("noSpecialInTheory", 1) != 0;
             sacMin = get("sacMin", 2);
             brilliantMaxLoss = get("brilliantMaxLoss", 0.03);
@@ -148,7 +160,7 @@ public final class ReviewClassifier {
             greatGap = get("greatGap", 0.25);
             greatPunishGap = get("greatPunishGap", 0.15);
             greatMinEp = get("greatMinEp", 0.45);
-            greatMaxEp = get("greatMaxEp", 0.90);
+            greatMaxEp = get("greatMaxEp", 0.98);
             greatFilters = get("greatFilters", 1) != 0;
             greatInCheck = get("greatInCheck", 0) != 0;
             greatTakesBlunder = get("greatTakesBlunder", 0.10);
@@ -165,7 +177,7 @@ public final class ReviewClassifier {
             bookMaxGap = (int) get("bookMaxGap", 4);
             bookMaxPly = (int) get("bookMaxPly", 20);
             lostDrop = get("lostDrop", 150);
-            lostEval = get("lostEval", 400);
+            lostEval = get("lostEval", 600);
             bookTheory = get("bookTheory", 1) != 0;
             bookExtend = (int) get("bookExtend", 0);
             bookPopular = get("bookPopular", 300);
@@ -189,7 +201,7 @@ public final class ReviewClassifier {
 
         /** Win chance slope for a player of this rating (0 = unknown). */
         double slope(int rating) {
-            double r = rating > 0 ? rating : defaultRating;
+            double r = rating > 0 ? Math.max(rating, ratingFloor) : defaultRating;
             return slope * Math.exp(slopeRating * (r - 1500) / 1000.0);
         }
 
@@ -290,7 +302,8 @@ public final class ReviewClassifier {
             if (m >= n) {
                 return MoveClassification.BEST;
             }
-            return m == 1 && n >= 3 ? MoveClassification.INACCURACY : MoveClassification.EXCELLENT;
+            // a much faster mate (to mate in 1-2, 3+ moves sooner) is an Inaccuracy for chess.com (M-7 -> M-2 Kd8)
+            return m <= 2 && n - m >= 3 ? MoveClassification.INACCURACY : MoveClassification.EXCELLENT;
         }
         if (best.isMateFor(me) && played.isMateAgainst(me)) {
             return MoveClassification.BLUNDER;
@@ -486,7 +499,7 @@ public final class ReviewClassifier {
                 if (drawn && epBefore[i] >= t.giveAwayDrawEp) {
                     label = MoveClassification.BLUNDER; // stalemate (or dead draw) from a winning position
                 }
-                if (t.lostDrop > 0 && severity(label) < severity(MoveClassification.MISTAKE) && !best.isMate()
+                if (t.lostDrop > 0 && !isTop && severity(label) < severity(MoveClassification.MISTAKE) && !best.isMate()
                         && !played[i].isMate() && best.cpFor(me) <= -t.lostEval
                         && best.cpFor(me) - played[i].cpFor(me) >= t.lostDrop) {
                     // chess.com calls a Mistake what makes a lost position clearly worse, although the win chance
@@ -639,6 +652,9 @@ public final class ReviewClassifier {
         if (label != MoveClassification.BEST || !isTop || played.isMateFor(me)) {
             return null;
         }
+        if (t.greatForcingCheck && forcingCheck(b0, uci, i, replay, second, epBefore, epAfter, me, t, k)) {
+            return MoveClassification.GREAT; // G+1
+        }
         if (epBefore < t.greatMinEp || epBefore > t.greatMaxEp) {
             return null;
         }
@@ -660,6 +676,26 @@ public final class ReviewClassifier {
         double gap = epBefore - ep(second.eval(), me, k);
         boolean punishes = oppLoss >= t.greatOpponentLoss && gap >= t.greatPunishGap;
         return punishes || gap >= t.greatGap ? MoveClassification.GREAT : null;
+    }
+
+    /**
+     * SPEC v1.9 G+1: a quiet forcing check that keeps a won attack going, when every other move throws much of it
+     * away (Torre's windmill 28.Rg7+, Byrne - Fischer 19...Ne2+): chess.com calls these Great (0 false positives on
+     * the CV and famous games).
+     */
+    private static boolean forcingCheck(Board b0, String uci, int i, GameReplay replay, EngineLine second,
+                                        double epBefore, double epAfter, boolean me, Tuning t, double k) {
+        if (second == null || b0.isKingAttacked() || epBefore <= t.forcingCheckMinEp || epAfter < epBefore - 0.02
+                || Tactics.isCapture(b0, uci) || (i > 0 && isRecapture(replay, i))) {
+            return false;
+        }
+        Move m = Tactics.find(b0, uci);
+        if (m == null) {
+            return false;
+        }
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        return b1.isKingAttacked() && !b1.isMated() && epBefore - ep(second.eval(), me, k) >= t.forcingCheckGap;
     }
 
     /** Shared precondition of Brilliant and Great (WintrChess "critical candidate"). */
