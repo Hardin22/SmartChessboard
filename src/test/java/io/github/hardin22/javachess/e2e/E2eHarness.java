@@ -228,6 +228,11 @@ final class E2eHarness {
 
     // ------------------------------------------------------------------ archive
 
+    /** Waits until the archive writes queued so far (games ended or left by a previous test) are done. */
+    static void awaitStorage() throws Exception {
+        io.github.hardin22.javachess.Utils.AppExecutors.storage().submit(() -> { }).get(TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    }
+
     static GameArchiveService archive() {
         return GameArchiveService.getInstance();
     }
