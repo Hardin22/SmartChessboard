@@ -39,8 +39,11 @@ class ChessComDatasetTest {
                 if (o.has("moves_uci")) {
                     assertEquals(ChessComDataset.strings(o.getJSONArray("moves_uci")), g.uci(), g.id());
                 }
-                assertTrue(g.whiteAccuracy() >= 0 && g.whiteAccuracy() <= 100, g.id());
-                assertTrue(g.blackAccuracy() >= 0 && g.blackAccuracy() <= 100, g.id());
+                assertTrue(g.hasAccuracy() || g.hasLabels(), g.id() + " has no ground truth");
+                if (g.hasAccuracy()) {
+                    assertTrue(g.whiteAccuracy() >= 0 && g.whiteAccuracy() <= 100, g.id());
+                    assertTrue(g.blackAccuracy() >= 0 && g.blackAccuracy() <= 100, g.id());
+                }
                 if (g.hasLabels()) {
                     assertEquals(g.plies(), g.labels().size(), g.id());
                 }

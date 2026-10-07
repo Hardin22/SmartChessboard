@@ -65,6 +65,9 @@ public final class AgreementReport {
     public List<Double> accuracyErrors() {
         List<Double> e = new ArrayList<>();
         for (Entry x : entries) {
+            if (!x.game().hasAccuracy()) {
+                continue;
+            }
             e.add(x.ours().whiteAccuracy() - x.game().whiteAccuracy());
             e.add(x.ours().blackAccuracy() - x.game().blackAccuracy());
         }
@@ -87,6 +90,9 @@ public final class AgreementReport {
     public double accuracyCorrelation() {
         List<double[]> p = new ArrayList<>();
         for (Entry x : entries) {
+            if (!x.game().hasAccuracy()) {
+                continue;
+            }
             p.add(new double[] { x.ours().whiteAccuracy(), x.game().whiteAccuracy() });
             p.add(new double[] { x.ours().blackAccuracy(), x.game().blackAccuracy() });
         }
@@ -147,6 +153,36 @@ public final class AgreementReport {
             }
         }
         return all == 0 ? Double.NaN : same / (double) all;
+    }
+
+    public long knownLabels() {
+        long n = 0;
+        for (int[] row : confusion()) {
+            for (int v : row) {
+                n += v;
+            }
+        }
+        return n;
+    }
+
+    /** Our labels per 100 plies, e.g. "!! 0.4, ! 1.2, best 40.1 ...". */
+    public String labelMix() {
+        int[] count = new int[ReviewLabel.values().length];
+        int plies = 0;
+        for (Entry x : entries) {
+            for (ReviewLabel l : x.ours().labels()) {
+                count[l.ordinal()]++;
+                plies++;
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        for (ReviewLabel l : ReviewLabel.values()) {
+            if (count[l.ordinal()] > 0) {
+                sb.append(sb.isEmpty() ? "" : ", ").append(l.abbrev()).append(' ')
+                        .append(f("%.1f", 100.0 * count[l.ordinal()] / Math.max(1, plies)));
+            }
+        }
+        return sb.append(" per 100 plies").toString();
     }
 
     /** Agreement on coarse buckets (best-ish / good / book / inaccuracy / mistake+miss / blunder). */
@@ -258,7 +294,9 @@ public final class AgreementReport {
         o.put("accuracyRmse", round(accuracyRmse()));
         o.put("accuracyR", round(accuracyCorrelation()));
         o.put("accuracyWithin5", round(accuracyWithin(5)));
+        o.put("knownLabels", knownLabels());
         o.put("labelAgreement", round(labelAgreement()));
+        o.put("labelMix", labelMix());
         o.put("bucketAgreement", round(bucketAgreement()));
         o.put("matesGiven", matesGiven);
         o.put("mateInOneAllowed", mateInOneAllowed);
@@ -288,9 +326,10 @@ public final class AgreementReport {
                 .append(mateViolations.size()).append(".\n\n");
         appendFindings(sb, mateViolations, worst);
 
+        sb.append(f("Our label mix: %s.%n%n", labelMix()));
         if (hasLabels()) {
-            sb.append(f("**Labels vs chess.com**: exact %.1f%%, bucket %.1f%%%n%n", 100 * labelAgreement(),
-                    100 * bucketAgreement()));
+            sb.append(f("**Labels vs chess.com** (%d plies with a known chess.com label): exact %.1f%%, bucket %.1f%%%n%n",
+                    knownLabels(), 100 * labelAgreement(), 100 * bucketAgreement()));
             appendConfusion(sb);
             sb.append("\nWorst label disagreements:\n\n");
             appendFindings(sb, labelDisagreements(), worst);
@@ -300,6 +339,7 @@ public final class AgreementReport {
 
         sb.append("Worst accuracy errors:\n\n| game | tc | ratings | chess.com W/B | ours W/B |\n|---|---|---|---|---|\n");
         entries.stream()
+                .filter(e -> e.game().hasAccuracy())
                 .sorted(Comparator.comparingDouble((Entry e) -> -Math.max(
                         Math.abs(e.ours().whiteAccuracy() - e.game().whiteAccuracy()),
                         Math.abs(e.ours().blackAccuracy() - e.game().blackAccuracy()))))
@@ -314,7 +354,9 @@ public final class AgreementReport {
     private Map<String, List<Entry>> groupBy(Function<Entry, String> key) {
         Map<String, List<Entry>> m = new TreeMap<>();
         for (Entry e : entries) {
-            m.computeIfAbsent(key.apply(e), k -> new ArrayList<>()).add(e);
+            if (e.game().hasAccuracy()) {
+                m.computeIfAbsent(key.apply(e), k -> new ArrayList<>()).add(e);
+            }
         }
         return m;
     }
@@ -322,7 +364,7 @@ public final class AgreementReport {
     private String accuracyRow(String name, List<Entry> subset) {
         AgreementReport r = new AgreementReport(name);
         r.entries.addAll(subset);
-        return f("| %s | %d | %.2f | %+.2f | %.2f | %.3f | %.0f%% |%n", name, 2 * subset.size(), r.accuracyMae(),
+        return f("| %s | %d | %.2f | %+.2f | %.2f | %.3f | %.0f%% |%n", name, r.accuracyErrors().size(), r.accuracyMae(),
                 r.accuracyBias(), r.accuracyRmse(), r.accuracyCorrelation(), 100 * r.accuracyWithin(5));
     }
 

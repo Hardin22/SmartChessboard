@@ -35,6 +35,7 @@ public final class ChessComDataset {
      *
      * @param uci    moves in UCI
      * @param fens   positions, {@code fens.get(i)} before ply {@code i} (size = plies + 1)
+     * @param whiteAccuracy chess.com accuracy, NaN for label-only games
      * @param labels chess.com labels per ply, or null when the dataset has none for this game (entries may be null)
      */
     public record Game(String id, String url, String timeClass, int whiteRating, int blackRating, String result,
@@ -57,6 +58,11 @@ public final class ChessComDataset {
             }
             int lo = r / 400 * 400;
             return lo + "-" + (lo + 399);
+        }
+
+        /** False for label-only games (no chess.com accuracies). */
+        public boolean hasAccuracy() {
+            return !Double.isNaN(whiteAccuracy) && !Double.isNaN(blackAccuracy);
         }
 
         public boolean hasLabels() {
@@ -100,7 +106,7 @@ public final class ChessComDataset {
             b.doMove(m);
             fens.add(b.getFen());
         }
-        JSONObject acc = o.getJSONObject("accuracy");
+        JSONObject acc = o.optJSONObject("accuracy", new JSONObject());
         Set<String> tags = new TreeSet<>();
         JSONArray t = o.optJSONArray("tags");
         if (t != null) {
@@ -108,7 +114,7 @@ public final class ChessComDataset {
         }
         return new Game(o.getString("id"), o.optString("url"), o.optString("time_class"), o.optInt("white_rating"),
                 o.optInt("black_rating"), o.optString("result"), List.copyOf(san), List.copyOf(uci), List.copyOf(fens),
-                acc.getDouble("white"), acc.getDouble("black"), labels(o.opt("labels"), san.size()), tags);
+                acc.optDouble("white", Double.NaN), acc.optDouble("black", Double.NaN), labels(o.opt("labels"), san.size()), tags);
     }
 
     /**

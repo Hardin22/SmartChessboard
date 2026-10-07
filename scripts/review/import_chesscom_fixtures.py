@@ -51,8 +51,8 @@ def main():
         with open(path, encoding="utf-8") as f:
             g = json.load(f)
         acc = g.get("accuracy") or {}
-        if acc.get("white") is None or acc.get("black") is None:
-            continue  # not reviewed on chess.com: useless as ground truth
+        if (acc.get("white") is None or acc.get("black") is None) and not g.get("labels"):
+            continue  # neither accuracies nor labels: useless as ground truth
         row = {k: g.get(k) for k in KEEP if g.get(k) is not None}
         row["result"] = result_of(g)
         row["moves_san"] = g.get("moves_san") or san_from_pgn(g.get("pgn", ""))
