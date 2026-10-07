@@ -2,7 +2,6 @@
 # (-Dreview.special.regen=true) after fixing errors. Allowlisted exceptions are not repeated here.
 # exact 0.6862 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
 id	ply	kind	set	san	ours	chesscom
-daily_1008989784	49	fp-brilliant	ex-holdout49	Bf8	brilliant	excellent
 daily_1009092152	36	fn-great	cv93	Qxe1	best	great
 daily_1011205894	10	fn-great	cv93	Qxd1+	best	great
 daily_1012805338	36	fn-great	cv93	Bg4	best	great
