@@ -1,6 +1,6 @@
 # Brilliant/Great errors accepted today by SpecialLabelsGateTest (Phase 4). It only shrinks: regenerate
 # (-Dreview.special.regen=true) after fixing errors. Allowlisted exceptions are not repeated here.
-# exact 0.6792 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
+# exact 0.6811 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
 id	ply	kind	set	san	ours	chesscom
 daily_1008989784	49	fp-brilliant	ex-holdout49	Bf8	brilliant	excellent
 daily_1009092152	30	fn-great	cv93	Bxb5	best	great
@@ -45,13 +45,7 @@ live_123602894080	49	fn-great	ex-holdout49	cxb4	best	great
 live_123602894080	73	fn-great	ex-holdout49	gxf4	good	great
 live_123602894080	93	fn-brilliant	ex-holdout49	Kd4	best	brilliant
 live_123602894080	108	fn-great	ex-holdout49	Kc6	excellent	great
-live_123602894080	123	fp-great	ex-holdout49	e5	great	best
-live_123602894080	125	fp-great	ex-holdout49	e6	great	best
-live_123602894080	127	fp-great	ex-holdout49	e7	great	best
-live_123602894080	187	fn-great	ex-holdout49	Kh1	best	great
 live_127051221683	47	fn-great	cv93	c6	best	great
-live_138835439112	44	fn-great	cv93	Kf8	best	great
-live_138835439112	52	fn-great	cv93	Kg8	best	great
 live_138986716238	31	fn-great	ex-holdout49	Nxg7+	best	great
 live_138986716238	41	fn-brilliant	ex-holdout49	Bb4	excellent	brilliant
 live_138986716238	70	fn-great	ex-holdout49	Rxh5	best	great
@@ -94,8 +88,6 @@ live_172493057862	18	fn-great	ex-holdout49	Bxh6	best	great
 live_172493057862	35	fn-great	ex-holdout49	Nc3	best	great
 live_172493057862	39	fp-great	ex-holdout49	g5	great	best
 live_172502515518	58	fn-great	cv93	Qxa2	best	great
-live_172502515518	60	fn-great	cv93	Kf8	best	great
-live_173843114164	43	fp-great	cv93	d6	great	best
 live_173845722776	17	fn-great	ex-holdout49	Nxe5	best	great
 live_173845722776	20	fn-great	ex-holdout49	O-O	best	great
 live_173845722776	39	fn-great	ex-holdout49	Qg6+	best	great
@@ -120,10 +112,7 @@ live_174024200644	76	fn-brilliant	ex-holdout49	Nxa6	best	brilliant
 live_174024200644	92	fn-great	ex-holdout49	a4	best	great
 live_174024200644	120	fn-great	ex-holdout49	Qxb8+	best	great
 live_174045977526	12	fn-great	cv93	Bxc3	best	great
-live_174077845410	47	fn-great	ex-holdout49	Kh3	best	great
-live_174077845410	51	fn-great	ex-holdout49	Kh3	best	great
 live_174077845410	59	fn-great	ex-holdout49	Qe4	best	great
-live_174096798342	47	fn-great	cv93	Kf2	best	great
 live_174118851816	33	fn-great	cv93	Qxg4	best	great
 live_174118851816	50	fp-great	cv93	Bxf6	great	best
 live_174171529346	65	fn-great	cv93	Nxe3	best	great
@@ -136,10 +125,8 @@ live_174300462740	28	fn-great	cv93	Qxf3	best	great
 live_174308174036	11	fn-great	cv93	Qxd8+	best	great
 live_174308174036	15	fn-great	cv93	Nd5	best	great
 live_174367977638	34	fn-great	cv93	Nxe3+	best	great
-live_174388155128	83	fn-great	cv93	Ka2	best	great
 live_174388155128	105	fn-great	cv93	e7	excellent	great
 live_174388155128	119	fp-brilliant	cv93	Nxf4	brilliant	best
-live_174388155128	131	fp-great	cv93	h5	great	best
 live_174389074664	52	fn-great	cv93	Rh8	best	great
 live_174389074664	56	fn-great	cv93	Kc5	best	great
 live_174392911096	28	fn-great	ex-holdout49	Nd7	best	great
@@ -169,12 +156,9 @@ live_184210559738	21	fn-great	cv93	Bf3	best	great
 live_184210559738	27	fn-great	cv93	Bxg7	best	great
 live_184218578888	63	fn-great	cv93	Ke3	best	great
 live_184225478128	38	fn-great	cv93	Nxd1	best	great
-live_184250344704	57	fn-great	cv93	Kf1	best	great
-live_184250344704	61	fn-great	cv93	Kg1	best	great
 live_184274854214	33	fn-great	ex-holdout49	O-O	best	great
 live_184274854214	52	fn-great	ex-holdout49	Rf8	excellent	great
 live_184274854214	54	fp-great	ex-holdout49	Qxg6	great	best
-live_184308204442	18	fn-great	ex-holdout49	Ke8	best	great
 live_184308204442	55	fp-great	ex-holdout49	Nxf4	great	best
 live_184308204442	66	fp-great	ex-holdout49	Nf4	great	best
 live_184308204442	115	fn-great	ex-holdout49	h6+	best	great
@@ -184,7 +168,6 @@ live_184350007554	42	fn-great	ex-holdout49	Qxf3	best	great
 live_184350007554	50	fn-great	ex-holdout49	h5	best	great
 live_184350007554	52	fp-great	ex-holdout49	hxg4	great	best
 live_184355907802	48	fn-great	cv93	Bxg2	best	great
-live_184355907802	74	fn-great	cv93	Ke5	best	great
 live_184435729088	28	fn-brilliant	cv93	Nxd3	excellent	brilliant
 live_184440015284	57	fn-great	ex-holdout49	Kf3	best	great
 live_184440015284	60	fn-great	ex-holdout49	hxg6	best	great
@@ -204,7 +187,6 @@ anderssen_dufresne_1852	16	fn-great	famous-brilliant	Qf6	best	great
 anderssen_dufresne_1852	20	fn-great	famous-brilliant	Nge7	best	great
 anderssen_dufresne_1852	34	fp-great	famous-brilliant	gxf6	great	best
 anderssen_dufresne_1852	39	fn-great	famous-brilliant	Rxe7+	best	great
-anderssen_kieseritzky_1851	39	fn-great	famous-brilliant	Ke2	best	great
 aronian_anand_2013	26	fn-brilliant	famous-brilliant	Ng4	excellent	brilliant
 aronian_anand_2013	28	fn-great	famous-brilliant	cxd4	best	great
 aronian_anand_2013	36	fn-great	famous-brilliant	Nxg4	best	great
@@ -232,14 +214,12 @@ fischer_spassky_1972_g6	41	fn-great	famous-control	f4	best	great
 fischer_spassky_1972_g6	75	fn-brilliant	famous-control	Rxf6	excellent	brilliant
 ivanchuk_yusupov_1991_g9	24	fp-great	famous-brilliant	e3	great	best
 ivanchuk_yusupov_1991_g9	38	fn-great	famous-brilliant	gxf4	best	great
-ivanchuk_yusupov_1991_g9	50	fn-great	famous-brilliant	Kh8	best	great
 ivanchuk_yusupov_1991_g9	56	fn-great	famous-brilliant	Rg6	excellent	great
 ivanchuk_yusupov_1991_g9	62	fn-great	famous-brilliant	Kh7	best	great
 ivanchuk_yusupov_1991_g9	78	fn-great	famous-brilliant	Qg3	best	great
 karpov_kasparov_1985_g16	26	fp-great	famous-brilliant	Bf5	great	best
 karpov_kasparov_1985_g16	36	fn-great	famous-brilliant	b4	best	great
 karpov_kasparov_1985_g16	74	fn-brilliant	famous-brilliant	Rc1	best	brilliant
-kasparov_topalov_1999	50	fn-great	famous-brilliant	Kb6	best	great
 kasparov_topalov_1999	60	fp-great	famous-brilliant	Qc4	great	best
 kasparov_topalov_1999	63	fn-great	famous-brilliant	Qxa6+	best	great
 kasparov_topalov_1999	65	fn-brilliant	famous-brilliant	c3+	excellent	brilliant
@@ -252,7 +232,6 @@ polugaevsky_nezhmetdinov_1958	26	fn-great	famous-brilliant	Bh6	excellent	great
 polugaevsky_nezhmetdinov_1958	31	fn-great	famous-brilliant	Nd5	best	great
 polugaevsky_nezhmetdinov_1958	33	fn-great	famous-brilliant	g3	best	great
 polugaevsky_nezhmetdinov_1958	38	fn-brilliant	famous-brilliant	Be6	best	brilliant
-polugaevsky_nezhmetdinov_1958	43	fn-great	famous-brilliant	Ke3	best	great
 polugaevsky_nezhmetdinov_1958	44	fp-great	famous-brilliant	Bxd5	great	best
 polugaevsky_nezhmetdinov_1958	54	fn-great	famous-brilliant	c5+	best	great
 reshevsky_petrosian_1953	50	fn-great	famous-control	Re6	best	great
@@ -290,6 +269,5 @@ torre_lasker_1925	38	fn-great	famous-brilliant	Nxd3	best	great
 wei_yi_bruzon_2015	55	fn-great	famous-brilliant	Be3+	best	great
 wei_yi_bruzon_2015	57	fn-great	famous-brilliant	Qb3	excellent	great
 wei_yi_bruzon_2015	61	fn-great	famous-brilliant	Qd3	best	great
-wei_yi_bruzon_2015	65	fn-great	famous-brilliant	Kg1	best	great
 zukertort_blackburne_1883	45	fn-great	famous-brilliant	f5	best	great
 zukertort_blackburne_1883	47	fp-great	famous-brilliant	Bxe4	great	best

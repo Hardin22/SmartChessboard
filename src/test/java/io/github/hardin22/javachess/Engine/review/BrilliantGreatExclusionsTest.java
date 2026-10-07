@@ -291,6 +291,25 @@ class BrilliantGreatExclusionsTest {
     }
 
     @Test
+    void pushingTheSamePassedPawnAgainIsNotGreat() {
+        // live_123602894080 plies 121-123: 61.e4 (chess.com Great) Kxf2 62.e5 (chess.com Best) in a pawn race where
+        // every other move loses
+        String fen = "8/8/8/7p/7P/1K2Pp2/4kP2/8 w - - 1 61";
+        String fen1 = play(fen, "e3e4");
+        String fen2 = play(fen1, "e2f2");
+        List<PositionEval> ps = new ArrayList<>();
+        ps.add(withLines(fen, Eval.cp(-21), "e3e4", Eval.cp(-824), "b3c4"));
+        ps.add(withLines(fen1, Eval.cp(-21), "e2f2", Eval.cp(0), "e2f1"));
+        ps.add(withLines(fen2, Eval.cp(-23), "e4e5", Eval.cp(-834), "b3c3"));
+        ps.add(after(fen2, "e4e5", Eval.cp(-24)));
+        ReviewInput in = new ReviewInput(fen, List.of("e3e4", "e2f2", "e4e5"), ps, OpeningBook.NONE, 1317, 1379);
+        GameReview r = ReviewClassifier.classifyGame(in, Tuning.DEFAULT);
+        assertEquals(MoveClassification.GREAT, r.moves().get(0).label());
+        assertEquals(MoveClassification.BEST, r.moves().get(2).label());
+        assertEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT.with("greatPawnFollowUp", 0)));
+    }
+
+    @Test
     void aQuietMoveKeepingTheBalanceIsGreatWhenTheAlternativeIsAPawnWorse() {
         // live_145773198260 ply 33, 17.Qd2 (chess.com Great): the second best move is -1.29, a quiet only-move
         ReviewInput qd2 = rated(oneMove("r4rk1/pp3qpp/2pR4/2Pp2B1/3n4/8/PP2QPPP/RN4K1 w - - 0 17", "e2d2",

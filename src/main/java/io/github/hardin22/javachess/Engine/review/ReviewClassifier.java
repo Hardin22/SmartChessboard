@@ -127,6 +127,8 @@ public final class ReviewClassifier {
          * worse (picking the one safe flight square; 0 = off).
          */
         final double greatKingFlightGap;
+        /** v2.5: pushing again the passed pawn moved on the mover's previous turn is not Great (the plan goes on). */
+        final boolean greatPawnFollowUp;
         /** v1.9: no capture is Great (G-E1). */
         final boolean greatNoCapture;
         /**
@@ -234,6 +236,7 @@ public final class ReviewClassifier {
             greatQuietCpFloor = get("greatQuietCpFloor", 150);
             greatInCheckMaxEp = get("greatInCheckMaxEp", 0.90);
             greatKingFlightGap = get("greatKingFlightGap", 0.17);
+            greatPawnFollowUp = get("greatPawnFollowUp", 1) != 0;
             pieceSacrifice = get("pieceSacrifice", 1) != 0;
             outcomeLow = get("outcomeLow", 0.40);
             outcomeHigh = get("outcomeHigh", 0.60);
@@ -843,6 +846,11 @@ public final class ReviewClassifier {
                     && epBefore <= t.greatInCheckMaxEp;
         }
         boolean capture = Tactics.isCapture(b0, uci);
+        if (t.greatPawnFollowUp && !capture && i >= 2 && pushesPassedPawnAgain(b0, uci, replay.uci().get(i - 2))) {
+            // v2.5: in a pawn race the find is the first push (chess.com Great), the next pushes of the same passed pawn
+            // only carry the plan on (Best), however bad the alternatives
+            return false;
+        }
         if (capture) {
             // v2.3: players under 1500 get Great for a capture from a smaller gap
             double capGap = r < t.greatLowRating ? t.greatCaptureGapLow : t.greatCaptureGap;
@@ -880,6 +888,13 @@ public final class ReviewClassifier {
         }
         Eval alt = second.eval();
         return alt.isMateAgainst(me) || (!alt.isMate() && alt.cpFor(me) <= 150);
+    }
+
+    /** True when {@code uci} pushes a passed pawn that arrived on its square with the mover's previous move. */
+    private static boolean pushesPassedPawnAgain(Board b0, String uci, String previousOwn) {
+        Move m = Tactics.find(b0, uci);
+        return m != null && b0.getPiece(m.getFrom()).getPieceType() == PieceType.PAWN
+                && previousOwn.substring(2, 4).equals(uci.substring(0, 2)) && Tactics.isPassedPawn(b0, m.getFrom());
     }
 
     /**

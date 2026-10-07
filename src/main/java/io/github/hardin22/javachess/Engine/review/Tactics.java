@@ -330,6 +330,25 @@ final class Tactics {
         return target == Piece.NONE ? isEnPassant(b, m) : target.getPieceType() == PieceType.PAWN;
     }
 
+    /** True when the pawn on {@code sq} is passed: no enemy pawn in front of it on its own or an adjacent file. */
+    static boolean isPassedPawn(Board b, Square sq) {
+        Piece p = b.getPiece(sq);
+        if (p == Piece.NONE || p.getPieceType() != PieceType.PAWN) {
+            return false;
+        }
+        boolean white = p.getPieceSide() == Side.WHITE;
+        Piece enemy = white ? Piece.BLACK_PAWN : Piece.WHITE_PAWN;
+        int file = sq.getFile().ordinal();
+        int rank = sq.getRank().ordinal();
+        for (Square s : b.getPieceLocation(enemy)) {
+            int ahead = s.getRank().ordinal() - rank;
+            if (Math.abs(s.getFile().ordinal() - file) <= 1 && (white ? ahead > 0 : ahead < 0)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /** True when the move (UCI) captures something, en passant included. */
     static boolean isCapture(Board b, String uci) {
         Move m = find(b, uci);
