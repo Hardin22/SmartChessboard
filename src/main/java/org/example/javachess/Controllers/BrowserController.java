@@ -139,6 +139,21 @@ public class BrowserController implements NavigationAware {
                     CefMessageRouter msgRouter = CefMessageRouter.create();
                     cefClient.addMessageRouter(msgRouter);
 
+                    // Network errors (no connection, DNS, site down) are shown in the header bar.
+                    cefClient.addLoadHandler(new org.cef.handler.CefLoadHandlerAdapter() {
+                        @Override
+                        public void onLoadError(CefBrowser browser, org.cef.browser.CefFrame frame,
+                                                org.cef.handler.CefLoadHandler.ErrorCode errorCode, String errorText,
+                                                String failedUrl) {
+                            if (frame != null && frame.isMain()
+                                    && errorCode != org.cef.handler.CefLoadHandler.ErrorCode.ERR_ABORTED) {
+                                log.warn("Page load failed ({}): {}", errorCode, failedUrl);
+                                updateStatus("PAGINA NON RAGGIUNGIBILE: controlla la connessione (" + errorText + ")",
+                                        java.awt.Color.RED);
+                            }
+                        }
+                    });
+
                     // No credential auto-fill: passwords are not stored (see ConfigManager). The user logs in once
                     // in this browser and the session is kept in the persistent JCEF cache (~/.javachess/jcef-cache).
 
@@ -170,9 +185,19 @@ public class BrowserController implements NavigationAware {
                     isInitializing = false;
                 });
 
-            } catch (Exception e) {
-                log.error("Unexpected error", e);
+            } catch (Throwable e) {
+                // Missing native bundle, no network for the first download, unsupported platform...
+                log.error("Cannot start the integrated browser", e);
                 isInitializing = false;
+                org.example.javachess.Utils.ErrorReporter.showError("Browser",
+                        "Impossibile avviare il browser integrato: "
+                                + org.example.javachess.Utils.ErrorReporter.userMessage(e)
+                                + "\nAl primo avvio serve Internet per scaricare il browser (~150 MB).");
+                Platform.runLater(() -> {
+                    if (mainController != null) {
+                        mainController.navigateTo("HOME");
+                    }
+                });
             }
         }).start();
     }

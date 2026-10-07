@@ -88,7 +88,8 @@ Flash [`arduinoscript.ino`](arduinoscript.ino) with the Arduino IDE (library: *A
 | app → Arduino | `P:E4:R:G:B`, then `S` | Prepare several LEDs, then show them together |
 | app → Arduino | `C` | Turn every LED off |
 
-Without the board connected the app still works: moves are made on screen.
+Without the board connected the app still starts and works on screen; for development a simulated board is
+available (`-Djavachess.board=sim -Djavachess.simulator.window=true`).
 
 ## Installation
 
@@ -159,7 +160,9 @@ Most settings are changed from the *Settings* screen. Useful keys:
 
 ### Lichess
 
-Create a personal API token with the **`board:play`** scope at
+Use *Settings → Lichess → Connect account*: the app opens the Lichess authorization page (OAuth with PKCE, no
+password involved) and stores the resulting token. Alternatively, create a personal API token with the
+**`board:play`** scope at
 <https://lichess.org/account/oauth/token/create?scopes[]=board:play&description=javaChess> and paste it in
 *Settings → Lichess*. It is stored only in `~/.javachess/config.properties` (owner-only permissions) and never logged.
 For development you can also export `JAVACHESS_LICHESS_TOKEN`. The Board API only allows rapid and classical time
@@ -189,6 +192,7 @@ scripts/dev-run.sh -Djavachess.screen=1 -Djavachess.snapshot=/tmp/home.png -Djav
 | `-Djavachess.home=DIR` | Use another data folder (handy to test the first-start migration) |
 | `-Djavachess.log.level=DEBUG` | More logging |
 | `-Djavachess.vision.debug=true` | Write annotated vision frames to `~/.javachess/vision-debug/` |
+| `-Djavachess.board=sim` | Simulated sensor board (add `-Djavachess.simulator.window=true` to show it) |
 
 ### Architecture
 

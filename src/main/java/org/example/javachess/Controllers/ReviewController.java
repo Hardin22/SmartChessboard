@@ -165,36 +165,51 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         progressContainer.setVisible(true);
         progressContainer.setManaged(true);
 
-        GameAnalyzer analyzer = new GameAnalyzer();
+        String pgnToAnalyze = currentPgn;
+        Thread analysisThread = new Thread(() -> {
+            try {
+                // Built here, not on the FX thread: starting the engine blocks until it answers.
+                GameAnalyzer analyzer = new GameAnalyzer();
+                List<MoveAnalysis> analysis = analyzer.analyzeGame(pgnToAnalyze, analysisDepth, progress -> {
+                    Platform.runLater(() -> analysisProgressIndicator.setProgress(progress));
+                });
 
-        new Thread(() -> {
-            List<MoveAnalysis> analysis = analyzer.analyzeGame(currentPgn, analysisDepth, progress -> {
-                Platform.runLater(() -> analysisProgressIndicator.setProgress(progress));
-            });
+                double whiteAccuracy = analyzer.calculateAccuracy(analysis, true);
+                double blackAccuracy = analyzer.calculateAccuracy(analysis, false);
 
-            double whiteAccuracy = analyzer.calculateAccuracy(analysis, true);
-            double blackAccuracy = analyzer.calculateAccuracy(analysis, false);
+                Platform.runLater(() -> {
+                    this.currentAnalysis = analysis;
+                    progressContainer.setVisible(false);
+                    progressContainer.setManaged(false);
+                    graphContainer.setVisible(true);
+                    graphContainer.setManaged(true);
+                    accuracyWrapper.setVisible(true);
+                    accuracyWrapper.setManaged(true);
+                    accuracyContainer.setVisible(true);
+                    accuracyContainer.setManaged(true);
 
-            Platform.runLater(() -> {
-                this.currentAnalysis = analysis;
-                progressContainer.setVisible(false);
-                progressContainer.setManaged(false);
-                graphContainer.setVisible(true);
-                graphContainer.setManaged(true);
-                accuracyWrapper.setVisible(true);
-                accuracyWrapper.setManaged(true);
-                accuracyContainer.setVisible(true);
-                accuracyContainer.setManaged(true);
+                    whiteAccuracyLabel.setText(String.format("%.1f", whiteAccuracy));
+                    blackAccuracyLabel.setText(String.format("%.1f", blackAccuracy));
 
-                whiteAccuracyLabel.setText(String.format("%.1f", whiteAccuracy));
-                blackAccuracyLabel.setText(String.format("%.1f", blackAccuracy));
+                    updateBreakdownStats(analysis);
 
-                updateBreakdownStats(analysis);
-
-                evaluationGraph.setData(analysis);
-                analyzeButton.setDisable(false);
-            });
-        }).start();
+                    evaluationGraph.setData(analysis);
+                    analyzeButton.setDisable(false);
+                });
+            } catch (RuntimeException | Error e) {
+                org.slf4j.LoggerFactory.getLogger(ReviewController.class).error("Game analysis failed", e);
+                Platform.runLater(() -> {
+                    progressContainer.setVisible(false);
+                    progressContainer.setManaged(false);
+                    analyzeButton.setDisable(false);
+                });
+                org.example.javachess.Utils.ErrorReporter.showError("Analisi",
+                        "Analisi non riuscita: " + org.example.javachess.Utils.ErrorReporter.userMessage(e)
+                                + "\nControlla che Stockfish sia installato (Impostazioni).");
+            }
+        }, "game-analysis");
+        analysisThread.setDaemon(true);
+        analysisThread.start();
     }
 
     @FXML
