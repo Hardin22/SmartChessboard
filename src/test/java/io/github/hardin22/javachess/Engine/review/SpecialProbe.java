@@ -60,7 +60,44 @@ public final class SpecialProbe {
         o.put("sac_value", String.valueOf(sac.value()));
         o.put("sac_regain", String.valueOf(sac.regain()));
         o.put("rule", rule(m.label(), t, top, epB, epA, alt, me, k, sac, gap, oppLoss));
+        // context for the twin finder (cv.py twins)
+        o.put("piece", mv == null ? "" : b0.getPiece(mv.getFrom()).getPieceType().name().toLowerCase(java.util.Locale.ROOT));
+        o.put("gives_check", String.valueOf(b1.isKingAttacked()));
+        o.put("gives_mate", String.valueOf(m.after().isMateFor(me)));
+        boolean recapture = false;
+        if (i > 0 && mv != null) {
+            MoveReview prev = r.moves().get(i - 1);
+            Board bp = new Board();
+            bp.loadFromFen(prev.fenBefore());
+            recapture = prev.uci().substring(2, 4).equals(m.uci().substring(2, 4))
+                    && Tactics.isCapture(bp, prev.uci());
+        }
+        o.put("recapture", String.valueOf(recapture));
+        o.put("after_book", String.valueOf(i > 0 && r.moves().get(i - 1).label() == MoveClassification.BOOK_MOVE));
+        o.put("nonpawn_material", String.valueOf(nonPawn(b0)));
+        o.put("rating", String.valueOf(me ? in.whiteRating() : in.blackRating()));
+        o.put("k", String.format(java.util.Locale.ROOT, "%.6f", k));
         return o;
+    }
+
+    /** Queens, rooks and minor pieces of both sides, in pawns (game phase). */
+    private static int nonPawn(Board b) {
+        int n = 0;
+        for (com.github.bhlangonijr.chesslib.Square sq : com.github.bhlangonijr.chesslib.Square.values()) {
+            if (sq == com.github.bhlangonijr.chesslib.Square.NONE) {
+                continue;
+            }
+            com.github.bhlangonijr.chesslib.Piece p = b.getPiece(sq);
+            if (p != com.github.bhlangonijr.chesslib.Piece.NONE && p.getPieceType() != null) {
+                switch (p.getPieceType()) {
+                    case QUEEN -> n += 9;
+                    case ROOK -> n += 5;
+                    case BISHOP, KNIGHT -> n += 3;
+                    default -> { }
+                }
+            }
+        }
+        return n;
     }
 
     private static String rule(MoveClassification label, ReviewClassifier.Tuning t, boolean top, double epB, double epA,

@@ -25,6 +25,7 @@ import argparse
 import csv
 import hashlib
 import itertools
+import math
 import json
 import os
 import subprocess
@@ -63,7 +64,7 @@ def classpath():
 
 
 def run_java(cp, knobs, out, budget, mode, dataset, dump, labels=None, games=None, folds=None, explain=False,
-             recheck=None):
+             recheck=None, features=False):
     cmd = ["java", "-Xss8m"] + [f"-Djavachess.review.{k}={v}" for k, v in sorted(knobs.items())]
     cmd += ["-cp", cp, "io.github.hardin22.javachess.review.ReviewCv", "--out", str(out), "--budget", budget,
             "--mode", mode, "--set", dataset, "--dump", str(dump), "--labels", str(labels or LABELS_DIR)]
@@ -75,6 +76,8 @@ def run_java(cp, knobs, out, budget, mode, dataset, dump, labels=None, games=Non
         cmd += ["--explain", "true"]
     if recheck:
         cmd += ["--recheck", recheck]
+    if features:
+        cmd += ["--features", "true"]
     r = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(f"ReviewCv failed for {knobs}:\n{r.stdout[-2000:]}\n{r.stderr[-4000:]}")
@@ -731,9 +734,233 @@ def cmd_prcurve(a):
     print(text)
 
 
+def mover_ep(e, white, k):
+    """Win chance of the mover for a dump eval string (White POV: 'cp:-45', 'W#3', 'B#0')."""
+    if e.startswith("cp:"):
+        cp = int(e[3:]) * (1 if white else -1)
+        return 1 / (1 + math.exp(-k * cp))
+    return 1.0 if (e[0] == "W") == white else 0.0
+
+
+def sf16_gap(oracle_dir, gid, ply, white, k):
+    f = oracle_dir / f"{gid}_{ply}.json"
+    if not f.exists():
+        return None
+    o = json.loads(f.read_text()).get("sf16_d22", {})
+    lines = o.get("lines") or []
+    if len(lines) < 2:
+        return None
+    return mover_ep(lines[0]["e"], white, k) - mover_ep(lines[1]["e"], white, k)
+
+
+def cmd_twins(a):
+    """For every open Brilliant/Great error of the Phase 4 baseline, the most similar ply with the opposite chess.com
+    label in the same rule branch (same label of ours, labelled correctly, same top-move / in-check status)."""
+    if not a.no_build:
+        subprocess.run([str(REPO / "mvnw"), "-q", "test-compile"], cwd=REPO, check=True)
+    cp = classpath()
+    root = REPO / "target" / "cv" / "twins"
+    nofolds = root / "nofolds.json"
+    root.mkdir(parents=True, exist_ok=True)
+    nofolds.write_text('{"folds": {}}')
+    run_java(cp, {}, root / "labelled", "lite-block", "product", "all", a.dump, labels=DATA / REFS["sf22"],
+             features=True)
+    run_java(cp, {}, root / "famous", "lite", "product", "all", DATA / "evals_famous", labels=DATA / "famous_chesscom",
+             games=DATA / "famous", folds=nofolds, features=True)
+    rows = read_tsv(root / "labelled" / "specials.tsv") + read_tsv(root / "famous" / "specials.tsv")
+    by = {(r["game"], r["ply"]): r for r in rows}
+    oracle = Path.home() / ".javachess-orchestrator/review-team/notes/special/oracle"
+    shards = {}
+    sj = Path.home() / ".javachess-orchestrator/review-team/notes/special/shards.json"
+    if sj.exists():
+        for k, ids in json.loads(sj.read_text())["shards"].items():
+            shards.update({i: k for i in ids})
+
+    def feat(r):
+        white = r["color"] == "w"
+        k = float(r["k"])
+        g16 = sf16_gap(oracle, r["game"], r["ply"], white, k)
+        return {"gap19": float(r["gap"]) if r["gap"] else None, "gap16": g16, "epB": float(r["epB"]),
+                "rating": int(r["rating"]), "capture": r["capture"], "check": r["gives_check"],
+                "mate": r["gives_mate"], "recapture": r["recapture"], "piece": r["piece"],
+                "after_book": r["after_book"], "nonpawn": int(r["nonpawn_material"]), "in_check": r["in_check"]}
+
+    def dist_(f, g):
+        d = 0.0
+        if f["gap19"] is not None and g["gap19"] is not None:
+            d += ((f["gap19"] - g["gap19"]) / 0.05) ** 2
+        if f["gap16"] is not None and g["gap16"] is not None:
+            d += ((f["gap16"] - g["gap16"]) / 0.05) ** 2
+        d += ((f["epB"] - g["epB"]) / 0.10) ** 2
+        if f["rating"] and g["rating"]:
+            d += ((f["rating"] - g["rating"]) / 500) ** 2
+        elif bool(f["rating"]) != bool(g["rating"]):
+            d += 1
+        for b in ("capture", "check", "mate", "recapture", "after_book"):
+            d += 1.0 if f[b] != g[b] else 0.0
+        d += 0.5 if f["piece"] != g["piece"] else 0.0
+        d += ((f["nonpawn"] - g["nonpawn"]) / 20) ** 2
+        return math.sqrt(d)
+
+    base = [l.split("\t") for l in (REPO / "src/test/resources/review/special-baseline.tsv").read_text().splitlines()
+            if l and not l.startswith("#") and not l.startswith("id\t")]
+    feats = {k: feat(r) for k, r in by.items()}
+    out = []
+    for gid, ply, kind, *_ in base:
+        r = by.get((gid, ply))
+        if r is None:
+            continue
+        f = feats[(gid, ply)]
+        # same rule branch: our label and top-move / in-check status; the twin is labelled correctly by us, so its
+        # chess.com label is the opposite of this error's
+        pool = [(dist_(f, feats[k]), k) for k, x in by.items()
+                if x["ours"] == r["ours"] and x["cc"] == x["ours"] and x["is_top"] == r["is_top"]
+                and x["in_check"] == r["in_check"] and k[0] != gid]
+        pool.sort()
+        if not pool:
+            continue
+        d, tk = pool[0]
+        t, g = by[tk], feats[tk]
+        fmt = lambda v: "" if v is None else (f"{v:.3f}" if isinstance(v, float) else str(v))
+        row = {"shard": shards.get(gid, ""), "id": gid, "ply": ply, "san": r["san"], "kind": kind, "ours": r["ours"],
+               "chesscom": r["cc"], "twin_id": tk[0], "twin_ply": tk[1], "twin_san": t["san"],
+               "twin_ours": t["ours"], "twin_chesscom": t["cc"], "distance": f"{d:.2f}",
+               "second_twin": f"{pool[1][1][0]}:{pool[1][1][1]} ({pool[1][0]:.2f})" if len(pool) > 1 else "",
+               "twins_within_1": sum(1 for x, _ in pool if x <= 1.0)}
+        for key in ("gap19", "gap16", "epB", "rating", "capture", "check", "mate", "recapture", "piece", "after_book",
+                    "nonpawn"):
+            row[key] = f"{fmt(f[key])} / {fmt(g[key])}"
+        out.append(row)
+    dest = Path(a.twins_out)
+    with open(dest, "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(out[0].keys()), delimiter="\t")
+        w.writeheader()
+        w.writerows(out)
+    if a.request_oracle:
+        req = oracle / "requests.tsv"
+        asked = {tuple(l.split("\t")[1:3]) for l in req.read_text().splitlines()[1:]} if req.exists() else set()
+        new = [(r["twin_id"], r["twin_ply"]) for r in out
+               if not (oracle / f"{r['twin_id']}_{r['twin_ply']}.json").exists()
+               and (r["twin_id"], r["twin_ply"]) not in asked]
+        new = list(dict.fromkeys(new))
+        with open(req, "a") as fh:
+            for gid, ply in new:
+                fh.write(f"{shards.get(gid, '')}\t{gid}\t{ply}\n")
+        print(f"asked the oracle for SF16 d22 on {len(new)} twin positions ({req})")
+    close = sum(1 for r in out if float(r["distance"]) <= 1.0)
+    print(f"{len(out)} baseline errors with a twin -> {dest}; {close} with a twin at distance <= 1 "
+          f"(feature columns: error / twin)")
+
+
+def ep_class(ep):
+    return "losing" if ep < 0.40 else "winning" if ep > 0.60 else "equal"
+
+
+def cmd_greatlists(a):
+    """Main-metric lists (user 23:00): every chess.com Great we do not give (GREAT_FN_1000.tsv) and every Great of ours
+    chess.com does not give (GREAT_FP_1000.tsv) on moves of players rated 1000+ (unrated famous games at 2500), all 177
+    games, with our Lite lines, SF16 d22 (oracle), the label on SF16's lines (Sf16SwapProbe) and the numbers."""
+    if not a.no_build:
+        subprocess.run([str(REPO / "mvnw"), "-q", "test-compile"], cwd=REPO, check=True)
+    cp = classpath()
+    root = REPO / "target" / "cv" / "greatlists"
+    nofolds = root / "nofolds.json"
+    root.mkdir(parents=True, exist_ok=True)
+    nofolds.write_text('{"folds": {}}')
+    run_java(cp, {}, root / "labelled", "lite-block", "product", "all", a.dump, labels=DATA / REFS["sf22"],
+             features=True)
+    run_java(cp, {}, root / "famous", "lite", "product", "all", DATA / "evals_famous", labels=DATA / "famous_chesscom",
+             games=DATA / "famous", folds=nofolds, features=True)
+    sets = {}
+    folds = json.loads((Path(a.dump) / "folds.json").read_text())
+    for g in folds["folds"]:
+        sets[g] = "cv93"
+    for g in folds.get("holdout", []):
+        sets[g] = "ex-holdout49"
+    kinds = {f.stem: "famous-" + json.loads(f.read_text()).get("kind", "") for f in (DATA / "famous_chesscom").glob("*.json")}
+    rows = read_tsv(root / "labelled" / "specials.tsv") + read_tsv(root / "famous" / "specials.tsv")
+    oracle = Path.home() / ".javachess-orchestrator/review-team/notes/special/oracle"
+    shards = {}
+    for k, ids in json.loads((Path.home() / ".javachess-orchestrator/review-team/notes/special/shards.json")
+                             .read_text())["shards"].items():
+        shards.update({i: k for i in ids})
+    eff = lambda r: int(r["rating"]) if int(r["rating"]) > 0 else 2500
+    fn = [r for r in rows if eff(r) >= 1000 and r["cc"] == "great" and r["ours"] != "great"]
+    fp = [r for r in rows if eff(r) >= 1000 and r["ours"] == "great" and r["cc"] != "great"]
+    # the label our rules give with SF16 d22's lines in place of ours
+    keys = ",".join(f"{r['game']}:{r['ply']}" for r in fn + fp)
+    subprocess.run([str(REPO / "mvnw"), "-q", "test", "-DskipE2E=true", "-Dtest=Sf16SwapProbe", "-Dreview.swap=true",
+                    f"-Dreview.swap.keys={keys}"], cwd=REPO, capture_output=True, text=True)
+    swap = {}
+    sw = REPO / "target/special/sf16swap.tsv"
+    if sw.exists():
+        for l in sw.read_text().splitlines()[1:]:
+            c = l.split("\t")
+            if len(c) > 6:
+                swap[(c[0], c[1])] = c[6]
+
+    def sf16(r):
+        f = oracle / f"{r['game']}_{r['ply']}.json"
+        if not f.exists():
+            return "", "", ""
+        o = json.loads(f.read_text()).get("sf16_d22", {})
+        ls = o.get("lines") or []
+        best = f"{ls[0]['move']} {ls[0]['e']}" if ls else ""
+        second = f"{ls[1]['move']} {ls[1]['e']}" if len(ls) > 1 else ""
+        return best, second, str(o.get("rank", ""))
+
+    def why_not(r):
+        """First failed gate of the Great rule, read from the numbers (validator diagnosis, not the code path)."""
+        if r["ours"] == "brilliant":
+            return "Brilliant instead"
+        if r["is_top"] != "true":
+            return f"not our top move (our best {r['best']}), base label {r['ours']}"
+        if r["after_book"] == "true":
+            return "right after a book position (G-E4)"
+        if not r["second"]:
+            return "no second line (needsSecondLine did not ask)"
+        w = r["color"] == "w"
+        b, s2 = pawns(r["eval_before"], w), pawns(r["second_eval"], w)
+        cpg = "" if b is None or s2 is None else f", cp gap {round(100 * (b - s2))}"
+        epb, gap = float(r["epB"]), float(r["gap"] or 0)
+        ctx = [x for x, f in (("capture", r["capture"]), ("recapture", r["recapture"]), ("in check", r["in_check"]),
+                              ("check", r["gives_check"])) if f == "true"]
+        return (f"gap {gap:.3f}{cpg}, class {ep_class(epb)}→{ep_class(epb - gap)}"
+                + (f" ({', '.join(ctx)})" if ctx else ""))
+
+    # evals as in the dumps: White's point of view (pawns for Lite, "cp:"/"W#"/"B#" for SF16)
+    cols = ["shard", "set", "id", "ply", "san", "uci", "rating", "fen_before", "ours", "chesscom", "lite_best",
+            "lite_second", "sf16_best", "sf16_second", "sf16_rank_played", "label_on_sf16_lines", "epB", "epA",
+            "gap", "why"]
+
+    def row(r, why):
+        b16, s16, rk = sf16(r)
+        return {"shard": shards.get(r["game"], ""), "set": sets.get(r["game"], kinds.get(r["game"], "")),
+                "id": r["game"], "ply": r["ply"], "san": r["san"], "uci": r["uci"], "rating": eff(r),
+                "fen_before": r["fen_before"], "ours": r["ours"], "chesscom": r["cc"],
+                "lite_best": f"{r['best']} {r['eval_before']}", "lite_second":
+                f"{r['second']} {r['second_eval']}".strip(), "sf16_best": b16, "sf16_second": s16,
+                "sf16_rank_played": rk, "label_on_sf16_lines": swap.get((r["game"], r["ply"]), ""),
+                "epB": r["epB"], "epA": r["epA"], "gap": r["gap"], "why": why}
+
+    out = Path.home() / ".javachess-orchestrator/review-team/notes/special"
+    for name, lst, extra in (("GREAT_FN_1000.tsv", fn, None), ("GREAT_FP_1000.tsv", fp, "giudizio")):
+        with open(out / name, "w", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=cols + ([extra] if extra else []), delimiter="\t")
+            w.writeheader()
+            for r in sorted(lst, key=lambda r: (shards.get(r["game"], ""), r["game"], int(r["ply"]))):
+                # for a FP the same numbers the Great branches read (the probe's rule text predates the v2.x branches)
+                d = row(r, why_not(r) if extra is None else "fired with " + why_not(dict(r, ours="great")))
+                if extra:
+                    d[extra] = ""
+                w.writerow(d)
+    print(f"GREAT_FN_1000.tsv {len(fn)} rows, GREAT_FP_1000.tsv {len(fp)} rows -> {out} "
+          f"(SF16 swap labels for {len(swap)} plies)")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", nargs="?", default="cv", choices=["cv", "stability", "ceiling", "noise", "refs", "fplist", "prcurve"])
+    ap.add_argument("command", nargs="?", default="cv", choices=["cv", "stability", "ceiling", "noise", "refs", "fplist", "prcurve", "twins", "greatlists"])
     ap.add_argument("a", nargs="?", help="stability: first budget")
     ap.add_argument("b", nargs="?", help="stability: second budget")
     ap.add_argument("--dump", default=str(DATA / "evals_labeled"))
@@ -754,6 +981,8 @@ def main():
                     "the --deep dump: 'second' = deep second line when the deep best move is ours, 'full' = deep eval")
     ap.add_argument("--evals", help="engine dump for every set: CV/hold-out <dump>/<evals>, famous and Chessigma "
                     "evals_famous/<evals>, evals_chessigma/<evals> (e.g. sf16-lite); default --budget and 'lite'")
+    ap.add_argument("--request-oracle", action="store_true", help="twins: queue the twins' positions to the oracle")
+    ap.add_argument("--twins-out", default=str(Path.home() / ".javachess-orchestrator/review-team/notes/special/TWINS.tsv"))
     ap.add_argument("--variants", help="prcurve: JSON list of {name, knobs: {...}, recheck} or a knob grid")
     ap.add_argument("--holdout", action="store_true")
     ap.add_argument("--final", action="store_true")
@@ -765,7 +994,7 @@ def main():
     global LABELS_DIR, FOLDS
     LABELS_DIR = DATA / REFS[a.ref]
     FOLDS = a.folds
-    {"stability": cmd_stability, "ceiling": cmd_ceiling, "noise": cmd_noise, "refs": cmd_refs, "fplist": cmd_fplist, "prcurve": cmd_prcurve}.get(a.command, cmd_cv)(a)
+    {"stability": cmd_stability, "ceiling": cmd_ceiling, "noise": cmd_noise, "refs": cmd_refs, "fplist": cmd_fplist, "prcurve": cmd_prcurve, "twins": cmd_twins, "greatlists": cmd_greatlists}.get(a.command, cmd_cv)(a)
 
 
 if __name__ == "__main__":
