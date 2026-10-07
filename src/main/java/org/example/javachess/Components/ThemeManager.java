@@ -234,6 +234,17 @@ public final class ThemeManager {
         return p.exitValue() == 0 ? sb.toString() : "";
     }
 
+    /** Gives a dialog (Alert) the app stylesheet and the current theme: dialogs live in their own window. */
+    public static void styleDialog(javafx.scene.control.DialogPane pane) {
+        loadFonts();
+        String css = ThemeManager.class.getResource(STYLESHEET).toExternalForm();
+        if (!pane.getStylesheets().contains(css)) {
+            pane.getStylesheets().add(css);
+        }
+        pane.getStyleClass().removeAll("theme-dark", "theme-light");
+        pane.getStyleClass().add(INSTANCE.isDark() ? "theme-dark" : "theme-light");
+    }
+
     /** Colours for canvas drawing; keep in sync with the tokens in Style.css. */
     public Palette palette() {
         return dark.get() ? Palette.DARK : Palette.LIGHT;

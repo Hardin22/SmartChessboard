@@ -41,6 +41,15 @@ final class DevDemos {
         game.startPvP(10, 5);
         List<String> moves = Arrays.asList(System.getProperty("javachess.demo.moves", DEFAULT_MOVES).trim().split("\\s+"));
         game.devPlayMoves(moves, 120);
+        if (Boolean.getBoolean("javachess.demo.overlay")) {
+            javafx.animation.PauseTransition later = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(3));
+            later.setOnFinished(e -> {
+                if (main.getMainContainer().lookup(".chess-board") instanceof org.example.javachess.Oggetti.ChessBoardUI b) {
+                    b.showVictoryAnimation("SCACCO MATTO", "IL BIANCO VINCE");
+                }
+            });
+            later.play();
+        }
         String sheet = System.getProperty("javachess.demo.sheet");
         if (sheet != null) {
             // Open the sheet once the moves are in, through the same buttons a user would tap.

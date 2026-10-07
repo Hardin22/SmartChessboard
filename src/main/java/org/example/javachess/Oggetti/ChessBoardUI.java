@@ -458,9 +458,9 @@ public class ChessBoardUI extends StackPane {
     /** Light-weight end-of-game card over the board (no blur or glow: cheap with software rendering). */
     public void showVictoryAnimation(String title, String subtitle) {
         overlayPane.getChildren().clear();
-        Label titleLabel = new Label(title);
+        Label titleLabel = new Label(sentenceCase(title));
         titleLabel.getStyleClass().add("board-overlay-title");
-        Label subLabel = new Label(subtitle);
+        Label subLabel = new Label(sentenceCase(subtitle));
         subLabel.getStyleClass().add("board-overlay-subtitle");
         VBox card = new VBox(6, titleLabel, subLabel);
         card.setAlignment(Pos.CENTER);
@@ -475,6 +475,15 @@ public class ChessBoardUI extends StackPane {
         fade.setFromValue(0);
         fade.setToValue(1);
         fade.play();
+    }
+
+    /** Game messages arrive in capitals ("SCACCO MATTO"): show them in sentence case. */
+    private static String sentenceCase(String s) {
+        if (s == null || s.length() < 2 || !s.equals(s.toUpperCase())) {
+            return s;
+        }
+        String lower = s.toLowerCase();
+        return Character.toUpperCase(lower.charAt(0)) + lower.substring(1);
     }
 
     public Board getBoard() {

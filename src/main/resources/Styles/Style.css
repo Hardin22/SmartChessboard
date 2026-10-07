@@ -1354,3 +1354,46 @@
     -fx-border-width: 1;
     -fx-border-insets: -1;
 }
+
+/* ------------------------------------------------------------------ dialogs (ErrorReporter alerts) */
+
+.dialog-pane {
+    -fx-background-color: -color-surface;
+    -fx-font-family: "Geist";
+    -fx-min-width: 420px;
+}
+
+.dialog-pane > .header-panel {
+    -fx-background-color: -color-surface;
+    -fx-border-color: transparent transparent -color-border transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 20 24 16 24;
+}
+
+.dialog-pane > .header-panel .label {
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 18px;
+    -fx-text-fill: -color-fg-strong;
+}
+
+.dialog-pane > .content.label {
+    -fx-font-size: 15px;
+    -fx-text-fill: -color-fg;
+    -fx-padding: 16 24;
+    -fx-wrap-text: true;
+}
+
+.dialog-pane > .button-bar > .container {
+    -fx-padding: 8 24 20 24;
+}
+
+.dialog-pane .button {
+    -fx-background-color: -color-fg;
+    -fx-text-fill: -color-inverse-fg;
+    -fx-background-radius: 8;
+    -fx-background-insets: 0;
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 15px;
+    -fx-min-height: 48px;
+    -fx-min-width: 120px;
+}
