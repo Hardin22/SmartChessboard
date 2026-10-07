@@ -473,6 +473,16 @@ class BrilliantGreatExclusionsTest {
         assertEquals(MoveClassification.GREAT, label(bg6, Tuning.DEFAULT.with("greatKickedBishop", 0)));
     }
 
+    @Test
+    void bE9GivingUpTheLastPieceForAPawnEndingIsNotBrilliant() {
+        // live_174388155128 ply 119, 60.Nxf4 Kxf4 and the king and pawn ending is won (chess.com Best; SF16 d22 has
+        // Nb4, Ne1, Nc1, Nc5 and Nxf4 within 9 cp)
+        ReviewInput nxf4 = rated(oneMove("8/8/8/8/4kp2/p2N4/K4P1P/8 w - - 11 60", "d3f4", Eval.cp(658), "d3e1",
+                Eval.cp(640), "d3c1", Eval.cp(557)), 2009, 1982);
+        assertNotEquals(MoveClassification.BRILLIANT, label(nxf4, Tuning.DEFAULT));
+        assertEquals(MoveClassification.BRILLIANT, label(nxf4, Tuning.DEFAULT.with("brilliantNoLiquidation", 0)));
+    }
+
     private static ReviewInput rated(ReviewInput in, int white, int black) {
         return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
     }

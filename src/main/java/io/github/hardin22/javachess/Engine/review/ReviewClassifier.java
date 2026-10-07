@@ -101,6 +101,11 @@ public final class ReviewClassifier {
          * moved piece and the played line wins back at most {@link #brilliantTopRegain} pawns within 6 plies.
          */
         final boolean brilliantTopException;
+        /**
+         * Phase 4 B-E9: giving up the last piece on the board for a king and pawn ending is liquidation (counting the
+         * pawn race), not Brilliant.
+         */
+        final boolean brilliantNoLiquidation;
         final double brilliantTopRegain;
         /** v2.3 R9: a quiet move starting a forced mate is Great when the alternative does not win. */
         final boolean greatStartsMate;
@@ -243,6 +248,7 @@ public final class ReviewClassifier {
             greatPunishMinEp = get("greatPunishMinEp", 0.60);
             greatPunishCaptureLoss = get("greatPunishCaptureLoss", 0.20);
             brilliantTopException = get("brilliantTopException", 1) != 0;
+            brilliantNoLiquidation = get("brilliantNoLiquidation", 1) != 0;
             brilliantTopRegain = get("brilliantTopRegain", 1);
             greatInCheckGap = get("greatInCheckGap", 0.10);
             greatLowRating = get("greatLowRating", 1500);
@@ -1104,7 +1110,25 @@ public final class ReviewClassifier {
         if (sac.value() < t.sacMin) {
             return false; // B-E1: nothing new is offered
         }
+        if (t.brilliantNoLiquidation && lastPieceOnTheBoard(b0, m)) {
+            // B-E9: live_174388155128 60.Nxf4 (+6.6) Kxf4 and the king and pawn ending is won: chess.com Best
+            return false;
+        }
         return sac.regain() < 0 || sac.regain() < sac.offered() + t.fakeRegain; // B-E4
+    }
+
+    /** True when, after move {@code m}, the moved piece is the only piece (not pawn, not king) on the board. */
+    private static boolean lastPieceOnTheBoard(Board b0, Move m) {
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        for (Square sq : Square.values()) {
+            Piece p = sq == Square.NONE ? Piece.NONE : b1.getPiece(sq);
+            if (p != Piece.NONE && sq != m.getTo() && p.getPieceType() != PieceType.PAWN
+                    && p.getPieceType() != PieceType.KING) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
