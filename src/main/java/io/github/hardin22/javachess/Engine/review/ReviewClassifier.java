@@ -38,9 +38,11 @@ public final class ReviewClassifier {
     /** Great: the second best move loses at least this much win chance. */
     static final double GREAT_GAP = 0.10;
     /** Miss: the opponent's previous move lost at least this much. */
-    static final double MISS_OPPONENT_LOSS = 0.10;
+    static final double MISS_OPPONENT_LOSS = tuning("missOpponentLoss", 0.10);
     /** Miss: the mover ends no worse than before the opponent's error, within this tolerance. */
-    static final double MISS_NO_WORSE = 0.05;
+    static final double MISS_NO_WORSE = tuning("missNoWorse", 0.10);
+    /** From this win chance loss a move is a Blunder even without losing material (chess.com labels: 43 games). */
+    static final double BLUNDER_ANYWAY_LOSS = tuning("blunderAnyway", 0.30);
     /** A Blunder must lose at least this much material (pawns) along the line, or allow mate. */
     static final int BLUNDER_MATERIAL = (int) tuning("blunderMaterial", 2);
     /** MultiPV 2 is only worth it in this win chance range (outside, no Great/Brilliant is possible). */
@@ -273,7 +275,8 @@ public final class ReviewClassifier {
                             epBefore[i]);
                     if (!gives && missOpportunity(i, pos, played, epBefore, epAfter, me)) {
                         label = MoveClassification.MISS;
-                    } else if (label == MoveClassification.BLUNDER && !gives) {
+                    } else if (label == MoveClassification.BLUNDER && !gives
+                            && epBefore[i] - epAfter[i] < BLUNDER_ANYWAY_LOSS) {
                         label = MoveClassification.MISTAKE;
                     }
                 }
