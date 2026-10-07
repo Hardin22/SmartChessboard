@@ -1,6 +1,6 @@
 # Brilliant/Great errors accepted today by SpecialLabelsGateTest (Phase 4). It only shrinks: regenerate
 # (-Dreview.special.regen=true) after fixing errors. Allowlisted exceptions are not repeated here.
-# exact 0.6854 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
+# exact 0.6857 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
 id	ply	kind	set	san	ours	chesscom
 daily_1009092152	36	fn-great	cv93	Qxe1	best	great
 daily_1011205894	10	fn-great	cv93	Qxd1+	best	great
@@ -83,7 +83,6 @@ live_174392911096	39	fn-great	ex-holdout49	g5	best	great
 live_174392911096	65	fn-great	ex-holdout49	Nd3	best	great
 live_174521739268	51	fn-great	ex-holdout49	Nc7+	best	great
 live_174521739268	61	fn-great	ex-holdout49	Kf2	best	great
-live_183990190310	9	fp-great	ex-holdout49	Nxe4	great	best
 live_183990190310	20	fn-great	ex-holdout49	Bxe2	best	great
 live_183990190310	39	fn-great	ex-holdout49	Nxd6	best	great
 live_184000796490	40	fn-great	cv93	hxg6	best	great
@@ -110,10 +109,8 @@ live_184440015284	60	fn-great	ex-holdout49	hxg6	best	great
 live_184440015284	71	fn-great	ex-holdout49	Qd8+	best	great
 live_184440015284	105	fn-great	ex-holdout49	Kxd3	best	great
 live_184566976354	12	fn-great	cv93	b5	best	great
-live_184566976354	94	fp-great	cv93	Rxc5	great	best
 live_184567962764	19	fn-great	cv93	Bb5	best	great
 live_184567962764	78	fn-great	cv93	Bd4	best	great
-live_184567962764	85	fp-great	cv93	Rxd7	great	best
 live_20637053973	18	fn-great	cv93	Bxg5	best	great
 live_20637053973	38	fn-brilliant	cv93	Qxf2	inaccuracy	brilliant
 anderssen_dufresne_1852	15	fn-great	famous-brilliant	Qb3	best	great

@@ -129,6 +129,8 @@ public final class ReviewClassifier {
          * (declined by the opponent) renews the sacrifice: B-E1 does not exclude it.
          */
         final boolean brilliantRenewed;
+        /** Phase 4: no Great for a capture by an en prise piece when the position stays within this many cp of 0. */
+        final double greatForcedTradeCp;
         final double brilliantTopRegain;
         /** v2.3 R9: a quiet move starting a forced mate is Great when the alternative does not win. */
         final boolean greatStartsMate;
@@ -294,6 +296,7 @@ public final class ReviewClassifier {
             greatStartsMatePunish = get("greatStartsMatePunish", 0.15);
             greatStartsMateInCheck = get("greatStartsMateInCheck", 1) != 0;
             brilliantRenewed = get("brilliantRenewed", 1) != 0;
+            greatForcedTradeCp = get("greatForcedTradeCp", 15);
             pieceSacrifice = get("pieceSacrifice", 1) != 0;
             outcomeLow = get("outcomeLow", 0.40);
             outcomeHigh = get("outcomeHigh", 0.60);
@@ -935,6 +938,15 @@ public final class ReviewClassifier {
             // Phase 4: the bishop driven back by a pawn push (g4 against Bh5, g5 against Bh4, b5 against Bc4) has to
             // retreat, however much the other moves lose: chess.com Best (177 games: 5 of 5, no Great)
             return false;
+        }
+        if (capture && t.greatForcedTradeCp > 0 && !best.isMate() && Math.abs(best.cpFor(me)) <= t.greatForcedTradeCp) {
+            // Phase 4: the attacked piece trades itself off and the position is just level: a forced trade to hold
+            // the balance, not a find (Rxd7 live_184567962764 ply 85, Rxc5 live_184566976354 ply 94, Nxe4
+            // live_183990190310 ply 9: chess.com Best; no Great in the 177 games fits)
+            Move fm = Tactics.find(b0, uci);
+            if (fm != null && Tactics.hanging(b0, me ? Side.WHITE : Side.BLACK).containsKey(fm.getFrom())) {
+                return false;
+            }
         }
         if (capture) {
             // v2.3: players under 1500 get Great for a capture from a smaller gap; Phase 4: so does an exchange that

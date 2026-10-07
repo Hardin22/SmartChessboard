@@ -639,6 +639,16 @@ class BrilliantGreatExclusionsTest {
         assertNotEquals(MoveClassification.BRILLIANT, label(h5, Tuning.DEFAULT.with("brilliantRenewed", 0)));
     }
 
+    @Test
+    void anAttackedPieceTradingItselfOffToHoldTheBalanceIsNotGreat() {
+        // live_184567962764 ply 85, 43.Rxd7 Kxd7 = 0.00 (chess.com Best): the rook was attacked by the d7 rook, every
+        // other move loses it (Kc4 -6.66)
+        ReviewInput rxd7 = rated(oneMove("8/3r4/1p2k1p1/1K2p3/1P3pPp/3RbP1P/3N4/8 w - - 2 43", "d3d7", Eval.cp(0),
+                "d3d7", Eval.cp(-666), "b5c4", Eval.cp(0)), 2526, 626);
+        assertNotEquals(MoveClassification.GREAT, label(rxd7, Tuning.DEFAULT));
+        assertEquals(MoveClassification.GREAT, label(rxd7, Tuning.DEFAULT.with("greatForcedTradeCp", 0)));
+    }
+
     private static ReviewInput rated(ReviewInput in, int white, int black) {
         return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
     }
