@@ -13,19 +13,13 @@ import org.example.javachess.Components.BoardThemes;
 import org.example.javachess.Components.I18n;
 import org.example.javachess.Components.Icons;
 import org.example.javachess.Components.PageHeader;
+import org.example.javachess.Oggetti.ArchivedGame;
 import org.example.javachess.Oggetti.ChessBoardUI;
-import org.json.JSONArray;
-import org.json.JSONObject;
+import org.example.javachess.Services.GameArchiveService;
+import org.example.javachess.Utils.ErrorReporter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -150,6 +144,9 @@ public class ArchiveController implements NavigationAware {
 
     static String scoreOf(String raw) {
         String r = raw.toLowerCase(Locale.ROOT);
+        if (r.equals("*")) {
+            return "—";
+        }
         if (r.equals("1-0") || (r.contains("bianco") && r.contains("vince"))) {
             return "1-0";
         }
@@ -170,7 +167,7 @@ public class ArchiveController implements NavigationAware {
     }
 
     private void loadArchive() {
-        Thread.ofVirtual().name("archive-load").start(() -> {
+        org.example.javachess.Utils.AppExecutors.io().execute(() -> {
             List<Row> games = readRows();
             Platform.runLater(() -> {
                 archiveListView.getItems().setAll(games);
@@ -184,51 +181,55 @@ public class ArchiveController implements NavigationAware {
     /** Reads the archive (newest first) and maps each game to a {@link Row}. Runs off the FX thread. */
     private List<Row> readRows() {
         List<Row> rows = new ArrayList<>();
-        Path archivePath = copyArchiveJsonToWritableLocation();
         try {
-            if (Files.exists(archivePath)) {
-                JSONArray array = new JSONArray(Files.readString(archivePath, StandardCharsets.UTF_8));
-                for (int i = array.length() - 1; i >= 0; i--) {
-                    JSONObject game = array.getJSONObject(i);
-                    String time = game.optString("time", "");
-                    String when = game.optString("datetime", "");
-                    String meta = time.isBlank() || "N/A".equals(time) || "∞".equals(time)
-                            ? when : when + "  ·  " + time.replace(":00m", " min").replace("m +", " min +");
-                    String openingName = game.optString("opening", "");
-                    if ("Opening Name".equals(openingName) || "Unknown".equalsIgnoreCase(openingName)) {
-                        openingName = "";
-                    }
-                    String result = game.optString("result", "");
-                    rows.add(new Row(describeType(game.optString("type", "")), meta,
-                            openingName.isBlank() ? describeOutcome(result) : openingName, scoreOf(result),
-                            game.optString("fen", START_FEN), game.optString("pgn", ""),
-                            game.optString("initialFen", START_FEN)));
-                }
+            GameArchiveService archive = GameArchiveService.getInstance();
+            for (ArchivedGame game : archive.list()) {
+                String when = game.playedAt() == null ? "" : game.playedAt().format(DATE);
+                String meta = game.timeControl().isEmpty() ? when
+                        : (when.isEmpty() ? "" : when + "  ·  ")
+                                + game.timeControl().replace(":00m", " min").replace("m +", " min +").replace("+", " + ")
+                                        .replace("  ", " ");
+                String opening = "Opening Name".equals(game.opening()) || "Unknown".equalsIgnoreCase(game.opening())
+                        ? "" : game.opening();
+                String detail = !opening.isEmpty() ? opening
+                        : !game.termination().isEmpty() ? game.termination() : describeOutcome("");
+                rows.add(new Row(describe(game), meta, detail, scoreOf(game.result()),
+                        game.finalFen().isEmpty() ? START_FEN : game.finalFen(), game.movesAsUciString(),
+                        game.initialFen().isEmpty() ? START_FEN : game.initialFen()));
             }
-        } catch (IOException | RuntimeException e) {
+            if (archive.getLoadProblem() != null) {
+                ErrorReporter.showError("Archivio", archive.getLoadProblem());
+            }
+        } catch (RuntimeException e) {
             LOG.warn("Cannot read the archive", e);
         }
         return rows;
+    }
+
+    private static final java.time.format.DateTimeFormatter DATE =
+            java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm");
+
+    /** Title of a row: how the game was played. */
+    static String describe(ArchivedGame game) {
+        String label = game.label();
+        if (label.startsWith("Player") || label.startsWith("Plaver") || label.startsWith("Online")) {
+            return describeType(label);
+        }
+        return switch (game.mode()) {
+            case PVC -> label.isEmpty() ? I18n.t("pvc.title") : "Contro " + label.replace(" livello", " · livello");
+            case PVP -> I18n.t("pvp.title");
+            case LICHESS -> label.isEmpty() ? "Lichess" : "Lichess · " + label;
+            case BROWSER -> "Online · browser";
+            case PUZZLE -> I18n.t("puzzle.title");
+            case IMPORTED -> label.isEmpty() ? "Partita importata" : label;
+            default -> label.isEmpty() ? "Partita" : label;
+        };
     }
 
     private void showReview(String pgn, String initialFen) {
         ReviewController reviewController = (ReviewController) mainController.getController("REVIEW");
         mainController.navigateTo("REVIEW");
         reviewController.loadGame(pgn, initialFen);
-    }
-
-    private Path copyArchiveJsonToWritableLocation() {
-        Path targetPath = Paths.get("archive.json");
-        if (!Files.exists(targetPath)) {
-            try (InputStream resourceStream = getClass().getResourceAsStream("/archive.json")) {
-                if (resourceStream != null) {
-                    Files.copy(resourceStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
-                }
-            } catch (IOException e) {
-                LOG.warn("Cannot create archive.json", e);
-            }
-        }
-        return targetPath;
     }
 
     @FXML

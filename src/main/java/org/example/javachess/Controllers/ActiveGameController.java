@@ -28,7 +28,8 @@ import org.example.javachess.Oggetti.EvalBar;
 import org.example.javachess.Oggetti.OnlineGame;
 import org.example.javachess.Oggetti.PvcGame;
 import org.example.javachess.Oggetti.PvpGame;
-import org.example.javachess.Oggetti.UCIEngine;
+import org.example.javachess.Engine.AnalysisUpdate;
+import org.example.javachess.Engine.PositionAnalyzer;
 import org.example.javachess.Services.EngineService;
 import org.example.javachess.Utils.ConfigManager;
 import org.slf4j.Logger;
@@ -228,9 +229,24 @@ public class ActiveGameController implements NavigationAware {
         }
     }
 
-    private UCIEngine.AnalysisUpdateCallback createAnalysisCallback() {
-        return (pv, bestMove, fullLine, score, moveEvaluations) -> Platform
-                .runLater(() -> updateAnalysisUI(pv, bestMove, fullLine, score, moveEvaluations));
+    private PositionAnalyzer.Listener createAnalysisCallback() {
+        return (AnalysisUpdate update) -> {
+            // Format lines on the engine thread, then one hop to the FX thread per update.
+            int n = Math.max(1, update.lines().size());
+            String[] lines = new String[n];
+            String[] evals = new String[n];
+            for (int i = 0; i < n; i++) {
+                lines[i] = update.formatLine(i);
+                evals[i] = update.evalText(i);
+            }
+            String best = update.bestMove();
+            double score = update.whitePawns();
+            Platform.runLater(() -> {
+                for (int i = 0; i < n; i++) {
+                    updateAnalysisUI(i, best, lines[i], score, new String[] { evals[i] });
+                }
+            });
+        };
     }
 
     private void setupBoard() {

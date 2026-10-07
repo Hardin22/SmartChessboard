@@ -5,13 +5,11 @@ import org.example.javachess.Controllers.ArduinoController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.function.Consumer;
 
 /**
  * Reads whether the smart board (Arduino over USB serial) is connected, without blocking the FX thread.
- * Uses {@code ArduinoController.isConnected()} when the runtime layer provides it, else its running flag.
+ * Uses {@code ArduinoController.isConnected()} (non-blocking in the runtime layer).
  */
 public final class HardwareStatus {
 
@@ -33,17 +31,9 @@ public final class HardwareStatus {
             return true;
         }
         try {
-            ArduinoController arduino = ArduinoController.getInstance();
-            try {
-                Method m = ArduinoController.class.getMethod("isConnected");
-                return (Boolean) m.invoke(arduino);
-            } catch (NoSuchMethodException e) {
-                Field f = ArduinoController.class.getDeclaredField("isRunning");
-                f.setAccessible(true);
-                return f.getBoolean(arduino);
-            }
-        } catch (Throwable t) {
-            LOG.debug("Board status unavailable", t);
+            return ArduinoController.getInstance().isConnected();
+        } catch (RuntimeException e) {
+            LOG.debug("Board status unavailable", e);
             return null;
         }
     }

@@ -22,8 +22,9 @@ import org.example.javachess.Oggetti.ChessBoardUI;
 import org.example.javachess.Oggetti.EvalBar;
 import org.example.javachess.Oggetti.EvaluationGraph;
 import org.example.javachess.Oggetti.MoveAnalysis;
-import org.example.javachess.Oggetti.UCIEngine;
-import org.example.javachess.Services.EngineService;
+import org.example.javachess.Engine.AnalysisUpdate;
+import org.example.javachess.Engine.OpeningExplorer;
+import org.example.javachess.Engine.PositionAnalyzer;
 import org.example.javachess.Services.GameAnalyzer;
 import org.example.javachess.Utils.ConfigManager;
 import org.example.javachess.Utils.ImageCache;
@@ -91,7 +92,6 @@ public class ReviewController implements NavigationAware, GameNavigationListener
 
     private ChessBoardUI reviewChessBoard;
     private final EvalBar reviewEvalBar = new EvalBar(8, 400);
-    private UCIEngine stockfish;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "review-debounce");
         t.setDaemon(true);
@@ -143,7 +143,6 @@ public class ReviewController implements NavigationAware, GameNavigationListener
     public void loadGame(String pgn, String initialFen) {
         this.currentPgn = pgn;
         this.currentInitialFen = initialFen == null ? START_FEN : initialFen;
-        stockfish = EngineService.getInstance().getEngine();
         if (arduinoController == null) {
             Thread.ofVirtual().start(() -> arduinoController = ArduinoController.getInstance());
         }
@@ -210,13 +209,27 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         GameAnalyzer analyzer = new GameAnalyzer();
         String pgn = currentPgn;
         Thread.ofPlatform().daemon().name("game-analysis").start(() -> {
-            List<MoveAnalysis> analysis = analyzer.analyzeGame(pgn, depth, progress -> Platform.runLater(() -> {
-                analysisProgressIndicator.setProgress(progress);
-                percentLabel.setText(I18n.t("review.analyzing", Math.round(progress * 100)));
-            }));
-            double whiteAccuracy = analyzer.calculateAccuracy(analysis, true);
-            double blackAccuracy = analyzer.calculateAccuracy(analysis, false);
-            Platform.runLater(() -> showAnalysis(analysis, whiteAccuracy, blackAccuracy));
+            try {
+                List<MoveAnalysis> analysis = analyzer.analyzeGame(pgn, depth, progress -> Platform.runLater(() -> {
+                    analysisProgressIndicator.setProgress(progress);
+                    percentLabel.setText(I18n.t("review.analyzing", Math.round(progress * 100)));
+                }));
+                double whiteAccuracy = analyzer.calculateAccuracy(analysis, true);
+                double blackAccuracy = analyzer.calculateAccuracy(analysis, false);
+                Platform.runLater(() -> showAnalysis(analysis, whiteAccuracy, blackAccuracy));
+            } catch (RuntimeException | Error e) {
+                LOG.error("Game analysis failed", e);
+                Platform.runLater(() -> {
+                    progressContainer.setVisible(false);
+                    progressContainer.setManaged(false);
+                    analyzeRow.setVisible(true);
+                    analyzeRow.setManaged(true);
+                    analyzeButton.setDisable(false);
+                });
+                org.example.javachess.Utils.ErrorReporter.showError("Analisi",
+                        "Analisi non riuscita: " + org.example.javachess.Utils.ErrorReporter.userMessage(e)
+                                + "\nControlla che Stockfish sia installato (Impostazioni).");
+            }
         });
     }
 
@@ -306,9 +319,7 @@ public class ReviewController implements NavigationAware, GameNavigationListener
 
     @FXML
     private void backToArchive() {
-        if (stockfish != null) {
-            stockfish.stopCalculating();
-        }
+        PositionAnalyzer.get().stop();
         if (arduinoController != null) {
             arduinoController.getBoardStateManager().stopGameMode();
         }
@@ -428,41 +439,61 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         };
     }
 
+    /** Engine event thread: eval bar, best-move arrow and analysis lines for the reviewed position. */
+    private void onReviewAnalysisUpdate(AnalysisUpdate update) {
+        int n = Math.max(1, update.lines().size());
+        String[] lines = new String[n];
+        String[] evals = new String[n];
+        for (int i = 0; i < n; i++) {
+            lines[i] = update.formatLine(i);
+            evals[i] = update.evalText(i);
+        }
+        String best = update.bestMove();
+        reviewEvalBar.updateEvaluation(update.whitePawns());
+        Platform.runLater(() -> {
+            if (reviewChessBoard == null || !update.fen().equals(reviewChessBoard.getFen())) {
+                return; // the user already moved on
+            }
+            reviewChessBoard.clearArrows();
+            if (best != null && best.length() >= 4) {
+                reviewChessBoard.drawArrowOnBoard(best.charAt(0) - 'a', '8' - best.charAt(1),
+                        best.charAt(2) - 'a', '8' - best.charAt(3), javafx.scene.paint.Color.rgb(156, 204, 101, 0.7));
+            }
+            if (reviewChessBoard.getBoard().isMated()) {
+                evaluationPanel.showResult(reviewChessBoard.getBoard().getSideToMove() == Side.WHITE ? "0-1" : "1-0");
+            } else {
+                for (int i = 0; i < n; i++) {
+                    evaluationPanel.updateAnalysis(i, lines[i], evals[i]);
+                }
+            }
+        });
+    }
+
     private void triggerAnalysisDebounced() {
         if (debounceHandle != null && !debounceHandle.isDone()) {
             debounceHandle.cancel(false);
         }
         debounceHandle = scheduler.schedule(() -> {
-            if (reviewChessBoard == null || stockfish == null) {
+            if (reviewChessBoard == null) {
                 return;
             }
             String currentFen = reviewChessBoard.getFen();
-            String openingName = stockfish.getOpeningName(currentFen);
-            Platform.runLater(() -> {
-                if (openingName != null && !openingName.equals("Unknown Opening")
-                        && !openingName.equals("Error in API Call")) {
-                    header.setSubtitle(openingName);
+            // Opening name: asynchronous, cached, never blocks.
+            OpeningExplorer.lookup(currentFen).thenAccept(openingName -> Platform.runLater(() -> {
+                if (openingName.isPresent()) {
+                    header.setSubtitle(openingName.get());
                 } else if (reviewChessBoard.getCurrentMoveIndex() <= 1) {
                     header.setSubtitle(I18n.t("review.subtitle"));
                 }
+            }));
+            Platform.runLater(() -> {
                 if (reviewChessBoard.getBoard().isMated()) {
                     evaluationPanel.showResult(
                             reviewChessBoard.getBoard().getSideToMove() == Side.WHITE ? "0-1" : "1-0");
                 }
             });
             if (analysisEnabled) {
-                // Off the FX thread, like the games do (AbstractGame#evaluatePositionAndMoves).
-                stockfish.startAnalysis(currentFen, analysisDepth, analysisMultiPV,
-                        (pv, bestMove, fullLine, score, moveEvaluations) -> Platform.runLater(() -> {
-                            if (reviewChessBoard.getBoard().isMated()) {
-                                evaluationPanel.showResult(
-                                        reviewChessBoard.getBoard().getSideToMove() == Side.WHITE ? "0-1" : "1-0");
-                            } else {
-                                String evalText = moveEvaluations != null && moveEvaluations.length > 0
-                                        ? moveEvaluations[0] : "0.0";
-                                evaluationPanel.updateAnalysis(pv, fullLine, evalText);
-                            }
-                        }), reviewChessBoard, reviewEvalBar, true);
+                PositionAnalyzer.get().analyze(currentFen, analysisDepth, analysisMultiPV, this::onReviewAnalysisUpdate);
             }
         }, DEBOUNCE_DELAY, TimeUnit.MILLISECONDS);
     }

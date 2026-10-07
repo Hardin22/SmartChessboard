@@ -104,8 +104,17 @@ public class MainController {
             }
         });
         navigateTo("HOME");
-        // Preload the other views off the FX thread, one at a time, so the first tap on any tile is instant.
-        Platform.runLater(() -> VIEWS.keySet().stream()
+    }
+
+    /**
+     * Builds the other views off the FX thread, one at a time, so the first tap on any tile is instant.
+     * Called by App after the first frame; disabled with {@code -Djavachess.preload=false}.
+     */
+    public void startIdlePreload() {
+        if (!Boolean.parseBoolean(System.getProperty("javachess.preload", "true"))) {
+            return;
+        }
+        VIEWS.keySet().stream()
                 .filter(name -> !"HOME".equals(name) && !FX_ONLY.contains(name))
                 .forEach(name -> preloader.submit(() -> {
                     try {
@@ -113,7 +122,9 @@ public class MainController {
                     } catch (RuntimeException e) {
                         LOG.warn("Preload of {} failed", name, e);
                     }
-                })));
+                }));
+        preloader.submit(() -> LOG.info("Views preloaded at {} ms",
+                org.example.javachess.Application.StartupMetrics.uptimeMs()));
     }
 
     // ------------------------------------------------------------------ navigation
@@ -213,7 +224,7 @@ public class MainController {
     }
 
     public void openLichess() {
-        Thread.ofVirtual().name("lichess-check").start(() -> {
+        org.example.javachess.Utils.AppExecutors.io().execute(() -> {
             String gameId = org.example.javachess.Utils.LichessAPIHelper.getGameId();
             Platform.runLater(() -> {
                 if (gameId != null) {

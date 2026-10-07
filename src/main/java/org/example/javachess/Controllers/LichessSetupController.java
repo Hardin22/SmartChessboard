@@ -58,13 +58,15 @@ public class LichessSetupController implements NavigationAware {
 
     @FXML
     public void startSeek() {
-        boolean rated = Boolean.parseBoolean(ratedGroup.getSelectedToggle().getUserData().toString());
-        String color = colorGroup.getSelectedToggle().getUserData().toString();
+        boolean rated = ratedGroup.getSelectedToggle() != null
+                && Boolean.parseBoolean(String.valueOf(ratedGroup.getSelectedToggle().getUserData()));
+        String color = colorGroup.getSelectedToggle() != null
+                ? String.valueOf(colorGroup.getSelectedToggle().getUserData()) : "random";
         statusLabel.setText(I18n.t("lichess.searching"));
         seekButton.setDisable(true);
         int time = selectedTime;
         int increment = selectedIncrement;
-        Thread.ofVirtual().name("lichess-seek").start(() -> {
+        org.example.javachess.Utils.AppExecutors.io().execute(() -> {
             String gameId = LichessAPIHelper.createSeek(time, increment, rated, color);
             Platform.runLater(() -> {
                 seekButton.setDisable(false);
@@ -74,12 +76,17 @@ public class LichessSetupController implements NavigationAware {
                     mainController.navigateTo("GAME");
                     controller.startOnlineGame(gameId);
                 } else {
-                    String msg = gameId != null ? gameId.replace("ERROR:", "").trim() : I18n.t("lichess.error.timeout");
-                    statusLabel.setText(msg.contains("Invalid time control") ? I18n.t("lichess.error.rated")
-                            : I18n.t("lichess.error", msg));
+                    // LichessClient already produces a message meant for the user.
+                    statusLabel.setText(gameId != null ? gameId.replace("ERROR:", "").trim()
+                            : I18n.t("lichess.error.timeout"));
                 }
             });
         });
+    }
+
+    @Override
+    public void onNavigatedFrom() {
+        LichessAPIHelper.cancelSeek(); // leaving the screen must not leave a seek open on Lichess
     }
 
     @FXML

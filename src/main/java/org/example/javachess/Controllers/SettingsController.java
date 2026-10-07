@@ -178,38 +178,29 @@ public class SettingsController implements NavigationAware {
 
     @FXML
     private void saveSettings() {
-        ConfigManager.setProperty("game.suggestions", String.valueOf(suggestionsToggle.isSelected()));
-        ConfigManager.setProperty("game.evaluation", String.valueOf(evaluationToggle.isSelected()));
-        ConfigManager.setProperty("ui.mate.animation", String.valueOf(mateAnimationToggle.isSelected()));
-        ConfigManager.setProperty("game.bot.level", String.valueOf((int) botLevelSlider.getValue()));
-        ConfigManager.setProperty("game.bot.movetime", String.valueOf((int) botThinkingTimeSlider.getValue()));
-        ConfigManager.setProperty("game.default.duration", String.valueOf((int) pvpDefaultDurationSlider.getValue()));
-        ConfigManager.setProperty("game.default.increment", String.valueOf((int) pvpDefaultIncrementSlider.getValue()));
-        ConfigManager.setProperty("game.depth", String.valueOf((int) gameDepthSlider.getValue()));
-        ConfigManager.setProperty("analysis.depth", String.valueOf((int) analysisDepthSlider.getValue()));
-        ConfigManager.setProperty("move.eval.depth", String.valueOf((int) moveEvalDepthSlider.getValue()));
+        // One atomic write for all values. Passwords are not stored: the integrated browser keeps its own session.
+        java.util.Map<String, String> values = new java.util.LinkedHashMap<>();
+        values.put("game.suggestions", String.valueOf(suggestionsToggle.isSelected()));
+        values.put("game.evaluation", String.valueOf(evaluationToggle.isSelected()));
+        values.put("ui.mate.animation", String.valueOf(mateAnimationToggle.isSelected()));
+        values.put("game.bot.level", String.valueOf((int) botLevelSlider.getValue()));
+        values.put("game.bot.movetime", String.valueOf((int) botThinkingTimeSlider.getValue()));
+        values.put("game.default.duration", String.valueOf((int) pvpDefaultDurationSlider.getValue()));
+        values.put("game.default.increment", String.valueOf((int) pvpDefaultIncrementSlider.getValue()));
+        values.put("game.depth", String.valueOf((int) gameDepthSlider.getValue()));
+        values.put("analysis.depth", String.valueOf((int) analysisDepthSlider.getValue()));
+        values.put("move.eval.depth", String.valueOf((int) moveEvalDepthSlider.getValue()));
+        values.put("hardware.led.brightness", String.valueOf((int) ledBrightnessSlider.getValue()));
         if (!isRedacted()) {
-            ConfigManager.setProperty("lichess.username", lichessUsernameField.getText());
-            ConfigManager.setProperty("chess.com.username", chessComEmailField.getText());
-            ConfigManager.setProperty("lichess.token", lichessApiKeyField.getText());
+            values.put("lichess.username", lichessUsernameField.getText());
+            values.put("chess.com.username", chessComEmailField.getText());
+            values.put("lichess.token", lichessApiKeyField.getText());
         }
-        ConfigManager.setProperty("hardware.led.brightness", String.valueOf((int) ledBrightnessSlider.getValue()));
-        applyLedBrightness((int) ledBrightnessSlider.getValue());
+        ConfigManager.setProperties(values);
+        // Apply the brightness right away (non-blocking).
+        org.example.javachess.Hardware.Hardware.leds().setBrightnessPercent((int) ledBrightnessSlider.getValue());
         mainController.showToast(I18n.t("settings.saved"));
         backToHome();
-    }
-
-    /**
-     * Pushes the brightness to the LEDs right away through the runtime layer's
-     * {@code Hardware.leds().setBrightnessPercent(int)} when available (looked up reflectively, non-blocking).
-     */
-    private static void applyLedBrightness(int percent) {
-        try {
-            Object leds = Class.forName("org.example.javachess.Hardware.Hardware").getMethod("leds").invoke(null);
-            leds.getClass().getMethod("setBrightnessPercent", int.class).invoke(leds, percent);
-        } catch (ReflectiveOperationException | RuntimeException e) {
-            // Older runtime layer: the value is read from config at the next start.
-        }
     }
 
     /** Screenshot/demo runs hide (and never overwrite) the stored accounts. */

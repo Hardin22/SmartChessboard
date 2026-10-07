@@ -7,16 +7,10 @@ import org.example.javachess.Controllers.ActiveGameController;
 import org.example.javachess.Controllers.MainController;
 import org.example.javachess.Controllers.PuzzleController;
 import org.example.javachess.Controllers.ReviewController;
-import org.example.javachess.Oggetti.Puzzle;
 import org.example.javachess.Services.PuzzleService;
-import org.json.JSONArray;
-import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 
@@ -73,46 +67,33 @@ final class DevDemos {
     }
 
     private static void review(MainController main) {
-        JSONObject chosen = null;
-        try {
-            JSONArray games = new JSONArray(Files.readString(Path.of("archive.json"), StandardCharsets.UTF_8));
-            int wanted = Integer.getInteger("javachess.demo.game", -1);
-            for (int i = 0; i < games.length(); i++) {
-                JSONObject g = games.getJSONObject(i);
-                if (wanted >= 0 ? g.optInt("id") == wanted
-                        : g.optString("result").startsWith("Scaccomatto") && g.optString("pgn").length() > 400) {
-                    chosen = g;
-                    if (wanted >= 0) {
-                        break;
-                    }
-                }
-            }
-        } catch (Exception e) {
-            LOG.warn("No archive for the review demo", e);
-        }
+        var archive = org.example.javachess.Services.GameArchiveService.getInstance();
+        int wanted = Integer.getInteger("javachess.demo.game", -1);
+        var chosen = wanted >= 0 ? archive.get(wanted)
+                : archive.list().stream()
+                        .filter(g -> !"*".equals(g.result()) && g.movesUci().size() >= 40)
+                        .findFirst();
         ReviewController review = (ReviewController) main.getController("REVIEW");
         main.navigateTo("REVIEW");
-        if (chosen != null) {
-            review.loadGame(chosen.optString("pgn"), chosen.optString("initialFen",
-                    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+        if (chosen.isPresent()) {
+            review.loadGame(chosen.get().movesAsUciString(), chosen.get().initialFen());
             review.goTo(Integer.getInteger("javachess.demo.ply", 20));
             if (Boolean.getBoolean("javachess.demo.analyze")) {
                 review.analyze(Integer.getInteger("javachess.demo.depth", 10));
             }
+        } else {
+            LOG.warn("No archived game for the review demo");
         }
     }
 
     private static void puzzle(MainController main) {
-        Thread.ofVirtual().start(() -> {
-            PuzzleService service = PuzzleService.getInstance();
-            Puzzle puzzle = service.getRandomPuzzle(service.getPuzzlesByThemeAndRating(List.of("Tutti"), 1500, 200));
-            Platform.runLater(() -> {
-                PuzzleController controller = (PuzzleController) main.getController("PUZZLE_GAME");
-                main.navigateTo("PUZZLE_GAME");
-                if (puzzle != null) {
-                    controller.setPuzzle(puzzle, 1500, List.of("Tutti"));
-                }
-            });
-        });
+        PuzzleService.getInstance().findPuzzleAsync(1500, 200, List.of("Tutti")).thenAccept(puzzle ->
+                Platform.runLater(() -> {
+                    PuzzleController controller = (PuzzleController) main.getController("PUZZLE_GAME");
+                    main.navigateTo("PUZZLE_GAME");
+                    if (puzzle != null) {
+                        controller.setPuzzle(puzzle, 1500, List.of("Tutti"));
+                    }
+                }));
     }
 }

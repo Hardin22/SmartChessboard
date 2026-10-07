@@ -172,18 +172,16 @@ public class PuzzleController implements NavigationAware {
         nextButton.setDisable(true);
         int rating = currentTargetRating;
         List<String> themes = currentThemes;
-        Thread.ofVirtual().name("puzzle-next").start(() -> {
-            PuzzleService service = PuzzleService.getInstance();
-            Puzzle next = service.getRandomPuzzle(service.getPuzzlesByThemeAndRating(themes, rating, 200));
-            Platform.runLater(() -> {
-                nextButton.setDisable(false);
-                if (next != null) {
-                    setPuzzle(next, rating, themes);
-                } else {
-                    mainController.showToast(I18n.t("puzzle.none"));
-                }
-            });
-        });
+        // The search reads the puzzle database: off the FX thread.
+        PuzzleService.getInstance().findPuzzleAsync(rating, 200, themes)
+                .thenAccept(next -> Platform.runLater(() -> {
+                    nextButton.setDisable(false);
+                    if (next != null) {
+                        setPuzzle(next, rating, themes);
+                    } else {
+                        mainController.showToast(I18n.t("puzzle.none"));
+                    }
+                }));
     }
 
     @FXML

@@ -6,13 +6,17 @@ import com.github.bhlangonijr.chesslib.move.MoveGenerator;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.scene.control.Label;
+import org.example.javachess.Engine.AnalysisUpdate;
+import org.example.javachess.Engine.EngineManager;
 import org.example.javachess.Services.EngineService;
-import org.example.javachess.Utils.ConfigManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PvcGame extends AbstractGame {
 
+    private static final Logger log = LoggerFactory.getLogger(PvcGame.class);
+
     private Label openingPvc;
-    private UCIEngine playerStockfish;
     private boolean isPlayerWhite;
     private int skillLevel;
     private EngineService.EngineType botType;
@@ -25,16 +29,17 @@ public class PvcGame extends AbstractGame {
         this.skillLevel = skillLevel;
         this.botType = botType;
 
-        EngineService service = EngineService.getInstance();
-        this.playerStockfish = service.createEngineInstance(botType);
-        this.playerStockfish.setDebug(true); // Enable debug output for the bot
-        System.out.println("Bot Instance Created: " + botType);
-
-        // Only set skill level if using Stockfish (Maia levels are separate
-        // engines/weights)
-        if (botType == EngineService.EngineType.STOCKFISH) {
-            this.playerStockfish.sendOption("Skill Level", String.valueOf(skillLevel));
+        // The bot is the active engine profile; the setup screen choice selects it. It can be changed
+        // during the game (EngineSelection): the next bot move uses the new engine, the position is kept.
+        if (botType != null) {
+            EngineManager.get().select(botType.profileId());
         }
+    }
+
+    /** Arrows are suggestions for the human only, not for the bot's side. */
+    @Override
+    protected boolean shouldShowArrows(AnalysisUpdate update) {
+        return update.whiteToMove() == isPlayerWhite;
     }
 
     @Override
@@ -50,12 +55,12 @@ public class PvcGame extends AbstractGame {
                 .getInstance().getBoardStateManager();
 
         manager.setLogicalBoard(board); // Sync initial board state
-        manager.startSetupMode(); // Start setup phase
+        manager.setPhysicalMoveSide(isPlayerWhite ? Side.WHITE : Side.BLACK); // bot moves are only replicated
 
         manager.setListener(new org.example.javachess.Services.BoardStateManager.BoardMoveListener() {
             @Override
             public void onPhysicalMoveDetected(String from, String to) {
-                System.out.println("Physical Move: " + from + to);
+                log.debug("Physical move {}{}", from, to);
                 handleMoveInput(from + to);
             }
 
@@ -77,14 +82,12 @@ public class PvcGame extends AbstractGame {
 
             @Override
             public void onBoardStateUpdated(String fen, String errorSquare) {
-                // Update the visual board to reflect physical state
-                Platform.runLater(() -> {
-                    chessBoardUI.setPosition(fen, null);
-                    if (errorSquare != null) {
-                        chessBoardUI.highlightErrorSquare(errorSquare);
-                        updateStatus("ERRORE: Controlla " + errorSquare);
-                    }
-                });
+                // Called on the FX thread: mirror the physical board
+                chessBoardUI.setPosition(fen, null);
+                if (errorSquare != null) {
+                    chessBoardUI.highlightErrorSquare(errorSquare);
+                    updateStatus("ERRORE: Controlla " + errorSquare);
+                }
             }
 
             @Override
@@ -109,6 +112,10 @@ public class PvcGame extends AbstractGame {
     public void handleMoveInput(String moveInput) {
         if (!gameRunning)
             return;
+        if (board.getSideToMove() != (isPlayerWhite ? Side.WHITE : Side.BLACK)) {
+            log.info("Ignoring {}: it is the bot's turn", moveInput);
+            return;
+        }
 
         try {
             Move move = parseMoveInput(moveInput);
@@ -121,7 +128,9 @@ public class PvcGame extends AbstractGame {
             }
 
             if (move != null && MoveGenerator.generateLegalMoves(board).contains(move)) {
+                String fenBefore = board.getFen();
                 board.doMove(move);
+                onHumanMove(fenBefore, move);
                 updatePgn(move);
 
                 // Sync logical board to manager
@@ -131,10 +140,7 @@ public class PvcGame extends AbstractGame {
 
                 final Move finalMove = move;
                 Platform.runLater(() -> chessBoardUI.setPosition(board.getFen(), finalMove));
-                OpeningName = stockfish.getOpeningName(board.getFen());
-                if (!OpeningName.equals("Unknown Opening") && !OpeningName.equals("Error in API Call")) {
-                    openingPvc.setText(OpeningName);
-                }
+                updateOpeningLabel(openingPvc);
 
                 if (board.isMated()) {
                     notifyMate(); // Trigger Victory Animation
@@ -147,11 +153,11 @@ public class PvcGame extends AbstractGame {
                     handleComputerMove();
                 }
             } else {
-                System.out.println("Mossa illegale o non valida, riprova.");
+                log.info("Illegal or invalid move: {}", moveInput);
             }
 
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (RuntimeException e) {
+            log.error("Move {} failed", moveInput, e);
         }
     }
 
@@ -159,70 +165,61 @@ public class PvcGame extends AbstractGame {
         if (!gameRunning)
             return;
 
-        Task<Void> computerMoveTask = new Task<Void>() {
-            @Override
-            protected Void call() {
-                int movetime = ConfigManager.getIntProperty("game.bot.movetime", 2000);
-                String bestMoveUci;
-                if (botType != EngineService.EngineType.STOCKFISH) {
-                    // Maia: Use nodes=1 to get the raw policy network output (human-like move)
-                    System.out.println("Bot (" + botType + ") using nodes=1 (Human-like)...");
-                    bestMoveUci = playerStockfish.getBestMoveFixedNodes(board.getFen(), 1);
-                } else {
-                    // Stockfish: Use time-based search
-                    System.out.println("Bot (" + botType + ") using movetime=" + movetime);
-                    bestMoveUci = playerStockfish.getBestMoveByTime(board.getFen(), movetime);
-                }
-                if (bestMoveUci != null) {
-                    Move bestMove = parseMoveUci(bestMoveUci);
-
-                    if (isPromotionMove(bestMove)) {
-                        Side side = board.getSideToMove();
-                        Piece promotionPiece = side == Side.WHITE ? Piece.WHITE_QUEEN : Piece.BLACK_QUEEN;
-                        bestMove = new Move(bestMove.getFrom(), bestMove.getTo(), promotionPiece);
-                    }
-
-                    final Move finalBestMove = bestMove;
-                    board.doMove(finalBestMove);
-                    updatePgn(finalBestMove);
-
-                    // Sync logical board to manager
-                    org.example.javachess.Controllers.ArduinoController.getInstance()
-                            .getBoardStateManager()
-                            .setLogicalBoard(board);
-
-                    Platform.runLater(() -> {
-                        chessBoardUI.setPosition(board.getFen(), finalBestMove);
-                        OpeningName = stockfish.getOpeningName(board.getFen());
-                        if (!OpeningName.equals("Unknown Opening") && !OpeningName.equals("Error in API Call")) {
-                            openingPvc.setText(OpeningName);
-                        }
-                        if (board.isMated()) {
-                            notifyMate(); // Trigger Victory Animation
-                            String winner = board.getSideToMove().flip() == Side.WHITE ? "Bianco" : "Nero";
-                            endGameWithMessage("Scaccomatto! Vince il " + winner + ".");
-                        } else if (board.isDraw()) {
-                            String drawReason = getDrawReason();
-                            endGameWithMessage("Partita patta per " + drawReason + ".");
-                        } else {
-                            // Trigger Physical Replication FIRST
-                            org.example.javachess.Controllers.ArduinoController.getInstance()
-                                    .getBoardStateManager()
-                                    .startBotMoveReplication(finalBestMove.getFrom().name(),
-                                            finalBestMove.getTo().name());
-
-                            evaluatePositionAndMoves();
-
-                            // LED: Notify Opponent Move (Check/Mate only now)
-                            notifyOpponentMove(finalBestMove.getFrom().name(), finalBestMove.getTo().name());
-                        }
-                    });
-                }
-                return null;
+        final String requestedFen = board.getFen();
+        // Asynchronous: the engine layer never blocks this thread nor the FX thread.
+        EngineManager.get().botMove(requestedFen, skillLevel).whenComplete((bestMoveUci, err) -> {
+            if (err != null) {
+                log.error("bot move failed: {}", err.toString());
+                updateStatus("Motore non disponibile: " + EngineManager.get().statusProperty().get().message());
+                return;
             }
-        };
+            // Board is not thread-safe: apply the bot move on the FX thread.
+            Platform.runLater(() -> applyBotMove(requestedFen, bestMoveUci));
+        });
+    }
 
-        new Thread(computerMoveTask).start();
+    private void applyBotMove(String requestedFen, String bestMoveUci) {
+        if (!gameRunning || !requestedFen.equals(board.getFen())) {
+            return; // game ended or position changed meanwhile
+        }
+        Move bestMove = parseMoveUci(bestMoveUci);
+
+        if (isPromotionMove(bestMove) && bestMove.getPromotion() == Piece.NONE) {
+            Side side = board.getSideToMove();
+            Piece promotionPiece = side == Side.WHITE ? Piece.WHITE_QUEEN : Piece.BLACK_QUEEN;
+            bestMove = new Move(bestMove.getFrom(), bestMove.getTo(), promotionPiece);
+        }
+
+        final Move finalBestMove = bestMove;
+        board.doMove(finalBestMove);
+        updatePgn(finalBestMove);
+
+        // Sync logical board to manager
+        org.example.javachess.Controllers.ArduinoController.getInstance()
+                .getBoardStateManager()
+                .setLogicalBoard(board);
+
+        chessBoardUI.setPosition(board.getFen(), finalBestMove);
+        updateOpeningLabel(openingPvc);
+        if (board.isMated()) {
+            notifyMate(); // Trigger Victory Animation
+            String winner = board.getSideToMove().flip() == Side.WHITE ? "Bianco" : "Nero";
+            endGameWithMessage("Scaccomatto! Vince il " + winner + ".");
+        } else if (board.isDraw()) {
+            String drawReason = getDrawReason();
+            endGameWithMessage("Partita patta per " + drawReason + ".");
+        } else {
+            // Trigger Physical Replication FIRST
+            org.example.javachess.Controllers.ArduinoController.getInstance()
+                    .getBoardStateManager()
+                    .startBotMoveReplication(finalBestMove.getFrom().name(),
+                            finalBestMove.getTo().name());
+
+            evaluatePositionAndMoves();
+
+            // LED: Notify Opponent Move (Check/Mate only now)
+            notifyOpponentMove(finalBestMove.getFrom().name(), finalBestMove.getTo().name());
+        }
     }
 
     private boolean isPromotionMove(Move move) {
@@ -232,7 +229,7 @@ public class PvcGame extends AbstractGame {
     }
 
     private void endGameWithMessage(String message) {
-        System.out.println(message);
+        log.info(message);
         updateStatus(message);
 
         saveGameToJson(message, openingPvc.getText(), "Player vs Stockfish livello " + skillLevel, "∞");
@@ -246,16 +243,11 @@ public class PvcGame extends AbstractGame {
 
         if (pgn.length() < 10) {
             saveGame = false;
-            System.out.println("Partita non salvata, mossa minima non raggiunta.");
+            log.info("Game too short, not saved");
         }
 
-        // Note: stockfish (analysis) is managed by AbstractGame/StockfishService,
-        // but playerStockfish is local to this game instance.
-        if (playerStockfish != null) {
-            playerStockfish.close();
-            playerStockfish = null;
-            System.out.println("Stockfish (giocatore) chiuso.");
-        }
+        // Engine processes are owned and reused by EngineManager: just stop the live analysis.
+        stopAnalysis();
 
         if (moveCalculationTask != null) {
             // Ensure this runs on FX thread or just ignore if already stopped
@@ -292,8 +284,6 @@ public class PvcGame extends AbstractGame {
     }
 
     private Move parseMoveUci(String uciMove) {
-        Square from = Square.valueOf(uciMove.substring(0, 2).toUpperCase());
-        Square to = Square.valueOf(uciMove.substring(2, 4).toUpperCase());
-        return new Move(from, to);
+        return new Move(uciMove, board.getSideToMove()); // keeps the promotion piece (e7e8n)
     }
 }
