@@ -16,6 +16,10 @@ public interface PositionEvaluator extends AutoCloseable {
      */
     PositionEval evaluate(String fen, int multiPv, long nodes) throws Exception;
 
+    /** A new game starts: engines may clear their hash (no-op by default). */
+    default void newGame() {
+    }
+
     /** How many {@link #evaluate} calls can usefully run at the same time. */
     int parallelism();
 

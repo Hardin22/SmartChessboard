@@ -55,9 +55,11 @@ class ReviewClassifierTest {
         // delivering mate is best, whatever the engine's line said
         assertEquals(MoveClassification.BEST,
                 ReviewClassifier.fast(Eval.whiteMates(1), Eval.whiteMates(0), true, false).label());
-        // allowing mate even from a bad position is a blunder
-        assertEquals(MoveClassification.BLUNDER,
+        // allowing mate is never better than a mistake from a bad position, an inaccuracy from a lost one
+        assertEquals(MoveClassification.MISTAKE,
                 ReviewClassifier.fast(Eval.cp(-600), Eval.blackMates(2), true, false).label());
+        assertEquals(MoveClassification.INACCURACY,
+                ReviewClassifier.fast(Eval.cp(-1500), Eval.blackMates(2), true, false).label());
         // already mated: never a blunder
         assertNotEquals(MoveClassification.BLUNDER,
                 ReviewClassifier.fast(Eval.blackMates(3), Eval.blackMates(1), true, false).label());
@@ -65,13 +67,14 @@ class ReviewClassifierTest {
         assertEquals(MoveClassification.BEST,
                 ReviewClassifier.fast(Eval.whiteMates(3), Eval.whiteMates(2), true, false).label());
         assertEquals(MoveClassification.EXCELLENT,
-                ReviewClassifier.fast(Eval.whiteMates(3), Eval.whiteMates(4), true, false).label());
+                ReviewClassifier.fast(Eval.whiteMates(3), Eval.whiteMates(3), true, false).label());
     }
 
     @Test
     void lossThresholds() {
         assertEquals(MoveClassification.BEST, ReviewClassifier.labelForLoss(0));
         assertEquals(MoveClassification.EXCELLENT, ReviewClassifier.labelForLoss(0.01));
+        assertEquals(MoveClassification.GOOD, ReviewClassifier.labelForLoss(0.02));
         assertEquals(MoveClassification.GOOD, ReviewClassifier.labelForLoss(0.04));
         assertEquals(MoveClassification.INACCURACY, ReviewClassifier.labelForLoss(0.08));
         assertEquals(MoveClassification.MISTAKE, ReviewClassifier.labelForLoss(0.15));
