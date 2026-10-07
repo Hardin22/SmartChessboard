@@ -31,7 +31,8 @@ public final class CoreReviewer implements Reviewer {
         int cores = Runtime.getRuntime().availableProcessors();
         ReviewSettings base = ReviewSettings.lite(ProcessPlan.forRam(8_192, 4), cores);
         long nodes = Long.getLong("review.nodes", base.nodes());
-        settings = new ReviewSettings(nodes, Long.getLong("review.secondLineNodes", nodes),
+        settings = new ReviewSettings(nodes, Long.getLong("review.secondLineNodes",
+                nodes * base.secondLineNodes() / base.nodes()),
                 Integer.getInteger("review.processes", base.processes()), Integer.getInteger("review.hash",
                 base.hashMb()));
         PositionEvaluator pool = new StockfishPool(stockfish, settings.processes(), settings.hashMb());
