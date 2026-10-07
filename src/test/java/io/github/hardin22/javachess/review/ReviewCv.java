@@ -83,7 +83,10 @@ public final class ReviewCv {
             if ("cv".equals(set) && "H".equals(fold) || "holdout".equals(set) && !"H".equals(fold)) {
                 continue;
             }
-            ReviewInput in = d.input(mode, book);
+            ReviewInput base = d.input(mode, book);
+            // the players' ratings (chess.com judges a loss of win chance by the player's level)
+            ReviewInput in = new ReviewInput(base.initialFen(), base.uciMoves(), base.positions(), base.book(),
+                    g.whiteRating(), g.blackRating());
             GameReview r = ReviewClassifier.classifyGame(in);
             int second = 0;
             for (int i = 0; i < r.moves().size(); i++) {
