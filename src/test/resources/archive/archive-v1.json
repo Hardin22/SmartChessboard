@@ -1,0 +1,54 @@
+[
+    {
+        "result": "Partita interrotta.",
+        "datetime": "partita del 05-09-2024 03:57",
+        "pgn": "1. e2e4 2. e7e5 2. g1f3 3. b8c6 3. f1b5 4. a7a6  Partita interrotta.",
+        "id": 0,
+        "time": "∞",
+        "type": "Plaver vs Stockfish livello 20",
+        "opening": "C84 Ruy Lopez: Closed, Center Attack",
+        "fen": "r1bqkbnr/1ppp1ppp/p1n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 4"
+    },
+    {
+        "result": "Scaccomatto! Vince il Bianco.",
+        "datetime": "12-01-2026 18:22",
+        "pgn": "1. e2e4 e7e5 2. f1c4 b8c6 3. d1h5 g8f6 4. h5f7 Scaccomatto! Vince il Bianco.",
+        "id": 1,
+        "time": "∞",
+        "type": "Player vs Stockfish livello 1",
+        "opening": "Error in API Call",
+        "fen": "r1bqkb1r/pppp1Qpp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 0 4"
+    },
+    {
+        "result": "Il Nero vince per tempo",
+        "datetime": "13-01-2026 10:00",
+        "pgn": "d2d4 1. d7d5 c2c4 2. e7e6 ",
+        "id": 1,
+        "time": "5+3",
+        "type": "Player vs Player",
+        "opening": "Unknown",
+        "fen": "rnbqkbnr/ppp2ppp/4p3/3p4/2PP4/8/PP2PPPP/RNBQKBNR w KQkq - 0 3"
+    },
+    {
+        "initialFen": "4k3/P7/8/8/8/8/8/4K3 w - - 0 1",
+        "result": "Partita patta per Altro.",
+        "datetime": "14-01-2026 09:30",
+        "pgn": "a7a8 1. e8d7 ",
+        "id": 5,
+        "time": "N/A",
+        "type": "Online (Browser)",
+        "opening": "Unknown",
+        "fen": "Q7/3k4/8/8/8/8/8/4K3 w - - 1 2"
+    },
+    {
+        "result": "Unknown",
+        "datetime": "not a date",
+        "pgn": "e2e4 e7e5 e1e3 g1f3",
+        "id": 6,
+        "time": "N/A",
+        "type": "Online (Browser)",
+        "opening": "Unknown",
+        "fen": "x"
+    },
+    "garbage entry"
+]

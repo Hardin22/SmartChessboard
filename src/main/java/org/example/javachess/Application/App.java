@@ -76,24 +76,11 @@ public class App extends Application {
             Hardware.shutdown(); // LEDs off, serial port closed
         }
         AppExecutors.shutdown(); // pending archive writes are completed first
-        disposeBrowser();
+        org.example.javachess.Controllers.BrowserController.disposeIfStarted();
         stopChildProcesses();
         logLingeringThreads();
         // Last resort for threads started by libraries that do not use daemon threads.
         System.exit(0);
-    }
-
-    /** Disposes JCEF only if the browser was actually opened (getInstance() would start it). */
-    private static void disposeBrowser() {
-        try {
-            org.cef.CefApp.CefAppState state = org.cef.CefApp.getState();
-            if (state != org.cef.CefApp.CefAppState.NONE && state != org.cef.CefApp.CefAppState.TERMINATED) {
-                org.cef.CefApp.getInstance().dispose();
-                log.info("JCEF disposed");
-            }
-        } catch (Throwable t) {
-            log.debug("JCEF not disposed: {}", t.toString());
-        }
     }
 
     /** Engines (Stockfish, Lc0) and browser helpers must not outlive the app. */
@@ -127,6 +114,7 @@ public class App extends Application {
     }
 
     public static void main(String[] args) {
+        Bootstrap.init(); // logging, ~/.javachess data folder + migration, global exception handler
         // Persistent cookies for the HTTP clients (Lichess); cheap, keeps sessions across restarts
         try {
             java.net.CookieManager cookieManager = new java.net.CookieManager(
@@ -142,7 +130,7 @@ public class App extends Application {
             if (Hardware.isInitialized()) {
                 Hardware.shutdown();
             }
-            disposeBrowser();
+            org.example.javachess.Controllers.BrowserController.disposeIfStarted();
         }, "shutdown-hook"));
 
         launch(args);

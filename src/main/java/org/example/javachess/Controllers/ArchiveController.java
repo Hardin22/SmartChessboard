@@ -9,24 +9,22 @@ import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
+import org.example.javachess.Oggetti.ArchivedGame;
 import org.example.javachess.Oggetti.ChessBoardUI;
+import org.example.javachess.Services.GameArchiveService;
 import org.example.javachess.Utils.ConfigManager;
-import org.json.JSONArray;
-import org.json.JSONObject;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
+import org.example.javachess.Utils.ErrorReporter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ArchiveController implements NavigationAware {
+
+    private static final Logger log = LoggerFactory.getLogger(ArchiveController.class);
 
     private MainController mainController;
 
     @FXML
-    private ListView<JSONObject> archiveListView;
+    private ListView<ArchivedGame> archiveListView;
 
     @Override
     public void setMainController(MainController mainController) {
@@ -45,7 +43,7 @@ public class ArchiveController implements NavigationAware {
     }
 
     private void setupListView() {
-        archiveListView.setCellFactory(param -> new ListCell<JSONObject>() {
+        archiveListView.setCellFactory(param -> new ListCell<ArchivedGame>() {
             private HBox content;
             private ChessBoardUI miniChessboard;
             private Label typeLabel;
@@ -106,27 +104,23 @@ public class ArchiveController implements NavigationAware {
             }
 
             @Override
-            protected void updateItem(JSONObject game, boolean empty) {
+            protected void updateItem(ArchivedGame game, boolean empty) {
                 super.updateItem(game, empty);
                 if (empty || game == null) {
                     setGraphic(null);
                 } else {
                     // Update existing nodes with new data
-                    int gameId = game.getInt("id");
-                    String datetime = game.getString("datetime");
-                    String pgn = game.getString("pgn");
-                    String result = game.getString("result");
-                    String type = game.getString("type");
-                    String opening = game.getString("opening");
-                    String fen = game.getString("fen");
-                    String initialFen = game.optString("initialFen",
-                            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-                    String timeControl = game.getString("time");
+                    String datetime = game.playedAt() == null ? ""
+                            : game.playedAt().format(java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm"));
+                    String result = game.result();
+                    String type = game.label().isEmpty() ? game.mode().name() : game.label();
+                    String opening = game.opening();
+                    String timeControl = game.timeControl().isEmpty() ? "∞" : game.timeControl();
 
-                    miniChessboard.setPosition(fen, null);
-                    chessboardButton.setOnAction(event -> showReview(gameId, pgn, initialFen));
+                    miniChessboard.setPosition(game.finalFen(), null);
+                    chessboardButton.setOnAction(event -> showReview(game));
                     typeLabel.setText(type.toUpperCase());
-                    resultLabel.setText(result);
+                    resultLabel.setText(game.termination().isEmpty() ? result : result + "  " + game.termination());
 
                     String resultColor = result.equals("1-0") ? "#4CAF50"
                             : (result.equals("0-1") ? "#CF6679" : "#FFC107");
@@ -145,42 +139,22 @@ public class ArchiveController implements NavigationAware {
     }
 
     private void loadArchive() {
-        Path archivePath = copyArchiveJsonToWritableLocation();
-        try {
-            if (Files.exists(archivePath)) {
-                String content = new String(Files.readAllBytes(archivePath));
-                JSONArray gamesArray = new JSONArray(content);
-
-                archiveListView.getItems().clear();
-                // Add in reverse order to show newest first
-                for (int i = gamesArray.length() - 1; i >= 0; i--) {
-                    archiveListView.getItems().add(gamesArray.getJSONObject(i));
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
+        GameArchiveService archive = GameArchiveService.getInstance();
+        archiveListView.getItems().setAll(archive.list()); // newest first
+        if (archive.getLoadProblem() != null) {
+            ErrorReporter.showError("Archivio", archive.getLoadProblem());
         }
     }
 
-    private void showReview(int gameId, String pgn, String initialFen) {
+    private void showReview(ArchivedGame game) {
         mainController.loadView("REVIEW", "/UI/ReviewView.fxml");
         ReviewController reviewController = (ReviewController) mainController.getController("REVIEW");
-        reviewController.loadGame(pgn, initialFen);
-        mainController.navigateTo("REVIEW");
-    }
-
-    private Path copyArchiveJsonToWritableLocation() {
-        Path targetPath = Paths.get("archive.json");
-        if (!Files.exists(targetPath)) {
-            try (InputStream resourceStream = getClass().getResourceAsStream("/archive.json")) {
-                if (resourceStream != null) {
-                    Files.copy(resourceStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+        if (reviewController == null) {
+            log.error("Review view not available");
+            return;
         }
-        return targetPath;
+        reviewController.loadGame(game.movesAsUciString(), game.initialFen());
+        mainController.navigateTo("REVIEW");
     }
 
     @FXML
