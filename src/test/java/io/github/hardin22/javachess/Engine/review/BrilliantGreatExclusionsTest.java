@@ -361,7 +361,9 @@ class BrilliantGreatExclusionsTest {
                 "b8a6", Eval.cp(-237), "f6e4", "e2a6", Eval.cp(623), "e2a6", Eval.cp(-52), "b4a5", Eval.cp(623)),
                 1875, 1857);
         assertNotEquals(MoveClassification.GREAT, label(bxa6, Tuning.DEFAULT));
-        assertEquals(MoveClassification.GREAT, label(bxa6, Tuning.DEFAULT.with("greatCaptureRule", 0)));
+        // (14.Bxa6 also takes the knight that has just attacked the queen in a won position: greatNoQueenAttackerTaken)
+        assertEquals(MoveClassification.GREAT, label(bxa6, Tuning.DEFAULT.with("greatCaptureRule", 0)
+                .with("greatNoQueenAttackerTaken", 0)));
     }
 
     // ------------------------------------------------------------------ SPEC v2.3
@@ -800,6 +802,16 @@ class BrilliantGreatExclusionsTest {
         ReviewInput f4 = rated(oneMove("8/8/8/8/7k/K6P/5P2/8 w - - 1 63", "f2f4", Eval.cp(668), "f2f4", Eval.cp(0),
                 "a3b3", Eval.cp(668)), 2009, 1982);
         assertEquals(MoveClassification.GREAT, label(f4, Tuning.DEFAULT));
+    }
+
+    @Test
+    void takingThePieceThatJustAttackedTheQueenInAWonPositionIsNotGreat() {
+        // Zukertort - Blackburne 1883: 23...Ne4 hits Qd2, 24.Bxe4 (+4.09, second Qe1 -0.91) removes it: chess.com Best
+        ReviewInput bxe4 = twoMoves("2r3k1/pbr1q2p/1p2pnp1/3p1P2/3P4/1P1BR3/PB1Q2PP/5RK1 b - - 0 23", "f6e4",
+                Eval.cp(409), "g6f5", "d3e4", Eval.cp(409), "d3e4", Eval.cp(-91), "d2e1", Eval.cp(409));
+        bxe4 = rated(bxe4, 0, 0);
+        assertEquals(MoveClassification.BEST, label(bxe4, Tuning.DEFAULT));
+        assertEquals(MoveClassification.GREAT, label(bxe4, Tuning.DEFAULT.with("greatNoQueenAttackerTaken", 0)));
     }
 
     private static ReviewInput rated(ReviewInput in, int white, int black) {

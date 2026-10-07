@@ -191,6 +191,8 @@ public final class ReviewClassifier {
         final boolean greatNoCashInBrilliant;
         /** Phase 4 obvious Great: a pawn push escorted by its king in king and pawns against the bare king. */
         final boolean greatNoEscortedPush;
+        /** Phase 4 obvious Great: taking the piece just moved to attack the queen, in a position already won. */
+        final boolean greatNoQueenAttackerTaken;
         final boolean greatKickedBishop;
         /** Phase 4 (0 = off): R9 also when the opponent's move lost at least this much, whatever the alternative. */
         final double greatStartsMatePunish;
@@ -320,6 +322,7 @@ public final class ReviewClassifier {
             greatNoCashIn = get("greatNoCashIn", 1) != 0;
             greatNoCashInBrilliant = get("greatNoCashInBrilliant", 1) != 0;
             greatNoEscortedPush = get("greatNoEscortedPush", 1) != 0;
+            greatNoQueenAttackerTaken = get("greatNoQueenAttackerTaken", 1) != 0;
             greatStartsMatePunish = get("greatStartsMatePunish", 0.15);
             greatStartsMateInCheck = get("greatStartsMateInCheck", 1) != 0;
             greatStartsMateKing = get("greatStartsMateKing", 1) != 0;
@@ -780,7 +783,8 @@ public final class ReviewClassifier {
                     // after an own Brilliant is chess.com Great); under 1000 chess.com rewards it (Qxf6 live_122947746214)
                     label = plain;
                 }
-                if (label == MoveClassification.GREAT && obviousGreat(board(replay.fens().get(i)), uci, me, t)) {
+                if (label == MoveClassification.GREAT && obviousGreat(board(replay.fens().get(i)), uci, me, t,
+                        i > 0 ? replay.uci().get(i - 1) : null, epBefore[i])) {
                     label = plain;
                 }
             }
@@ -1185,13 +1189,39 @@ public final class ReviewClassifier {
      * Phase 4: moves the engine calls the only good one but no chess player would call a find (CLAIMS 23:00, "obvious"
      * Great false positives at 1000+), each a narrow board pattern with its own knob.
      */
-    private static boolean obviousGreat(Board b0, String uci, boolean me, Tuning t) {
+    private static boolean obviousGreat(Board b0, String uci, boolean me, Tuning t, String previous,
+                                        double epBefore) {
         Move m = Tactics.find(b0, uci);
         if (m == null) {
             return false;
         }
         Side side = me ? Side.WHITE : Side.BLACK;
-        return t.greatNoEscortedPush && escortedPush(b0, m, side);
+        return (t.greatNoEscortedPush && escortedPush(b0, m, side))
+                || (t.greatNoQueenAttackerTaken && epBefore > t.greatInCheckMaxEp && !b0.isKingAttacked()
+                && takesQueenAttacker(b0, m, side, previous));
+    }
+
+    /**
+     * The capture takes the piece the opponent has just moved to attack the mover's queen (24.Bxe4 Zukertort -
+     * Blackburne 1883, 23...Nf6-e4 hitting Qd2: chess.com Best). In a position already won (win chance above
+     * {@link Tuning#greatInCheckMaxEp}, the same cap as the answers to check) removing the attacker is the reflex
+     * answer to a threat, not a find; the queen trades and knight forks met earlier stay candidates (Qxh3
+     * live_173888395572 57, Bxe3 Spassky - Bronstein 1960 11.Bxe3: chess.com Great at win chance 0.84 and 0.53).
+     */
+    private static boolean takesQueenAttacker(Board b0, Move m, Side side, String previous) {
+        if (previous == null || !previous.substring(2, 4).equalsIgnoreCase(m.getTo().toString())
+                || b0.getPiece(m.getTo()) == Piece.NONE) {
+            return false;
+        }
+        Board probe = b0.clone();
+        probe.doNullMove(); // the attacker's side to move: does it attack the queen?
+        for (Move o : probe.legalMoves()) {
+            if (o.getFrom() == m.getTo() && probe.getPiece(o.getTo()).getPieceType() == PieceType.QUEEN
+                    && probe.getPiece(o.getTo()).getPieceSide() == side) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
