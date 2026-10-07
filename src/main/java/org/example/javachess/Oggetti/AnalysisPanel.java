@@ -154,20 +154,37 @@ public class AnalysisPanel extends VBox {
             visibleLines = Math.max(visibleLines, pv + 1);
         }
         Label badge = badges.get(pv);
-        String score = scoreText == null ? "0.0" : scoreText.trim();
+        String score = formatScore(scoreText);
         badge.setText(score);
-        boolean black = score.startsWith("-") || score.equals("0-1");
+        boolean black = score.startsWith("-") || score.startsWith("−") || score.equals("0-1");
         badge.getStyleClass().removeAll("white-adv", "black-adv");
         badge.getStyleClass().add(black ? "black-adv" : "white-adv");
         moves.get(pv).setText(cleanLine(fullLine));
         updateVisibility();
     }
 
+    /** "0.35" -> "+0.35", "-1.20" -> "−1.20", "M3"/"-M2" kept; anything unparsable -> an en dash. */
+    static String formatScore(String raw) {
+        String s = raw == null ? "" : raw.trim();
+        if (s.matches("-?M\\d+") || s.equals("1-0") || s.equals("0-1")) {
+            return s.startsWith("-M") ? "−" + s.substring(1) : s;
+        }
+        try {
+            double v = Double.parseDouble(s);
+            if (Math.abs(v) < 0.005) {
+                return "0.00";
+            }
+            return (v > 0 ? "+" : "−") + String.format(java.util.Locale.ROOT, "%.2f", Math.abs(v));
+        } catch (NumberFormatException e) {
+            return "–";
+        }
+    }
+
     private static String cleanLine(String fullLine) {
         if (fullLine == null) {
             return "";
         }
-        return fullLine
+        return org.example.javachess.Components.Notation.castling(fullLine)
                 .replaceAll("^\\s*[\\[(][+-]?\\d+\\.\\d+[\\])]\\s*", "")
                 .replaceAll("^\\s*[\\[(]-?M\\d+[\\])]\\s*", "")
                 .replaceAll("^\\s*[\\[(](1-0|0-1)[\\])]\\s*", "");

@@ -45,7 +45,15 @@ public class MoveListView extends ListView<MoveListView.Row> {
         setPlaceholder(new Label(I18n.t("moves.empty")));
         getPlaceholder().getStyleClass().add("muted");
         setCellFactory(list -> new RowCell());
+        // The scroll position is a fraction: after a height change re-align, so no row is cut at the top.
+        heightProperty().addListener((obs, o, n) -> {
+            if (lastScrollIndex >= 0) {
+                javafx.application.Platform.runLater(() -> scrollTo(lastScrollIndex));
+            }
+        });
     }
+
+    private int lastScrollIndex = -1;
 
     public void setOnPlySelected(IntConsumer listener) {
         this.onPlySelected = listener;
@@ -54,6 +62,7 @@ public class MoveListView extends ListView<MoveListView.Row> {
     public void clear() {
         rows.clear();
         currentPly.set(0);
+        lastScrollIndex = -1;
     }
 
     /** Recomputes SAN for the given moves played from {@code startFen}; keeps unchanged rows. */
@@ -63,6 +72,9 @@ public class MoveListView extends ListView<MoveListView.Row> {
             MoveList list = new MoveList(startFen);
             list.addAll(moves);
             san = list.toSanArray();
+            for (int i = 0; i < san.length; i++) {
+                san[i] = Notation.castling(san[i]);
+            }
         } catch (Exception e) {
             LOG.debug("SAN conversion failed, falling back to UCI", e);
             san = moves.stream().map(Move::toString).toArray(String[]::new);
@@ -103,7 +115,9 @@ public class MoveListView extends ListView<MoveListView.Row> {
         this.currentPly.set(ply);
         if (!rows.isEmpty()) {
             int rowIndex = Math.max(0, Math.min(rows.size() - 1, rowOfPly(ply)));
-            scrollTo(Math.max(0, rowIndex - 3));
+            // After the pending layout pass, so the first visible row is never cut at the top.
+            lastScrollIndex = Math.max(0, rowIndex - 3);
+            javafx.application.Platform.runLater(() -> scrollTo(lastScrollIndex));
         }
     }
 

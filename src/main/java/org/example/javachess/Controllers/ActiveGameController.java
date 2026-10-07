@@ -19,6 +19,7 @@ import org.example.javachess.Components.BoardThemes;
 import org.example.javachess.Components.EnginePicker;
 import org.example.javachess.Components.HardwareStatus;
 import org.example.javachess.Components.I18n;
+import org.example.javachess.Components.Notation;
 import org.example.javachess.Components.Icons;
 import org.example.javachess.Components.MoveListView;
 import org.example.javachess.Components.PageHeader;
@@ -274,7 +275,8 @@ public class ActiveGameController implements NavigationAware {
             String[] lines = new String[n];
             String[] evals = new String[n];
             for (int i = 0; i < n; i++) {
-                lines[i] = update.formatLine(i);
+                lines[i] = i < update.lines().size()
+                        ? Notation.line(update.fen(), update.lines().get(i).pv(), 14) : "";
                 evals[i] = update.evalText(i);
             }
             String best = update.bestMove();
@@ -382,6 +384,9 @@ public class ActiveGameController implements NavigationAware {
             } else if (currentGame instanceof PvcGame pvc) {
                 save = pvc.isSaveGame();
             }
+            if (System.getProperty("javachess.demo") != null || System.getProperty("javachess.snapshot") != null) {
+                save = false; // demo and screenshot runs never write into the user's archive
+            }
             currentGame.endGame("Partita interrotta", save);
             currentGame = null;
         }
@@ -444,6 +449,23 @@ public class ActiveGameController implements NavigationAware {
                 evaluationPanel.updateAnalysis(pv, fullLine, evalText);
             }
         }
+    }
+
+    /** True while a game is open and not finished (shown as "Partita in corso" on the home screen). */
+    public boolean isGameInProgress() {
+        if (currentGame == null) {
+            return false;
+        }
+        Board board = currentGame.getBoard();
+        return !(board.isMated() || board.isDraw());
+    }
+
+    public String getTitle() {
+        return header.getTitle();
+    }
+
+    public String getCurrentFen() {
+        return chessBoard == null ? null : chessBoard.getFen();
     }
 
     // ------------------------------------------------------------------ dev helpers (DevOptions)

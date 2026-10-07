@@ -15,6 +15,7 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import org.example.javachess.Components.BoardThemes;
 import org.example.javachess.Components.I18n;
+import org.example.javachess.Components.Notation;
 import org.example.javachess.Components.MoveListView;
 import org.example.javachess.Components.PageHeader;
 import org.example.javachess.Oggetti.AnalysisPanel;
@@ -469,7 +470,8 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         String[] lines = new String[n];
         String[] evals = new String[n];
         for (int i = 0; i < n; i++) {
-            lines[i] = update.formatLine(i);
+            lines[i] = i < update.lines().size()
+                        ? Notation.line(update.fen(), update.lines().get(i).pv(), 14) : "";
             evals[i] = update.evalText(i);
         }
         String best = update.bestMove();

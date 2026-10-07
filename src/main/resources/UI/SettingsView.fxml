@@ -10,6 +10,7 @@
 <?import javafx.scene.control.ToggleButton?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
 <?import org.example.javachess.Components.*?>
 <?import org.kordamp.ikonli.javafx.FontIcon?>
@@ -17,11 +18,12 @@
 <BorderPane styleClass="page" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
             fx:controller="org.example.javachess.Controllers.SettingsController">
     <top>
-        <PageHeader title="%settings.title" subtitle="%settings.subtitle" onBack="#backToHome">
+        <PageHeader fx:id="header" title="%settings.title" subtitle="%settings.subtitle" onBack="#goBack">
             <padding><Insets top="16" right="16" bottom="8" left="16"/></padding>
         </PageHeader>
     </top>
     <center>
+        <StackPane>
         <ScrollPane fx:id="scroll" fitToWidth="true" hbarPolicy="NEVER">
             <ResponsiveColumns breakpoint="1100" maxColumnWidth="600" spacing="32">
                 <padding><Insets top="16" right="16" bottom="32" left="16"/></padding>
@@ -85,7 +87,90 @@
                             </VBox>
                             <SwitchToggle fx:id="mateAnimationToggle"/>
                         </HBox>
+                    </VBox>
+                </VBox>
+
+                <!-- Column 2 -->
+                <VBox spacing="12">
+                    <Label text="%settings.engine" styleClass="section-label"/>
+                    <Label text="%settings.engine.description" styleClass="caption" wrapText="true"/>
+                    <EnginePicker/>
+
+                    <Label text="%settings.hardware" styleClass="section-label">
+                        <VBox.margin><Insets top="12"/></VBox.margin>
+                    </Label>
+                    <VBox styleClass="card, card-flush">
+                        <HBox styleClass="setting-row, first">
+                            <VBox spacing="2" HBox.hgrow="ALWAYS" minWidth="0">
+                                <Label text="%settings.boardstatus" styleClass="setting-title"/>
+                                <Label text="%settings.boardstatus.description" styleClass="setting-description"/>
+                            </VBox>
+                            <StatusChip fx:id="boardStatus"/>
+                        </HBox>
                         <VBox styleClass="setting-row" spacing="6">
+                            <HBox alignment="CENTER_LEFT">
+                                <VBox spacing="2" HBox.hgrow="ALWAYS" minWidth="0">
+                                    <Label text="%settings.brightness" styleClass="setting-title"/>
+                                    <Label text="%settings.brightness.description" styleClass="setting-description"/>
+                                </VBox>
+                                <Label fx:id="ledBrightnessLabel" text="100%" styleClass="setting-value"/>
+                            </HBox>
+                            <Slider fx:id="ledBrightnessSlider" min="0" max="100" value="100" blockIncrement="5" majorTickUnit="5" minorTickCount="0" snapToTicks="true"/>
+                        </VBox>
+                    </VBox>
+
+                    <Label text="%settings.accounts" styleClass="section-label">
+                        <VBox.margin><Insets top="12"/></VBox.margin>
+                    </Label>
+                    <VBox styleClass="card" spacing="10">
+                        <HBox alignment="CENTER_LEFT" spacing="12">
+                            <VBox spacing="2" HBox.hgrow="ALWAYS" minWidth="0">
+                                <Label text="%settings.lichess" styleClass="card-title"/>
+                                <Label fx:id="lichessStatusLabel" text="%settings.lichess.disconnected" styleClass="card-description" wrapText="true"/>
+                            </VBox>
+                            <Button fx:id="lichessConnectButton" text="%settings.lichess.connect" onAction="#toggleLichessAccount" styleClass="btn, btn-secondary">
+                                <graphic><FontIcon iconLiteral="fth-link" iconSize="18" styleClass="icon"/></graphic>
+                            </Button>
+                        </HBox>
+                    </VBox>
+
+                    <Label text="%settings.system" styleClass="section-label">
+                        <VBox.margin><Insets top="12"/></VBox.margin>
+                    </Label>
+                    <VBox styleClass="card, card-flush">
+                        <HBox styleClass="setting-row, first">
+                            <VBox spacing="2" HBox.hgrow="ALWAYS" minWidth="0">
+                                <Label text="%settings.rotate" styleClass="setting-title"/>
+                                <Label text="%settings.rotate.description" styleClass="setting-description" wrapText="true"/>
+                            </VBox>
+                            <SwitchToggle fx:id="rotateToggle"/>
+                        </HBox>
+                        <Button onAction="#showAdvanced" styleClass="setting-row, btn-ghost" maxWidth="Infinity">
+                            <graphic>
+                                <HBox alignment="CENTER_LEFT" spacing="16">
+                                    <VBox spacing="2" HBox.hgrow="ALWAYS">
+                                        <Label text="%settings.advanced" styleClass="setting-title"/>
+                                        <Label text="%settings.advanced.description" styleClass="setting-description"/>
+                                    </VBox>
+                                    <FontIcon iconLiteral="fth-chevron-right" iconSize="20" styleClass="icon-muted"/>
+                                </HBox>
+                            </graphic>
+                        </Button>
+                        <HBox styleClass="setting-row" alignment="CENTER_LEFT">
+                            <Label text="%settings.version" styleClass="setting-title" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                            <Label fx:id="versionLabel" styleClass="setting-value"/>
+                        </HBox>
+                    </VBox>
+                </VBox>
+            </ResponsiveColumns>
+        </ScrollPane>
+        <ScrollPane fx:id="advancedScroll" fitToWidth="true" hbarPolicy="NEVER" visible="false">
+            <ResponsiveColumns breakpoint="1100" maxColumnWidth="600" spacing="32">
+                <padding><Insets top="16" right="16" bottom="32" left="16"/></padding>
+                <VBox spacing="12">
+                    <Label text="%settings.game.defaults" styleClass="section-label"/>
+                    <VBox styleClass="card, card-flush">
+                        <VBox styleClass="setting-row, first" spacing="6">
                             <HBox alignment="CENTER_LEFT">
                                 <VBox spacing="2" HBox.hgrow="ALWAYS" minWidth="0">
                                     <Label text="%settings.botlevel" styleClass="setting-title"/>
@@ -126,13 +211,9 @@
                             <Slider fx:id="pvpDefaultIncrementSlider" min="0" max="30" value="0" blockIncrement="1" majorTickUnit="1" minorTickCount="0" snapToTicks="true"/>
                         </VBox>
                     </VBox>
-                </VBox>
-
-                <!-- Column 2 -->
-                <VBox spacing="12">
-                    <Label text="%settings.engine" styleClass="section-label"/>
-                    <Label text="%settings.engine.description" styleClass="caption" wrapText="true"/>
-                    <EnginePicker/>
+                    <Label text="%settings.analysis" styleClass="section-label">
+                        <VBox.margin><Insets top="12"/></VBox.margin>
+                    </Label>
                     <VBox styleClass="card, card-flush">
                         <VBox styleClass="setting-row, first" spacing="6">
                             <HBox alignment="CENTER_LEFT">
@@ -154,58 +235,14 @@
                             </HBox>
                             <Slider fx:id="analysisDepthSlider" min="8" max="22" value="12" blockIncrement="1" majorTickUnit="1" minorTickCount="0" snapToTicks="true"/>
                         </VBox>
-                        <VBox styleClass="setting-row" spacing="6">
-                            <HBox alignment="CENTER_LEFT">
-                                <VBox spacing="2" HBox.hgrow="ALWAYS" minWidth="0">
-                                    <Label text="%settings.leddepth" styleClass="setting-title"/>
-                                    <Label text="%settings.leddepth.description" styleClass="setting-description"/>
-                                </VBox>
-                                <Label fx:id="moveEvalDepthLabel" text="8" styleClass="setting-value"/>
-                            </HBox>
-                            <Slider fx:id="moveEvalDepthSlider" min="4" max="20" value="8" blockIncrement="1" majorTickUnit="1" minorTickCount="0" snapToTicks="true"/>
-                        </VBox>
                     </VBox>
-
-                    <Label text="%settings.hardware" styleClass="section-label">
-                        <VBox.margin><Insets top="12"/></VBox.margin>
-                    </Label>
-                    <VBox styleClass="card, card-flush">
-                        <HBox styleClass="setting-row, first">
-                            <VBox spacing="2" HBox.hgrow="ALWAYS" minWidth="0">
-                                <Label text="%settings.boardstatus" styleClass="setting-title"/>
-                                <Label text="%settings.boardstatus.description" styleClass="setting-description"/>
-                            </VBox>
-                            <StatusChip fx:id="boardStatus"/>
-                        </HBox>
-                        <VBox styleClass="setting-row" spacing="6">
-                            <HBox alignment="CENTER_LEFT">
-                                <VBox spacing="2" HBox.hgrow="ALWAYS" minWidth="0">
-                                    <Label text="%settings.brightness" styleClass="setting-title"/>
-                                    <Label text="%settings.brightness.description" styleClass="setting-description"/>
-                                </VBox>
-                                <Label fx:id="ledBrightnessLabel" text="100%" styleClass="setting-value"/>
-                            </HBox>
-                            <Slider fx:id="ledBrightnessSlider" min="0" max="100" value="100" blockIncrement="5" majorTickUnit="5" minorTickCount="0" snapToTicks="true"/>
-                        </VBox>
-                    </VBox>
-
-                    <Label text="%settings.accounts" styleClass="section-label">
-                        <VBox.margin><Insets top="12"/></VBox.margin>
-                    </Label>
+                    <Label text="%settings.leds.note" styleClass="caption" wrapText="true"/>
+                </VBox>
+                <VBox spacing="12">
+                    <Label text="%settings.accounts.manual" styleClass="section-label"/>
                     <VBox styleClass="card" spacing="10">
-                        <HBox alignment="CENTER_LEFT" spacing="12">
-                            <VBox spacing="2" HBox.hgrow="ALWAYS" minWidth="0">
-                                <Label text="%settings.lichess" styleClass="card-title"/>
-                                <Label fx:id="lichessStatusLabel" text="%settings.lichess.disconnected" styleClass="card-description" wrapText="true"/>
-                            </VBox>
-                            <Button fx:id="lichessConnectButton" text="%settings.lichess.connect" onAction="#toggleLichessAccount" styleClass="btn, btn-secondary">
-                                <graphic><FontIcon iconLiteral="fth-link" iconSize="18" styleClass="icon"/></graphic>
-                            </Button>
-                        </HBox>
-                        <Label text="%settings.lichess.advanced" styleClass="section-label">
-                            <VBox.margin><Insets top="8"/></VBox.margin>
-                        </Label>
-                        <Label text="%settings.lichess.username" styleClass="field-label"/>
+                        <Label text="%settings.lichess" styleClass="card-title"/>
+                                                <Label text="%settings.lichess.username" styleClass="field-label"/>
                         <TextField fx:id="lichessUsernameField"/>
                         <Label text="%settings.lichess.token" styleClass="field-label"/>
                         <PasswordField fx:id="lichessApiKeyField" promptText="lip_…"/>
@@ -216,26 +253,10 @@
                         <Label text="%settings.chesscom.username" styleClass="field-label"/>
                         <TextField fx:id="chessComEmailField"/>
                     </VBox>
-
-                    <Label text="%settings.system" styleClass="section-label">
-                        <VBox.margin><Insets top="12"/></VBox.margin>
-                    </Label>
-                    <VBox styleClass="card, card-flush">
-                        <HBox styleClass="setting-row, first">
-                            <VBox spacing="2" HBox.hgrow="ALWAYS" minWidth="0">
-                                <Label text="%settings.rotate" styleClass="setting-title"/>
-                                <Label text="%settings.rotate.description" styleClass="setting-description" wrapText="true"/>
-                            </VBox>
-                            <SwitchToggle fx:id="rotateToggle"/>
-                        </HBox>
-                        <HBox styleClass="setting-row" alignment="CENTER_LEFT">
-                            <Label text="%settings.version" styleClass="setting-title" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
-                            <Label fx:id="versionLabel" styleClass="setting-value"/>
-                        </HBox>
-                    </VBox>
                 </VBox>
             </ResponsiveColumns>
         </ScrollPane>
+        </StackPane>
     </center>
     <bottom>
         <HBox styleClass="page-footer" alignment="CENTER">

@@ -198,18 +198,23 @@ public class ChessBoardUI extends StackPane {
         GraphicsContext gc = boardCanvas.getGraphicsContext2D();
         gc.clearRect(0, 0, width, height);
         BoardThemes.Colors colors = BoardThemes.colors(chessboardStyle);
+        boolean painted = false;
         if (colors == null) {
             Image boardImage = ImageCache.getInstance().getImage("/images/Scacchiere/" + chessboardStyle, width, height);
             if (boardImage != null && !boardImage.isError()) {
                 gc.drawImage(boardImage, 0, 0, width, height);
-                return;
+                colors = sampleColors(boardImage);
+                painted = true;
+            } else {
+                colors = BoardThemes.colors(BoardThemes.DEFAULT);
             }
-            colors = BoardThemes.colors(BoardThemes.DEFAULT);
         }
-        for (int row = 0; row < BOARD_SIZE; row++) {
-            for (int col = 0; col < BOARD_SIZE; col++) {
-                gc.setFill((row + col) % 2 == 0 ? colors.light() : colors.dark());
-                gc.fillRect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        if (!painted) {
+            for (int row = 0; row < BOARD_SIZE; row++) {
+                for (int col = 0; col < BOARD_SIZE; col++) {
+                    gc.setFill((row + col) % 2 == 0 ? colors.light() : colors.dark());
+                    gc.fillRect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                }
             }
         }
         if (showCoordinates && TILE_SIZE >= 32) {
@@ -226,6 +231,20 @@ public class ChessBoardUI extends StackPane {
                 gc.setFill(i % 2 == 0 ? colors.dark() : colors.light());
                 gc.fillText(String.valueOf((char) ('a' + i)), (i + 1) * TILE_SIZE - pad, height - pad);
             }
+        }
+    }
+
+    /** Light/dark square colours of an image board, read at the centre of a8 and b8 (for the coordinates). */
+    private BoardThemes.Colors sampleColors(Image image) {
+        try {
+            javafx.scene.image.PixelReader reader = image.getPixelReader();
+            double sx = image.getWidth() / BOARD_SIZE;
+            double sy = image.getHeight() / BOARD_SIZE;
+            Color light = reader.getColor((int) (sx * 0.5), (int) (sy * 0.5));
+            Color dark = reader.getColor((int) (sx * 1.5), (int) (sy * 0.5));
+            return new BoardThemes.Colors(light, dark);
+        } catch (RuntimeException e) {
+            return BoardThemes.colors(BoardThemes.DEFAULT);
         }
     }
 
@@ -257,8 +276,32 @@ public class ChessBoardUI extends StackPane {
             fillSquare(gc, lastMoveShown.getFrom(), LAST_MOVE);
             fillSquare(gc, lastMoveShown.getTo(), LAST_MOVE);
         }
+        paintCheck(gc);
         for (Runnable op : highlightOps) {
             op.run();
+        }
+    }
+
+    /** King in check: a soft red disc under the king (cheap radial gradient on one square). */
+    private void paintCheck(GraphicsContext gc) {
+        try {
+            if (chessBoard == null || !chessBoard.isKingAttacked()) {
+                return;
+            }
+            Square king = chessBoard.getKingSquare(chessBoard.getSideToMove());
+            if (king == null || king == Square.NONE) {
+                return;
+            }
+            double x = col(king) * TILE_SIZE;
+            double y = row(king) * TILE_SIZE;
+            gc.setFill(new javafx.scene.paint.RadialGradient(0, 0, x + TILE_SIZE / 2.0, y + TILE_SIZE / 2.0,
+                    TILE_SIZE * 0.7, false, javafx.scene.paint.CycleMethod.NO_CYCLE,
+                    new javafx.scene.paint.Stop(0, Color.rgb(255, 40, 40, 0.85)),
+                    new javafx.scene.paint.Stop(0.55, Color.rgb(255, 40, 40, 0.35)),
+                    new javafx.scene.paint.Stop(1, Color.rgb(255, 40, 40, 0))));
+            gc.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+        } catch (RuntimeException e) {
+            // Positions from the hardware can be incomplete (no king): no check to show.
         }
     }
 
@@ -371,10 +414,50 @@ public class ChessBoardUI extends StackPane {
         gc.clearRect(0, 0, highlightCanvas.getWidth(), highlightCanvas.getHeight());
     }
 
+    /**
+     * Arrows are staged and painted once per frame, and only when they differ from what is on screen: the engine
+     * redraws the same best-move arrow many times per second, and every canvas change repaints the whole board
+     * area with the software pipeline.
+     */
     public void clearArrows() {
+        if (!javafx.application.Platform.isFxApplicationThread()) {
+            javafx.application.Platform.runLater(this::clearArrows);
+            return;
+        }
+        stagedArrows.clear();
+        scheduleArrowFlush();
+    }
+
+    private final List<String> stagedArrows = new ArrayList<>();
+    private final List<String> shownArrows = new ArrayList<>();
+    private boolean arrowFlushPending;
+
+    private void scheduleArrowFlush() {
+        if (!arrowFlushPending) {
+            arrowFlushPending = true;
+            javafx.application.Platform.runLater(this::flushArrows);
+        }
+    }
+
+    private void flushArrows() {
+        arrowFlushPending = false;
+        if (stagedArrows.equals(shownArrows)) {
+            return;
+        }
+        shownArrows.clear();
+        shownArrows.addAll(stagedArrows);
         arrowOps.clear();
-        GraphicsContext gc = arrowCanvas.getGraphicsContext2D();
-        gc.clearRect(0, 0, arrowCanvas.getWidth(), arrowCanvas.getHeight());
+        for (String spec : shownArrows) {
+            String[] p = spec.split(",");
+            int fc = Integer.parseInt(p[0]);
+            int fr = Integer.parseInt(p[1]);
+            int tc = Integer.parseInt(p[2]);
+            int tr = Integer.parseInt(p[3]);
+            Color color = Color.web(p[4]);
+            arrowOps.add(() -> drawArrow(arrowCanvas.getGraphicsContext2D(), (fc + 0.5) * TILE_SIZE,
+                    (fr + 0.5) * TILE_SIZE, (tc + 0.5) * TILE_SIZE, (tr + 0.5) * TILE_SIZE, color));
+        }
+        replay(arrowCanvas, arrowOps);
     }
 
     public void clearIcons() {
@@ -405,10 +488,15 @@ public class ChessBoardUI extends StackPane {
     }
 
     public void drawArrowOnBoard(int fromCol, int fromRow, int toCol, int toRow, Color color) {
-        Runnable op = () -> drawArrow(arrowCanvas.getGraphicsContext2D(), (fromCol + 0.5) * TILE_SIZE,
-                (fromRow + 0.5) * TILE_SIZE, (toCol + 0.5) * TILE_SIZE, (toRow + 0.5) * TILE_SIZE, color);
-        arrowOps.add(op);
-        op.run();
+        if (!javafx.application.Platform.isFxApplicationThread()) {
+            javafx.application.Platform.runLater(() -> drawArrowOnBoard(fromCol, fromRow, toCol, toRow, color));
+            return;
+        }
+        String spec = fromCol + "," + fromRow + "," + toCol + "," + toRow + "," + color.toString();
+        if (!stagedArrows.contains(spec)) {
+            stagedArrows.add(spec);
+        }
+        scheduleArrowFlush();
     }
 
     private void drawArrow(GraphicsContext gc, double startX, double startY, double endX, double endY, Color color) {

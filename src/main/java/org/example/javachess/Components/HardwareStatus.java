@@ -40,12 +40,18 @@ public final class HardwareStatus {
 
     /** Updates a chip with the board state. */
     public static void bind(StatusChip chip) {
+        bind(chip, false);
+    }
+
+    /** Same, with short texts ("Collegata") for places already labelled "Scacchiera". */
+    public static void bind(StatusChip chip, boolean shortText) {
+        String suffix = shortText ? ".short" : "";
         chip.set(I18n.t("status.board.checking"), StatusChip.State.BUSY);
         refresh(connected -> {
             if (Boolean.TRUE.equals(connected)) {
-                chip.set(I18n.t("status.board.on"), StatusChip.State.OK);
+                chip.set(I18n.t("status.board.on" + suffix), StatusChip.State.OK);
             } else {
-                chip.set(I18n.t("status.board.off"), StatusChip.State.OFF);
+                chip.set(I18n.t("status.board.off" + suffix), StatusChip.State.OFF);
             }
         });
     }

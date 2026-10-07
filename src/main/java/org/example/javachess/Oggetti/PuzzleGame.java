@@ -350,8 +350,8 @@ public class PuzzleGame extends AbstractGame {
 
     /** Saves the attempt once per puzzle (solved = no wrong move, no hint, not given up), off the FX thread. */
     private void recordProgress(Puzzle puzzle) {
-        if (progressRecorded || puzzle == null) {
-            return;
+        if (progressRecorded || puzzle == null || System.getProperty("javachess.snapshot") != null) {
+            return; // screenshot/demo runs never touch the user's puzzle progress
         }
         progressRecorded = true;
         boolean clean = mistakes == 0 && hintLevel == 0 && !gaveUp;

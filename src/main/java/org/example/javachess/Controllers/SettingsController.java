@@ -63,9 +63,11 @@ public class SettingsController implements NavigationAware {
     @FXML
     private Label analysisDepthLabel;
     @FXML
-    private Slider moveEvalDepthSlider;
+    private org.example.javachess.Components.PageHeader header;
     @FXML
-    private Label moveEvalDepthLabel;
+    private javafx.scene.control.ScrollPane scroll;
+    @FXML
+    private javafx.scene.control.ScrollPane advancedScroll;
     @FXML
     private TextField lichessUsernameField;
     @FXML
@@ -103,7 +105,6 @@ public class SettingsController implements NavigationAware {
         bind(pvpDefaultIncrementSlider, pvpDefaultIncrementLabel, v -> I18n.t("pvp.value.seconds", v));
         bind(gameDepthSlider, gameDepthLabel, String::valueOf);
         bind(analysisDepthSlider, analysisDepthLabel, String::valueOf);
-        bind(moveEvalDepthSlider, moveEvalDepthLabel, String::valueOf);
         bind(ledBrightnessSlider, ledBrightnessLabel, v -> v + "%");
 
         ToggleGroup themeGroup = new ToggleGroup();
@@ -151,6 +152,7 @@ public class SettingsController implements NavigationAware {
 
     @Override
     public void onNavigatedTo() {
+        showMain();
         loadSettings();
         selectThemeToggle(ThemeManager.get().getMode());
         if (mainController != null) {
@@ -237,7 +239,6 @@ public class SettingsController implements NavigationAware {
         pvpDefaultIncrementSlider.setValue(ConfigManager.getIntProperty("game.default.increment", 0));
         gameDepthSlider.setValue(ConfigManager.getIntProperty("game.depth", 18));
         analysisDepthSlider.setValue(ConfigManager.getIntProperty("analysis.depth", 12));
-        moveEvalDepthSlider.setValue(ConfigManager.getIntProperty("move.eval.depth", 8));
         ledBrightnessSlider.setValue(ConfigManager.getIntProperty("hardware.led.brightness", 100));
 
         // Screenshots for the docs must never show real accounts.
@@ -262,7 +263,6 @@ public class SettingsController implements NavigationAware {
         values.put("game.default.increment", String.valueOf((int) pvpDefaultIncrementSlider.getValue()));
         values.put("game.depth", String.valueOf((int) gameDepthSlider.getValue()));
         values.put("analysis.depth", String.valueOf((int) analysisDepthSlider.getValue()));
-        values.put("move.eval.depth", String.valueOf((int) moveEvalDepthSlider.getValue()));
         values.put("hardware.led.brightness", String.valueOf((int) ledBrightnessSlider.getValue()));
         if (!isRedacted()) {
             values.put("lichess.username", lichessUsernameField.getText());
@@ -279,6 +279,37 @@ public class SettingsController implements NavigationAware {
     /** Screenshot/demo runs hide (and never overwrite) the stored accounts. */
     private static boolean isRedacted() {
         return System.getProperty("javachess.snapshot") != null || Boolean.getBoolean("javachess.redact");
+    }
+
+    /** "Avanzate": engine defaults, analysis depths and manual account fields on a second page. */
+    @FXML
+    private void showAdvanced() {
+        scroll.setVisible(false);
+        advancedScroll.setVisible(true);
+        advancedScroll.setVvalue(0);
+        header.setTitle(I18n.t("settings.advanced"));
+        header.setSubtitle(I18n.t("settings.advanced.description"));
+    }
+
+    /** Opens the "Avanzate" page (DevOptions demo). */
+    public void openAdvanced() {
+        showAdvanced();
+    }
+
+    private void showMain() {
+        advancedScroll.setVisible(false);
+        scroll.setVisible(true);
+        header.setTitle(I18n.t("settings.title"));
+        header.setSubtitle(I18n.t("settings.subtitle"));
+    }
+
+    @FXML
+    private void goBack() {
+        if (advancedScroll.isVisible()) {
+            showMain();
+        } else {
+            backToHome();
+        }
     }
 
     @FXML

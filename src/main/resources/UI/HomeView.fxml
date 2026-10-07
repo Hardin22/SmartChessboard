@@ -9,33 +9,52 @@
 <?import javafx.scene.layout.ColumnConstraints?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
 <?import org.example.javachess.Components.*?>
 <?import org.kordamp.ikonli.javafx.FontIcon?>
 
 <BorderPane styleClass="page" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
             fx:controller="org.example.javachess.Controllers.HomeController">
-    <top>
-        <HBox alignment="CENTER_RIGHT" spacing="8" styleClass="home-bar">
-            <padding><Insets top="16" right="16" bottom="8" left="16"/></padding>
-            <StatusChip fx:id="boardStatus"/>
-            <StatusChip fx:id="engineStatus"/>
-        </HBox>
-    </top>
-    <center>
-        <ScrollPane fitToWidth="true" fitToHeight="true" hbarPolicy="NEVER">
-            <VBox fx:id="content" alignment="CENTER">
-                <padding><Insets top="16" right="16" bottom="32" left="16"/></padding>
-                <ResponsiveColumns fx:id="columns" breakpoint="1100" maxColumnWidth="600" spacing="48" centerVertically="true">
+    <fx:define>
+        <!-- Hero -->
+        <VBox fx:id="hero" spacing="12" alignment="CENTER" styleClass="home-hero">
+            <Logo size="88"/>
+            <Label text="javaChess" styleClass="wordmark"/>
+            <Label text="%home.tagline" styleClass="lead" wrapText="true" textAlignment="CENTER"/>
+        </VBox>
 
-                    <!-- Hero -->
-                    <VBox spacing="16" alignment="CENTER" styleClass="home-hero">
-                        <Logo size="96"/>
-                        <Label text="javaChess" styleClass="wordmark"/>
-                        <Label text="%home.tagline" styleClass="lead" wrapText="true" textAlignment="CENTER"/>
-                    </VBox>
+        <!-- Overview: what is going on (last game, progress, hardware) -->
+        <VBox fx:id="overview" spacing="12">
+            <Label text="%home.overview" styleClass="section-label"/>
+            <VBox fx:id="resumeCard" styleClass="card" visible="false" managed="false"/>
+            <HBox spacing="12">
+                <VBox styleClass="stat-block" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                    <Label text="%home.stats.puzzle" styleClass="stat-label"/>
+                    <Label fx:id="puzzleRatingLabel" text="—" styleClass="stat-value"/>
+                </VBox>
+                <VBox styleClass="stat-block" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                    <Label text="%home.stats.streak" styleClass="stat-label"/>
+                    <Label fx:id="streakLabel" text="—" styleClass="stat-value"/>
+                </VBox>
+                <VBox styleClass="stat-block" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                    <Label text="%home.stats.games" styleClass="stat-label"/>
+                    <Label fx:id="gamesLabel" text="—" styleClass="stat-value"/>
+                </VBox>
+            </HBox>
+            <HBox spacing="12">
+                <VBox styleClass="stat-block" spacing="8" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                    <Label text="%home.status.board" styleClass="stat-label"/>
+                    <StatusChip fx:id="boardStatus"/>
+                </VBox>
+                <VBox styleClass="stat-block" spacing="8" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                    <Label text="%home.status.engine" styleClass="stat-label"/>
+                    <StatusChip fx:id="engineStatus"/>
+                </VBox>
+            </HBox>
+        </VBox>
 
-                    <VBox spacing="12">
+                    <VBox fx:id="actions" spacing="12">
                     <!-- Play -->
                     <VBox spacing="12">
                         <Label text="%home.play" styleClass="section-label"/>
@@ -138,8 +157,13 @@
                         </GridPane>
                     </VBox>
                     </VBox>
-                </ResponsiveColumns>
-            </VBox>
+    </fx:define>
+
+    <center>
+        <ScrollPane fx:id="scroll" fitToWidth="true" fitToHeight="true" hbarPolicy="NEVER">
+            <StackPane fx:id="content">
+                <padding><Insets top="24" right="16" bottom="24" left="16"/></padding>
+            </StackPane>
         </ScrollPane>
     </center>
 </BorderPane>

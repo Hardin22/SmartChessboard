@@ -17,4 +17,14 @@ class AnalysisPanelTextTest {
         assertEquals("Posiziona i pezzi...", AnalysisPanel.prettify("Posiziona i pezzi..."));
         assertEquals("Muovi l'avversario: solleva da F8", AnalysisPanel.prettify("Muovi l'avversario: solleva da F8"));
     }
+
+    @Test
+    void scoresAreSignedAndPlaceholdersClean() {
+        assertEquals("+0.35", AnalysisPanel.formatScore("0.35"));
+        assertEquals("−1.20", AnalysisPanel.formatScore("-1.20"));
+        assertEquals("0.00", AnalysisPanel.formatScore("-0.00"));
+        assertEquals("M3", AnalysisPanel.formatScore("M3"));
+        assertEquals("−M2", AnalysisPanel.formatScore("-M2"));
+        assertEquals("–", AnalysisPanel.formatScore("-..."));
+    }
 }
