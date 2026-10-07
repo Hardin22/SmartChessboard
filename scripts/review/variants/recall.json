@@ -1,0 +1,6 @@
+[
+ {"name": "8462605 defaults", "knobs": {}},
+ {"name": "8462605 + deep 2nd line for candidates", "knobs": {}, "recheck": "second"},
+ {"name": "8462605 + deep eval for candidates", "knobs": {}, "recheck": "full"},
+ {"name": "8462605 with v1.9 Great/Brilliant numbers", "knobs": {"greatGap": 0.25, "fakeRegain": 2, "brilliantNonTopLoss": 0.01}}
+]
