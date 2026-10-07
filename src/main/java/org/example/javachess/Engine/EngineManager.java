@@ -250,7 +250,8 @@ public final class EngineManager implements EngineSelection {
             if (err == null) {
                 return CompletableFuture.completedFuture(move);
             }
-            log.warn("bot move failed ({}), retrying once", rootMessage(err));
+            // typical cause: the profile was switched while the bot was thinking (old engine closed)
+            log.info("bot move not completed ({}), retrying once on the current engine", rootMessage(err));
             return botMoveOnce(fen, skillLevel);
         }).thenCompose(f -> f);
     }
@@ -458,12 +459,12 @@ public final class EngineManager implements EngineSelection {
             int cores = Runtime.getRuntime().availableProcessors();
             int threads = ConfigManager.getIntProperty("stockfish.threads", Math.max(1, Math.min(cores / 2, 4)));
             int hash = ConfigManager.getIntProperty("stockfish.hash", 64);
-            return new Budget(threads, hash, 30, 12, 16, 2_500, 150_000, 600, 1, 32, 10_000, 0, 4_000);
+            return new Budget(threads, hash, 30, 12, 16, 2_500, 150_000, 600, 1, 32, 10_000, 0, 1_500);
         }
 
         /** Pi 4 / weak hardware: 1 thread everywhere, same verdict depth (12), cheaper confirmation and hints. */
         public static Budget lite() {
-            return new Budget(1, 16, 16, 12, 14, 1_500, 40_000, 500, 1, 16, 1_000, 300_000, 1_500);
+            return new Budget(1, 16, 16, 12, 14, 1_500, 40_000, 500, 1, 16, 1_000, 300_000, 1_000);
         }
     }
 }

@@ -210,7 +210,7 @@ public final class MoveCoach {
                 return null;
             }
             Map<String, MoveQuality> dest = new LinkedHashMap<>();
-            List<InfoLine> lines = new ArrayList<>(r.lines());
+            List<InfoLine> lines = new ArrayList<>(r.perMove());
             lines.sort(Comparator.comparingInt((InfoLine l) -> l.score().centipawns()).reversed());
             for (InfoLine l : lines) {
                 MoveQuality q = MoveClassifier.classify(best.score, l.score(), l.move().equals(best.move)).quality();
@@ -420,7 +420,7 @@ public final class MoveCoach {
             b = new Best(main.best().score(), main.bestMove(), main.depth());
         }
         if (cand != null) {
-            for (InfoLine l : cand.lines()) {
+            for (InfoLine l : cand.perMove()) {
                 if (b != null && l.move().equals(b.move)) {
                     if (l.depth() >= b.depth) {
                         b = new Best(l.score(), l.move(), l.depth());
