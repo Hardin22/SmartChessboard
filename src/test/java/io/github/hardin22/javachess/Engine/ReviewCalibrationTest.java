@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * Developer tool, skipped unless {@code -Dreview.dataset=<dir of chess.com game JSON>} is set: reviews the games
  * and writes one JSON line per game (our labels, per-position evaluations, our and chess.com accuracies) to
  * {@code -Dreview.out} for offline calibration. Optional: {@code -Dreview.cache}, {@code -Dreview.nodes},
- * {@code -Dreview.processes}, {@code -Dreview.limit}.
+ * {@code -Dreview.processes}, {@code -Dreview.limit}, {@code -Dreview.tag}.
  */
 class ReviewCalibrationTest {
 
@@ -44,18 +44,24 @@ class ReviewCalibrationTest {
 
         List<Path> files;
         try (Stream<Path> s = Files.list(Path.of(dataset))) {
-            files = s.filter(p -> p.toString().endsWith(".json")).sorted().limit(limit).toList();
+            files = s.filter(p -> p.toString().endsWith(".json")).sorted().toList();
         }
         ReviewSettings settings = new ReviewSettings(nodes, nodes * 3 / 2, processes, 64);
         StockfishPool pool = new StockfishPool(sf, processes, 64);
         List<String> lines = new ArrayList<>();
+        Files.createDirectories(out.toAbsolutePath().getParent());
+        Files.deleteIfExists(out);
         double errSum = 0;
         int errN = 0;
         try (GameReviewer reviewer = new GameReviewer(
                 new CachingEvaluator(pool, EvalCache.in(cache, pool.id() + "-" + nodes)), settings,
                 OpeningBook.standard())) {
+            String tag = System.getProperty("review.tag", "");
             for (Path f : files) {
                 JSONObject g = new JSONObject(Files.readString(f));
+                if (!tag.isEmpty() && !g.optJSONArray("tags", new JSONArray()).toList().contains(tag)) {
+                    continue;
+                }
                 List<String> uci = new ArrayList<>();
                 JSONArray mv = g.optJSONArray("moves_uci");
                 if (mv == null) {
@@ -66,6 +72,9 @@ class ReviewCalibrationTest {
                     for (int i = 0; i < mv.length(); i++) {
                         uci.add(mv.getString(i));
                     }
+                }
+                if (lines.size() >= limit) {
+                    break;
                 }
                 GameReview r = reviewer.review(GameReplay.START_FEN, uci, null);
                 JSONObject acc = g.getJSONObject("accuracy");
@@ -80,6 +89,9 @@ class ReviewCalibrationTest {
                 o.put("our_black", r.blackAccuracy());
                 o.put("ms", r.stats().elapsedMs());
                 o.put("searches", r.stats().searches());
+                o.put("multipv", r.stats().multiPvSearches());
+                o.put("nodes", r.stats().nodes());
+                o.put("hits", r.stats().cacheHits());
                 JSONArray labels = new JSONArray();
                 for (MoveReview m : r.moves()) {
                     labels.put(m.label().name());
@@ -102,6 +114,8 @@ class ReviewCalibrationTest {
                 o.put("evals", evals);
                 o.put("uci", mv);
                 lines.add(o.toString());
+                Files.writeString(out, o + "\n", java.nio.file.StandardOpenOption.CREATE,
+                        java.nio.file.StandardOpenOption.APPEND);
                 if (!Double.isNaN(r.whiteAccuracy()) && acc.has("white")) {
                     errSum += Math.abs(r.whiteAccuracy() - acc.getDouble("white"));
                     errN++;
@@ -115,8 +129,6 @@ class ReviewCalibrationTest {
                         r.stats().elapsedMs());
             }
         }
-        Files.createDirectories(out.toAbsolutePath().getParent());
-        Files.write(out, lines);
-        System.out.printf(Locale.ROOT, "games %d, accuracy MAE %.2f%n", files.size(), errSum / Math.max(1, errN));
+        System.out.printf(Locale.ROOT, "games %d, accuracy MAE %.2f%n", lines.size(), errSum / Math.max(1, errN));
     }
 }

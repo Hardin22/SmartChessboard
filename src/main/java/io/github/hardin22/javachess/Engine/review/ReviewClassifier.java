@@ -42,6 +42,8 @@ public final class ReviewClassifier {
     /** MultiPV 2 is only worth it in this win chance range (outside, no Great/Brilliant is possible). */
     static final double SECOND_LINE_MIN_EP = 0.20;
     static final double SECOND_LINE_MAX_EP = 0.97;
+    /** A terminal draw reached from this win chance or more gives the game away (Blunder, never Miss). */
+    static final double GIVE_AWAY_DRAW_EP = 0.6;
     /** Book labels stop after this many plies. */
     static final int BOOK_MAX_PLY = 30;
 
@@ -109,7 +111,7 @@ public final class ReviewClassifier {
         if (best.isMateFor(me) && !played.isMate()) {
             int c = played.cpFor(me);
             return c >= 800 ? MoveClassification.EXCELLENT : c >= 400 ? MoveClassification.GOOD
-                    : c >= 200 ? MoveClassification.INACCURACY : c >= 0 ? MoveClassification.MISTAKE
+                    : c >= 200 ? MoveClassification.INACCURACY : c > 0 ? MoveClassification.MISTAKE
                     : MoveClassification.BLUNDER;
         }
         // R6: forced mate conceded
@@ -235,16 +237,18 @@ public final class ReviewClassifier {
             }
             if (label == null) {
                 label = baseLabel(best, played[i], me, isTop);
-                if (pos.get(i + 1).terminal() && !played[i].isMate() && epBefore[i] >= 0.8) {
-                    label = MoveClassification.BLUNDER; // stalemate (or dead draw) from a won position
+                boolean drawn = pos.get(i + 1).terminal() && !played[i].isMate();
+                if (drawn && epBefore[i] >= GIVE_AWAY_DRAW_EP) {
+                    label = MoveClassification.BLUNDER; // stalemate (or dead draw) from a winning position
                 }
                 if (label == MoveClassification.MISTAKE || label == MoveClassification.BLUNDER) {
-                    label = maybeMiss(label, i, pos, played, epBefore, epAfter, me);
-                }
-                if (label == MoveClassification.BLUNDER
-                        && !losesMaterialOrAllowsMate(replay.fens().get(i), uci, p0, pos.get(i + 1), played[i], me,
-                        epBefore[i])) {
-                    label = MoveClassification.MISTAKE;
+                    boolean gives = givesSomethingAway(replay.fens().get(i), uci, p0, pos.get(i + 1), played[i], me,
+                            epBefore[i]);
+                    if (!gives && missOpportunity(i, pos, played, epBefore, epAfter, me)) {
+                        label = MoveClassification.MISS;
+                    } else if (label == MoveClassification.BLUNDER && !gives) {
+                        label = MoveClassification.MISTAKE;
+                    }
                 }
                 if ((label == MoveClassification.BEST || label == MoveClassification.EXCELLENT) && !mates) {
                     MoveClassification special = special(label, isTop, i, replay, p0, played[i], epBefore[i],
@@ -275,34 +279,28 @@ public final class ReviewClassifier {
         return own != null ? own.eval() : after.eval();
     }
 
-    /** SPEC §5.4: a Mistake/Blunder that fails to punish the opponent's error becomes a Miss. */
-    private static MoveClassification maybeMiss(MoveClassification label, int i, List<PositionEval> pos,
-                                                Eval[] played, double[] epBefore, double[] epAfter, boolean me) {
+    /** SPEC §5.4: the Mistake/Blunder failed to punish the opponent's error (it becomes a Miss). */
+    private static boolean missOpportunity(int i, List<PositionEval> pos, Eval[] played, double[] epBefore,
+                                           double[] epAfter, boolean me) {
         Eval best = pos.get(i).eval();
-        if (pos.get(i + 1).terminal()) {
-            return label; // a stalemate that throws the win away stays a Blunder
-        }
         if (i > 0) {
             double oppLoss = Math.max(0, epBefore[i - 1] - epAfter[i - 1]);
             boolean opportunity = oppLoss >= MISS_OPPONENT_LOSS || best.isMateFor(me);
             double epBeforeOpp = pos.get(i - 1).eval().winChance(me);
             if (opportunity && epAfter[i] >= epBeforeOpp - MISS_NO_WORSE) {
-                return MoveClassification.MISS;
+                return true;
             }
         }
-        if (best.isMateFor(me) && !played[i].isMateAgainst(me) && played[i].cpFor(me) >= 0) {
-            return MoveClassification.MISS;
-        }
-        return label;
+        return best.isMateFor(me) && !played[i].isMate() && played[i].cpFor(me) > 0 && !pos.get(i + 1).terminal();
     }
 
-    /** SPEC §5.5: a Blunder must lose material along the line, allow mate, or throw a win away into a draw. */
-    private static boolean losesMaterialOrAllowsMate(String fen, String uci, PositionEval p0, PositionEval p1,
+    /** SPEC §5.5: the move loses material along the line, allows mate, or throws the game away into a draw. */
+    private static boolean givesSomethingAway(String fen, String uci, PositionEval p0, PositionEval p1,
                                                      Eval played, boolean me, double epBefore) {
         if (played.isMateAgainst(me)) {
             return true;
         }
-        if (p1.terminal() && !played.isMate() && epBefore >= 0.8) {
+        if (p1.terminal() && !played.isMate() && epBefore >= GIVE_AWAY_DRAW_EP) {
             return true; // stalemate or dead draw from a won position
         }
         Side side = me ? Side.WHITE : Side.BLACK;

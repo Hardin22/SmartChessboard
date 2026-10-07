@@ -42,13 +42,22 @@ public final class StockfishPool implements PositionEvaluator {
         Map<String, String> opts = new LinkedHashMap<>();
         opts.put("Threads", "1");
         opts.put("Hash", String.valueOf(Math.max(1, hashMb)));
+        List<java.util.concurrent.CompletableFuture<Void>> started = new ArrayList<>();
         for (int i = 0; i < n; i++) {
             UciClient c = new UciClient(EngineSpec.of("review-" + i, stockfish, opts));
-            c.start();
+            started.add(c.start());
             clients.add(c);
             idle.add(c);
         }
-        this.id = "sf:" + stockfish.getFileName();
+        String name = "";
+        try {
+            started.get(0).get(15, TimeUnit.SECONDS);
+            name = clients.get(0).engineName();
+        } catch (Exception e) {
+            // a failing engine fails its searches later; the id falls back to the file name
+        }
+        // part of the cache key: another engine version must not reuse cached evaluations
+        this.id = name == null || name.isBlank() ? "sf:" + stockfish.getFileName() : name.trim();
     }
 
     @Override
