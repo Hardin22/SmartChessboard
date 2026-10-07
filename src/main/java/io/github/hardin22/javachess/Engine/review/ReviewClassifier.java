@@ -124,6 +124,8 @@ public final class ReviewClassifier {
         final double greatPawnEscapeGap;
         /** Phase 4: R9 also for an answer to check that does not move the king. */
         final boolean greatStartsMateInCheck;
+        /** Phase 4: R9 also for a king escape from check that is not a recapture. */
+        final boolean greatStartsMateKing;
         /**
          * Phase 4 B-TI (threat ignored, user 22:30): a quiet move leaving en prise an already attacked rook or queen,
          * heavier than the moved piece, not taken by the reply and without a counter-threat as big, offers it.
@@ -314,6 +316,7 @@ public final class ReviewClassifier {
             greatNoCashIn = get("greatNoCashIn", 1) != 0;
             greatStartsMatePunish = get("greatStartsMatePunish", 0.15);
             greatStartsMateInCheck = get("greatStartsMateInCheck", 1) != 0;
+            greatStartsMateKing = get("greatStartsMateKing", 1) != 0;
             brilliantHeavyLeft = get("brilliantHeavyLeft", 1) != 0;
             greatForcedTradeCp = get("greatForcedTradeCp", 15);
             pieceSacrifice = get("pieceSacrifice", 1) != 0;
@@ -606,7 +609,8 @@ public final class ReviewClassifier {
             // R9: a quiet move starting a forced mate is Great only if the second best move does not win
             boolean startsMate = Tuning.DEFAULT.greatStartsMate && before.eval().isMateFor(me)
                     && before.eval().mateIn() > 1 && (b.isKingAttacked() ? Tuning.DEFAULT.greatStartsMateInCheck
-                    && !movesKing(b, uci) : !Tactics.isCapture(b, uci));
+                    && (!movesKing(b, uci) || (Tuning.DEFAULT.greatStartsMateKing
+                    && !(i > 0 && isRecapture(replay, i)))) : !Tactics.isCapture(b, uci));
             // v2.5: in a won position a quiet piece move can still be the only one keeping the win (Wei Yi - Bruzon
             // 31.Qd3, Carlsen - Ernst 27.Qe5+, the alternatives only draw): the second line tells. Pushing a pawn
             // there is the natural plan (chess.com Best: 42...d3 live_171977517802, the alternative draws as well)
@@ -875,7 +879,7 @@ public final class ReviewClassifier {
             return MoveClassification.BRILLIANT;
         }
         if (t.greatStartsMate && label == MoveClassification.BEST && isTop
-                && startsMate(b0, uci, played, second, me, oppLoss, t)) {
+                && startsMate(b0, uci, played, second, me, oppLoss, i > 0 && isRecapture(replay, i), t)) {
             return MoveClassification.GREAT; // R9
         }
         if (label != MoveClassification.BEST || !isTop || played.isMateFor(me)) {
@@ -1020,10 +1024,13 @@ public final class ReviewClassifier {
      * the alternative wins anyway.
      */
     private static boolean startsMate(Board b0, String uci, Eval played, EngineLine second, boolean me,
-                                      double oppLoss, Tuning t) {
+                                      double oppLoss, boolean recapture, Tuning t) {
         // Phase 4: out of check, an answer that does not move the king (taking the checker, interposing) and starts
         // the mate counts too (live_174024200644 60...Qxb8+ mates in 11, king moves only draw: chess.com Great)
-        boolean answersCheck = b0.isKingAttacked() && t.greatStartsMateInCheck && !movesKing(b0, uci);
+        // and, with greatStartsMateKing, a king escape that is not a recapture (Botvinnik - Capablanca 38.Kxh5: mate in
+        // 13, Kg5 only draws, chess.com Great; taking back the checker, Kxf7 / Kxc2, stays Best)
+        boolean answersCheck = b0.isKingAttacked() && t.greatStartsMateInCheck
+                && (!movesKing(b0, uci) || (t.greatStartsMateKing && !recapture));
         if (second == null || !played.isMateFor(me) || played.isCheckmate() || (b0.isKingAttacked() && !answersCheck)
                 || (Tactics.isCapture(b0, uci) && !answersCheck) || uci.length() > 4) {
             return false;

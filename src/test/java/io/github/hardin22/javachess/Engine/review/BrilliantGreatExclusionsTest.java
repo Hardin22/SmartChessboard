@@ -670,6 +670,15 @@ class BrilliantGreatExclusionsTest {
     }
 
     @Test
+    void aKingEscapeKeepingTheMateIsGreatWhenTheOtherEscapeDraws() {
+        // Botvinnik - Capablanca 1938, 38.Kxh5 (after 37...Qe4+): mate in 13, 38.Kg5 only draws, chess.com Great
+        ReviewInput kxh5 = rated(oneMove("6k1/p3P2p/1p3Q2/3p3p/2pPq2K/1nP5/6PP/8 w - - 7 38", "h4h5",
+                Eval.whiteMates(13), "h4h5", Eval.cp(0), "h4g5", Eval.whiteMates(12)), 0, 0);
+        assertEquals(MoveClassification.GREAT, label(kxh5, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.GREAT, label(kxh5, Tuning.DEFAULT.with("greatStartsMateKing", 0)));
+    }
+
+    @Test
     void aBishopDrivenBackByAPawnPushIsNotGreat() {
         // live_173864617688 ply 28 (2007): 14.g4 attacks Bh5, 14...Bg6 is the only move (f5 -0.70) but chess.com Best
         ReviewInput bg6 = rated(twoMoves("r4rk1/1pq1npp1/p1nbp2p/3p3b/3P4/2PBBN1P/PPQN1PP1/R3R1K1 w - - 0 14", "g2g4",
