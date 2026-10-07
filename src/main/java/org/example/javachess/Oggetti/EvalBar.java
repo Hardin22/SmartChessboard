@@ -69,17 +69,20 @@ public class EvalBar extends Region {
 
     @Override
     protected void layoutChildren() {
-        double w = getWidth();
-        double h = getHeight();
+        // The 1px padding lets the background act as an outline (visible on both themes).
+        double x0 = snappedLeftInset();
+        double y0 = snappedTopInset();
+        double w = getWidth() - x0 - snappedRightInset();
+        double h = getHeight() - y0 - snappedBottomInset();
         double share = whiteShare.get();
         if (orientation == Orientation.VERTICAL) {
             double whiteH = Math.round(h * share);
-            blackRegion.resizeRelocate(0, 0, w, h - whiteH);
-            whiteRegion.resizeRelocate(0, h - whiteH, w, whiteH);
+            blackRegion.resizeRelocate(x0, y0, w, h - whiteH);
+            whiteRegion.resizeRelocate(x0, y0 + h - whiteH, w, whiteH);
         } else {
             double whiteW = Math.round(w * share);
-            whiteRegion.resizeRelocate(0, 0, whiteW, h);
-            blackRegion.resizeRelocate(whiteW, 0, w - whiteW, h);
+            whiteRegion.resizeRelocate(x0, y0, whiteW, h);
+            blackRegion.resizeRelocate(x0 + whiteW, y0, w - whiteW, h);
         }
         boolean showLabel = Math.min(w, h) >= 20;
         scoreLabel.setVisible(showLabel);

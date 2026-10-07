@@ -34,7 +34,7 @@
                                     <FontIcon iconLiteral="fth-cpu" iconSize="22" styleClass="icon"/>
                                     <VBox spacing="2" HBox.hgrow="ALWAYS">
                                         <Label text="%pvc.stockfish" styleClass="option-title"/>
-                                        <Label text="%pvc.stockfish.description" styleClass="option-description" wrapText="true"/>
+                                        <Label text="%pvc.stockfish.description" styleClass="option-description"/>
                                     </VBox>
                                     <Region styleClass="radio-mark"/>
                                 </HBox>
@@ -46,7 +46,7 @@
                                     <FontIcon iconLiteral="fth-user" iconSize="22" styleClass="icon"/>
                                     <VBox spacing="2" HBox.hgrow="ALWAYS">
                                         <Label text="%pvc.maia1100" styleClass="option-title"/>
-                                        <Label text="%pvc.maia1100.description" styleClass="option-description" wrapText="true"/>
+                                        <Label text="%pvc.maia1100.description" styleClass="option-description"/>
                                     </VBox>
                                     <Region styleClass="radio-mark"/>
                                 </HBox>
@@ -58,7 +58,7 @@
                                     <FontIcon iconLiteral="fth-user" iconSize="22" styleClass="icon"/>
                                     <VBox spacing="2" HBox.hgrow="ALWAYS">
                                         <Label text="%pvc.maia1500" styleClass="option-title"/>
-                                        <Label text="%pvc.maia1500.description" styleClass="option-description" wrapText="true"/>
+                                        <Label text="%pvc.maia1500.description" styleClass="option-description"/>
                                     </VBox>
                                     <Region styleClass="radio-mark"/>
                                 </HBox>
@@ -70,7 +70,7 @@
                                     <FontIcon iconLiteral="fth-user" iconSize="22" styleClass="icon"/>
                                     <VBox spacing="2" HBox.hgrow="ALWAYS">
                                         <Label text="%pvc.maia1900" styleClass="option-title"/>
-                                        <Label text="%pvc.maia1900.description" styleClass="option-description" wrapText="true"/>
+                                        <Label text="%pvc.maia1900.description" styleClass="option-description"/>
                                     </VBox>
                                     <Region styleClass="radio-mark"/>
                                 </HBox>

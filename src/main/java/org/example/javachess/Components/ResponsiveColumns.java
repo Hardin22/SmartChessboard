@@ -17,6 +17,8 @@ public class ResponsiveColumns extends Pane {
     private final DoubleProperty breakpoint = new SimpleDoubleProperty(this, "breakpoint", 1000);
     private final DoubleProperty spacing = new SimpleDoubleProperty(this, "spacing", 24);
     private final DoubleProperty maxColumnWidth = new SimpleDoubleProperty(this, "maxColumnWidth", 640);
+    private final javafx.beans.property.BooleanProperty centerVertically =
+            new javafx.beans.property.SimpleBooleanProperty(this, "centerVertically", false);
 
     public ResponsiveColumns() {
         getStyleClass().add("responsive-columns");
@@ -92,11 +94,12 @@ public class ResponsiveColumns extends Pane {
             for (Node n : nodes) {
                 tallest = Math.max(tallest, n.prefHeight(colW));
             }
-            // Columns are centred vertically against the tallest one (and against the available height).
+            // Optionally centre the columns vertically (home); pages keep them top-aligned.
             double areaH = Math.max(tallest, getHeight() - y0 - snappedBottomInset());
             for (Node n : nodes) {
                 double h = n.prefHeight(colW);
-                n.resizeRelocate(snap(x), snap(y0 + (areaH - h) / 2), colW, h);
+                double y = centerVertically.get() ? y0 + (areaH - h) / 2 : y0;
+                n.resizeRelocate(snap(x), snap(y), colW, h);
                 x += colW + spacing.get();
             }
         } else {
@@ -114,6 +117,10 @@ public class ResponsiveColumns extends Pane {
     private double snap(double v) {
         return snapPositionX(v);
     }
+
+    public javafx.beans.property.BooleanProperty centerVerticallyProperty() { return centerVertically; }
+    public boolean isCenterVertically() { return centerVertically.get(); }
+    public void setCenterVertically(boolean v) { centerVertically.set(v); }
 
     public DoubleProperty breakpointProperty() { return breakpoint; }
     public double getBreakpoint() { return breakpoint.get(); }

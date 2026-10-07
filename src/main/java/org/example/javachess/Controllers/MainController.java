@@ -261,9 +261,9 @@ public class MainController {
 
         VBox sheet = new VBox(16, head, content);
         sheet.getStyleClass().add("sheet");
-        sheet.setMaxWidth(640);
-        sheet.setMaxHeight(Region.USE_PREF_SIZE);
         boolean wide = rootPane.getWidth() > rootPane.getHeight();
+        sheet.setMaxWidth(wide ? 640 : Double.MAX_VALUE);
+        sheet.setMaxHeight(Region.USE_PREF_SIZE);
         StackPane.setAlignment(sheet, wide ? Pos.CENTER : Pos.BOTTOM_CENTER);
         if (!wide) {
             sheet.getStyleClass().add("sheet-bottom");

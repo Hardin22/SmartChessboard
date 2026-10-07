@@ -26,7 +26,7 @@
         <ScrollPane fitToWidth="true" fitToHeight="true" hbarPolicy="NEVER">
             <VBox fx:id="content" alignment="CENTER">
                 <padding><Insets top="16" right="16" bottom="32" left="16"/></padding>
-                <ResponsiveColumns fx:id="columns" breakpoint="1100" maxColumnWidth="600" spacing="48">
+                <ResponsiveColumns fx:id="columns" breakpoint="1100" maxColumnWidth="600" spacing="48" centerVertically="true">
 
                     <!-- Hero -->
                     <VBox spacing="16" alignment="CENTER" styleClass="home-hero">

@@ -191,6 +191,11 @@ public class ReviewController implements NavigationAware, GameNavigationListener
 
     @FXML
     private void startFullAnalysis() {
+        // Full-game analysis depth comes from Settings; the sheet only tunes the live lines.
+        startFullAnalysis(ConfigManager.getIntProperty("analysis.depth", 12));
+    }
+
+    private void startFullAnalysis(int depth) {
         if (currentPgn == null) {
             return;
         }
@@ -204,8 +209,6 @@ public class ReviewController implements NavigationAware, GameNavigationListener
 
         GameAnalyzer analyzer = new GameAnalyzer();
         String pgn = currentPgn;
-        // Full-game analysis depth comes from Settings; the sheet only tunes the live lines.
-        int depth = ConfigManager.getIntProperty("analysis.depth", 12);
         Thread.ofPlatform().daemon().name("game-analysis").start(() -> {
             List<MoveAnalysis> analysis = analyzer.analyzeGame(pgn, depth, progress -> Platform.runLater(() -> {
                 analysisProgressIndicator.setProgress(progress);
@@ -223,8 +226,8 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         progressContainer.setManaged(false);
         accuracyWrapper.setVisible(true);
         accuracyWrapper.setManaged(true);
-        whiteAccuracyLabel.setText(String.format(Locale.ITALIAN, "%.1f", whiteAccuracy));
-        blackAccuracyLabel.setText(String.format(Locale.ITALIAN, "%.1f", blackAccuracy));
+        whiteAccuracyLabel.setText(String.format(Locale.ITALIAN, "%.1f%%", whiteAccuracy));
+        blackAccuracyLabel.setText(String.format(Locale.ITALIAN, "%.1f%%", blackAccuracy));
         countClassifications(analysis);
         evaluationGraph.setData(analysis);
         analyzeButton.setDisable(false);
@@ -365,9 +368,9 @@ public class ReviewController implements NavigationAware, GameNavigationListener
         handleMoveUpdate();
     }
 
-    /** Runs the full-game analysis as if the button were tapped. Public for DevOptions. */
-    public void analyze() {
-        startFullAnalysis();
+    /** Runs the full-game analysis at the given depth. Public for DevOptions. */
+    public void analyze(int depth) {
+        startFullAnalysis(depth);
     }
 
     private void handleMoveUpdate() {

@@ -97,7 +97,7 @@ final class DevDemos {
                     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
             review.goTo(Integer.getInteger("javachess.demo.ply", 20));
             if (Boolean.getBoolean("javachess.demo.analyze")) {
-                review.analyze();
+                review.analyze(Integer.getInteger("javachess.demo.depth", 10));
             }
         }
     }

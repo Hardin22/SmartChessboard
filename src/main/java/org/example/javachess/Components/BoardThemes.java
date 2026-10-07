@@ -37,12 +37,14 @@ public final class BoardThemes {
 
     /** Board style chosen by the user ({@code theme.board}). */
     public static String currentBoard() {
-        return org.example.javachess.Utils.ConfigManager.getProperty("theme.board", DEFAULT);
+        String override = System.getProperty("javachess.theme.board");
+        return override != null ? override : org.example.javachess.Utils.ConfigManager.getProperty("theme.board", DEFAULT);
     }
 
     /** Piece set chosen by the user ({@code theme.piece}). */
     public static String currentPieces() {
-        return org.example.javachess.Utils.ConfigManager.getProperty("theme.piece", "Classico");
+        String override = System.getProperty("javachess.theme.pieces");
+        return override != null ? override : org.example.javachess.Utils.ConfigManager.getProperty("theme.piece", "Classico");
     }
 
     /** Colours of a flat style, or null for image styles. */

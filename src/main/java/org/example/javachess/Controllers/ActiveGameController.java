@@ -92,6 +92,7 @@ public class ActiveGameController implements NavigationAware {
     private boolean showEvaluation = true;
     private boolean showBestMoves = true;
     private double currentEvaluation = 0.0;
+    private boolean rotateTopBar;
 
     @Override
     public void setMainController(MainController mainController) {
@@ -122,6 +123,11 @@ public class ActiveGameController implements NavigationAware {
         gameView.setEvalBar(evalBar);
         header.subtitleProperty().bind(openingNameLabel.textProperty());
         moveList.setFocusTraversable(false);
+        gameView.landscapeProperty().addListener((obs, o, n) -> updateTopBarRotation());
+    }
+
+    private void updateTopBarRotation() {
+        topPlayerInfo.setRotate(rotateTopBar && !gameView.isLandscape() ? 180 : 0);
     }
 
     @Override
@@ -154,11 +160,12 @@ public class ActiveGameController implements NavigationAware {
         currentGame = new PvpGame(chessBoard, evalBar, openingNameLabel, bottomLabel, topLabel, duration * 60,
                 increment);
         header.setTitle(I18n.t("game.vs.player") + " · " + duration + " + " + increment);
-        setPlayers(I18n.t("game.black"), I18n.t("game.black"), I18n.t("game.white"), I18n.t("game.white"), true);
+        setPlayers(I18n.t("game.black"), I18n.t("game.player2"), I18n.t("game.white"), I18n.t("game.player1"), true);
         setupGameCallbacks();
         updateAnalysisParams();
-        // The opponent sits on the other side of the board: turn their bar towards them.
-        topPlayerInfo.setRotate(180);
+        // The opponent sits on the other side of the board: turn their bar towards them (portrait monitor only).
+        rotateTopBar = true;
+        updateTopBarRotation();
         currentGame.startGame();
     }
 
@@ -175,7 +182,8 @@ public class ActiveGameController implements NavigationAware {
         }
         setupGameCallbacks();
         updateAnalysisParams();
-        topPlayerInfo.setRotate(0);
+        rotateTopBar = false;
+        updateTopBarRotation();
         currentGame.startGame();
     }
 
@@ -186,7 +194,8 @@ public class ActiveGameController implements NavigationAware {
         header.setTitle(I18n.t("game.online"));
         setPlayers(I18n.t("game.black"), "Lichess", I18n.t("game.white"), "Lichess", false);
         setupGameCallbacks();
-        topPlayerInfo.setRotate(0);
+        rotateTopBar = false;
+        updateTopBarRotation();
         currentGame.startGame();
     }
 

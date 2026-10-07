@@ -49,7 +49,6 @@ public class EnginePicker extends VBox {
         Label desc = new Label(profile.available() ? profile.description()
                 : I18n.t("engine.unavailable", profile.description()));
         desc.getStyleClass().add("option-description");
-        desc.setWrapText(true);
         VBox texts = new VBox(2, name, desc);
         texts.setMinWidth(0);
         HBox.setHgrow(texts, Priority.ALWAYS);
@@ -70,7 +69,6 @@ public class EnginePicker extends VBox {
                 onPicked.run();
             }
         });
-        content.prefWidthProperty().bind(button.widthProperty().subtract(40));
         return button;
     }
 
