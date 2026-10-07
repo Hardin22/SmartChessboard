@@ -495,6 +495,7 @@ public class ReviewController implements Screen, GameNavigationListener {
         evaluationGraph.setData(analysis);
         analyzeButton.setDisable(false);
         moveList.refresh();
+        scrollMoveListToCurrent();
         updateAnalysisUI();
     }
 
@@ -645,12 +646,19 @@ public class ReviewController implements Screen, GameNavigationListener {
         nextButton.setDisable(index >= total);
         lastButton.setDisable(index >= total);
         moveList.refresh();
-        if (index > 0) {
-            int row = rowOfPly(index);
-            Platform.runLater(() -> moveList.scrollTo(Math.max(0, row - 1)));
-        }
+        scrollMoveListToCurrent();
         triggerAnalysisDebounced();
         updateAnalysisUI();
+    }
+
+    /** Keeps the current move visible in the list (again after layout: the list may not have its height yet). */
+    private void scrollMoveListToCurrent() {
+        if (reviewChessBoard == null || reviewChessBoard.getCurrentMoveIndex() <= 0) {
+            return;
+        }
+        int row = Math.max(0, rowOfPly(reviewChessBoard.getCurrentMoveIndex()) - 1);
+        moveList.scrollTo(row);
+        Platform.runLater(() -> moveList.scrollTo(row));
     }
 
     private int rowOfPly(int ply) {

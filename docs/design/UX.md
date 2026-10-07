@@ -109,15 +109,17 @@ titolo e sottotitolo, **Ruota** (80×80) a destra.
   con − / + per minuti e incremento, **Gioca**.
 
 ### Partita contro il computer (orientata verso l'umano)
-Dall'alto: intestazione compatta (titolo = avversario, sottotitolo = apertura) · riga del computer (stato
-«Sta pensando…», materiale) · scacchiera 656 px con barra di valutazione verticale · riga del giocatore ·
+Dall'alto: intestazione compatta (titolo «Contro il computer», sottotitolo = avversario o apertura) · riga del
+computer (stato «Sta pensando…», materiale catturato) · **scacchiera a tutta larghezza (720 px)** con la barra di
+valutazione come striscia sottile sotto · riga del giocatore ·
 **carta di stato** (la cosa più importante: «Tocca a te», «Muovi per Stockfish: f8 → c5» in grande, istruzioni
-di posizionamento, errori dei sensori) · suggerimento (mossa migliore e valutazione, se attivo) · striscia delle
-ultime mosse · barra azioni: Suggerimenti, Valutazione, Motore, Abbandona.
+di posizionamento, errori dei sensori) · suggerimento (mossa migliore e valutazione, se attivo) · tutte le mosse
+della partita (a capo, l'ultima evidenziata) · barra azioni: Suggerimenti, Valutazione, Motore, Abbandona.
+Senza scacchiera collegata si può muovere toccando lo schermo (pezzo → punti sulle case possibili → destinazione).
 
 ### Partita a due giocatori
 - Metà alta ruotata di 180° (giocatore del Nero), metà bassa per il Bianco; al centro la posizione letta dai
-  sensori con la barra di valutazione (nascondibile dal menu).
+  sensori, a tutta larghezza, con la striscia di valutazione (nascondibile dal menu).
 - Ogni metà, dal centro verso il bordo: ultima mossa e materiale · **orologio** · nome, colore e stato ·
   azioni **Pausa**, **Patta**, **Abbandona**, **⋯** (menu orientato verso chi lo apre).
 - Turno: la metà di chi muove ha l'orologio "acceso"; sotto 20 s diventa rosso. Pausa: entrambe le metà mostrano
@@ -132,15 +134,16 @@ ultime mosse · barra azioni: Suggerimenti, Valutazione, Motore, Abbandona.
 
 ### Revisione
 - Intestazione con giocatori e data. Prima dell'analisi: grande invito **Analizza partita** (con avanzamento).
-- Dopo: precisione dei due giocatori in grande, scacchiera con barra di valutazione, **carta della mossa**
+- Dopo: precisione dei due giocatori in grande, scacchiera a tutta larghezza, **carta della mossa**
   (tessera dell'etichetta, «Cf3 è la mossa migliore» / «Errore grave · migliore era Dxd5», valutazione),
   grafico tappabile con i punti delle mosse notevoli, schede **Mosse** (lista con tessere) e **Riepilogo**
   (conteggi per etichetta, Bianco | etichetta | Nero), navigazione |◀ ◀ ▶ ▶| alta 104 px in fondo.
   Trascinare la scacchiera a sinistra/destra cambia mossa.
 
 ### Archivio
-- Ricerca (tastiera a schermo) e chip: modalità (Tutte, Computer, Due giocatori, Online), risultato (Tutti, Vinte,
-  Perse, Patte, Interrotte), periodo (Sempre, Oggi, 7 giorni, 30 giorni).
+- Ricerca (tastiera a schermo) e tre pulsanti filtro grandi che aprono un foglio di scelte: modalità (Tutte,
+  Computer, Due giocatori, Online), risultato (Tutti, Vinte, Perse, Patte, Interrotte), periodo (Sempre, Oggi,
+  7 giorni, 30 giorni). Tre pulsanti invece di tre righe di chip: lo spazio resta alla lista.
 - Lista virtualizzata, intestazioni per giorno («Oggi», «Ieri», «lunedì 5 ottobre»); riga alta 136 px:
   miniatura della posizione finale, titolo (avversario/modalità), ora · mosse · cadenza, apertura, tessera del
   risultato (Vinta / Persa / Patta / 1-0 / 0-1 / —).
@@ -163,7 +166,14 @@ Versione. Ogni modifica si salva subito.
 - Due giocatori: orientamento di montaggio; ogni metà è già girata verso il proprio giocatore.
 - Altre schermate: restano come sono; il pulsante ↻ (o due dita) gira subito di 180°.
 
-## 7. Cosa non cambia
+## 7. Finestre larghe
+
+Sul monitor in orizzontale (1920×720) o in una finestra desktop le schermate si dispongono in larghezza: Home su due
+colonne, partita e puzzle con la scacchiera a sinistra e il pannello a destra, revisione su tre colonne
+(scacchiera · mossa e navigazione · lista mosse), due giocatori con le metà ai lati della scacchiera (diritte: in
+orizzontale i giocatori non stanno alle due estremità), pagine di impostazioni in una colonna centrata da 760 px.
+
+## 8. Cosa non cambia
 
 Logica di gioco, motore, classificatore della revisione, hardware/seriale e archivio sono usati tramite le loro
 API. Aggiunte minime (documentate in SUMMARY.md): `AbstractGame.isRunning()`, pausa dell'orologio in `PvpGame`.
