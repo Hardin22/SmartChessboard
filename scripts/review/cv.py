@@ -245,8 +245,8 @@ def cmd_stability(a):
         subprocess.run([str(REPO / "mvnw"), "-q", "test-compile"], cwd=REPO, check=True)
     cp = classpath()
     root = REPO / "target" / "cv" / "runs"
-    pa, ga = run_java(cp, {}, root / f"stab-{a.a}", a.a, a.mode, "all", a.dump)
-    pb, gb = run_java(cp, {}, root / f"stab-{a.b}", a.b, a.mode, "all", a.dump)
+    pa, ga = run_java(cp, {}, root / f"stab-{a.a}", a.a, a.mode, "cv", a.dump)
+    pb, gb = run_java(cp, {}, root / f"stab-{a.b}", a.b, a.mode, "cv", a.dump)
     kb = {(p["game"], p["ply"]): p for p in pb}
     pairs = [(p, kb[(p["game"], p["ply"])]) for p in pa if (p["game"], p["ply"]) in kb]
     n = len(pairs)
