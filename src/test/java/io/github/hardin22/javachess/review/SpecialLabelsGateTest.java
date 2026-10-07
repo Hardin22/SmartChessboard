@@ -176,8 +176,8 @@ class SpecialLabelsGateTest {
         assertTrue(missing.isEmpty(), "no product evaluations (lite-block / evals_famous/lite) for " + missing);
 
         Baseline baseline = Baseline.read(BASELINE);
-        Map<String, String> allow = allowlist(ALLOWLIST);
-        Map<String, String> definition = allowlist(DEFINITIONS);
+        Map<String, Entry> allow = allowlist(ALLOWLIST);
+        Map<String, Entry> definition = allowlist(DEFINITIONS);
         List<Error> fresh = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
         for (Error e : errors) {
@@ -244,16 +244,40 @@ class SpecialLabelsGateTest {
         }
     }
 
-    /** id, ply, kind -> justification. */
-    static Map<String, String> allowlist(Path f) throws IOException {
-        Map<String, String> out = new LinkedHashMap<>();
-        if (Files.exists(f)) {
-            for (String l : Files.readAllLines(f, StandardCharsets.UTF_8)) {
-                if (!l.isBlank() && !l.startsWith("#") && !l.startsWith("id\t")) {
-                    String[] c = l.split("\t", 4);
-                    out.put(c[0] + "\t" + c[1] + "\t" + c[2], c.length > 3 ? c[3] : "");
-                }
+    /** One proposed exception (allowlist) or definition decision, with its independent verification. */
+    record Entry(String why, String category, String proposedBy, String verifiedBy, String verdict) {
+        boolean ok() {
+            return "OK".equalsIgnoreCase(verdict);
+        }
+    }
+
+    /** id, ply, kind -> entry; columns by the header line ({@code id ply kind ...}), missing ones empty. */
+    static Map<String, Entry> allowlist(Path f) throws IOException {
+        Map<String, Entry> out = new LinkedHashMap<>();
+        if (!Files.exists(f)) {
+            return out;
+        }
+        List<String> cols = List.of("id", "ply", "kind", "justification");
+        for (String l : Files.readAllLines(f, StandardCharsets.UTF_8)) {
+            if (l.isBlank() || l.startsWith("#")) {
+                continue;
             }
+            if (l.startsWith("id\t")) {
+                cols = List.of(l.split("\t"));
+                continue;
+            }
+            String[] c = l.split("\t", -1);
+            Map<String, String> v = new HashMap<>();
+            for (int i = 0; i < Math.min(c.length, cols.size()); i++) {
+                v.put(cols.get(i), c[i].trim());
+            }
+            String why = v.getOrDefault("justification", v.getOrDefault("reason", ""));
+            if (v.containsKey("evidence") && !v.get("evidence").isEmpty()) {
+                why += " [" + v.get("evidence") + "]";
+            }
+            out.put(c[0] + "\t" + c[1] + "\t" + c[2], new Entry(why, v.getOrDefault("category", ""),
+                    v.getOrDefault("proposed_by", ""), v.getOrDefault("verified_by", ""),
+                    v.getOrDefault("verdict", "pending").isEmpty() ? "pending" : v.get("verdict")));
         }
         return out;
     }
@@ -272,7 +296,7 @@ class SpecialLabelsGateTest {
         return out;
     }
 
-    private static void writeBaseline(List<Error> errors, Map<String, String> allow, double exact, int plies)
+    private static void writeBaseline(List<Error> errors, Map<String, Entry> allow, double exact, int plies)
             throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("# Brilliant/Great errors accepted today by SpecialLabelsGateTest (Phase 4). It only shrinks: regenerate\n")
@@ -289,7 +313,7 @@ class SpecialLabelsGateTest {
         Files.writeString(BASELINE, sb.toString(), StandardCharsets.UTF_8);
     }
 
-    private static void writeErrors(List<Error> errors, Baseline baseline, Map<String, String> allow,
+    private static void writeErrors(List<Error> errors, Baseline baseline, Map<String, Entry> allow,
                                     Map<String, Integer> shard) throws IOException {
         StringBuilder sb = new StringBuilder("shard\tset\tid\tply\tsan\tkind\tours\tchesscom\tstatus\n");
         for (Error e : errors) {
@@ -299,12 +323,12 @@ class SpecialLabelsGateTest {
         Files.writeString(OUT.resolve("errors.tsv"), sb.toString(), StandardCharsets.UTF_8);
     }
 
-    private static String status(Error e, Baseline baseline, Map<String, String> allow) {
+    private static String status(Error e, Baseline baseline, Map<String, Entry> allow) {
         return allow.containsKey(e.key()) ? "allowlist" : baseline.keys.contains(e.key()) ? "baseline" : "NEW";
     }
 
     private static String report(Map<String, Tally> tallies, Tally labelled142, List<Error> errors, List<Error> fresh,
-                                 List<String> fixed, Baseline baseline, Map<String, String> allow,
+                                 List<String> fixed, Baseline baseline, Map<String, Entry> allow,
                                  Map<String, Integer> shard, double exact) {
         StringBuilder sb = new StringBuilder("# Special labels gate (Brilliant / Great vs chess.com SF16 d22)"
                 + (DEFAULT_RATING_ALL ? " — ALL GAMES AT THE DEFAULT RATING (report only)" : "") + "\n\n");
@@ -360,8 +384,8 @@ class SpecialLabelsGateTest {
      * exceptions (allowlist), (3) after the "definition" decisions too, plus the list of column-3 errors (true bugs).
      * An accepted false positive counts as a true positive, an accepted false negative leaves the positives.
      */
-    static String columns(Map<String, Tally> tallies, List<Error> errors, Map<String, String> allow,
-                          Map<String, String> definition, Map<String, Integer> shard) {
+    static String columns(Map<String, Tally> tallies, List<Error> errors, Map<String, Entry> allow,
+                          Map<String, Entry> definition, Map<String, Integer> shard) {
         StringBuilder sb = new StringBuilder("\n## Three columns (PHASE4_DEFINITIONS.md)\n\n")
                 .append("(1) raw vs chess.com · (2) after the 'different engine' allowlist · (3) after the 'definition' "
                         + "decisions too (`notes/special/DEFINITION_DECISIONS.tsv`). Cells: FP/FN, P, R.\n\n")
@@ -388,7 +412,10 @@ class SpecialLabelsGateTest {
                 int[] fpx = new int[3];
                 int[] fnx = new int[3];
                 for (Error x : mine) {
-                    int col = allow.containsKey(x.key()) ? 1 : definition.containsKey(x.key()) ? 2 : 0;
+                    // only an independently verified OK counts as correct; pending and REJECTED stay errors
+                    Entry ae = allow.get(x.key());
+                    Entry de = definition.get(x.key());
+                    int col = ae != null && ae.ok() ? 1 : de != null && de.ok() ? 2 : 0;
                     if (col > 0 && x.kind.startsWith("fp")) {
                         fpx[col]++;
                     } else if (col > 0) {
@@ -415,6 +442,8 @@ class SpecialLabelsGateTest {
                         .append(" | ").append(cells[1]).append(" | ").append(cells[2]).append(" |\n");
             }
         }
+        sb.append(String.format(Locale.ROOT, "%nOnly proposals with verdict OK (verified by another agent) count in "
+                + "columns 2-3.%n"));
         sb.append(String.format(Locale.ROOT, "%nCOLUMNS errors (FP+FN, Brilliant+Great): raw %d, after engine %d, "
                 + "after definition %d%n", totals[0] + totals[1], totals[2] + totals[3], totals[4] + totals[5]));
         List<String> unknown = definition.keySet().stream().filter(k -> errors.stream().noneMatch(x -> x.key().equals(k)))
@@ -424,14 +453,39 @@ class SpecialLabelsGateTest {
                     .append(" — ").append(String.join(", ", unknown.stream().map(k -> k.replace('\t', ' ')).toList()))
                     .append('\n');
         }
-        List<Error> bugs = errors.stream().filter(x -> !allow.containsKey(x.key()) && !definition.containsKey(x.key()))
-                .toList();
+        List<Error> bugs = errors.stream().filter(x -> !(allow.containsKey(x.key()) && allow.get(x.key()).ok())
+                && !(definition.containsKey(x.key()) && definition.get(x.key()).ok())).toList();
+        // verification status of the proposals, by category
+        Map<String, int[]> byCat = new TreeMap<>();
+        for (Map<String, Entry> m : List.of(allow, definition)) {
+            m.forEach((k, en) -> {
+                if (errors.stream().anyMatch(x -> x.key().equals(k))) {
+                    int[] v = byCat.computeIfAbsent(en.category.isEmpty() ? "?" : en.category, c -> new int[3]);
+                    v[en.ok() ? 0 : "REJECTED".equalsIgnoreCase(en.verdict) ? 1 : 2]++;
+                }
+            });
+        }
+        sb.append("\n| category | OK (verified) | REJECTED | pending |\n|---|---:|---:|---:|\n");
+        int[] tot = new int[3];
+        byCat.forEach((c, v) -> {
+            sb.append(String.format(Locale.ROOT, "| %s | %d | %d | %d |%n", c, v[0], v[1], v[2]));
+            for (int i = 0; i < 3; i++) {
+                tot[i] += v[i];
+            }
+        });
+        sb.append(String.format(Locale.ROOT, "| **all** | %d | %d | %d |%n", tot[0], tot[1], tot[2]))
+                .append(String.format(Locale.ROOT, "VERIFICATION ok %d rejected %d pending %d%n", tot[0], tot[1], tot[2]));
         sb.append("\n## Column 3: remaining errors = true bugs (").append(bugs.size()).append(")\n");
-        bugs.forEach(x -> sb.append(line(x, shard).replace("\n", "")).append(" — shard ")
-                .append(shard.getOrDefault(x.id, 0)).append('\n'));
+        bugs.forEach(x -> {
+            Entry en = allow.containsKey(x.key()) ? allow.get(x.key()) : definition.get(x.key());
+            sb.append(line(x, shard).replace("\n", "")).append(" — shard ").append(shard.getOrDefault(x.id, 0))
+                    .append(en == null ? "" : " — proposed (" + en.category + ", " + en.proposedBy + "): " + en.verdict
+                            + (en.verifiedBy.isEmpty() ? "" : " by " + en.verifiedBy)).append('\n');
+        });
         sb.append("\n## Definition decisions (").append(definition.size()).append(")\n");
-        definition.forEach((k, why) -> sb.append("- ").append(k.replace('\t', ' ')).append(": ").append(why)
-                .append('\n'));
+        definition.forEach((k, en) -> sb.append("- ").append(k.replace('\t', ' ')).append(" [").append(en.verdict)
+                .append(en.verifiedBy.isEmpty() ? "" : " by " + en.verifiedBy).append(", proposed by ")
+                .append(en.proposedBy).append("]: ").append(en.why).append('\n'));
         return sb.toString();
     }
 
