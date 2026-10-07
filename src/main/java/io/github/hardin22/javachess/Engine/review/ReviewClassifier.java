@@ -46,6 +46,8 @@ public final class ReviewClassifier {
     static final double SECOND_LINE_MAX_EP = 0.97;
     /** A terminal draw reached from this win chance or more gives the game away (Blunder, never Miss). */
     static final double GIVE_AWAY_DRAW_EP = 0.6;
+    /** Book: plies without a named position that can still lead back into one. */
+    static final int BOOK_MAX_GAP = 4;
     /** Book labels stop after this many plies. */
     static final int BOOK_MAX_PLY = 30;
 
@@ -213,9 +215,21 @@ public final class ReviewClassifier {
         }
         double[][] acc = Accuracy.perMove(in.initialFen(), pos);
 
-        List<MoveReview> out = new ArrayList<>(n);
-        boolean inBook = true;
+        // Book: every move up to the last named opening position the game reaches, allowing short gaps (move
+        // orders that transpose back into a named line are theory too)
+        int bookEnd = -1;
         String opening = null;
+        for (int i = 0; i < Math.min(n, BOOK_MAX_PLY); i++) {
+            String name = in.book().nameAfter(replay.fens().get(i + 1)).orElse(null);
+            if (name != null) {
+                bookEnd = i;
+                opening = name;
+            } else if (i - bookEnd > BOOK_MAX_GAP) {
+                break;
+            }
+        }
+
+        List<MoveReview> out = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             String uci = replay.uci().get(i);
             PositionEval p0 = pos.get(i);
@@ -224,15 +238,8 @@ public final class ReviewClassifier {
             boolean isTop = uci.equals(p0.bestMove());
 
             MoveClassification label = null;
-            if (inBook && i < BOOK_MAX_PLY) {
-                String name = in.book().nameAfter(replay.fens().get(i + 1)).orElse(null);
-                if (name != null) {
-                    label = MoveClassification.BOOK_MOVE;
-                    opening = name;
-                }
-            }
-            if (label == null) {
-                inBook = false;
+            if (i <= bookEnd) {
+                label = MoveClassification.BOOK_MOVE;
             }
             boolean mates = played[i].isCheckmate() && played[i].isMateFor(me);
             if (label == null && !mates && replay.legalMoveCounts().get(i) == 1) {
@@ -240,6 +247,10 @@ public final class ReviewClassifier {
             }
             if (label == null) {
                 label = baseLabel(best, played[i], me, isTop);
+                if (label == MoveClassification.BEST && !isTop && !best.isMate() && !played[i].isMate()) {
+                    // chess.com keeps Best for the engine's move: an equivalent alternative is Excellent
+                    label = MoveClassification.EXCELLENT;
+                }
                 boolean drawn = pos.get(i + 1).terminal() && !played[i].isMate();
                 if (drawn && epBefore[i] >= GIVE_AWAY_DRAW_EP) {
                     label = MoveClassification.BLUNDER; // stalemate (or dead draw) from a winning position
