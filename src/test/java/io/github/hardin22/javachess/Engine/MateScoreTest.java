@@ -66,6 +66,13 @@ class MateScoreTest {
     }
 
     @Test
+    void stalemateIsHalfAndHalf() {
+        AnalysisUpdate u = new AnalysisUpdate("k7/8/1Q6/8/8/8/8/2K5 b - - 0 1", 0, List.of(), true, Score.cp(0), 0, 0);
+        assertEquals(0.0, u.whitePawns());
+        assertEquals("½-½", u.evalText(0));
+    }
+
+    @Test
     void mateInNKeepsItsSideWhicheverColourIsToMove() {
         InfoLine whiteMatesIn2 = new InfoLine(10, 10, 1, Score.mate(2), InfoLine.Bound.EXACT, 0, 0, 0, List.of("d1h5"));
         AnalysisUpdate w = new AnalysisUpdate("4k3/8/8/8/8/8/8/4K2Q w - - 0 1", 10, List.of(whiteMatesIn2), true,
