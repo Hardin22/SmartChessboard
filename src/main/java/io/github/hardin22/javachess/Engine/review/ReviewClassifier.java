@@ -36,7 +36,7 @@ public final class ReviewClassifier {
     /** Brilliant may also come from a Good move (a sacrifice our shallower search undervalues), SPEC v1.5. */
     static final boolean BRILLIANT_FROM_GOOD = tuning("brilliantFromGood", 1) != 0;
     /** Great: the second best move loses at least this much win chance. */
-    static final double GREAT_GAP = 0.10;
+    static final double GREAT_GAP = tuning("greatGap", 0.10);
     /** Miss: the opponent's previous move lost at least this much. */
     static final double MISS_OPPONENT_LOSS = tuning("missOpponentLoss", 0.10);
     /** Miss: the mover ends no worse than before the opponent's error, within this tolerance. */
