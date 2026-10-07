@@ -150,6 +150,9 @@ public class MainController {
         RotateButton.setAction(this::rotateScreen);
         ErrorReporter.setPresenter(this::showError);
         mountedFlipped = Prefs.bool(FLIPPED_KEY, false) ^ Boolean.getBoolean("javachess.rotated");
+        // The scene root has the window's size; a screen's minimum size cannot hide a change of proportions.
+        rootPane.widthProperty().addListener((obs, o, n) -> updateWide());
+        rootPane.heightProperty().addListener((obs, o, n) -> updateWide());
         applyRotation(false);
         navigateTo("HOME");
     }
@@ -205,6 +208,9 @@ public class MainController {
         boolean animate = currentViewName != null && Ui.animations();
         mainContainer.getChildren().setAll(loaded.view());
         currentViewName = viewName;
+        if (loaded.controller() instanceof Screen screen) {
+            screen.setWide(wide);
+        }
         notifyNavigatedTo(loaded.controller());
         if (animate) {
             enter(loaded.view());
@@ -224,6 +230,34 @@ public class MainController {
         rise.setToY(0);
         rise.setInterpolator(Interpolator.EASE_OUT);
         new ParallelTransition(fade, rise).play();
+    }
+
+    private boolean wide;
+
+    /** Tells the current screen when the window becomes wider than tall, or taller than wide. */
+    private void updateWide() {
+        double w = rootPane.getWidth();
+        double h = rootPane.getHeight();
+        if (w <= 0 || h <= 0) {
+            return;
+        }
+        boolean now = w > h * 1.05;
+        if (now != wide) {
+            wide = now;
+            rootPane.getStyleClass().remove("wide");
+            if (wide) {
+                rootPane.getStyleClass().add("wide");
+            }
+            CompletableFuture<Loaded> current = currentViewName == null ? null : loads.get(currentViewName);
+            if (current != null && current.isDone() && !current.isCompletedExceptionally()
+                    && current.join().controller() instanceof Screen screen) {
+                screen.setWide(wide);
+            }
+        }
+    }
+
+    public boolean isWide() {
+        return wide;
     }
 
     private static void notifyNavigatedTo(Object controller) {

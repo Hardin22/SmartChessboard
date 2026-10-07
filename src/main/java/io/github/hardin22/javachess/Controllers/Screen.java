@@ -11,6 +11,13 @@ public interface Screen extends NavigationAware {
     /** The root node of the screen (built once). */
     Parent getRoot();
 
+    /**
+     * The window is wider than tall (landscape monitor, desktop): screens with a board put it beside the rest.
+     * Called on the FX thread when the screen is shown and whenever the proportion changes.
+     */
+    default void setWide(boolean wide) {
+    }
+
     /** Called on the FX thread when the user presses the hardware/keyboard back key; false = not handled. */
     default boolean onBack() {
         return false;

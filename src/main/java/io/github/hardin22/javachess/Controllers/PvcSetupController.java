@@ -98,8 +98,7 @@ public class PvcSetupController implements Screen {
 
         Button play = Ui.wide(I18n.t("common.play"), "fth-play", "btn-primary", "btn-lg");
         play.setOnAction(e -> start());
-        VBox footer = new VBox(play);
-        footer.setPadding(new Insets(16, 32, 36, 32));
+        VBox footer = Ui.footer(play);
 
         root.setTop(header);
         root.setCenter(Ui.scroll(body));

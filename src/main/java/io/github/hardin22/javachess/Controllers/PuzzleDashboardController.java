@@ -93,8 +93,7 @@ public class PuzzleDashboardController implements Screen {
                 Ui.wrap(I18n.t("puzzle.themes.description"), "t-small", "t-muted"), themes);
         body.getStyleClass().add("screen-body");
 
-        VBox footer = new VBox(startButton);
-        footer.setPadding(new Insets(16, 32, 36, 32));
+        VBox footer = Ui.footer(startButton);
         root.setTop(header);
         root.setCenter(Ui.scroll(body));
         root.setBottom(footer);
@@ -125,6 +124,9 @@ public class PuzzleDashboardController implements Screen {
                     ratingInitialised = true;
                     difficulty.setValue(round(stats.rating()));
                 }
+                int v = difficulty.getValue();
+                difficulty.setValue(v == 600 ? 650 : 600);
+                difficulty.setValue(v); // refreshes the quick chips for the player's rating
             });
         });
     }

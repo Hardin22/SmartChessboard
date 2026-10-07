@@ -92,6 +92,7 @@ public class SettingsController implements Screen {
         autoRotateSwitch = Ui.toggleSwitch(Prefs.bool(MainController.AUTOROTATE_KEY, true));
         autoRotateSwitch.setOnAction(e -> Prefs.set(MainController.AUTOROTATE_KEY, autoRotateSwitch.isSelected()));
         Button rotateNow = Ui.button(I18n.t("settings.rotate.now"), "fth-rotate-cw", "btn-outline", "btn-md");
+        rotateNow.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
         rotateNow.setOnAction(e -> mainController.rotateScreen());
         VBox screen = group(
                 row(I18n.t("settings.flipped"), I18n.t("settings.flipped.description"), flippedSwitch),

@@ -1019,8 +1019,8 @@
 }
 
 .eval-score {
-    -fx-font-family: "Geist Mono SemiBold";
-    -fx-font-size: 13px;
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 16px;
     -fx-text-fill: #ECECEE;
 }
 

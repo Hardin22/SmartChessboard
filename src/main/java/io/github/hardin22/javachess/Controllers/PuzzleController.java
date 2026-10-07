@@ -40,6 +40,7 @@ public class PuzzleController implements Screen {
     private final BoardFrame boardFrame = new BoardFrame(evalBar);
     private final StatusCard status = new StatusCard();
     private final FlowPane themeChips = new FlowPane(10, 10);
+    private final HBox progress = new HBox(28);
     private final Label instructionLabel = new Label();
     private final Button hintButton;
     private final Button solutionButton;
@@ -92,11 +93,38 @@ public class PuzzleController implements Screen {
     private void build() {
         VBox boardBox = new VBox(boardFrame);
         boardBox.setPadding(new Insets(4, 0, 0, 0));
-        VBox lower = new VBox(16, status, themeChips);
+        VBox lower = new VBox(16, status, themeChips, Ui.gap(8), progress);
+        progress.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         lower.setPadding(new Insets(16, 24, 0, 24));
         HBox tools = Ui.equalRow(12, hintButton, solutionButton, nextButton);
         tools.setPadding(new Insets(12, 24, 28, 24));
+        this.boardBox = boardBox;
+        this.lower = lower;
+        this.tools = tools;
         root.getChildren().addAll(header, boardBox, lower, Ui.vgrow(), tools);
+    }
+
+    private VBox boardBox;
+    private VBox lower;
+    private HBox tools;
+
+    @Override
+    public void setWide(boolean wide) {
+        root.getChildren().clear();
+        if (!wide) {
+            VBox.setVgrow(boardFrame, javafx.scene.layout.Priority.NEVER);
+            boardBox.getChildren().setAll(boardFrame);
+            root.getChildren().addAll(header, boardBox, lower, Ui.vgrow(), tools);
+            return;
+        }
+        VBox.setVgrow(boardFrame, javafx.scene.layout.Priority.ALWAYS);
+        VBox panel = new VBox(header, lower, Ui.vgrow(), tools);
+        panel.setPrefWidth(Ui.COLUMN);
+        panel.setMinWidth(560);
+        HBox.setHgrow(boardBox, javafx.scene.layout.Priority.ALWAYS);
+        HBox columns = new HBox(8, boardBox, panel);
+        VBox.setVgrow(columns, javafx.scene.layout.Priority.ALWAYS);
+        root.getChildren().add(columns);
     }
 
     /** (Re)creates board and game, e.g. when the board or piece style changed since the last puzzle. */
@@ -189,6 +217,22 @@ public class PuzzleController implements Screen {
             }
         }
         puzzleGame.startPuzzle(puzzle);
+        refreshProgress();
+    }
+
+    /** The solver's rating, streak and solved count under the puzzle. */
+    private void refreshProgress() {
+        io.github.hardin22.javachess.Utils.AppExecutors.io().execute(() -> {
+            var stats = io.github.hardin22.javachess.Services.PuzzleProgressService.getInstance().getStats();
+            Platform.runLater(() -> progress.getChildren().setAll(
+                    stat(String.valueOf(stats.rating()), I18n.t("puzzle.stats.rating")),
+                    stat(String.valueOf(stats.currentStreak()), I18n.t("puzzle.stats.streak")),
+                    stat(stats.solved() + "/" + stats.attempts(), I18n.t("puzzle.stats.solved"))));
+        });
+    }
+
+    private static VBox stat(String value, String caption) {
+        return new VBox(0, Ui.label(value, "t-number"), Ui.label(caption, "t-small", "t-muted"));
     }
 
     public void handleHint() {

@@ -79,10 +79,39 @@ final class GameDuelView extends StackPane {
         farCard.setRotate(180);
         veil.getChildren().addAll(farCard, Ui.vgrow(), pauseCard());
         veil.setPadding(new Insets(260, 60, 260, 60));
+        veil.setMinSize(0, 0); // never forces the screen to be taller than the window
         veil.setVisible(false);
         veil.setOnMouseClicked(e -> actions.togglePause());
 
+        this.column = column;
         getChildren().addAll(column, veil);
+    }
+
+    private final VBox column;
+
+    /**
+     * Wide window (landscape monitor, desktop): the halves stand upright on the two sides of the board instead of
+     * facing the two ends of a portrait screen.
+     */
+    void setWide(boolean wide) {
+        getChildren().remove(0);
+        column.getChildren().clear();
+        center.setMinHeight(wide ? 64 : Region.USE_PREF_SIZE);
+        veil.setPadding(wide ? new Insets(40) : new Insets(260, 60, 260, 60));
+        if (!wide) {
+            far.setRotate(180);
+            column.getChildren().addAll(far, center, near);
+            getChildren().add(0, column);
+            return;
+        }
+        far.setRotate(0);
+        HBox row = new HBox(far, center, near);
+        HBox.setHgrow(far, Priority.ALWAYS);
+        HBox.setHgrow(near, Priority.ALWAYS);
+        far.setPrefWidth(1);
+        near.setPrefWidth(1);
+        center.setAlignment(Pos.CENTER);
+        getChildren().add(0, row);
     }
 
     private Node pauseCard() {

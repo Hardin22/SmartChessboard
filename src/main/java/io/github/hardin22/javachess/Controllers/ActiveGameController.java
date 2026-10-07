@@ -147,6 +147,12 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         return root;
     }
 
+    @Override
+    public void setWide(boolean wide) {
+        solo.setWide(wide);
+        duel.setWide(wide);
+    }
+
     // ================================================================== start
 
     public void startPvP(int duration, int increment) {

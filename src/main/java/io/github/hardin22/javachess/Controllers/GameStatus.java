@@ -54,7 +54,7 @@ record GameStatus(Kind kind, String text, String from, String to) {
             return new GameStatus(Kind.REPLICATE, m, from == null ? null : from.toLowerCase(Locale.ROOT),
                     to.toLowerCase(Locale.ROOT));
         }
-        if (lower.startsWith("posiziona") || lower.startsWith("configura")) {
+        if (lower.startsWith("posiziona") || lower.startsWith("configura") || lower.startsWith("rimetti")) {
             return new GameStatus(Kind.SETUP, m, null, null);
         }
         if (lower.contains("errore") || lower.contains("non disponibile") || lower.startsWith("⚠")) {

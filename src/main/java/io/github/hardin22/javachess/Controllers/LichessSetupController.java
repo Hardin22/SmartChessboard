@@ -114,8 +114,7 @@ public class LichessSetupController implements Screen {
                 Ui.sectionLabel(I18n.t("pvc.color")), colorRow,
                 Ui.gap(8), statusLabel, browser);
         body.getStyleClass().add("screen-body");
-        VBox footer = new VBox(seekButton);
-        footer.setPadding(new Insets(16, 32, 36, 32));
+        VBox footer = Ui.footer(seekButton);
         root.setTop(header);
         root.setCenter(Ui.scroll(body));
         root.setBottom(footer);

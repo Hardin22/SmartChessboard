@@ -251,9 +251,44 @@ public class ReviewController implements Screen, GameNavigationListener {
         VBox bottom = new VBox(0, plyRow, nav);
         bottom.setPadding(new Insets(12, 0, 0, 0));
 
+        this.body = body;
+        this.bottomBar = bottom;
+        this.tabBarNode = tabBar;
         root.setTop(header);
         root.setCenter(body);
         root.setBottom(bottom);
+    }
+
+    private VBox body;
+    private VBox bottomBar;
+    private Node tabBarNode;
+
+    /** Portrait: everything in one column. Wide: the board on the left, the rest in a column on the right. */
+    @Override
+    public void setWide(boolean wide) {
+        body.getChildren().clear();
+        // Portrait: the board never shrinks below its full width. Wide: it fits the height instead.
+        boardFrame.setMinHeight(wide ? 64 : javafx.scene.layout.Region.USE_PREF_SIZE);
+        if (!wide) {
+            root.setTop(header);
+            body.getChildren().addAll(summary, boardFrame, moveCard, evaluationGraph, tabBarNode, tabContent);
+            root.setCenter(body);
+            root.setBottom(bottomBar);
+            return;
+        }
+        root.setBottom(null);
+        root.setTop(null);
+        // Board | header, accuracy, current move, graph, navigation | move list and summary.
+        body.getChildren().addAll(header, summary, moveCard, evaluationGraph, Ui.vgrow(), bottomBar);
+        body.setPrefWidth(620);
+        body.setMinWidth(480);
+        VBox moves = new VBox(12, tabBarNode, tabContent);
+        moves.setPadding(new Insets(24, 0, 24, 0));
+        moves.setPrefWidth(520);
+        moves.setMinWidth(380);
+        HBox.setHgrow(boardFrame, Priority.ALWAYS);
+        HBox columns = new HBox(8, boardFrame, body, moves);
+        root.setCenter(columns);
     }
 
     private VBox accuracyCard(boolean white, Label value) {

@@ -88,8 +88,31 @@ final class GameSoloView extends VBox {
         VBox.setVgrow(lower, Priority.ALWAYS);
         tools.setPadding(new Insets(12, 24, 28, 24));
 
+        this.lower = lower;
+        this.tools = tools;
         getChildren().addAll(header, boardBlock, lower, tools);
         setFillWidth(true);
+    }
+
+    private final VBox lower;
+    private final HBox tools;
+
+    /** Portrait: board on top of the panel. Wide: board on the left (as tall as the window), panel on the right. */
+    void setWide(boolean wide) {
+        getChildren().clear();
+        if (!wide) {
+            VBox.setVgrow(boardFrame, Priority.NEVER);
+            getChildren().addAll(header, boardBlock, lower, tools);
+            return;
+        }
+        VBox.setVgrow(boardFrame, Priority.ALWAYS);
+        VBox panel = new VBox(header, lower, tools);
+        panel.setPrefWidth(Ui.COLUMN);
+        panel.setMinWidth(560);
+        HBox.setHgrow(boardBlock, Priority.ALWAYS);
+        HBox columns = new HBox(8, boardBlock, panel);
+        VBox.setVgrow(columns, Priority.ALWAYS);
+        getChildren().add(columns);
     }
 
     void setPlayers(String whiteName, String whiteMeta, String blackName, String blackMeta) {

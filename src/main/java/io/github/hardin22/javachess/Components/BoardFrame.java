@@ -14,7 +14,7 @@ import io.github.hardin22.javachess.Oggetti.EvalBar;
  */
 public class BoardFrame extends Region {
 
-    private static final double STRIP = 22;
+    private static final double STRIP = 26;
     private static final double SIDE_BAR = 30;
     private static final double GAP = 12;
 

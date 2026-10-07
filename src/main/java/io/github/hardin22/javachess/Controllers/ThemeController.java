@@ -193,7 +193,7 @@ public class ThemeController implements Screen {
         StackPane swatch = new StackPane(graphic);
         swatch.setMaxSize(SWATCH, SWATCH);
         swatch.setClip(clip);
-        VBox content = new VBox(10, swatch, Ui.label(text, "t-body-m"));
+        VBox content = new VBox(10, swatch, Ui.label(text, "t-small"));
         content.setAlignment(Pos.CENTER);
         ToggleButton button = new ToggleButton();
         button.setGraphic(content);

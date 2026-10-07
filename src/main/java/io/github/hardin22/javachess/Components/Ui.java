@@ -218,9 +218,20 @@ public final class Ui {
         return label(text, "section-label");
     }
 
-    /** Vertical scroller for touch: no horizontal bar, content as wide as the viewport. */
+    /** Widest a column of settings-like content gets on wide screens (landscape monitor, desktop). */
+    public static final double COLUMN = 760;
+
+    /**
+     * Vertical scroller for touch: no horizontal bar, content as wide as the viewport (at most {@link #COLUMN},
+     * centred, on wide screens).
+     */
     public static ScrollPane scroll(Node content) {
-        ScrollPane pane = new ScrollPane(content);
+        if (content instanceof Region region) {
+            region.setMaxWidth(COLUMN);
+        }
+        StackPane centred = new StackPane(content);
+        centred.setAlignment(Pos.TOP_CENTER);
+        ScrollPane pane = new ScrollPane(centred);
         pane.setFitToWidth(true);
         pane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         pane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
@@ -228,6 +239,17 @@ public final class Ui {
         pane.setPannable(true);
         VBox.setVgrow(pane, Priority.ALWAYS);
         return pane;
+    }
+
+    /** Bottom bar with the main action of a screen, as wide as the content column. */
+    public static VBox footer(Node action) {
+        if (action instanceof Region region) {
+            region.setMaxWidth(COLUMN - 64);
+        }
+        VBox box = new VBox(action);
+        box.setAlignment(Pos.CENTER);
+        box.setPadding(new javafx.geometry.Insets(16, 32, 36, 32));
+        return box;
     }
 
     /** Text + description column used by settings rows and option cards. */

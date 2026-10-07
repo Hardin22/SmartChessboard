@@ -113,7 +113,38 @@ public class HomeController implements Screen {
 
         resumeSlot.managedProperty().bind(resumeSlot.visibleProperty());
 
-        root.getChildren().addAll(brandRow, status, Ui.vgrow(), hello, Ui.gap(40), resumeSlot, Ui.vgrow(), actions);
+        this.brandRow = brandRow;
+        this.statusRow = status;
+        this.helloBox = hello;
+        this.actionsBox = actions;
+        setWide(false);
+    }
+
+    private HBox brandRow;
+    private HBox statusRow;
+    private VBox helloBox;
+    private VBox actionsBox;
+
+    /** Portrait: one column, actions at the bottom. Wide (landscape monitor, desktop): actions on the right. */
+    @Override
+    public void setWide(boolean wide) {
+        root.getChildren().clear();
+        if (!wide) {
+            actionsBox.setMaxWidth(Double.MAX_VALUE);
+            root.getChildren().addAll(brandRow, statusRow, Ui.vgrow(), helloBox, Ui.gap(40), resumeSlot, Ui.vgrow(),
+                    actionsBox);
+            return;
+        }
+        VBox left = new VBox(0, brandRow, statusRow, Ui.vgrow(), helloBox, Ui.gap(32), resumeSlot, Ui.vgrow());
+        left.setMaxWidth(680);
+        actionsBox.setMaxWidth(680);
+        VBox right = new VBox(Ui.vgrow(), actionsBox, Ui.vgrow());
+        HBox.setHgrow(left, javafx.scene.layout.Priority.ALWAYS);
+        HBox.setHgrow(right, javafx.scene.layout.Priority.ALWAYS);
+        HBox columns = new HBox(64, left, right);
+        columns.setAlignment(Pos.CENTER);
+        VBox.setVgrow(columns, javafx.scene.layout.Priority.ALWAYS);
+        root.getChildren().add(columns);
     }
 
     private Button heroTile(String icon, String title, Label sub, boolean lit, Runnable action) {
