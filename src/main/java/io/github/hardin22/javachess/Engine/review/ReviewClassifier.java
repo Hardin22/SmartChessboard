@@ -122,6 +122,8 @@ public final class ReviewClassifier {
         final double greatCapturePunishLoss;
         /** Phase 4: moving an attacked pawn out of the attack is Great only from this gap (0 = off). */
         final double greatPawnEscapeGap;
+        /** Phase 4: R9 also for an answer to check that does not move the king. */
+        final boolean greatStartsMateInCheck;
         final double brilliantTopRegain;
         /** v2.3 R9: a quiet move starting a forced mate is Great when the alternative does not win. */
         final boolean greatStartsMate;
@@ -279,6 +281,7 @@ public final class ReviewClassifier {
             greatKickedBishop = get("greatKickedBishop", 1) != 0;
             greatNoCashIn = get("greatNoCashIn", 1) != 0;
             greatStartsMatePunish = get("greatStartsMatePunish", 0.15);
+            greatStartsMateInCheck = get("greatStartsMateInCheck", 1) != 0;
             pieceSacrifice = get("pieceSacrifice", 1) != 0;
             outcomeLow = get("outcomeLow", 0.40);
             outcomeHigh = get("outcomeHigh", 0.60);
@@ -568,7 +571,8 @@ public final class ReviewClassifier {
             boolean greatRange = ep >= SECOND_LINE_MIN_EP && ep <= SECOND_LINE_MAX_EP && !before.eval().isMate();
             // R9: a quiet move starting a forced mate is Great only if the second best move does not win
             boolean startsMate = Tuning.DEFAULT.greatStartsMate && before.eval().isMateFor(me)
-                    && before.eval().mateIn() > 1 && !b.isKingAttacked() && !Tactics.isCapture(b, uci);
+                    && before.eval().mateIn() > 1 && (b.isKingAttacked() ? Tuning.DEFAULT.greatStartsMateInCheck
+                    && !movesKing(b, uci) : !Tactics.isCapture(b, uci));
             // v2.5: in a won position a quiet piece move can still be the only one keeping the win (Wei Yi - Bruzon
             // 31.Qd3, Carlsen - Ernst 27.Qe5+, the alternatives only draw): the second line tells. Pushing a pawn
             // there is the natural plan (chess.com Best: 42...d3 live_171977517802, the alternative draws as well)
@@ -974,8 +978,11 @@ public final class ReviewClassifier {
      */
     private static boolean startsMate(Board b0, String uci, Eval played, EngineLine second, boolean me,
                                       double oppLoss, Tuning t) {
-        if (second == null || !played.isMateFor(me) || played.isCheckmate() || b0.isKingAttacked()
-                || Tactics.isCapture(b0, uci) || uci.length() > 4) {
+        // Phase 4: out of check, an answer that does not move the king (taking the checker, interposing) and starts
+        // the mate counts too (live_174024200644 60...Qxb8+ mates in 11, king moves only draw: chess.com Great)
+        boolean answersCheck = b0.isKingAttacked() && t.greatStartsMateInCheck && !movesKing(b0, uci);
+        if (second == null || !played.isMateFor(me) || played.isCheckmate() || (b0.isKingAttacked() && !answersCheck)
+                || (Tactics.isCapture(b0, uci) && !answersCheck) || uci.length() > 4) {
             return false;
         }
         Eval alt = second.eval();
@@ -1104,6 +1111,11 @@ public final class ReviewClassifier {
         Board o = new Board();
         o.loadFromFen(String.join(" ", f));
         return Tactics.see(o, m.getFrom()) > 0;
+    }
+
+    private static boolean movesKing(Board b, String uci) {
+        Move m = Tactics.find(b, uci);
+        return m == null || b.getPiece(m.getFrom()).getPieceType() == PieceType.KING;
     }
 
     /** 0 losing, 1 about equal, 2 winning (SPEC v2.1). */

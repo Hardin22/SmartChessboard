@@ -590,6 +590,16 @@ class BrilliantGreatExclusionsTest {
         assertEquals(MoveClassification.GREAT, label(e3, Tuning.DEFAULT.with("greatPawnEscapeGap", 0)));
     }
 
+    @Test
+    void takingTheCheckerToStartAMateIsGreat() {
+        // live_174024200644 ply 120, 60.b8=Q+ Qxb8+: takes the new queen with check, mate in 11, king moves only draw
+        // (SF16 d22 B#13 vs 0; chess.com Great)
+        ReviewInput qxb8 = rated(oneMove("1Q6/K7/8/1k6/7p/6q1/8/8 b - - 0 60", "g3b8", Eval.blackMates(11), "g3b8",
+                Eval.cp(-51), "b5c4", Eval.blackMates(11)), 2641, 2714);
+        assertEquals(MoveClassification.GREAT, label(qxb8, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.GREAT, label(qxb8, Tuning.DEFAULT.with("greatStartsMateInCheck", 0)));
+    }
+
     private static ReviewInput rated(ReviewInput in, int white, int black) {
         return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
     }
