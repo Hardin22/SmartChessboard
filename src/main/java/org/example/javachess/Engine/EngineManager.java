@@ -91,7 +91,10 @@ public final class EngineManager implements EngineSelection {
     EngineManager(boolean persist) {
         this.persist = persist;
         refreshProfiles();
-        String saved = ConfigManager.getProperty(CONFIG_KEY, STOCKFISH);
+        String saved = ConfigManager.getProperty(CONFIG_KEY, "").trim();
+        if (saved.isEmpty()) {
+            saved = defaultProfileForThisMachine();
+        }
         EngineProfile initial = findProfile(saved).filter(EngineProfile::available)
                 .or(() -> profiles.stream().filter(EngineProfile::available).findFirst())
                 .orElse(profiles.get(0));
@@ -334,6 +337,24 @@ public final class EngineManager implements EngineSelection {
         client.setOption("Hash", String.valueOf(b.hashMb()));
         // outside our lock: the analyzer calls analysisClient() under its own
         reconfigureHooks.forEach(Runnable::run);
+    }
+
+    /** Stockfish Lite on a Raspberry Pi 4 or older (Cortex-A72: ~1/7 of an M-series core), Stockfish elsewhere. */
+    static String defaultProfileForThisMachine() {
+        try {
+            Path model = Path.of("/proc/device-tree/model");
+            if (Files.isReadable(model)) {
+                String m = Files.readString(model).replace("\0", "");
+                java.util.regex.Matcher v = java.util.regex.Pattern.compile("Raspberry Pi (\\d+)").matcher(m);
+                if (v.find() && Integer.parseInt(v.group(1)) <= 4) {
+                    log.info("{}: defaulting to Stockfish Lite", m.trim());
+                    return STOCKFISH_LITE;
+                }
+            }
+        } catch (Exception ignored) {
+            // not a Pi / unreadable
+        }
+        return STOCKFISH;
     }
 
     /** Closes the engines if the manager was ever created (application exit); never starts anything. */
