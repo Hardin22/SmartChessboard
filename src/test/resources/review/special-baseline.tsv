@@ -12,7 +12,6 @@ daily_1017137676	11	fn-great	cv93	a3	best	great
 daily_1017235912	22	fn-great	ex-holdout49	Nxg4	best	great
 daily_1023306212	70	fn-great	cv93	Bxg2	best	great
 daily_1023306212	94	fn-great	cv93	Rf2+	best	great
-daily_1024819088	43	fp-great	cv93	Nd4	great	best
 daily_1027855652	9	fn-great	ex-holdout49	e5	best	great
 daily_1027855652	49	fn-great	ex-holdout49	h4	best	great
 daily_1033021160	51	fn-great	cv93	Rxd8	best	great
@@ -22,7 +21,6 @@ daily_998267522	44	fp-great	ex-holdout49	Nd5	great	best
 daily_998267522	45	fn-great	ex-holdout49	Rf3	excellent	great
 daily_998267522	47	fn-great	ex-holdout49	c3	best	great
 daily_998267522	53	fn-great	ex-holdout49	Kf1	best	great
-live_117364247477	21	fn-great	cv93	Qxb8+	best	great
 live_117364247477	32	fn-great	cv93	Qxb2	best	great
 live_118493959209	32	fn-great	ex-holdout49	Bxc3	best	great
 live_118493959209	68	fp-great	ex-holdout49	Nc4+	great	best
@@ -60,13 +58,11 @@ live_171306358850	33	fn-brilliant	cv93	Qxd6	best	brilliant
 live_171977517802	32	fn-great	cv93	Bxc3	best	great
 live_171977517802	58	fn-great	cv93	Rc1+	best	great
 live_172493057862	18	fn-great	ex-holdout49	Bxh6	best	great
-live_172493057862	35	fn-great	ex-holdout49	Nc3	best	great
 live_172502515518	58	fn-great	cv93	Qxa2	best	great
 live_173845722776	20	fn-great	ex-holdout49	O-O	best	great
 live_173845722776	39	fn-great	ex-holdout49	Qg6+	best	great
 live_173888395572	49	fn-great	ex-holdout49	Bc2	best	great
 live_173888395572	51	fn-great	ex-holdout49	g6	best	great
-live_173888395572	64	fn-great	ex-holdout49	Rg5	best	great
 live_173888395572	156	fn-great	ex-holdout49	Kb5	best	great
 live_173897574620	52	fn-great	cv93	Be6	best	great
 live_173897574620	56	fn-great	cv93	a5	best	great
@@ -97,7 +93,6 @@ live_174392911096	39	fn-great	ex-holdout49	g5	best	great
 live_174392911096	65	fn-great	ex-holdout49	Nd3	best	great
 live_174521739268	47	fp-brilliant	ex-holdout49	Ndxb5	brilliant	best
 live_174521739268	51	fn-great	ex-holdout49	Nc7+	best	great
-live_174521739268	60	fn-great	ex-holdout49	Rg3+	best	great
 live_174521739268	61	fn-great	ex-holdout49	Kf2	best	great
 live_183990190310	9	fp-great	ex-holdout49	Nxe4	great	best
 live_183990190310	20	fn-great	ex-holdout49	Bxe2	best	great
@@ -116,7 +111,6 @@ live_184225478128	38	fn-great	cv93	Nxd1	best	great
 live_184274854214	33	fn-great	ex-holdout49	O-O	best	great
 live_184274854214	52	fn-great	ex-holdout49	Rf8	excellent	great
 live_184308204442	55	fp-great	ex-holdout49	Nxf4	great	best
-live_184308204442	115	fn-great	ex-holdout49	h6+	best	great
 live_184350007554	31	fn-great	ex-holdout49	Nxd6	best	great
 live_184350007554	40	fp-brilliant	ex-holdout49	Nc3	brilliant	best
 live_184350007554	42	fn-great	ex-holdout49	Qxf3	best	great
