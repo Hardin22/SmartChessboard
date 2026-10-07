@@ -1,6 +1,6 @@
 # Brilliant/Great errors accepted today by SpecialLabelsGateTest (Phase 4). It only shrinks: regenerate
 # (-Dreview.special.regen=true) after fixing errors. Allowlisted exceptions are not repeated here.
-# exact 0.6811 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
+# exact 0.6816 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
 id	ply	kind	set	san	ours	chesscom
 daily_1008989784	49	fp-brilliant	ex-holdout49	Bf8	brilliant	excellent
 daily_1009092152	30	fn-great	cv93	Bxb5	best	great
@@ -39,14 +39,12 @@ live_122947746214	21	fn-great	ex-holdout49	Nxb5	inaccuracy	great
 live_122947746214	29	fn-great	ex-holdout49	Nxd4	best	great
 live_122947746214	33	fn-great	ex-holdout49	Bh6	best	great
 live_123175159334	27	fn-brilliant	cv93	Nd5	good	brilliant
-live_123574758978	42	fn-great	cv93	Rxf3	best	great
 live_123602894080	25	fn-great	ex-holdout49	Nxc6+	best	great
 live_123602894080	49	fn-great	ex-holdout49	cxb4	best	great
 live_123602894080	73	fn-great	ex-holdout49	gxf4	good	great
 live_123602894080	93	fn-brilliant	ex-holdout49	Kd4	best	brilliant
 live_123602894080	108	fn-great	ex-holdout49	Kc6	excellent	great
 live_127051221683	47	fn-great	cv93	c6	best	great
-live_138986716238	31	fn-great	ex-holdout49	Nxg7+	best	great
 live_138986716238	41	fn-brilliant	ex-holdout49	Bb4	excellent	brilliant
 live_138986716238	70	fn-great	ex-holdout49	Rxh5	best	great
 live_138986716238	85	fn-great	ex-holdout49	Bxb7	best	great
@@ -58,7 +56,6 @@ live_141789599574	35	fn-great	cv93	Rxc5	best	great
 live_141789599574	41	fn-great	cv93	Rxd5	best	great
 live_141789599574	61	fn-great	cv93	Qxb1	best	great
 live_142024938210	69	fn-great	ex-holdout49	Rh8+	best	great
-live_142024938210	73	fn-great	ex-holdout49	Rxg8+	best	great
 live_143542139438	29	fn-great	cv93	Bh7+	excellent	great
 live_143542139438	33	fn-brilliant	cv93	Qh5	best	brilliant
 live_145692245792	21	fn-great	cv93	Nexd4	best	great
@@ -121,7 +118,6 @@ live_174231520474	41	fn-great	cv93	Rxb8	best	great
 live_174252377286	19	fn-great	cv93	e5	best	great
 live_174252377286	28	fn-brilliant	cv93	Nxe5	inaccuracy	brilliant
 live_174290567620	24	fp-great	cv93	Nxa1	great	best
-live_174300462740	28	fn-great	cv93	Qxf3	best	great
 live_174308174036	11	fn-great	cv93	Qxd8+	best	great
 live_174308174036	15	fn-great	cv93	Nd5	best	great
 live_174367977638	34	fn-great	cv93	Nxe3+	best	great
@@ -139,7 +135,6 @@ live_174521739268	47	fp-brilliant	ex-holdout49	Ndxb5	brilliant	best
 live_174521739268	51	fn-great	ex-holdout49	Nc7+	best	great
 live_174521739268	60	fn-great	ex-holdout49	Rg3+	best	great
 live_174521739268	61	fn-great	ex-holdout49	Kf2	best	great
-live_180008683178	25	fn-great	ex-holdout49	Nxd4	best	great
 live_180019739292	19	fp-great	ex-holdout49	Rg1	great	best
 live_183990190310	9	fp-great	ex-holdout49	Nxe4	great	best
 live_183990190310	20	fn-great	ex-holdout49	Bxe2	best	great

@@ -405,6 +405,20 @@ class BrilliantGreatExclusionsTest {
         assertEquals(MoveClassification.BEST, label(qxg7, Tuning.DEFAULT));
     }
 
+    @Test
+    void underThousandACaptureTheSecondBestCannotReplaceIsGreat() {
+        // live_123574758978 ply 42: 21.Kd4? Rxf3 (-7.94, second best Rb3 -3.28: gap 0.19 at 929, still winning without
+        // it, so no outcome class change): chess.com Great
+        ReviewInput rxf3 = rated(twoMoves("5rk1/1p3ppp/p7/3p4/4n1P1/PPr1KB2/5P1P/R6R w - - 2 21", "e3d4", Eval.cp(-602),
+                "e3e2", "c3f3", Eval.cp(-794), "c3f3", Eval.cp(-328), "c3b3", Eval.cp(-794)), 934, 929);
+        assertEquals(MoveClassification.GREAT, label(rxf3, Tuning.DEFAULT));
+        assertEquals(MoveClassification.BEST, label(rxf3, Tuning.DEFAULT.with("greatBeginnerCapture", 0)));
+        // live_174367977638 ply 36: 17...Nxe3+ 18.Kf2 (no error) Nxd1+ only collects the queen the fork won: Best
+        ReviewInput nxd1 = rated(twoMoves("r2qk1r1/1pp2p2/p1np3p/4p3/2B1P3/2PPnNP1/PP4K1/R2Q3R w q - 0 18", "g2f2",
+                Eval.cp(-802), "g2h2", "e3d1", Eval.cp(-818), "e3d1", Eval.cp(-264), "e3c4", Eval.cp(-818)), 763, 756);
+        assertEquals(MoveClassification.BEST, label(nxd1, Tuning.DEFAULT));
+    }
+
     private static ReviewInput rated(ReviewInput in, int white, int black) {
         return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
     }

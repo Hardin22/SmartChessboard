@@ -90,6 +90,8 @@ public final class ReviewClassifier {
          * a player under {@link #greatFreeMaterialRating}.
          */
         final double greatMatePunish;
+        /** Phase 4: a capture by a player under {@link #greatFreeMaterialRating} with the capture gap is Great. */
+        final boolean greatBeginnerCapture;
         /** v2.1: a piece or the exchange given for pawns counts as a sacrifice of 2 (Brilliant). */
         final boolean pieceSacrifice;
         /**
@@ -244,6 +246,7 @@ public final class ReviewClassifier {
             greatCaptureOppLoss = get("greatCaptureOppLoss", 0.10);
             greatCaptureGap = get("greatCaptureGap", 0.30);
             greatFreeMaterialRating = get("greatFreeMaterialRating", 1000);
+            greatBeginnerCapture = get("greatBeginnerCapture", 1) != 0;
             greatMatePunish = get("greatMatePunish", 0.20);
             greatCaptureRule = (int) get("greatCaptureRule", 2);
             brilliantWinningCp = get("brilliantWinningCp", 700);
@@ -866,6 +869,14 @@ public final class ReviewClassifier {
                 }
             } else if (oppLoss < t.greatCaptureOppLoss) {
                 return false;
+            }
+            boolean collects = i > 0 && board(replay.fens().get(i - 1)).isKingAttacked()
+                    && oppLoss < t.greatOpponentLoss;
+            if (t.greatBeginnerCapture && r < t.greatFreeMaterialRating && !collects) {
+                // Phase 4: under 1000 a capture the second best move cannot replace is Great even in a won position
+                // (Rxf3 live_123574758978, Qxf3 x2, Rxg8+, Nxg7+...), unless it only collects what a check already
+                // won: the opponent answered the check without error (Nxd1+ live_174367977638 after Nxe3+ Kf2, Best)
+                return true;
             }
         }
         boolean changesOutcome = outcomeClass(epBefore, t) > outcomeClass(epBefore - gap, t) && gap >= t.greatClassGap
