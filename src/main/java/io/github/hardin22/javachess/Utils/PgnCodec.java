@@ -26,6 +26,8 @@ public final class PgnCodec {
     private static final Pattern UCI = Pattern.compile("^[a-h][1-8][a-h][1-8][qrbnQRBN]?$");
     private static final Pattern TAG = Pattern.compile("^\\[(\\w+)\\s+\"((?:[^\"\\\\]|\\\\.)*)\"\\]\\s*$");
     private static final Pattern RESULT = Pattern.compile("^(1-0|0-1|1/2-1/2|\\*)$");
+    private static final Pattern SAN_PROMOTION = Pattern.compile("^(.*[a-h][18])\\(?([QRBN])\\)?$");
+    private static final Pattern SAN_DESTINATION = Pattern.compile("([a-h][1-8])(?:=[QRBN])?$");
     private static final String[] SEVEN_TAG_ROSTER = {"Event", "Site", "Date", "Round", "White", "Black", "Result"};
 
     private PgnCodec() {
@@ -253,14 +255,21 @@ public final class PgnCodec {
         if (wanted.isEmpty()) {
             return null;
         }
-        for (Move m : MoveGenerator.generateLegalMoves(board)) {
+        // SAN of only the moves to the named square: generating it for every legal move made a PGN import of a
+        // few thousand games take minutes on a Raspberry Pi
+        Square target = sanDestination(wanted);
+        List<Move> legal = MoveGenerator.generateLegalMoves(board);
+        for (Move m : legal) {
+            if (target != null && m.getTo() != target) {
+                continue;
+            }
             if (normalizeSan(toSan(board, m)).equals(wanted)) {
                 return m;
             }
         }
         // Over-specified disambiguation (e.g. "Ngf3" when "Nf3" is enough) or missing capture mark.
         String relaxed = wanted.replace("x", "");
-        for (Move m : MoveGenerator.generateLegalMoves(board)) {
+        for (Move m : legal) {
             Piece p = board.getPiece(m.getFrom());
             String to = m.getTo().value().toLowerCase(Locale.ROOT);
             String promo = m.getPromotion() != null && m.getPromotion() != Piece.NONE
@@ -286,6 +295,15 @@ public final class PgnCodec {
         return null;
     }
 
+    /** Destination square of a normalised SAN move ("Nbxd7" -> d7, "e8=Q" -> e8), null for castling. */
+    private static Square sanDestination(String normalizedSan) {
+        if (normalizedSan.startsWith("O-O")) {
+            return null;
+        }
+        Matcher m = SAN_DESTINATION.matcher(normalizedSan);
+        return m.find() ? Square.valueOf(m.group(1).toUpperCase(Locale.ROOT)) : null;
+    }
+
     private static String normalizeSan(String san) {
         if (san == null) {
             return "";
@@ -295,7 +313,7 @@ public final class PgnCodec {
             return s;
         }
         // "e8Q" / "e8(Q)" -> "e8=Q"
-        Matcher m = Pattern.compile("^(.*[a-h][18])\\(?([QRBN])\\)?$").matcher(s);
+        Matcher m = SAN_PROMOTION.matcher(s);
         if (m.matches()) {
             s = m.group(1) + "=" + m.group(2);
         }
