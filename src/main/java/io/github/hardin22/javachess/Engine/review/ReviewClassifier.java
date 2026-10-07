@@ -147,6 +147,8 @@ public final class ReviewClassifier {
         final double greatKingFlightGap;
         /** v2.5: pushing again the passed pawn moved on the mover's previous turn is not Great (the plan goes on). */
         final boolean greatPawnFollowUp;
+        /** v2.5: second line also for a quiet top move in a won position (above the MultiPV range). */
+        final boolean greatWonQuiet;
         /** Phase 4: an answer to check taking free material (SEE > 0) follows the free material rule of captures. */
         final boolean greatInCheckFreeMaterial;
         /** Phase 4: no Great for a bishop retreating from the pawn that has just advanced against it. */
@@ -263,6 +265,7 @@ public final class ReviewClassifier {
             greatInCheckMaxEp = get("greatInCheckMaxEp", 0.90);
             greatKingFlightGap = get("greatKingFlightGap", 0.17);
             greatPawnFollowUp = get("greatPawnFollowUp", 1) != 0;
+            greatWonQuiet = get("greatWonQuiet", 1) != 0;
             greatInCheckFreeMaterial = get("greatInCheckFreeMaterial", 1) != 0;
             greatKickedBishop = get("greatKickedBishop", 1) != 0;
             pieceSacrifice = get("pieceSacrifice", 1) != 0;
@@ -554,8 +557,13 @@ public final class ReviewClassifier {
             // R9: a quiet move starting a forced mate is Great only if the second best move does not win
             boolean startsMate = Tuning.DEFAULT.greatStartsMate && before.eval().isMateFor(me)
                     && before.eval().mateIn() > 1 && !b.isKingAttacked() && !Tactics.isCapture(b, uci);
+            // v2.5: in a won position a quiet piece move can still be the only one keeping the win (Wei Yi - Bruzon
+            // 31.Qd3, Carlsen - Ernst 27.Qe5+, the alternatives only draw): the second line tells. Pushing a pawn
+            // there is the natural plan (chess.com Best: 42...d3 live_171977517802, the alternative draws as well)
+            boolean wonQuiet = Tuning.DEFAULT.greatWonQuiet && ep > SECOND_LINE_MAX_EP && !before.eval().isMate()
+                    && !b.isKingAttacked() && !Tactics.isCapture(b, uci) && !isPawnMove(b, uci);
             // a sacrifice can be Brilliant even when it mates: only the second line tells if it was needed
-            if (greatRange || startsMate || (!before.eval().isMateAgainst(me) && brilliant(b, uci, me))) {
+            if (greatRange || startsMate || wonQuiet || (!before.eval().isMateAgainst(me) && brilliant(b, uci, me))) {
                 need.set(i);
             }
         }
@@ -941,6 +949,12 @@ public final class ReviewClassifier {
         }
         Eval alt = second.eval();
         return alt.isMateAgainst(me) || (!alt.isMate() && alt.cpFor(me) <= t.greatStartsMateAltCp);
+    }
+
+    /** True when {@code uci} moves a pawn. */
+    private static boolean isPawnMove(Board b, String uci) {
+        Move m = Tactics.find(b, uci);
+        return m != null && b.getPiece(m.getFrom()).getPieceType() == PieceType.PAWN;
     }
 
     /** True when {@code uci} pushes a passed pawn that arrived on its square with the mover's previous move. */

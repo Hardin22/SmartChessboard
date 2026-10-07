@@ -310,6 +310,21 @@ class BrilliantGreatExclusionsTest {
     }
 
     @Test
+    void aQuietMoveKeepingTheWinIsGreatEvenInAWonPosition() {
+        // Carlsen - Ernst 2004, 27.Qe5+ at +13.8: the second best move 27.Rxg6+ only draws (chess.com Great). The
+        // position is above the MultiPV range: the reviewer now asks for the second line of a quiet piece move there
+        String fen = "5r2/pp2QPk1/6r1/q1p5/3P4/6R1/PPP2PP1/1K6 w - - 5 27";
+        ReviewInput qe5 = rated(oneMove(fen, "e7e5", Eval.cp(1383), "e7e5", Eval.cp(0), "g3g6", Eval.cp(1393)),
+                2500, 2500);
+        assertEquals(MoveClassification.GREAT, label(qe5, Tuning.DEFAULT));
+        List<PositionEval> mainOnly = List.of(new PositionEval(fen, Eval.cp(1383),
+                List.of(new EngineLine("e7e5", Eval.cp(1383), List.of("e7e5"), 20)), 20, 0, false),
+                qe5.positions().get(1));
+        assertTrue(ReviewClassifier.needsSecondLine(new ReviewInput(fen, List.of("e7e5"), mainOnly, OpeningBook.NONE,
+                2500, 2500)).get(0));
+    }
+
+    @Test
     void aQuietMoveKeepingTheBalanceIsGreatWhenTheAlternativeIsAPawnWorse() {
         // live_145773198260 ply 33, 17.Qd2 (chess.com Great): the second best move is -1.29, a quiet only-move
         ReviewInput qd2 = rated(oneMove("r4rk1/pp3qpp/2pR4/2Pp2B1/3n4/8/PP2QPPP/RN4K1 w - - 0 17", "e2d2",
