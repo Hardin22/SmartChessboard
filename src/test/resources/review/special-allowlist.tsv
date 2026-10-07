@@ -1,2 +1,3 @@
 # Documented "different engine" exceptions (PHASE4.md): one per line, numbers from the oracle (SF19 Lite vs SF16 d22) and the chess.com rule that explains the difference.
 id	ply	kind	justification
+live_184510489798	18	fp-great	different top move: 9...Bxg4 and 9...Nxg4 both take the blundered queen; SF16 d22 Bxg4 -578 vs Nxg4 -574 (4 cp), SF19 d22 Nxg4 -758 first, Lite mpv5 rank 2 (dump Bxg4 -7.63 vs Nxg4 -7.23); chess.com labels Bxg4 Excellent = not its top move, and Great needs the top move. Punish-a-blunder Great (rating 243) is right for whichever capture is the engine top.

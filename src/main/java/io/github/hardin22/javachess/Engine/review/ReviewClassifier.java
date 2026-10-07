@@ -100,6 +100,13 @@ public final class ReviewClassifier {
         final double brilliantTopRegain;
         /** v2.3 R9: a quiet move starting a forced mate is Great when the alternative does not win. */
         final boolean greatStartsMate;
+        /**
+         * Phase 4: a player under this rating (0 = off) who punishes the opponent's Blunder with the engine's move, not a
+         * recapture, and stands winning (win chance above {@link #greatPunishMinEp}) gets Great (the mates in one are
+         * {@link #greatMatePunish}).
+         */
+        final double greatPunishRating;
+        final double greatPunishMinEp;
         /** v2.3: the 'winning anyway' tests of Brilliant only for a move that is not the engine's choice. */
         final boolean brilliantAltNonTopOnly;
         /** v2.3: players under this rating get Great for a capture from {@link #greatCaptureGapLow}. */
@@ -209,6 +216,8 @@ public final class ReviewClassifier {
             greatRule = (int) get("greatRule", 2);
             brilliantAltNonTopOnly = get("brilliantAltNonTopOnly", 0) != 0;
             greatStartsMate = get("greatStartsMate", 1) != 0;
+            greatPunishRating = get("greatPunishRating", 1000);
+            greatPunishMinEp = get("greatPunishMinEp", 0.60);
             brilliantTopException = get("brilliantTopException", 1) != 0;
             brilliantTopRegain = get("brilliantTopRegain", 1);
             greatInCheckGap = get("greatInCheckGap", 0.10);
@@ -655,6 +664,10 @@ public final class ReviewClassifier {
                         label = special;
                     }
                 }
+                if (label == MoveClassification.BEST && isTop && !mates && !fromTheory
+                        && punishesBlunder(i, replay, out, epBefore[i], me ? in.whiteRating() : in.blackRating(), t)) {
+                    label = MoveClassification.GREAT;
+                }
             }
             EngineLine bestLine = p0.best();
             out.add(new MoveReview(i, uci, replay.sans().get(i), replay.fens().get(i), me, label, best, played[i],
@@ -856,6 +869,20 @@ public final class ReviewClassifier {
         }
         Eval alt = second.eval();
         return alt.isMateAgainst(me) || (!alt.isMate() && alt.cpFor(me) <= 150);
+    }
+
+    /**
+     * Phase 4: chess.com calls Great a beginner's engine move that punishes the opponent's Blunder (177 games, players
+     * under 1000, not a recapture, mover winning, not mate: 8 of 10 Great; the other is an engine tie and the one
+     * excluded below). Taking back what was just taken is routine at any level (9 Best of 12 recaptures), and an
+     * opponent's Blunder that only fails to punish the mover's own Blunder is a Miss for chess.com: recovering from it
+     * is Best (live_180008683178 8.Qxg7 after 7.Qc3?? Be7?).
+     */
+    private static boolean punishesBlunder(int i, GameReplay replay, List<MoveReview> out, double epBefore,
+                                           int rating, Tuning t) {
+        return t.greatPunishRating > 0 && rating > 0 && Math.max(rating, t.ratingFloor) < t.greatPunishRating
+                && i > 0 && out.get(i - 1).label() == MoveClassification.BLUNDER && !isRecapture(replay, i)
+                && (i < 2 || out.get(i - 2).label() != MoveClassification.BLUNDER) && epBefore > t.greatPunishMinEp;
     }
 
     /** 0 losing, 1 about equal, 2 winning (SPEC v2.1). */

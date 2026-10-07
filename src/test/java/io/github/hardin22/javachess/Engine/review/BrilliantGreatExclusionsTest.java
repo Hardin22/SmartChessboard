@@ -223,7 +223,8 @@ class BrilliantGreatExclusionsTest {
         ReviewInput dxc5 = rated(twoMoves("rnbqk2r/pp5p/4p1p1/2b2p2/2BP4/5Q2/PPP2PPP/R1B2RK1 b kq - 1 12", "b8c6",
                 Eval.cp(-315), "d8d4", "d4c5", Eval.cp(453), "d4c5", Eval.cp(-85), "d4d5", Eval.cp(453)), 459, 482);
         assertEquals(MoveClassification.GREAT, label(dxc5, Tuning.DEFAULT));
-        assertNotEquals(MoveClassification.GREAT, label(dxc5, Tuning.DEFAULT.with("greatFreeMaterialRating", 0)));
+        assertNotEquals(MoveClassification.GREAT, label(dxc5, Tuning.DEFAULT.with("greatFreeMaterialRating", 0)
+                .with("greatPunishRating", 0))); // the punished blunder alone makes it Great too
     }
 
     @Test
@@ -354,6 +355,27 @@ class BrilliantGreatExclusionsTest {
         assertNotEquals(MoveClassification.GREAT, label(in, Tuning.DEFAULT.with("theoryNeedsBookMove", 0)));
     }
 
+    @Test
+    void aBeginnerPunishingABlunderIsGreat() {
+        // live_184291917020, 4.Qg4?? Bxg4 (Black 604, chess.com Great): the queen taken, no second line needed
+        ReviewInput bxg4 = game("rnb1kbnr/ppp1pppp/8/8/3qN3/8/PPPP1PPP/R1BQKBNR w KQkq - 1 4", 600, 604,
+                List.of("d1g4", "c8g4"), List.of(Eval.cp(69), Eval.cp(-956), Eval.cp(-889)), List.of("e4c3", "c8g4"));
+        assertEquals(MoveClassification.GREAT, label(bxg4, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.GREAT, label(bxg4, Tuning.DEFAULT.with("greatPunishRating", 0)));
+        // the same move by a 1500 player is Best
+        assertEquals(MoveClassification.BEST, label(rated(bxg4, 1500, 1500), Tuning.DEFAULT));
+    }
+
+    @Test
+    void recoveringFromOwnBlunderIsNotGreat() {
+        // live_180008683178, 7.Qc3?? Be7? (Bb4 wins the queen) 8.Qxg7 (White 260, chess.com Best): Black's error only
+        // missed the punishment of White's blunder, chess.com calls it a Miss
+        ReviewInput qxg7 = game("r1bqkb1r/pppp1ppp/2n5/8/3QP3/3B4/PPP2PPP/RNB1K2R w KQkq - 3 7", 260, 2464,
+                List.of("d4c3", "f8e7", "c3g7"), List.of(Eval.cp(49), Eval.cp(-774), Eval.cp(195), Eval.cp(195)),
+                List.of("d4e3", "f8b4", "c3g7"));
+        assertEquals(MoveClassification.BEST, label(qxg7, Tuning.DEFAULT));
+    }
+
     private static ReviewInput rated(ReviewInput in, int white, int black) {
         return new ReviewInput(in.initialFen(), in.uciMoves(), in.positions(), in.book(), white, black);
     }
@@ -392,6 +414,26 @@ class BrilliantGreatExclusionsTest {
         ps.add(withLines(fen1, best, bestMove, second, secondMove));
         ps.add(after(fen1, uci, after));
         return new ReviewInput(fen0, List.of(prev, uci), ps, OpeningBook.NONE, RATING, RATING);
+    }
+
+    /** A game from {@code fen0}: evals.get(i) and bests.get(i) are the search of position i (main line only). */
+    private static ReviewInput game(String fen0, int white, int black, List<String> moves, List<Eval> evals,
+                                    List<String> bests) {
+        List<PositionEval> ps = new ArrayList<>();
+        String fen = fen0;
+        for (int i = 0; i < moves.size(); i++) {
+            ps.add(new PositionEval(fen, evals.get(i), List.of(new EngineLine(bests.get(i), evals.get(i),
+                    List.of(bests.get(i)), 20)), 20, 0, false));
+            fen = play(fen, moves.get(i));
+        }
+        Eval last = evals.get(moves.size());
+        if (last.isCheckmate()) {
+            ps.add(PositionEval.terminal(fen, last));
+        } else {
+            String reply = board(fen).legalMoves().get(0).toString();
+            ps.add(new PositionEval(fen, last, List.of(new EngineLine(reply, last, List.of(reply), 20)), 20, 0, false));
+        }
+        return new ReviewInput(fen0, moves, ps, OpeningBook.NONE, white, black);
     }
 
     private static PositionEval withLines(String fen, Eval best, String bestMove, Eval second, String secondMove) {
