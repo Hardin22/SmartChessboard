@@ -60,6 +60,8 @@ final class DevDemos {
                         game.devStatus("Muovi l'avversario: solleva da F8 posiziona su C5"));
                 case "pvc-setup" -> pvc(main, true, game -> game.devStatus("Posiziona i pezzi: mancano 6"));
                 case "pvc-error" -> pvc(main, true, game -> game.devStatus("ERRORE: Controlla E4"));
+                case "pvc-status" -> pvc(main, true, game -> game.devStatus(System.getProperty("javachess.demo.status", "")));
+                case "pvp-status" -> pvp(main, game -> game.devStatus(System.getProperty("javachess.demo.status", "")));
                 case "pvc-menu" -> pvc(main, true, game -> lookupFire(main, "game-menu"));
                 case "pvc-select" -> pvc(main, true, game -> tapSquare(main, System.getProperty("javachess.demo.square", "f1")));
                 case "review" -> review(main);

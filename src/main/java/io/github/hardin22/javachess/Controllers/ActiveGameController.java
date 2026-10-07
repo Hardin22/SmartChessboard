@@ -274,6 +274,11 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
                     currentGame.handleMoveInput(uci);
                 }
             }
+
+            @Override
+            public void choosePromotion(String from, String to, boolean white, java.util.function.Consumer<String> done) {
+                PromotionPicker.show(mainController, white, piece -> done.accept(from + to + piece));
+            }
         });
         chessBoard.resetBoard();
         soloEvalBar.updateEvaluation(0);
@@ -319,7 +324,7 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         if (currentGame instanceof PvpGame pvp && pvp.isClockPaused()) {
             return false;
         }
-        return mode == Mode.PVP || currentGame.getBoard().getSideToMove() == (humanWhite ? Side.WHITE : Side.BLACK);
+        return currentGame.isAwaitingHumanMove();
     }
 
     /** Boards on screen match the physical board as seen by whoever the interface faces. */
@@ -460,10 +465,16 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         StatusCard.Content content;
         if (!running && ended) {
             content = endCard();
+        } else if (status.kind() == GameStatus.Kind.READY && status.text().toLowerCase(Locale.ROOT).contains("allineata")) {
+            content = StatusCard.Content.of(Tone.DONE, I18n.t("game.status.resync.kicker"),
+                    I18n.t("game.status.aligned"), null);
         } else {
             content = switch (status.kind()) {
                 case SETUP -> StatusCard.Content.of(Tone.ACTION, I18n.t("game.status.setup.kicker"),
                         I18n.t("game.status.setup"), pretty(status.text()));
+                case RESYNC -> StatusCard.Content.of(Tone.ACTION, I18n.t("game.status.resync.kicker"),
+                        I18n.t("game.status.resync"), resyncDetail(status.text()));
+                case ENGINE -> engineCard();
                 case REPLICATE -> new StatusCard.Content(Tone.ACTION,
                         I18n.t("game.status.replicate.kicker", opponentName), pieceAt(status.from()),
                         (status.from() == null ? "" : status.from() + " → ") + status.to(),
@@ -492,6 +503,29 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
                 lastMove == null ? null : I18n.t("game.status.yourmove", lastMove));
     }
 
+    /** "mancano 3, da togliere 1 (in rosso)" from the board's resync message. */
+    private static String resyncDetail(String text) {
+        int colon = text.indexOf(':');
+        String rest = colon >= 0 ? text.substring(colon + 1).trim() : text;
+        return rest.isEmpty() ? I18n.t("game.status.resync.detail")
+                : Character.toUpperCase(rest.charAt(0)) + rest.substring(1) + ". " + I18n.t("game.status.resync.detail");
+    }
+
+    /** The engine does not answer: the game retries by itself; "Riprova" forces it now. */
+    private StatusCard.Content engineCard() {
+        Button retry = Ui.button(I18n.t("game.engine.retry"), "fth-refresh-cw", "btn-inverse", "btn-md");
+        retry.setOnAction(e -> {
+            if (currentGame instanceof PvcGame pvc) {
+                pvc.retryBotMove();
+            }
+        });
+        String text = status.text();
+        int colon = text.indexOf(':');
+        String detail = colon >= 0 ? text.substring(colon + 1).trim() : text;
+        return new StatusCard.Content(Tone.ERROR, I18n.t("game.engine.kicker"), I18n.t("game.engine.down"), null,
+                detail, List.of(retry));
+    }
+
     private StatusCard.Content endCard() {
         Integer outcome = GameStatus.outcomeFor(endMessage, humanWhite);
         if (outcome == null && currentGame.getBoard().isMated()) {
@@ -508,8 +542,15 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         Button again = Ui.button(I18n.t("game.end.again"), "fth-repeat", "btn-outline", "btn-md");
         again.setOnAction(e -> mainController.navigateTo(mode == Mode.PVP ? "PVP_SETUP" : "PVC_SETUP"));
         List<Node> buttons = mode == Mode.ONLINE ? List.of(review) : List.of(review, again);
+        String detail = capitalize(reason);
+        String move = null;
+        if (status.kind() == GameStatus.Kind.REPLICATE) {
+            // the bot's last move still has to be made on the physical board (the LEDs show it)
+            move = (status.from() == null ? "" : status.from() + " → ") + status.to();
+            detail = (detail == null || detail.isEmpty() ? "" : detail + ". ") + I18n.t("game.end.replicate");
+        }
         return new StatusCard.Content(outcome != null && outcome > 0 ? Tone.DONE : Tone.PLAIN,
-                I18n.t("game.end.kicker"), headline, null, capitalize(reason), buttons);
+                I18n.t("game.end.kicker"), headline, move, detail, buttons);
     }
 
     private String pieceAt(String square) {
@@ -551,8 +592,16 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
                 }
                 continue;
             }
+            boolean board = status.kind() == GameStatus.Kind.SETUP || status.kind() == GameStatus.Kind.RESYNC;
+            if (board) {
+                // an instruction that blocks the game: in each half, not only in the small state line
+                half.notice(I18n.t(status.kind() == GameStatus.Kind.RESYNC ? "game.status.resync" : "game.status.setup"),
+                        status.kind() == GameStatus.Kind.RESYNC ? resyncDetail(status.text()) : pretty(status.text()));
+            } else {
+                half.clearNotice();
+            }
             switch (status.kind()) {
-                case SETUP -> half.setState(pretty(status.text()), false);
+                case SETUP, RESYNC -> half.setState(I18n.t("game.status.resync.kicker"), false);
                 case ERROR -> half.setState(status.to() != null
                         ? I18n.t("game.status.error.square", status.to().toUpperCase(Locale.ROOT))
                         : pretty(status.text()), false);
