@@ -163,7 +163,94 @@ def summary_line(name, m):
             f"{m['games']} games, {m['plies']} plies")
 
 
-def report(path, title, m, plies, extra=""):
+SPECIAL = ["brilliant", "great", "miss"]
+# win chance loss thresholds of ReviewClassifier.Tuning (defaults; -D overrides apply) for the "near a threshold" test
+THRESHOLDS = {"excellent": 0.02, "good": 0.05, "inaccuracy": 0.10, "mistake": 0.20, "blunderAnyway": 0.30}
+
+
+def row_ref(p):
+    mv = (int(p["ply"]) + 1) // 2
+    san = f"{mv}.{p['san']}" if p["color"] == "w" else f"{mv}...{p['san']}"
+    return f"{p['game']} ply {p['ply']} {san}"
+
+
+def special_stats(plies):
+    """Precision / recall / F1 of Brilliant, Great, Miss, with the false positives and negatives."""
+    out = {}
+    for c in SPECIAL:
+        fp = [p for p in plies if p["ours"] == c and p["cc"] != c]
+        fn = [p for p in plies if p["cc"] == c and p["ours"] != c]
+        tp = sum(p["ours"] == c and p["cc"] == c for p in plies)
+        pr = tp / (tp + len(fp)) if tp + len(fp) else float("nan")
+        rc = tp / (tp + len(fn)) if tp + len(fn) else float("nan")
+        f1 = 2 * pr * rc / (pr + rc) if tp else 0.0
+        out[c] = {"tp": tp, "fp": fp, "fn": fn, "precision": pr, "recall": rc, "f1": f1}
+    return out
+
+
+def special_md(st):
+    md = ["| class | chess.com | ours | TP | FP | FN | precision | recall | F1 |", "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    for c, v in st.items():
+        md.append(f"| {c} | {v['tp'] + len(v['fn'])} | {v['tp'] + len(v['fp'])} | {v['tp']} | {len(v['fp'])} | "
+                  f"{len(v['fn'])} | {v['precision']:.0%} | {v['recall']:.0%} | {v['f1']:.2f} |")
+    for c, v in st.items():
+        for kind in ("fp", "fn"):
+            if v[kind]:
+                md.append(f"\n**{c} {'false positives (ours ' + c + ', chess.com other)' if kind == 'fp' else 'false negatives (chess.com ' + c + ', ours other)'}**\n")
+                md += [f"- {row_ref(p)}: ours {p['ours']}, chess.com {p['cc']}; {p['eval_before']}→{p['eval_played']}, "
+                       f"EP {p['ep_before']}→{p['ep_after']}, best {p['best']}{' (top)' if p['is_top'] == 'true' else ''}"
+                       f"{', 2nd ' + p['second'] + ' ' + p['second_eval'] if p['second'] else ''}" for p in v[kind]]
+    return "\n".join(md)
+
+
+def rerun_labels():
+    """chess.com labels of the reviews really recomputed (labels_chesscom_rerun, flag recomputed), by (game, ply)."""
+    out = {}
+    d = DATA / "labels_chesscom_rerun"
+    for f in sorted(d.glob("*.json")) if d.exists() else []:
+        b = json.loads(f.read_text())
+        if b.get("recomputed"):
+            for x in b["labels"]:
+                out[(b["id"], str(x["ply"]))] = x["label"]
+    return out
+
+
+def classify_far(far, deep, knobs_of, margin, ref):
+    """Splits the cases >=2 levels into unstable (chess.com changes its label in a recomputed rerun, our label changes
+    from lite to deep, or the move is within `margin` win chance of a threshold) and rule cases (everything else).
+    Returns [(ply, [reasons])]."""
+    rr = rerun_labels() if ref == "torch18" else {}
+    out = []
+    for p in far:
+        why = []
+        k = (p["game"], p["ply"])
+        if k in rr and rr[k] != p["cc"]:
+            why.append(f"chess.com rerun {rr[k]}")
+        d = deep.get(k)
+        if d is not None and d["ours"] != p["ours"]:
+            why.append(f"deep {d['ours']}")
+        th = dict(THRESHOLDS)
+        th.update({n: float(v) for n, v in knobs_of(p).items() if n in th})
+        loss = float(p["ep_loss"] or 0)
+        near = [n for n, t in th.items() if abs(loss - t) < margin]
+        if near and p["is_top"] != "true":
+            why.append(f"loss {loss:.3f} near {near[0]} {th[near[0]]}")
+        out.append((p, why))
+    return out
+
+
+def far_split_md(split, margin, has_deep, ref):
+    rule = [p for p, w in split if not w]
+    unstable = [(p, w) for p, w in split if w]
+    md = [f"Unstable = chess.com changes its label in a recomputed rerun{'' if ref == 'torch18' else ' (no rerun for this reference)'}, "
+          f"or our label changes lite→deep{'' if has_deep else ' (no deep dump)'}, or the win chance loss is within {margin} of a "
+          f"threshold. **Rule cases: {len(rule)}**, unstable: {len(unstable)}.", "",
+          f"### Rule cases ({len(rule)})", far_table(rule), "", f"### Unstable cases ({len(unstable)})"]
+    md += [f"- {row_ref(p)}: ours {p['ours']}, chess.com {p['cc']} — {'; '.join(w)}" for p, w in unstable]
+    return "\n".join(md)
+
+
+def report(path, title, m, plies, extra="", far_split=""):
     by_fold = defaultdict(list)
     for p in plies:
         by_fold[p["fold"]].append(p)
@@ -177,7 +264,8 @@ def report(path, title, m, plies, extra=""):
     md = [f"# {title}", "", summary_line("result", m), "", extra, "## Per fold", "\n".join(fold_rows), "",
           "## Confusion (rows chess.com, columns ours; bold = exact, italic = >=2 levels)", confusion(plies), "",
           "## Confusion by level (0 brilliant .. 7 blunder)", level_confusion(plies), "",
-          f"## Cases at >=2 levels ({m['far_n']})", far_table(m["far"]), "",
+          "## Brilliant / Great / Miss", special_md(special_stats(plies)), "",
+          f"## Cases at >=2 levels ({m['far_n']})", far_split or far_table(m["far"]), "",
           f"## Mate violations ({len(m['mates'])})"]
     md += [f"- {p['game']} ply {p['ply']} {p['san']}: {p['mate_check']}" for p in m["mates"]]
     path.write_text("\n".join(md) + "\n")
@@ -211,11 +299,13 @@ def cmd_cv(a):
     extra = []
     if len(runs) == 1:
         knobs, plies, games = runs[0]
+        knobs_by_fold = defaultdict(lambda: knobs)
         kind = "hold-out (final)" if a.holdout else "fixed parameters, per fold (CV only if they were not tuned on these games)"
         extra.append(f"Parameters: `{knobs or 'defaults'}` — {kind}.\n")
     else:
         folds = sorted({p["fold"] for p in runs[0][1]})
         plies, games, chosen = [], [], []
+        knobs_by_fold = {}
         for f in folds:
             def train_score(r):
                 tr_p = [p for p in r[1] if p["fold"] != f]
@@ -223,6 +313,7 @@ def cmd_cv(a):
                 return objective(metrics(tr_p, tr_g), a.penalty)
             best = max(runs, key=train_score)
             chosen.append((f, best[0], train_score(best)))
+            knobs_by_fold[f] = best[0]
             plies += [p for p in best[1] if p["fold"] == f]
             games += [g for g in best[2] if g["fold"] == f]
         extra.append(f"Nested CV over {len(runs)} parameter sets (objective on the training folds: exact − "
@@ -236,13 +327,29 @@ def cmd_cv(a):
             extra.append(f"| `{k}` | {m['exact']:.1%} | {m['within1']:.1%} | {m['far_n']} | {m['mae']:.2f} |")
         extra.append("")
     m = metrics(plies, games)
-    title = f"{'Hold-out' if a.holdout else 'Cross-validation'}: budget {a.budget}, mode {a.mode}"
-    report(out / "report.md", title, m, plies, "\n".join(extra))
+    # lite vs deep for the unstable/rule split: the deep dump labelled with the knobs each fold used
+    deep = {}
+    deep_dir = Path(a.dump) / ("holdout" if a.holdout else "") / a.deep
+    if a.deep and a.deep != a.budget and deep_dir.is_dir():
+        for kn in {json.dumps(k, sort_keys=True) for k in (knobs_by_fold[p["fold"]] for p in plies)}:
+            k = json.loads(kn)
+            dp, _ = run_java(cp, k, root / "runs" / f"{a.deep}-{a.mode}-{dataset}-{a.ref}-{tag(k)}", a.deep, a.mode,
+                             dataset, a.dump)
+            folds_k = {p["fold"] for p in plies if knobs_by_fold[p["fold"]] == k}
+            deep.update({(p["game"], p["ply"]): p for p in dp if p["fold"] in folds_k})
+    split = classify_far(m["far"], deep, lambda p: knobs_by_fold[p["fold"]], a.margin, a.ref)
+    m["rule_n"] = sum(1 for _, w in split if not w)
+    st = special_stats(plies)
+    title = f"{'Hold-out' if a.holdout else 'Cross-validation'}: budget {a.budget}, mode {a.mode}, reference {a.ref}"
+    report(out / "report.md", title, m, plies, "\n".join(extra), far_split_md(split, a.margin, bool(deep), a.ref))
     with open(out / "plies.tsv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(plies[0].keys()), delimiter="\t")
         w.writeheader()
         w.writerows(plies)
     print(summary_line(name, m))
+    print(f"  cases >=2: {m['rule_n']} rule, {m['far_n'] - m['rule_n']} unstable (margin {a.margin}"
+          f"{', deep ' + a.deep if deep else ', no deep'}); "
+          + ", ".join(f"{c} P {v['precision']:.0%} R {v['recall']:.0%} F1 {v['f1']:.2f}" for c, v in st.items()))
     print(f"report: {out / 'report.md'}")
 
 
@@ -360,9 +467,45 @@ def cmd_noise(a):
     print("\n".join("  " + x for x in far))
 
 
+def cmd_refs(a):
+    """chess.com Torch Human depth 18 against chess.com Stockfish 16 depth 22 on the same moves (CV games only)."""
+    folds = json.loads(Path(FOLDS or Path(a.dump) / "folds.json").read_text())["folds"]
+    n = same = w1 = 0
+    flips, far, games = Counter(), [], 0
+    special_t, special_s, special_both = Counter(), Counter(), Counter()
+    for f in sorted((DATA / REFS["sf22"]).glob("*.json")):
+        gid = f.stem
+        t = DATA / REFS["torch18"] / f.name
+        if gid not in folds or not t.exists():
+            continue
+        x, y = json.loads(t.read_text())["labels"], json.loads(f.read_text())["labels"]
+        if len(x) != len(y):
+            continue
+        games += 1
+        for u, v in zip(x, y):
+            n += 1
+            same += u["label"] == v["label"]
+            w1 += dist(u["label"], v["label"]) <= 1
+            special_t[u["label"]] += 1
+            special_s[v["label"]] += 1
+            special_both[u["label"]] += u["label"] == v["label"]
+            if u["label"] != v["label"]:
+                flips[(u["label"], v["label"])] += 1
+            if dist(u["label"], v["label"]) >= 2:
+                far.append(f"{gid} ply {u['ply']} {u['san']}: torch18 {u['label']} / sf22 {v['label']}")
+    print(f"torch18 vs sf22 ({games} CV games, {n} plies): same {same / n:.1%}, within 1 level {w1 / n:.1%}, "
+          f">=2 levels {len(far)} ({len(far) / n:.1%})")
+    print("changes torch18→sf22:", ", ".join(f"{k[0]}→{k[1]} {v}" for k, v in flips.most_common(14)))
+    for lab in SPECIAL:
+        both = special_both[lab]
+        print(f"  {lab}: torch18 {special_t[lab]}, sf22 {special_s[lab]}, both {both} (sf22 as truth: torch18 precision "
+              f"{both / max(1, special_t[lab]):.0%}, recall {both / max(1, special_s[lab]):.0%})")
+    print("\n".join("  " + x for x in far[:60]))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", nargs="?", default="cv", choices=["cv", "stability", "ceiling", "noise"])
+    ap.add_argument("command", nargs="?", default="cv", choices=["cv", "stability", "ceiling", "noise", "refs"])
     ap.add_argument("a", nargs="?", help="stability: first budget")
     ap.add_argument("b", nargs="?", help="stability: second budget")
     ap.add_argument("--dump", default=str(DATA / "evals_labeled"))
@@ -375,6 +518,8 @@ def main():
     ap.add_argument("--penalty", type=float, default=5.0, help="objective: exact plies - penalty * cases >=2 levels")
     ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 4) // 2))
     ap.add_argument("--name", help="output folder name under target/cv")
+    ap.add_argument("--deep", default="deep", help="dump compared with --budget for the unstable/rule split ('' = off)")
+    ap.add_argument("--margin", type=float, default=0.01, help="unstable when the win chance loss is this close to a threshold")
     ap.add_argument("--holdout", action="store_true")
     ap.add_argument("--final", action="store_true")
     ap.add_argument("--no-build", action="store_true", help="skip ./mvnw test-compile")
@@ -382,7 +527,7 @@ def main():
     global LABELS_DIR, FOLDS
     LABELS_DIR = DATA / REFS[a.ref]
     FOLDS = a.folds
-    {"stability": cmd_stability, "ceiling": cmd_ceiling, "noise": cmd_noise}.get(a.command, cmd_cv)(a)
+    {"stability": cmd_stability, "ceiling": cmd_ceiling, "noise": cmd_noise, "refs": cmd_refs}.get(a.command, cmd_cv)(a)
 
 
 if __name__ == "__main__":
