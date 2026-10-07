@@ -8,7 +8,9 @@ import com.github.bhlangonijr.chesslib.Square;
 import com.github.bhlangonijr.chesslib.move.Move;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Static board tactics for Brilliant / Great / Blunder: static exchange evaluation, piece safety, trapped pieces and
@@ -93,6 +95,37 @@ final class Tactics {
         Board c = b.clone();
         c.doNullMove();
         return see(c, sq) <= 0;
+    }
+
+    /**
+     * Pieces of {@code color} (no pawns or king) the opponent wins material on by static exchange if it were its move,
+     * with that gain (pawns). (SPEC v1.8 §5.2: "hanging")
+     */
+    static Map<Square, Integer> hanging(Board b, Side color) {
+        Board o = b;
+        if (b.getSideToMove() == color) {
+            String[] f = b.getFen().split(" ");
+            f[1] = color == Side.WHITE ? "b" : "w";
+            f[3] = "-";
+            o = new Board();
+            o.loadFromFen(String.join(" ", f));
+        }
+        Map<Square, Integer> out = new LinkedHashMap<>();
+        for (Square sq : Square.values()) {
+            if (sq == Square.NONE) {
+                continue;
+            }
+            Piece p = o.getPiece(sq);
+            if (p == Piece.NONE || p.getPieceSide() != color || p.getPieceType() == PieceType.PAWN
+                    || p.getPieceType() == PieceType.KING) {
+                continue;
+            }
+            int g = see(o, sq);
+            if (g > 0) {
+                out.put(sq, g);
+            }
+        }
+        return out;
     }
 
     /** Pieces of {@code color} (no pawns or king) worth more than {@code minValue} that are not safe. */
@@ -189,6 +222,21 @@ final class Tactics {
      * allows mate in one" as fake; measured on the Chessigma brilliant benchmark it only lost true Brilliants.)
      */
     static boolean isFakeSacrifice(Board b1, Square sq) {
+        return isFakeSacrifice(b1, sq, FAKE_MODE);
+    }
+
+    /**
+     * Calibration: 0 = any immediate win-back worth the piece makes a sacrifice fake, 1 = only taking back on the same
+     * square, 2 = never (default). On the chess.com Brilliants (Chessigma benchmark + labelled games, 108 moves) the
+     * win-back test rejected 24 real Brilliants for 9 good non-Brilliant moves: chess.com counts a piece left en prise
+     * as a sacrifice even when the material comes back at once.
+     */
+    static final int FAKE_MODE = Integer.getInteger("javachess.review.fakeMode", 2);
+
+    static boolean isFakeSacrifice(Board b1, Square sq, int mode) {
+        if (mode == 2) {
+            return false;
+        }
         Piece p = b1.getPiece(sq);
         if (p == Piece.NONE || b1.getSideToMove() == p.getPieceSide()) {
             return false;
@@ -201,11 +249,49 @@ final class Tactics {
         b.doMove(take);
         int value = value(p);
         for (Move m : b.legalMoves()) {
+            if (mode == 1 && m.getTo() != sq) {
+                continue;
+            }
             if (b.getPiece(m.getTo()) != Piece.NONE && see(b, m.getTo()) >= value) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Position after a sacrifice (opponent to move): the opponent takes on {@code sq} with its least valuable legal
+     * capture; returns the most the mover then wins at once (best static exchange on an opponent piece), or -1 when
+     * the piece cannot be taken or taking it mates.
+     */
+    static int regainAfterCapture(Board b1, Square sq) {
+        Move take = leastValuableCapture(b1, sq);
+        if (take == null) {
+            return -1;
+        }
+        Board b2 = b1.clone();
+        b2.doMove(take);
+        if (b2.isMated()) {
+            return -1;
+        }
+        Side opponent = b2.getSideToMove().flip();
+        int best = 0;
+        for (Square s2 : Square.values()) {
+            if (s2 == Square.NONE) {
+                continue;
+            }
+            Piece p = b2.getPiece(s2);
+            if (p != Piece.NONE && p.getPieceSide() == opponent) {
+                best = Math.max(best, see(b2, s2));
+            }
+        }
+        return best;
+    }
+
+    /** True when the move (UCI) captures something, en passant included. */
+    static boolean isCapture(Board b, String uci) {
+        Move m = find(b, uci);
+        return m != null && (b.getPiece(m.getTo()) != Piece.NONE || isEnPassant(b, m));
     }
 
     static Move find(Board b, String uci) {

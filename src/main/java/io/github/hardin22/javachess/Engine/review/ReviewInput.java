@@ -12,8 +12,16 @@ import java.util.List;
  *                   the one before move i. Where {@link ReviewClassifier#needsSecondLine} asked for it, position i
  *                   carries 2+ MultiPV lines.
  * @param book       opening book for the Book label ({@link OpeningBook#NONE} to disable)
+ * @param whiteRating White's rating, 0 when unknown (chess.com judges a loss of win chance by the player's level)
+ * @param blackRating Black's rating, 0 when unknown
  */
-public record ReviewInput(String initialFen, List<String> uciMoves, List<PositionEval> positions, OpeningBook book) {
+public record ReviewInput(String initialFen, List<String> uciMoves, List<PositionEval> positions, OpeningBook book,
+                          int whiteRating, int blackRating) {
+
+    /** Players' ratings unknown. */
+    public ReviewInput(String initialFen, List<String> uciMoves, List<PositionEval> positions, OpeningBook book) {
+        this(initialFen, uciMoves, positions, book, 0, 0);
+    }
 
     public ReviewInput {
         uciMoves = List.copyOf(uciMoves);

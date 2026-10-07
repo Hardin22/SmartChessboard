@@ -65,9 +65,20 @@ public final class GameReviewer implements AutoCloseable {
         return settings;
     }
 
-    /** Reviews a game given as UCI or SAN tokens (see {@link GameReplay}). Blocking. */
+    /** Reviews a game given as UCI or SAN tokens (see {@link GameReplay}), players' ratings unknown. Blocking. */
     public GameReview review(String initialFen, List<String> moves, ReviewListener listener)
             throws InterruptedException, ExecutionException {
+        return review(initialFen, moves, 0, 0, listener);
+    }
+
+    /**
+     * Reviews a game given as UCI or SAN tokens (see {@link GameReplay}). Blocking.
+     *
+     * @param whiteRating White's rating, 0 when unknown (labels follow chess.com more closely with the ratings)
+     * @param blackRating Black's rating, 0 when unknown
+     */
+    public GameReview review(String initialFen, List<String> moves, int whiteRating, int blackRating,
+                             ReviewListener listener) throws InterruptedException, ExecutionException {
         ReviewListener l = listener == null ? ReviewListener.NONE : listener;
         long t0 = System.nanoTime();
         GameReplay replay = GameReplay.of(initialFen, moves);
@@ -91,24 +102,30 @@ public final class GameReviewer implements AutoCloseable {
             // small blocks of consecutive positions handed out in game order: each engine reuses its hash inside a
             // block, and the evaluated prefix of the game grows steadily (progressive labels)
             AtomicInteger nextBlock = new AtomicInteger();
-            Progressive progressive = new Progressive(replay, positions, l);
+            Progressive progressive = new Progressive(replay, positions, l, whiteRating, blackRating);
             for (int t = 0; t < threads; t++) {
                 jobs.add(pool.submit(() -> {
                     int start;
                     while ((start = nextBlock.getAndAdd(BLOCK)) <= n) {
-                        for (int idx = start; idx < Math.min(n + 1, start + BLOCK); idx++) {
-                            if (Thread.currentThread().isInterrupted()) {
-                                throw new InterruptedException();
+                        // one engine and one hash history per block: the evaluations do not depend on scheduling
+                        evaluator.startBlock();
+                        try {
+                            for (int idx = start; idx < Math.min(n + 1, start + BLOCK); idx++) {
+                                if (Thread.currentThread().isInterrupted()) {
+                                    throw new InterruptedException();
+                                }
+                                PositionEval p = terminal(replay, idx);
+                                if (p == null) {
+                                    p = evaluator.evaluate(replay.fens().get(idx), 1, settings.nodes());
+                                }
+                                positions[idx] = p;
+                                nodes.addAndGet(p.nodes());
+                                l.onPosition(idx, p);
+                                l.onProgress(0.9 * done.incrementAndGet() / (n + 1));
+                                progressive.evaluated();
                             }
-                            PositionEval p = terminal(replay, idx);
-                            if (p == null) {
-                                p = evaluator.evaluate(replay.fens().get(idx), 1, settings.nodes());
-                            }
-                            positions[idx] = p;
-                            nodes.addAndGet(p.nodes());
-                            l.onPosition(idx, p);
-                            l.onProgress(0.9 * done.incrementAndGet() / (n + 1));
-                            progressive.evaluated();
+                        } finally {
+                            evaluator.endBlock();
                         }
                     }
                     return null;
@@ -136,8 +153,8 @@ public final class GameReviewer implements AutoCloseable {
             }
             await(second);
 
-            GameReview r = ReviewClassifier.classifyGame(
-                    new ReviewInput(replay.initialFen(), replay.uci(), Arrays.asList(positions), book));
+            GameReview r = ReviewClassifier.classifyGame(new ReviewInput(replay.initialFen(), replay.uci(),
+                    Arrays.asList(positions), book, whiteRating, blackRating));
             int hits = evaluator instanceof CachingEvaluator c ? c.hits() - hits0 : 0;
             int misses = evaluator instanceof CachingEvaluator c ? c.misses() - miss0 : n + 1 + need.cardinality();
             long ms = (System.nanoTime() - t0) / 1_000_000;
@@ -151,8 +168,8 @@ public final class GameReviewer implements AutoCloseable {
         }
     }
 
-    /** Positions per block handed to one engine. */
-    private static final int BLOCK = 4;
+    /** Consecutive positions per block handed to one engine (its hash is cleared at the start of each block). */
+    private static final int BLOCK = 8;
 
     /**
      * Publishes provisional labels of the evaluated prefix of the game (without Great/Brilliant, which need the
@@ -163,13 +180,18 @@ public final class GameReviewer implements AutoCloseable {
         private final GameReplay replay;
         private final PositionEval[] positions;
         private final ReviewListener listener;
+        private final int whiteRating;
+        private final int blackRating;
         private int published;
         private long lastMs;
 
-        Progressive(GameReplay replay, PositionEval[] positions, ReviewListener listener) {
+        Progressive(GameReplay replay, PositionEval[] positions, ReviewListener listener, int whiteRating,
+                    int blackRating) {
             this.replay = replay;
             this.positions = positions;
             this.listener = listener;
+            this.whiteRating = whiteRating;
+            this.blackRating = blackRating;
         }
 
         synchronized void evaluated() {
@@ -186,7 +208,8 @@ public final class GameReviewer implements AutoCloseable {
             lastMs = now;
             try {
                 listener.onPartial(ReviewClassifier.classifyGame(new ReviewInput(replay.initialFen(),
-                        replay.uci().subList(0, moves), Arrays.asList(positions).subList(0, moves + 1), book)));
+                        replay.uci().subList(0, moves), Arrays.asList(positions).subList(0, moves + 1), book,
+                        whiteRating, blackRating)));
             } catch (RuntimeException e) {
                 log.debug("provisional labels not published: {}", e.toString());
             }
