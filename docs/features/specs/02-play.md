@@ -54,8 +54,9 @@ che sta consumando, null = fermo), `whiteLowProperty()` / `blackLowProperty()` (
   dopo ogni status). Nessuna conferma: è reversibile rigiocando.
 - Toglie la tua ultima mossa e la risposta del computer (o solo la tua se il computer sta ancora pensando). La
   scacchiera a schermo torna indietro, i **LED** mostrano quali pezzi rimettere (case da riempire / da liberare),
-  lo status dice "Mossa annullata: rimetti i pezzi come sullo schermo", poi "Posiziona i pezzi: mancano N" e infine
-  "Scacchiera allineata: tocca a te". Gli orologi non vengono rimborsati.
+  lo status dice "Mossa annullata: rimetti i pezzi come sullo schermo", poi (scacchiera collegata) "Rimetti i pezzi
+  come sullo schermo: mancano N, da togliere M (in rosso)" e infine "Scacchiera allineata"
+  (`BoardStateManager.resyncToLogical` di QA). Gli orologi non vengono rimborsati.
 - `game.getTakebacks()` → contatore (facoltativo: "Annullate: 2" nel foglio ⋯ o a fine partita).
 
 ## 4. Suggerimento a richiesta — `game.requestHint()` / `game.hints()`
