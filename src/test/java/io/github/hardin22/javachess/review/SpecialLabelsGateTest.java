@@ -54,6 +54,13 @@ class SpecialLabelsGateTest {
      */
     static final boolean DEFAULT_RATING_ALL = Boolean.getBoolean("review.special.defaultRatingAll");
     static final Path OUT = Path.of(DEFAULT_RATING_ALL ? "target/special-default" : "target/special");
+    /**
+     * "Definition" decisions (PHASE4_DEFINITIONS.md): errors where our label follows the definition of Great /
+     * Brilliant applied to our engine (a twin with the opposite chess.com label, or a clear real sacrifice with its
+     * card). Fed by the shards; read for the third scoreboard column only, never for pass/fail.
+     */
+    static final Path DEFINITIONS = Path.of(System.getProperty("review.special.definitions",
+            EvalDumpTest.TEAM_DATA.getParent().resolve("notes/special/DEFINITION_DECISIONS.tsv").toString()));
     /** Largest allowed drop of the exact agreement on the 142 labelled games (fraction). */
     static final double EXACT_TOLERANCE = 0.003;
 
@@ -170,6 +177,7 @@ class SpecialLabelsGateTest {
 
         Baseline baseline = Baseline.read(BASELINE);
         Map<String, String> allow = allowlist(ALLOWLIST);
+        Map<String, String> definition = allowlist(DEFINITIONS);
         List<Error> fresh = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
         for (Error e : errors) {
@@ -184,7 +192,7 @@ class SpecialLabelsGateTest {
         Files.createDirectories(OUT);
         writeErrors(errors, baseline, allow, shard);
         Files.writeString(OUT.resolve("report.md"), report(tallies, labelled142, errors, fresh, fixed, baseline, allow,
-                shard, exact), StandardCharsets.UTF_8);
+                shard, exact) + columns(tallies, errors, allow, definition, shard), StandardCharsets.UTF_8);
 
         if (DEFAULT_RATING_ALL) {
             System.out.printf(Locale.ROOT, "special labels with the default rating for all games: %d errors, exact on "
@@ -344,6 +352,86 @@ class SpecialLabelsGateTest {
             }
             sb.append(line(e, shard).replace("\n", "")).append(" — ").append(status(e, baseline, allow)).append('\n');
         }
+        return sb.toString();
+    }
+
+    /**
+     * The three Phase 4 columns per set and class: (1) raw agreement with chess.com, (2) after the "different engine"
+     * exceptions (allowlist), (3) after the "definition" decisions too, plus the list of column-3 errors (true bugs).
+     * An accepted false positive counts as a true positive, an accepted false negative leaves the positives.
+     */
+    static String columns(Map<String, Tally> tallies, List<Error> errors, Map<String, String> allow,
+                          Map<String, String> definition, Map<String, Integer> shard) {
+        StringBuilder sb = new StringBuilder("\n## Three columns (PHASE4_DEFINITIONS.md)\n\n")
+                .append("(1) raw vs chess.com · (2) after the 'different engine' allowlist · (3) after the 'definition' "
+                        + "decisions too (`notes/special/DEFINITION_DECISIONS.tsv`). Cells: FP/FN, P, R.\n\n")
+                .append("| set | class | (1) raw | (2) − engine | (3) − definition |\n|---|---|---|---|---|\n");
+        Map<String, Tally> rows = new LinkedHashMap<>(tallies);
+        Tally all = new Tally();
+        for (Tally t : tallies.values()) {
+            for (String c : List.of("brilliant", "great")) {
+                int[] a = all.pr.computeIfAbsent(c, k -> new int[3]);
+                int[] v = t.pr.get(c);
+                for (int i = 0; i < 3; i++) {
+                    a[i] += v[i];
+                }
+            }
+        }
+        rows.put("**all 177**", all);
+        int[] totals = new int[6];
+        for (Map.Entry<String, Tally> e : rows.entrySet()) {
+            for (String c : List.of("brilliant", "great")) {
+                int[] v = e.getValue().pr.get(c);
+                boolean total = e.getKey().startsWith("**");
+                List<Error> mine = errors.stream().filter(x -> (total || x.set.equals(e.getKey()))
+                        && x.kind.endsWith(c)).toList();
+                int[] fpx = new int[3];
+                int[] fnx = new int[3];
+                for (Error x : mine) {
+                    int col = allow.containsKey(x.key()) ? 1 : definition.containsKey(x.key()) ? 2 : 0;
+                    if (col > 0 && x.kind.startsWith("fp")) {
+                        fpx[col]++;
+                    } else if (col > 0) {
+                        fnx[col]++;
+                    }
+                }
+                // cumulative: column 3 also excludes the allowlist
+                String[] cells = new String[3];
+                for (int col = 0; col < 3; col++) {
+                    int fpEx = col == 0 ? 0 : fpx[1] + (col == 2 ? fpx[2] : 0);
+                    int fnEx = col == 0 ? 0 : fnx[1] + (col == 2 ? fnx[2] : 0);
+                    int tp = v[0] + fpEx;
+                    int fp = v[1] - fpEx;
+                    int fn = v[2] - fnEx;
+                    cells[col] = String.format(Locale.ROOT, "%d/%d · %s · %s", fp, fn,
+                            tp + fp == 0 ? "-" : String.format(Locale.ROOT, "%.2f", (double) tp / (tp + fp)),
+                            tp + fn == 0 ? "-" : String.format(Locale.ROOT, "%.2f", (double) tp / (tp + fn)));
+                    if (total) {
+                        totals[col * 2] += fp;
+                        totals[col * 2 + 1] += fn;
+                    }
+                }
+                sb.append("| ").append(e.getKey()).append(" | ").append(c).append(" | ").append(cells[0])
+                        .append(" | ").append(cells[1]).append(" | ").append(cells[2]).append(" |\n");
+            }
+        }
+        sb.append(String.format(Locale.ROOT, "%nCOLUMNS errors (FP+FN, Brilliant+Great): raw %d, after engine %d, "
+                + "after definition %d%n", totals[0] + totals[1], totals[2] + totals[3], totals[4] + totals[5]));
+        List<String> unknown = definition.keySet().stream().filter(k -> errors.stream().noneMatch(x -> x.key().equals(k)))
+                .toList();
+        if (!unknown.isEmpty()) {
+            sb.append("\nDefinition decisions that are no longer errors (fixed, remove them): ").append(unknown.size())
+                    .append(" — ").append(String.join(", ", unknown.stream().map(k -> k.replace('\t', ' ')).toList()))
+                    .append('\n');
+        }
+        List<Error> bugs = errors.stream().filter(x -> !allow.containsKey(x.key()) && !definition.containsKey(x.key()))
+                .toList();
+        sb.append("\n## Column 3: remaining errors = true bugs (").append(bugs.size()).append(")\n");
+        bugs.forEach(x -> sb.append(line(x, shard).replace("\n", "")).append(" — shard ")
+                .append(shard.getOrDefault(x.id, 0)).append('\n'));
+        sb.append("\n## Definition decisions (").append(definition.size()).append(")\n");
+        definition.forEach((k, why) -> sb.append("- ").append(k.replace('\t', ' ')).append(": ").append(why)
+                .append('\n'));
         return sb.toString();
     }
 
