@@ -17,6 +17,9 @@ import io.github.hardin22.javachess.Components.ScreenHeader;
 import io.github.hardin22.javachess.Components.Stepper;
 import io.github.hardin22.javachess.Components.Ui;
 import io.github.hardin22.javachess.Oggetti.Puzzle;
+import io.github.hardin22.javachess.Play.PuzzleInsights;
+import io.github.hardin22.javachess.Play.PuzzleReview;
+import io.github.hardin22.javachess.Play.PuzzleRush;
 import io.github.hardin22.javachess.Services.PuzzleService;
 
 import java.util.ArrayList;
@@ -88,6 +91,8 @@ public class PuzzleDashboardController implements Screen {
 
         VBox body = new VBox(16,
                 stats,
+                Ui.gap(8), Ui.sectionLabel(I18n.t("puzzle.rush")), rushRow(),
+                reviewCard, weakBox,
                 Ui.gap(8), Ui.sectionLabel(I18n.t("puzzle.rating")), difficulty, quick,
                 Ui.gap(8), Ui.sectionLabel(I18n.t("puzzle.themes")),
                 Ui.wrap(I18n.t("puzzle.themes.description"), "t-small", "t-muted"), themes);
@@ -103,6 +108,97 @@ public class PuzzleDashboardController implements Screen {
 
     private javafx.scene.Node content;
     private VBox footer;
+    private final VBox reviewCard = new VBox(12);
+    private final VBox weakBox = new VBox(12);
+    private final List<Label> rushRecords = new ArrayList<>();
+
+    /** Three tiles: 3 minutes, 5 minutes, survival, each with its record. */
+    private javafx.scene.layout.GridPane rushRow() {
+        List<javafx.scene.Node> tiles = new ArrayList<>();
+        for (PuzzleRush.Mode m : PuzzleRush.Mode.values()) {
+            boolean timed = m.seconds() > 0;
+            Label record = Ui.label("", "t-small", "t-muted");
+            record.setUserData(m);
+            rushRecords.add(record);
+            VBox content = timed
+                    ? new VBox(2, Ui.label(String.valueOf(m.seconds() / 60), "option-big"),
+                            Ui.label(I18n.t("puzzle.rush.minutes"), "option-sub"), record)
+                    : new VBox(6, io.github.hardin22.javachess.Components.Icons.of("fth-heart", 38),
+                            Ui.label(m.italian(), "option-sub"), record);
+            content.setAlignment(Pos.CENTER);
+            Button tile = new Button();
+            tile.setGraphic(content);
+            tile.getStyleClass().setAll("option");
+            tile.setMinHeight(150);
+            tile.setOnAction(e -> startRush(m));
+            tiles.add(tile);
+        }
+        javafx.scene.layout.GridPane grid = new javafx.scene.layout.GridPane();
+        grid.setHgap(12);
+        for (int i = 0; i < tiles.size(); i++) {
+            javafx.scene.layout.ColumnConstraints col = new javafx.scene.layout.ColumnConstraints();
+            col.setPercentWidth(100.0 / tiles.size());
+            grid.getColumnConstraints().add(col);
+            ((Button) tiles.get(i)).setMaxWidth(Double.MAX_VALUE);
+            ((Button) tiles.get(i)).setMinWidth(0);
+            grid.add(tiles.get(i), i, 0);
+        }
+        return grid;
+    }
+
+    private void startRush(PuzzleRush.Mode m) {
+        PuzzleController controller = (PuzzleController) mainController.getController("PUZZLE_GAME");
+        mainController.navigateTo("PUZZLE_GAME");
+        controller.startRush(m);
+    }
+
+    /** "7 puzzle da rifare · Ripassa", and the themes with the lowest success rate (tap = puzzles on it). */
+    private void refreshTraining(int reviewCount, List<PuzzleInsights.ThemeScore> weakest) {
+        for (Label record : rushRecords) {
+            int best = new PuzzleRush((PuzzleRush.Mode) record.getUserData(), playerRating).bestProperty().get();
+            record.setText(best > 0 ? I18n.t("puzzle.rush.best", best) : "");
+            record.setVisible(best > 0);
+            record.setManaged(best > 0);
+        }
+        reviewCard.getChildren().clear();
+        reviewCard.setVisible(reviewCount > 0);
+        reviewCard.setManaged(reviewCount > 0);
+        if (reviewCount > 0) {
+            Label title = Ui.label(I18n.t("puzzle.review"), "row-title");
+            Label count = Ui.wrap(I18n.t("puzzle.review.count", reviewCount), "t-small", "t-muted");
+            VBox texts = new VBox(4, title, count);
+            HBox.setHgrow(texts, javafx.scene.layout.Priority.ALWAYS);
+            Button go = Ui.button(I18n.t("puzzle.review.start"), "fth-rotate-ccw", "btn-inverse", "btn-md");
+            go.setOnAction(e -> {
+                PuzzleController controller = (PuzzleController) mainController.getController("PUZZLE_GAME");
+                mainController.navigateTo("PUZZLE_GAME");
+                controller.startReview();
+            });
+            HBox row = new HBox(16, texts, go);
+            row.setAlignment(Pos.CENTER_LEFT);
+            row.getStyleClass().add("card");
+            row.setPadding(new Insets(20, 22, 20, 22));
+            reviewCard.getChildren().add(row);
+        }
+        weakBox.getChildren().clear();
+        weakBox.setVisible(!weakest.isEmpty());
+        weakBox.setManaged(!weakest.isEmpty());
+        if (!weakest.isEmpty()) {
+            FlowPane chips = new FlowPane(10, 10);
+            for (PuzzleInsights.ThemeScore t : weakest) {
+                Button chip = Ui.button(t.name() + " · " + t.rateText(), null, "chip");
+                chip.setOnAction(e -> {
+                    for (ToggleButton toggle : themeToggles) {
+                        toggle.setSelected(t.tag().equals(toggle.getUserData()));
+                    }
+                    handleStart();
+                });
+                chips.getChildren().add(chip);
+            }
+            weakBox.getChildren().addAll(Ui.label(I18n.t("puzzle.weak"), "row-title"),
+                    Ui.wrap(I18n.t("puzzle.weak.description"), "t-small", "t-muted"), chips);
+        }
+    }
 
     /** First start without the puzzle database: say how to install it instead of a "Inizia" that finds nothing. */
     private void showMissingDatabase(boolean missing) {
@@ -137,8 +233,11 @@ public class PuzzleDashboardController implements Screen {
     public void onNavigatedTo() {
         io.github.hardin22.javachess.Utils.AppExecutors.io().execute(() -> {
             var stats = io.github.hardin22.javachess.Services.PuzzleProgressService.getInstance().getStats();
-            boolean missing = !PuzzleService.hasPuzzleData();
+            boolean missing = !PuzzleService.hasPuzzleData() && !Boolean.getBoolean("javachess.demo.puzzlesUi");
+            int reviewCount = PuzzleReview.get().size();
+            List<PuzzleInsights.ThemeScore> weakest = PuzzleInsights.weakest(stats, 3);
             Platform.runLater(() -> {
+                refreshTraining(reviewCount, weakest);
                 showMissingDatabase(missing);
                 playerRating = stats.rating();
                 ratingValue.setText(String.valueOf(stats.rating()));
@@ -190,7 +289,7 @@ public class PuzzleDashboardController implements Screen {
         PuzzleController controller = (PuzzleController) mainController.getController("PUZZLE_GAME");
         if (controller != null) {
             mainController.navigateTo("PUZZLE_GAME");
-            controller.setPuzzle(puzzle, rating, themes);
+            controller.startPuzzle(puzzle, rating, themes);
         }
     }
 }

@@ -82,6 +82,21 @@ final class DevDemos {
                 case "pvc-select" -> pvc(main, true, game -> tapSquare(main, System.getProperty("javachess.demo.square", "f1")));
                 case "review" -> review(main);
                 case "puzzle" -> puzzle(main);
+                case "puzzle-rush" -> {
+                    // A series on the fixed demo puzzle (no puzzle database needed)
+                    Puzzle puzzle = demoPuzzle();
+                    PuzzleController controller = (PuzzleController) main.getController("PUZZLE_GAME");
+                    main.navigateTo("PUZZLE_GAME");
+                    controller.startRush(new io.github.hardin22.javachess.Play.PuzzleRush(
+                            io.github.hardin22.javachess.Play.PuzzleRush.Mode.valueOf(
+                                    System.getProperty("javachess.demo.rush", "THREE_MINUTES")), 1500,
+                            target -> java.util.concurrent.CompletableFuture.completedFuture(puzzle),
+                            () -> new io.github.hardin22.javachess.Play.GameClock(TimeControl.minutes(3, 0)),
+                            Platform::runLater));
+                    if (Boolean.getBoolean("javachess.demo.rushEnd")) {
+                        later(2, () -> lookupFire(main, "rush-stop"));
+                    }
+                }
                 case "online" -> {
                     main.navigateTo("HOME");
                     later(1, () -> lookupFire(main, "home-online"));
@@ -251,11 +266,15 @@ final class DevDemos {
         });
     }
 
+    private static Puzzle demoPuzzle() {
+        return new Puzzle("demo", "6k1/r4ppp/8/8/8/8/5PPP/3R2K1 b - - 0 1", List.of("a7a6", "d1d8"),
+                1520, 80, 90, 100, List.of("mateIn1", "backRankMate", "short"), "", "");
+    }
+
     private static void puzzle(MainController main) {
         if (!Boolean.getBoolean("javachess.demo.puzzledb")) {
             // A fixed back-rank puzzle when there is no puzzle database (or one is asked for).
-            Puzzle puzzle = new Puzzle("demo", "6k1/r4ppp/8/8/8/8/5PPP/3R2K1 b - - 0 1", List.of("a7a6", "d1d8"),
-                    1520, 80, 90, 100, List.of("mateIn1", "backRankMate", "short"), "", "");
+            Puzzle puzzle = demoPuzzle();
             PuzzleController controller = (PuzzleController) main.getController("PUZZLE_GAME");
             main.navigateTo("PUZZLE_GAME");
             controller.setPuzzle(puzzle, 1500, List.of("Tutti"));

@@ -21,6 +21,8 @@ import io.github.hardin22.javachess.Oggetti.ChessBoardUI;
 import io.github.hardin22.javachess.Oggetti.EvalBar;
 import io.github.hardin22.javachess.Oggetti.Puzzle;
 import io.github.hardin22.javachess.Oggetti.PuzzleGame;
+import io.github.hardin22.javachess.Play.PuzzleReview;
+import io.github.hardin22.javachess.Play.PuzzleRush;
 import io.github.hardin22.javachess.Services.PuzzleService;
 
 import java.util.List;
@@ -55,11 +57,40 @@ public class PuzzleController implements Screen {
     private boolean solverWhite = true;
     private boolean finished;
 
+    /** Normal puzzles, the review of failed ones, or a timed series. */
+    enum Mode { NORMAL, REVIEW, RUSH }
+
+    private Mode mode = Mode.NORMAL;
+    private PuzzleRush rush;
+    private final List<Runnable> rushUnbind = new java.util.ArrayList<>();
+    private final Label rushTime = Ui.label("", "rush-time");
+    private final Label rushScore = Ui.label("0", "t-number");
+    private final HBox rushLives = new HBox(8);
+    private final Label rushBest = Ui.label("", "t-small", "t-muted");
+    private final Button skipButton;
+    private final Button stopButton;
+
     public PuzzleController() {
         header = new ScreenHeader(I18n.t("puzzle.title"), this::handleBack);
         hintButton = Ui.toolButton(I18n.t("puzzle.hint"), "fth-help-circle", this::handleHint);
         solutionButton = Ui.toolButton(I18n.t("puzzle.solution"), "fth-eye", this::handleSolution);
         nextButton = Ui.toolButton(I18n.t("puzzle.next"), "fth-skip-forward", this::handleNewPuzzle);
+        skipButton = Ui.toolButton(I18n.t("puzzle.rush.skip"), "fth-skip-forward", () -> {
+            if (rush != null) {
+                rush.failed();
+            }
+        });
+        stopButton = Ui.toolButton(I18n.t("puzzle.rush.stop"), "fth-square", () -> {
+            if (rush != null) {
+                rush.stop();
+            }
+        });
+        stopButton.setId("rush-stop");
+        for (Button b : new Button[] { skipButton, stopButton }) {
+            HBox.setHgrow(b, javafx.scene.layout.Priority.ALWAYS);
+            b.setMaxWidth(Double.MAX_VALUE);
+            b.setPrefWidth(1);
+        }
         evalBar.setVisible(false);
         build();
         createBoard();
@@ -170,7 +201,11 @@ public class PuzzleController implements Screen {
         String lower = text.toLowerCase(Locale.ITALIAN);
         String side = I18n.t(solverWhite ? "puzzle.turn.white" : "puzzle.turn.black");
         StatusCard.Content content;
-        if (lower.contains("complet") || lower.contains("complimenti")) {
+        if ((lower.contains("complet") || lower.contains("complimenti")) && mode == Mode.RUSH) {
+            finished = true;
+            content = StatusCard.Content.of(Tone.DONE, I18n.t("puzzle.done.kicker"), I18n.t("puzzle.done"),
+                    I18n.t("puzzle.rush.loading"));
+        } else if (lower.contains("complet") || lower.contains("complimenti")) {
             finished = true;
             Button next = Ui.button(I18n.t("puzzle.next"), "fth-skip-forward", "btn-inverse", "btn-md");
             next.setOnAction(e -> handleNewPuzzle());
@@ -213,6 +248,12 @@ public class PuzzleController implements Screen {
         setPuzzle(puzzle, puzzle.getRating(), java.util.Collections.singletonList("Tutti"));
     }
 
+    /** A puzzle chosen on the dashboard (leaves the review or a series). */
+    public void startPuzzle(Puzzle puzzle, int targetRating, List<String> themes) {
+        leaveRush();
+        setPuzzle(puzzle, targetRating, themes);
+    }
+
     public void setPuzzle(Puzzle puzzle, int targetRating, List<String> themes) {
         this.currentTargetRating = targetRating;
         this.currentThemes = themes;
@@ -220,6 +261,7 @@ public class PuzzleController implements Screen {
             puzzleGame.endGame("Menu", false);
             createBoard();
         }
+        configureGame();
         currentPuzzle = puzzle;
         finished = false;
         String[] fen = puzzle.getFen().split(" ");
@@ -228,7 +270,9 @@ public class PuzzleController implements Screen {
         if (mainController != null) {
             mainController.face(solverWhite ? Side.WHITE : Side.BLACK);
         }
-        header.setSubtitle(I18n.t("puzzle.info", puzzle.getId(), puzzle.getRating()));
+        header.setSubtitle(mode == Mode.RUSH ? rush.mode().italian() + " · " + I18n.t("puzzle.rating.value",
+                puzzle.getRating()) : mode == Mode.REVIEW ? I18n.t("puzzle.review.subtitle", puzzle.getRating())
+                : I18n.t("puzzle.info", puzzle.getId(), puzzle.getRating()));
         status.show(StatusCard.Content.of(Tone.PLAIN, I18n.t(solverWhite ? "puzzle.turn.white" : "puzzle.turn.black"),
                 I18n.t("puzzle.loading.position"), null));
         hintButton.setText(I18n.t("puzzle.hint"));
@@ -241,7 +285,170 @@ public class PuzzleController implements Screen {
             }
         }
         puzzleGame.startPuzzle(puzzle);
-        refreshProgress();
+        if (mode != Mode.RUSH) {
+            refreshProgress();
+        }
+    }
+
+    // ================================================================== review of failed puzzles
+
+    /** "Ripassa": the failed puzzles again, one after the other, until they are solved without help. */
+    public void startReview() {
+        leaveRush();
+        mode = Mode.REVIEW;
+        nextFromReview();
+    }
+
+    private void nextFromReview() {
+        nextButton.setDisable(true);
+        io.github.hardin22.javachess.Utils.AppExecutors.io().execute(() -> {
+            java.util.Optional<Puzzle> next = PuzzleReview.get().next();
+            Platform.runLater(() -> {
+                nextButton.setDisable(false);
+                if (next.isPresent()) {
+                    setPuzzle(next.get(), next.get().getRating(), List.of("Tutti"));
+                } else {
+                    mainController.showToast(I18n.t("puzzle.review.empty"));
+                    handleBack();
+                }
+            });
+        });
+    }
+
+    // ================================================================== timed series
+
+    /** A timed series (3 or 5 minutes, or survival): unrated, one wrong move fails the puzzle. */
+    public void startRush(PuzzleRush.Mode rushMode) {
+        int rating = io.github.hardin22.javachess.Services.PuzzleProgressService.getInstance().getStats().rating();
+        startRush(new PuzzleRush(rushMode, rating));
+    }
+
+    public void startRush(PuzzleRush series) {
+        leaveRush();
+        mode = Mode.RUSH;
+        rush = series;
+        javafx.beans.InvalidationListener bar = o -> refreshRushBar();
+        for (javafx.beans.Observable p : List.of(series.timeTextProperty(), series.timeLowProperty(),
+                series.scoreProperty(), series.failuresProperty(), series.bestProperty(), series.stateProperty())) {
+            p.addListener(bar);
+            rushUnbind.add(() -> p.removeListener(bar));
+        }
+        javafx.beans.value.ChangeListener<Puzzle> next = (obs, o, p) -> {
+            if (p != null) {
+                setPuzzle(p, p.getRating(), List.of("Tutti"));
+            }
+        };
+        series.currentProperty().addListener(next);
+        rushUnbind.add(() -> series.currentProperty().removeListener(next));
+        javafx.beans.InvalidationListener end = o -> {
+            if (series.stateProperty().get() == PuzzleRush.State.FINISHED) {
+                Platform.runLater(() -> showRushEnd(series)); // the final message is set right after the state
+            } else if (series.stateProperty().get() == PuzzleRush.State.LOADING && currentPuzzle == null) {
+                status.show(StatusCard.Content.of(Tone.PLAIN, series.mode().italian(),
+                        I18n.t("puzzle.rush.loading"), null));
+            }
+        };
+        series.stateProperty().addListener(end);
+        rushUnbind.add(() -> series.stateProperty().removeListener(end));
+        currentPuzzle = null;
+        layoutForMode();
+        refreshRushBar();
+        series.start();
+    }
+
+    private void showRushEnd(PuzzleRush series) {
+        finished = true;
+        if (puzzleGame != null) {
+            puzzleGame.endGame("Menu", false);
+        }
+        Button again = Ui.button(I18n.t("puzzle.rush.again"), "fth-rotate-ccw", "btn-inverse", "btn-md");
+        again.setOnAction(e -> startRush(new PuzzleRush(series.mode(), io.github.hardin22.javachess.Services
+                .PuzzleProgressService.getInstance().getStats().rating())));
+        Button exit = Ui.button(I18n.t("puzzle.rush.exit"), "fth-arrow-left", "btn-outline", "btn-md");
+        exit.setOnAction(e -> handleBack());
+        status.show(new StatusCard.Content(Tone.DONE, I18n.t("puzzle.rush.over"), series.messageProperty().get(),
+                null, series.newRecordProperty().get() ? I18n.t("puzzle.rush.record.new") : null,
+                List.of(again, exit)));
+        tools.setVisible(false);
+    }
+
+    private void refreshRushBar() {
+        if (rush == null) {
+            return;
+        }
+        boolean timed = rush.mode().seconds() > 0;
+        rushTime.setText(timed ? rush.timeTextProperty().get() : rush.mode().italian());
+        rushTime.getStyleClass().remove("low");
+        if (timed && rush.timeLowProperty().get()) {
+            rushTime.getStyleClass().add("low");
+        }
+        rushScore.setText(String.valueOf(rush.scoreProperty().get()));
+        rushLives.getChildren().clear();
+        for (int i = 0; i < PuzzleRush.MAX_FAILURES; i++) {
+            boolean lost = i < rush.failuresProperty().get();
+            var icon = io.github.hardin22.javachess.Components.Icons.of(lost ? "fth-x" : "fth-heart", 30);
+            icon.getStyleClass().add(lost ? "rush-life-lost" : "rush-life");
+            rushLives.getChildren().add(icon);
+        }
+        int best = rush.bestProperty().get();
+        rushBest.setText(best > 0 ? I18n.t("puzzle.rush.best", best) : I18n.t("puzzle.rush.nobest"));
+    }
+
+    /** The bar under the board: solver stats normally, time / score / lives in a series. */
+    private void layoutForMode() {
+        boolean inRush = mode == Mode.RUSH;
+        if (inRush) {
+            VBox score = new VBox(0, rushScore, Ui.label(I18n.t("puzzle.rush.score"), "t-small", "t-muted"));
+            VBox lives = new VBox(6, rushLives, rushBest);
+            progress.getChildren().setAll(rushTime, score, lives);
+            themeChips.setVisible(false);
+            themeChips.setManaged(false);
+            tools.getChildren().setAll(skipButton, stopButton);
+        } else {
+            themeChips.setVisible(true);
+            themeChips.setManaged(true);
+            tools.getChildren().setAll(hintButton, solutionButton, nextButton);
+        }
+        tools.setVisible(true);
+    }
+
+    /** The puzzle game follows the mode (a new game object is created when the board style changes). */
+    private void configureGame() {
+        if (puzzleGame == null) {
+            return;
+        }
+        boolean inRush = mode == Mode.RUSH && rush != null;
+        puzzleGame.setRated(!inRush);
+        PuzzleRush series = rush;
+        puzzleGame.setResultListener(!inRush ? null : new PuzzleGame.ResultListener() {
+            @Override
+            public void finished(Puzzle puzzle, boolean solved, boolean clean) {
+                Platform.runLater(() -> {
+                    if (solved) {
+                        series.solved();
+                    } else {
+                        series.failed();
+                    }
+                });
+            }
+
+            @Override
+            public void wrongMove(Puzzle puzzle) {
+                Platform.runLater(series::failed);
+            }
+        });
+    }
+
+    private void leaveRush() {
+        rushUnbind.forEach(Runnable::run);
+        rushUnbind.clear();
+        if (rush != null) {
+            rush.stop();
+            rush = null;
+        }
+        mode = Mode.NORMAL;
+        configureGame();
+        layoutForMode();
     }
 
     /** The solver's rating, streak and solved count under the puzzle. */
@@ -281,6 +488,13 @@ public class PuzzleController implements Screen {
     }
 
     public void handleNewPuzzle() {
+        if (mode == Mode.REVIEW) {
+            nextFromReview();
+            return;
+        }
+        if (mode == Mode.RUSH) {
+            return; // the series loads the next puzzle itself
+        }
         nextButton.setDisable(true);
         int rating = currentTargetRating;
         List<String> themes = currentThemes == null ? List.of("Tutti") : currentThemes;
@@ -304,6 +518,7 @@ public class PuzzleController implements Screen {
     }
 
     public void handleBack() {
+        leaveRush();
         if (puzzleGame != null) {
             puzzleGame.endGame("Menu", false);
         }

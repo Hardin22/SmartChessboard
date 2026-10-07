@@ -1627,3 +1627,32 @@
 .wide .screen-body {
     -fx-padding: 8px 48px 32px 48px;
 }
+
+/* ---------------------------------------------------------------- timed puzzle series */
+
+.rush-time {
+    -fx-font-family: "Geist Light";
+    -fx-font-size: 76px;
+    -fx-text-fill: -c-fg;
+    -fx-min-width: 230px;
+}
+
+.rush-time.low {
+    -fx-text-fill: -c-danger;
+}
+
+.rush-life {
+    -fx-icon-color: -c-danger;
+}
+
+.rush-life-lost {
+    -fx-icon-color: -c-fg3;
+}
+
+.rush-tile {
+    -fx-cursor: hand;
+}
+
+.rush-tile:pressed {
+    -fx-background-color: -c-s3;
+}
