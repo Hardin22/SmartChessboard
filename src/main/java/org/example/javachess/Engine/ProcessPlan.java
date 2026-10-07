@@ -15,8 +15,9 @@ import java.util.Locale;
  * ({@code RssShmem}, mapped ONCE for all Stockfish processes) + 97 MB of binary pages ({@code RssFile}, shared and
  * evictable) + ~30 MB private + the Hash. Measured cgroup totals with Hash 16: 1 process 260 MB, 2 processes
  * 306 MB, 3 processes 351 MB, i.e. ~46 MB per extra process. Hash 64 adds 48 MB to its process. (macOS reports
- * ~360 MB per process because it counts the shared pages in every RSS.) lc0 + a Maia network is a separate
- * binary: ~100-200 MB.</p>
+ * ~360 MB per process because it counts the shared pages in every RSS.) lc0 0.32.1 (built on linux/arm64 by
+ * {@code scripts/install-engines.sh --lc0}, BLAS backend) with a Maia network: 105 MB RSS, first move 170 ms
+ * (network load), then 1-2 ms per move with {@code go nodes 1}; it only runs while a Maia profile plays.</p>
  *
  * <table>
  *   <caption>Plans (MemTotal is a bit below the nominal size)</caption>
