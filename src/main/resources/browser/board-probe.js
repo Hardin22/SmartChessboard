@@ -86,9 +86,11 @@
         if (c.contains('dragging') || c.contains('anim')) animating = true;
         const color = c.contains('white') ? 'w' : c.contains('black') ? 'b' : '';
         const type = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king'].find((t) => c.contains(t));
+        if (!color || !type) { bad = true; continue; }
         const pos = at(p);
-        if (!color || !type || !pos) { bad = true; continue; }
+        if (!pos) { animating = true; continue; } // between squares: moving
         const letter = { pawn: 'p', knight: 'n', bishop: 'b', rook: 'r', queen: 'q', king: 'k' }[type];
+        if (grid[pos[1]][pos[0]]) animating = true; // two pieces on a square: a capture being animated
         grid[pos[1]][pos[0]] = color === 'w' ? letter.toUpperCase() : letter;
         count++;
       }
@@ -131,12 +133,16 @@
         return null;
       };
       for (const el of board.querySelectorAll('.piece')) {
+        if (el.closest('.element-pool')) continue; // recycled elements, not on the board
         const c = el.classList;
         if (c.contains('dragging')) animating = true;
+        // a piece being animated already carries its destination square, with an inline transform until it lands
+        if (el.style && el.style.transform && el.style.transform !== 'none') animating = true;
         let code = null;
         for (const k of c) if (/^[wb][prnbqk]$/.test(k)) code = k;
         const pos = squareOf(el);
         if (!code || !pos || pos[0] > 7 || pos[1] > 7) { bad = true; continue; }
+        if (grid[pos[1]][pos[0]]) animating = true; // capture: the taken piece is still there
         grid[pos[1]][pos[0]] = code[0] === 'w' ? code[1].toUpperCase() : code[1];
         count++;
       }

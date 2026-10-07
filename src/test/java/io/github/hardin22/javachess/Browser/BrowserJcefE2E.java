@@ -124,6 +124,41 @@ class BrowserJcefE2E {
     }
 
     @Test
+    void theSavedLoginIsTypedLikeAPerson() throws Exception {
+        URL login = BrowserJcefE2E.class.getResource("/browser/e2e/login.html");
+        SwingUtilities.invokeAndWait(() -> browser.loadURL(login.toExternalForm()));
+        waitFor(s -> s.loginForm(), "the login form");
+        LoginAssistant assistant = new LoginAssistant(page, null, Runnable::run, Runnable::run, () -> { },
+                System::currentTimeMillis);
+        assistant.typeInto(new CredentialStore.Login("player@example.com", "pä$$ wörd")).get(10, TimeUnit.SECONDS);
+        String result = null;
+        long deadline = System.currentTimeMillis() + 5000;
+        while (System.currentTimeMillis() < deadline) {
+            result = page.evaluate("JSON.stringify(window.javachessLogin || null)").get(5, TimeUnit.SECONDS);
+            if (result.contains("player")) {
+                break;
+            }
+            Thread.sleep(100);
+        }
+        org.json.JSONObject sent = new org.json.JSONObject(new org.json.JSONTokener(result).nextValue().toString());
+        assertEquals("player@example.com", sent.getString("user"));
+        assertEquals("pä$$ wörd", sent.getString("pass"));
+        assertTrue(sent.getBoolean("trusted"), "typing and clicks are real input for the page");
+        assertFalse(BoardProbe.read(page).get(5, TimeUnit.SECONDS).loginForm(), "form sent");
+    }
+
+    @Test
+    void aCaptureBeingAnimatedIsNotAPosition() throws Exception {
+        for (String site : List.of("lichess", "chesscom")) {
+            SwingUtilities.invokeAndWait(() -> browser.loadURL(base + "?site=" + site + "&anim=e4&fen="
+                    + "rnbqkbnr/pppp1ppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR"));
+            BoardSnapshot s = waitFor(x -> x.url().contains("anim=e4") && x.board() != null
+                    && x.site() == ChessSite.fromProbe(site), site + " animated capture");
+            assertTrue(s.board().animating(), site + ": two pieces on e4 = a capture in progress");
+        }
+    }
+
+    @Test
     void botMoverPlaysWithTrustedClicks() throws Exception {
         for (String site : List.of("lichess", "chesscom")) {
             for (boolean black : List.of(false, true)) {

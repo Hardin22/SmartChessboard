@@ -113,6 +113,23 @@
     }
   }
   render();
+  // ?anim=e4: a capture caught mid-animation, as chess.com and lichess show it (two pieces on the square)
+  if (q.get('anim')) {
+    const sq = q.get('anim');
+    const [x, y] = xy(sq);
+    let el;
+    if (site === 'chesscom') {
+      el = document.createElement('div');
+      el.className = 'piece bp square-' + (sq.charCodeAt(0) - 96) + sq[1];
+      el.style.cssText = 'left:' + x + 'px;top:' + y + 'px;transform: translate(-40px, -40px)';
+    } else {
+      el = document.createElement('piece');
+      el.className = 'black pawn anim';
+      el.style.transform = 'translate(' + (x - 40) + 'px, ' + (y - 40) + 'px)';
+    }
+    el.style.backgroundImage = img('p');
+    board.appendChild(el);
+  }
   let selected = null, promo = null;
   function squareAt(ev) {
     const r = board.getBoundingClientRect();

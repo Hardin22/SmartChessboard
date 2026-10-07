@@ -39,6 +39,12 @@ public record BrowserStatus(State state, String title, String detail, Tone tone,
         RESYNC,
         /** Scroll the page so that the whole board is visible. */
         SHOW_BOARD,
+        /** Save the login the user typed, to log in by itself next time. */
+        SAVE_LOGIN,
+        /** Do not save the login / close the message. */
+        DISMISS,
+        /** Remove the saved login (it no longer works). */
+        FORGET_LOGIN,
         /** Back to the app's home screen. */
         BACK_HOME;
 
@@ -58,6 +64,8 @@ public record BrowserStatus(State state, String title, String detail, Tone tone,
         SITE_UNREACHABLE(Tone.ERROR),
         VERIFY(Tone.WARNING),
         LOGIN(Tone.INFO),
+        LOGIN_FAILED(Tone.WARNING),
+        SAVE_LOGIN(Tone.INFO),
         NO_GAME(Tone.INFO),
         EDITOR(Tone.INFO),
         BOARD_FOUND(Tone.INFO),

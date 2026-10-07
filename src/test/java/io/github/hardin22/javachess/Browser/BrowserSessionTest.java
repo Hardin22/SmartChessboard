@@ -152,8 +152,6 @@ class BrowserSessionTest {
         showPage();
         assertEquals(BrowserStatus.State.LOGIN, state());
         assertEquals("Accedi a Chess.com", session.status().title());
-        session.fillingCredentials(true);
-        assertTrue(session.status().detail().contains("credenziali"), session.status().detail());
     }
 
     @Test

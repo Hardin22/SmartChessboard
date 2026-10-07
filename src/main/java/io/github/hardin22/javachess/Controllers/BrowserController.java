@@ -180,6 +180,9 @@ public class BrowserController implements NavigationAware {
             }
         }, mode);
         log.info("Board reading: {}", mode);
+        session.setLoginAssistant(new io.github.hardin22.javachess.Browser.LoginAssistant(w.page(),
+                io.github.hardin22.javachess.Browser.CredentialStore.system(), session::onSessionThread,
+                AppExecutors.io(), () -> { }, System::currentTimeMillis));
         w.bar().show(session.status());
         session.engineReady();
         Platform.runLater(() -> showWindow(null)); // the page is already loading

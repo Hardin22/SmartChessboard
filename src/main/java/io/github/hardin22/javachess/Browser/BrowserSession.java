@@ -80,7 +80,7 @@ public final class BrowserSession {
     private PageInfo page = PageInfo.of("");
     private boolean pausedOnPage;
     private boolean visible;
-    private boolean fillingCredentials;
+    private LoginAssistant login;
 
     public BrowserSession(Executor executor, PhysicalBoard board, OnlineGameSync.MoveSender sender,
                           Consumer<ArchivedGame> archive, Commands commands, LongSupplier clock) {
@@ -208,7 +208,6 @@ public final class BrowserSession {
             pausedOnPage = false;
             snapshot = null;
             problem = null;
-            fillingCredentials = false;
         }
         url = newUrl;
         page = next;
@@ -224,6 +223,9 @@ public final class BrowserSession {
             snapshot = s;
             PageInfo info = s.page();
             page = info;
+            if (login != null) {
+                login.onSnapshot(s);
+            }
             if (!sync.isActive() && !pausedOnPage && visible && isMainBoard(s) && info.kind().syncsAutomatically()) {
                 startSync(info);
             }
@@ -244,9 +246,14 @@ public final class BrowserSession {
         post(sync::tick);
     }
 
-    /** Saved credentials are being typed into the login form. */
-    public void fillingCredentials(boolean filling) {
-        post(() -> fillingCredentials = filling);
+    /** The helper that types saved logins and offers to save typed ones (set once the page exists). */
+    public void setLoginAssistant(LoginAssistant assistant) {
+        post(() -> login = assistant);
+    }
+
+    /** Runs a task on the session's thread and refreshes the status (for components owned by the session). */
+    public void onSessionThread(Runnable task) {
+        post(task);
     }
 
     private static boolean isMainBoard(BoardSnapshot s) {
@@ -277,6 +284,21 @@ public final class BrowserSession {
                 case RESTART_APP -> commands.restartApp();
                 case BACK_HOME -> commands.backHome();
                 case SHOW_BOARD -> commands.showBoard();
+                case SAVE_LOGIN -> {
+                    if (login != null) {
+                        login.save();
+                    }
+                }
+                case DISMISS -> {
+                    if (login != null) {
+                        login.dismiss();
+                    }
+                }
+                case FORGET_LOGIN -> {
+                    if (login != null) {
+                        login.forget();
+                    }
+                }
                 case SYNC_START -> {
                     pausedOnPage = false;
                     if (snapshot != null && snapshot.board() != null) {
@@ -375,10 +397,19 @@ public final class BrowserSession {
             return BrowserStatus.of(BrowserStatus.State.LOADING, -1, List.of(), siteName());
         }
         PageInfo info = snapshot.page();
+        LoginAssistant.State loginState = login == null ? LoginAssistant.State.IDLE : login.state();
+        if (!sync.isActive() && loginState == LoginAssistant.State.FAILED) {
+            return BrowserStatus.of(BrowserStatus.State.LOGIN_FAILED, BrowserStatus.NO_PROGRESS,
+                    List.of(BrowserStatus.Action.FORGET_LOGIN, BrowserStatus.Action.DISMISS));
+        }
         if (!sync.isActive() && (snapshot.loginForm() || info.kind() == PageInfo.Kind.LOGIN)) {
             BrowserStatus s = BrowserStatus.of(BrowserStatus.State.LOGIN, BrowserStatus.NO_PROGRESS, List.of(),
                     siteName());
-            return fillingCredentials ? s.withDetail(I18n.t("browser.status.login.saved")) : s;
+            return loginState == LoginAssistant.State.FILLING ? s.withDetail(I18n.t("browser.status.login.saved")) : s;
+        }
+        if (!sync.isActive() && loginState == LoginAssistant.State.OFFER_SAVE) {
+            return BrowserStatus.of(BrowserStatus.State.SAVE_LOGIN, BrowserStatus.NO_PROGRESS,
+                    List.of(BrowserStatus.Action.SAVE_LOGIN, BrowserStatus.Action.DISMISS));
         }
         if (sync.isActive()) {
             return syncStatus(sync.state());

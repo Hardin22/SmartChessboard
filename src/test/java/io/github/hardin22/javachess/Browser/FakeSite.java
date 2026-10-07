@@ -47,6 +47,8 @@ public final class FakeSite implements PageDriver {
     final List<double[]> clicks = new CopyOnWriteArrayList<>();
     final List<String> played = new CopyOnWriteArrayList<>();
     volatile int scrolls;
+    volatile String formUser = "";
+    volatile String formPassword = "";
     volatile boolean scrollable = true;
     volatile int probes;
 
@@ -94,6 +96,16 @@ public final class FakeSite implements PageDriver {
             probes++;
             return CompletableFuture.completedFuture(json());
         }
+        if (LoginAssistant.FORM_SCRIPT.equals(expression)) {
+            return CompletableFuture.completedFuture(loginForm ? new JSONObject()
+                    .put("user", new JSONObject().put("x", 100).put("y", 200))
+                    .put("pass", new JSONObject().put("x", 100).put("y", 260))
+                    .put("submit", new JSONObject().put("x", 100).put("y", 320))
+                    .put("userValue", formUser).put("passValue", formPassword).toString() : "null");
+        }
+        if (LoginAssistant.SELECT_FOCUSED.equals(expression)) {
+            return CompletableFuture.completedFuture("true");
+        }
         if (BotMover.SCROLL_BOARD_INTO_VIEW.equals(expression)) {
             scrolls++;
             if (!scrollable) {
@@ -119,6 +131,14 @@ public final class FakeSite implements PageDriver {
         if (acceptsClicks) {
             onClick(squareAt(x, y));
         }
+        return CompletableFuture.completedFuture(null);
+    }
+
+    final List<String> typed = new CopyOnWriteArrayList<>();
+
+    @Override
+    public CompletableFuture<Void> typeText(String text) {
+        typed.add(text);
         return CompletableFuture.completedFuture(null);
     }
 

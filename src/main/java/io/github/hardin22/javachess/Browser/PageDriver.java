@@ -25,4 +25,7 @@ public interface PageDriver {
 
     /** A real (trusted) left click at the given point of the viewport. */
     CompletableFuture<Void> click(double x, double y);
+
+    /** Types text into the focused field like a keyboard (trusted input events). */
+    CompletableFuture<Void> typeText(String text);
 }

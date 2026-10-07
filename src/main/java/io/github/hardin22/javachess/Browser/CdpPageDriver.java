@@ -96,6 +96,11 @@ public final class CdpPageDriver implements PageDriver {
                 .thenApply(r -> null);
     }
 
+    @Override
+    public CompletableFuture<Void> typeText(String text) {
+        return call("Input.insertText", new JSONObject().put("text", text)).thenApply(r -> null);
+    }
+
     private static JSONObject mouse(String type, double x, double y) {
         return new JSONObject().put("type", type).put("x", x).put("y", y);
     }

@@ -349,8 +349,8 @@ public final class BotGameTrial {
                 b = s.board();
                 stats.put("scrolledBack", stats.optInt("scrolledBack") + 1);
             }
-            if (b == null || !b.rect().inside(s.viewportWidth(), s.viewportHeight())
-                    || !SetupPosition.placement(known).equals(b.placement())) {
+            if (b == null || !b.rect().inside(s.viewportWidth(), s.viewportHeight()) || b.animating()
+                    || b.placement() == null) {
                 stats.put("visionSkipped", stats.optInt("visionSkipped") + 1);
                 return;
             }
@@ -358,8 +358,11 @@ public final class BotGameTrial {
             long t0 = System.nanoTime();
             BoardReading r = classifier.read(img, b.flipped(), null).withPlacementRules();
             long ms = (System.nanoTime() - t0) / 1_000_000;
-            String truth = SetupPosition.placement(known);
-            int wrong = PositionResolver.differences(known, r).size();
+            // truth: the page at this moment (the bot may already have answered); the trial checks the page
+            String truth = b.placement();
+            Board shownBoard = new Board();
+            shownBoard.loadFromFen(truth + " w - - 0 1");
+            int wrong = PositionResolver.differences(shownBoard, r).size();
             stats.put("visionChecked", stats.optInt("visionChecked") + 1);
             stats.put("visionExact", stats.optInt("visionExact") + (wrong == 0 ? 1 : 0));
             stats.put("visionSquaresWrong", stats.optInt("visionSquaresWrong") + wrong);
@@ -367,7 +370,8 @@ public final class BotGameTrial {
             String name = String.format("%s-%03d", site, fixtureCount++);
             ImageIO.write(img, "png", out.resolve("fixtures").resolve(name + ".png").toFile());
             manifest.put(new JSONObject().put("file", name + ".png").put("placement", truth)
-                    .put("fen", known.getFen()).put("flipped", b.flipped()).put("site", site)
+                    .put("fen", truth.equals(SetupPosition.placement(known)) ? known.getFen() : truth + " w - - 0 1")
+                    .put("flipped", b.flipped()).put("site", site)
                     .put("theme", "default").put("pieces", "default").put("category", "live game")
                     .put("lastMove", new JSONArray(b.lastMove())).put("game", site + "-" + gameIndex)
                     .put("ply", fixturePly).put("group", site + "-" + gameIndex)
