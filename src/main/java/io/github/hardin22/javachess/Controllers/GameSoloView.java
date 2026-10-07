@@ -107,6 +107,11 @@ final class GameSoloView extends VBox {
     private final VBox lower;
     private final HBox tools;
 
+    /** The toolbar is for a game in progress: at the end the status card has the next steps. */
+    void setToolsVisible(boolean visible) {
+        tools.setVisible(visible);
+    }
+
     /** Portrait: board on top of the panel. Wide: board on the left (as tall as the window), panel on the right. */
     void setWide(boolean wide) {
         getChildren().clear();
@@ -160,11 +165,15 @@ final class GameSoloView extends VBox {
 
     /** Coach line: best move for the player and its evaluation; hidden when suggestions and evaluation are off. */
     void setCoach(boolean visible, String evalText, boolean blackAhead, String line) {
+        setCoach(visible, I18n.t("game.coach"), evalText, blackAhead, line);
+    }
+
+    void setCoach(boolean visible, String caption, String evalText, boolean blackAhead, String line) {
         coach.setVisible(visible);
         if (!visible) {
             return;
         }
-        coachCaption.setText(I18n.t("game.coach"));
+        coachCaption.setText(caption);
         coachEval.setText(evalText == null || evalText.isBlank() ? "–" : evalText);
         coachEval.getStyleClass().removeAll("white-adv", "black-adv");
         coachEval.getStyleClass().add(blackAhead ? "black-adv" : "white-adv");

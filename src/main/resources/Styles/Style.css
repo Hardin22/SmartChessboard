@@ -347,6 +347,10 @@
     -fx-background-color: -c-s3;
 }
 
+.tool-btn:disabled {
+    -fx-opacity: 0.38;
+}
+
 .tool-btn:selected {
     -fx-background-color: -c-accent-soft;
     -fx-border-color: -c-accent;

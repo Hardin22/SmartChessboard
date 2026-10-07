@@ -15,6 +15,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import io.github.hardin22.javachess.Analysis.OpeningNames;
 import io.github.hardin22.javachess.Components.BoardThemes;
 import io.github.hardin22.javachess.Components.I18n;
 import io.github.hardin22.javachess.Components.Icons;
@@ -420,7 +421,7 @@ public class ArchiveController implements Screen {
         Label outcome = Ui.wrap(outcomeLine(game), "t-body-m");
         Label players = Ui.wrap(I18n.t("archive.players", game.white(), game.black()), "t-small", "t-muted");
         Label moves = Ui.wrap(I18n.t("archive.moves", game.fullMoves())
-                + (game.opening().isBlank() ? "" : " · " + game.opening()), "t-small", "t-muted");
+                + (game.opening().isBlank() ? "" : " · " + OpeningNames.italian(game.opening())), "t-small", "t-muted");
         VBox info = new VBox(8, title, when, outcome, players, moves);
         info.setMinWidth(0);
         HBox.setHgrow(info, Priority.ALWAYS);
@@ -500,13 +501,13 @@ public class ArchiveController implements Screen {
                     appendMeta(meta, game.timeControl().replace("+", " + "));
                 }
                 String openingName = "Opening Name".equals(game.opening()) || "Unknown".equalsIgnoreCase(game.opening())
-                        ? "" : game.opening();
+                        ? "" : OpeningNames.italian(game.opening());
                 String detail = !openingName.isEmpty() ? openingName
                         : !game.termination().isEmpty() ? game.termination() : "";
                 Integer outcome = outcome(game, lichessUser);
                 boolean decisive = "1-0".equals(game.result()) || "0-1".equals(game.result());
                 String search = (describe(game) + " " + game.white() + " " + game.black() + " " + game.label() + " "
-                        + game.opening()).toLowerCase(Locale.ITALIAN);
+                        + game.opening() + " " + openingName).toLowerCase(Locale.ITALIAN);
                 rows.add(new Row(game.id(), describe(game), meta.toString(), detail, resultText(game, outcome),
                         outcome, decisive, game.finalFen().isEmpty() ? START_FEN : game.finalFen(),
                         game.playedAt() == null ? null : game.playedAt().toLocalDate(), game, search));

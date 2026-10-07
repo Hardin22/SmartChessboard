@@ -101,21 +101,21 @@ public class SettingsController implements Screen {
 
         // game
         VBox game = group(
-                switchRow("game.suggestions", true, I18n.t("settings.suggestions"),
-                        I18n.t("settings.suggestions.description")),
                 switchRow("game.evaluation", true, I18n.t("settings.evaluation"),
                         I18n.t("settings.evaluation.description")),
+                switchRow(PVC_SUGGESTIONS_KEY, false, I18n.t("settings.pvc.suggestions"),
+                        I18n.t("settings.pvc.suggestions.description")),
+                switchRow(PVP_SUGGESTIONS_KEY, false, I18n.t("settings.pvp.suggestions"),
+                        I18n.t("settings.pvp.suggestions.description")),
+                switchRow(io.github.hardin22.javachess.Oggetti.PvcGame.REPLICATION_FREE_KEY, true,
+                        I18n.t("settings.clock.replication"), I18n.t("settings.clock.replication.description")),
                 switchRow("ui.mate.animation", true, I18n.t("settings.mate"), I18n.t("settings.mate.description")));
 
         // computer
-        Stepper level = new Stepper(1, 20, 1, Prefs.integer("game.bot.level", 10));
-        level.format(String::valueOf, I18n.t("pvc.level.of"));
-        level.valueProperty().addListener((obs, o, n) -> Prefs.set("game.bot.level", n.intValue()));
         Stepper movetime = new Stepper(MOVETIMES, Prefs.integer("game.bot.movetime", 2000));
         movetime.format(v -> String.format(Locale.ITALIAN, v % 1000 == 0 ? "%.0f s" : "%.1f s", v / 1000.0), null);
         movetime.valueProperty().addListener((obs, o, n) -> Prefs.set("game.bot.movetime", n.intValue()));
         VBox computer = group(
-                stepperBlock(I18n.t("settings.botlevel"), I18n.t("settings.botlevel.description"), level),
                 stepperBlock(I18n.t("settings.bottime"), I18n.t("settings.bottime.description"), movetime));
 
         // clock
@@ -265,6 +265,11 @@ public class SettingsController implements Screen {
         row.getStyleClass().add("row");
         return row;
     }
+
+    /** Best-move arrows and LED verdicts in a two-player game (off by default: it is a game between people). */
+    public static final String PVP_SUGGESTIONS_KEY = "game.pvp.suggestions";
+    /** Best-move arrows always on against the computer (off by default: the Hint button gives it on request). */
+    public static final String PVC_SUGGESTIONS_KEY = "game.pvc.suggestions";
 
     private static HBox switchRow(String key, boolean fallback, String title, String description) {
         ToggleButton toggle = Ui.toggleSwitch(Prefs.bool(key, fallback));

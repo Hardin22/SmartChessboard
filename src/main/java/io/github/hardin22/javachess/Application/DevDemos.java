@@ -72,6 +72,7 @@ final class DevDemos {
                         later(0.5, () -> fireWhenEnabled(main, "game-hint", 150, null));
                     }
                 }));
+                case "pvc-end" -> pvc(main, true, game -> game.devResign(com.github.bhlangonijr.chesslib.Side.BLACK));
                 case "pvc-draw" -> pvc(main, true, game -> fireWhenEnabled(main, "game-draw", 60, null));
                 case "pvc-undo" -> pvc(main, true, game -> fireWhenEnabled(main, "game-undo", 60, null));
                 case "home-resume" -> {
