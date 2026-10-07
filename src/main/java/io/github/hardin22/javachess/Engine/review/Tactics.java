@@ -288,6 +288,16 @@ final class Tactics {
         return best;
     }
 
+    /** True when a pawn takes a pawn (en passant included): a pawn exchange. */
+    static boolean isPawnTakesPawn(Board b, String uci) {
+        Move m = find(b, uci);
+        if (m == null || b.getPiece(m.getFrom()).getPieceType() != PieceType.PAWN) {
+            return false;
+        }
+        Piece target = b.getPiece(m.getTo());
+        return target == Piece.NONE ? isEnPassant(b, m) : target.getPieceType() == PieceType.PAWN;
+    }
+
     /** True when the move (UCI) captures something, en passant included. */
     static boolean isCapture(Board b, String uci) {
         Move m = find(b, uci);
