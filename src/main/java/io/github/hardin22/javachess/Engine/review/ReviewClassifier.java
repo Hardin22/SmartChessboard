@@ -108,6 +108,11 @@ public final class ReviewClassifier {
         final boolean brilliantNoLiquidation;
         /** Phase 4 B-E10: a recapture is a sacrifice only when the recapturing piece is lost for at least sacMin. */
         final boolean brilliantRecaptureNet;
+        /**
+         * Phase 4 G-E5: no Great for moving an attacked piece to its only safe square (a forced retreat, like a single
+         * legal move).
+         */
+        final boolean greatNoOnlyEscape;
         final double brilliantTopRegain;
         /** v2.3 R9: a quiet move starting a forced mate is Great when the alternative does not win. */
         final boolean greatStartsMate;
@@ -254,6 +259,7 @@ public final class ReviewClassifier {
             brilliantTopException = get("brilliantTopException", 1) != 0;
             brilliantNoLiquidation = get("brilliantNoLiquidation", 1) != 0;
             brilliantRecaptureNet = get("brilliantRecaptureNet", 1) != 0;
+            greatNoOnlyEscape = get("greatNoOnlyEscape", 1) != 0;
             brilliantTopRegain = get("brilliantTopRegain", 1);
             greatInCheckGap = get("greatInCheckGap", 0.10);
             greatLowRating = get("greatLowRating", 1500);
@@ -817,6 +823,9 @@ public final class ReviewClassifier {
         if (!candidate(b0, uci, alternative, epAfter, me, t)) {
             return null;
         }
+        if (t.greatNoOnlyEscape && onlyEscape(b0, uci, me)) {
+            return null; // G-E5: the attacked piece's only safe square is a forced retreat
+        }
         if (t.brilliantRule == 0 && brilliant(b0, uci, me)) {
             return MoveClassification.BRILLIANT;
         }
@@ -1022,6 +1031,33 @@ public final class ReviewClassifier {
             return false;
         }
         return replay.uci().get(i - 2).substring(2, 4).equals(replay.uci().get(i).substring(0, 2));
+    }
+
+    /**
+     * Phase 4 G-E5: the move takes a piece the opponent was winning by static exchange to the only square where it is
+     * not (captures and answers to check aside), like a single legal move: chess.com Best 5 of 5 in the 177 games (Ba7
+     * live_174024200644 ply 28, Nh6 live_174521739268 ply 18, Rg1 live_180019739292 ply 19, Nb6 live_184567962764 ply
+     * 25, Nf4 live_184308204442 ply 66), while every Great retreat of an attacked piece had a choice of safe squares.
+     */
+    private static boolean onlyEscape(Board b0, String uci, boolean me) {
+        Move m = Tactics.find(b0, uci);
+        Side side = me ? Side.WHITE : Side.BLACK;
+        if (m == null || b0.isKingAttacked() || Tactics.isCapture(b0, uci)
+                || !Tactics.hanging(b0, side).containsKey(m.getFrom())) {
+            return false;
+        }
+        int safe = 0;
+        for (Move o : b0.legalMoves()) {
+            if (o.getFrom() != m.getFrom()) {
+                continue;
+            }
+            Board b1 = b0.clone();
+            b1.doMove(o);
+            if (!Tactics.hanging(b1, side).containsKey(o.getTo()) && ++safe > 1) {
+                return false;
+            }
+        }
+        return safe == 1;
     }
 
     /** 0 losing, 1 about equal, 2 winning (SPEC v2.1). */

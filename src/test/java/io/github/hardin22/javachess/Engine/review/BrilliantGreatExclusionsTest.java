@@ -485,7 +485,8 @@ class BrilliantGreatExclusionsTest {
         ReviewInput bg6 = rated(twoMoves("r4rk1/1pq1npp1/p1nbp2p/3p3b/3P4/2PBBN1P/PPQN1PP1/R3R1K1 w - - 0 14", "g2g4",
                 Eval.cp(-77), "d3e2", "h5g6", Eval.cp(-129), "h5g6", Eval.cp(70), "f7f5", Eval.cp(-140)), 1909, 2007);
         assertEquals(MoveClassification.BEST, label(bg6, Tuning.DEFAULT));
-        assertEquals(MoveClassification.GREAT, label(bg6, Tuning.DEFAULT.with("greatKickedBishop", 0)));
+        assertEquals(MoveClassification.GREAT, label(bg6, Tuning.DEFAULT.with("greatKickedBishop", 0)
+                .with("greatNoOnlyEscape", 0))); // Bg6 is also its only safe square (G-E5)
     }
 
     @Test
@@ -507,6 +508,16 @@ class BrilliantGreatExclusionsTest {
                 1927, 1957);
         assertNotEquals(MoveClassification.BRILLIANT, label(nxd4, Tuning.DEFAULT));
         assertEquals(MoveClassification.BRILLIANT, label(nxd4, Tuning.DEFAULT.with("brilliantRecaptureNet", 0)));
+    }
+
+    @Test
+    void gE5TheOnlySafeSquareOfAnAttackedPieceIsNotGreat() {
+        // live_174024200644 ply 28, 14...Ba7: the bishop attacked by c5 has no other safe square (chess.com Best), every
+        // other move loses it (Bxc5 Bxc5 +6.45)
+        ReviewInput ba7 = rated(oneMove("rnb2r2/1pp1nkpp/1b2pp2/p1P5/P3P3/BP3NP1/5PBP/RN1R2K1 b - - 0 14", "b6a7",
+                Eval.cp(35), "b6a7", Eval.cp(645), "b6c5", Eval.cp(39)), 2641, 2714);
+        assertNotEquals(MoveClassification.GREAT, label(ba7, Tuning.DEFAULT));
+        assertEquals(MoveClassification.GREAT, label(ba7, Tuning.DEFAULT.with("greatNoOnlyEscape", 0)));
     }
 
     private static ReviewInput rated(ReviewInput in, int white, int black) {
