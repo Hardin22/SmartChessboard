@@ -109,6 +109,14 @@ class ReviewClassifierTest {
     }
 
     @Test
+    void threefoldRepetitionIsADraw() {
+        GameReplay g = GameReplay.of(null, "Nf3 Nf6 Ng1 Ng8 Nf3 Nf6 Ng1 Ng8");
+        assertEquals(8, g.uci().size());
+        assertFalse(g.drawn().get(4));
+        assertTrue(g.drawn().get(8));
+    }
+
+    @Test
     void openingBookLabelsTheOpening() {
         OpeningBook book = OpeningBook.standard();
         assertTrue(book.size() > 3000);

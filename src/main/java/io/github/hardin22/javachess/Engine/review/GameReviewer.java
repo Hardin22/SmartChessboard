@@ -97,7 +97,9 @@ public final class GameReviewer implements AutoCloseable {
                         if (Thread.currentThread().isInterrupted()) {
                             throw new InterruptedException();
                         }
-                        PositionEval p = evaluator.evaluate(replay.fens().get(idx), 1, settings.nodes());
+                        PositionEval p = replay.drawn().get(idx) && !mated(replay.fens().get(idx))
+                                ? PositionEval.terminal(replay.fens().get(idx), Eval.DRAW)
+                                : evaluator.evaluate(replay.fens().get(idx), 1, settings.nodes());
                         positions[idx] = p;
                         nodes.addAndGet(p.nodes());
                         l.onPosition(idx, p);
@@ -141,6 +143,10 @@ public final class GameReviewer implements AutoCloseable {
         } finally {
             pool.shutdownNow();
         }
+    }
+
+    private static boolean mated(String fen) {
+        return Eval.terminal(fen).map(Eval::isCheckmate).orElse(false);
     }
 
     private static void await(List<Future<?>> jobs) throws InterruptedException, ExecutionException {
