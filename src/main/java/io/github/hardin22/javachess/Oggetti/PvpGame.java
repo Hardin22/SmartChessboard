@@ -211,8 +211,12 @@ public class PvpGame extends AbstractGame {
         chessTimer.stopWhiteTimer();
         chessTimer.stopBlackTimer();
 
-        if (pgn.length() < 20) {
-            log.info("Game too short, not saved");
+        // An interrupted game needs a few moves to be worth keeping; one with a result (mate, draw, time,
+        // resignation, draw by agreement) is kept from the first move, as in the game against the bot.
+        int plies = board.getBackup().size();
+        boolean interrupted = endMessage == null || endMessage.startsWith("Partita interrotta");
+        if (plies == 0 || (interrupted && plies < 4)) {
+            log.info("Game too short, not saved ({} plies)", plies);
             saveGame = false;
             forgetSnapshotIfFinished(endMessage); // not archived, but a result still ends it for good
         }
