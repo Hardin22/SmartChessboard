@@ -1,21 +1,19 @@
 package io.github.hardin22.javachess.Engine;
 
+import io.github.hardin22.javachess.Engine.review.Eval;
+import io.github.hardin22.javachess.Engine.review.FastVerdict;
+import io.github.hardin22.javachess.Engine.review.ReviewClassifier;
+import io.github.hardin22.javachess.Engine.review.WinModel;
+
 /**
- * Pure move classification maths, shared by the LED feedback and the game review.
+ * Move classification for the LED coach: the "fast" verdict of the game review core
+ * ({@link ReviewClassifier#fast}), fed with UCI scores from the mover's point of view.
  *
- * <p>Model: win probability {@code WP = 1 / (1 + 10^(-cp/400))} for the side that moves, mates mapped to
- * +/-10000 cp. The loss of a move is {@code WP(best) - WP(played)}. Thresholds are the chess.com style
- * expected-points ones already used by the review ({@code GameAnalyzer}): inaccuracy &ge; 0.05,
- * mistake &ge; 0.10, blunder &ge; 0.20. A "blunder" in an already lost position (WP(best) &lt; 0.10) is
- * reported as an inaccuracy, like the review does.</p>
+ * <p>Same win model and thresholds as the review (no MultiPV, no history, so never Brilliant/Great/Miss/Book);
+ * the mate rules come with it: a move that mates is BEST, a move that allows a forced mate the best move avoided is
+ * a BLUNDER, a slower forced mate is still a good move.</p>
  */
 public final class MoveClassifier {
-
-    public static final double BEST_MAX_LOSS = 0.005;
-    public static final double INACCURACY_LOSS = 0.05;
-    public static final double MISTAKE_LOSS = 0.10;
-    public static final double BLUNDER_LOSS = 0.20;
-    public static final double LOST_POSITION_WP = 0.10;
 
     private MoveClassifier() {
     }
@@ -24,7 +22,7 @@ public final class MoveClassifier {
     public record Classification(MoveQuality quality, double winLoss, int cpLoss) {
     }
 
-    /** Win probability (0..1) of the side to move for a centipawn score. */
+    /** Win probability (0..1) of the side to move for a centipawn score (mates as +/-{@link Score#MATE_CP}). */
     public static double winProbability(double cp) {
         if (cp >= Score.MATE_CP) {
             return 1.0;
@@ -32,7 +30,7 @@ public final class MoveClassifier {
         if (cp <= -Score.MATE_CP) {
             return 0.0;
         }
-        return 1.0 / (1.0 + Math.pow(10, -cp / 400.0));
+        return WinModel.fromCp(cp);
     }
 
     /**
@@ -40,39 +38,20 @@ public final class MoveClassifier {
      *
      * @param bestBefore   score of the best line in the position before the move, mover's point of view
      * @param playedAfter  score after the played move, mover's point of view (i.e. the negated score of the
-     *                     resulting position)
+     *                     resulting position; {@link Score#mateDelivered()} when the move mates)
      * @param playedIsBest true when the played move is the engine's top move
      */
     public static Classification classify(Score bestBefore, Score playedAfter, boolean playedIsBest) {
-        double bestWp = bestBefore.winProbability();
-        double playedWp = playedAfter.winProbability();
-        // A deeper look at the played move can make it look better than the (shallower) best line:
-        // never report a negative loss.
-        double loss = Math.max(0, bestWp - playedWp);
+        FastVerdict v = ReviewClassifier.fast(moverAsWhite(bestBefore), moverAsWhite(playedAfter), true, playedIsBest);
         int cpLoss = Math.max(0, bestBefore.centipawns() - playedAfter.centipawns());
-        if (playedIsBest) {
-            return new Classification(MoveQuality.BEST, loss, cpLoss);
-        }
-        return new Classification(qualityForLoss(loss, bestWp), loss, cpLoss);
+        return new Classification(v.quality(), v.winLoss(), cpLoss);
     }
 
-    /** Maps a win probability loss (0..1) to a quality, given the WP of the best move. */
-    public static MoveQuality qualityForLoss(double loss, double bestWp) {
-        MoveQuality q;
-        if (loss < BEST_MAX_LOSS) {
-            q = MoveQuality.BEST;
-        } else if (loss < INACCURACY_LOSS) {
-            q = MoveQuality.GOOD;
-        } else if (loss < MISTAKE_LOSS) {
-            q = MoveQuality.INACCURACY;
-        } else if (loss < BLUNDER_LOSS) {
-            q = MoveQuality.MISTAKE;
-        } else {
-            q = MoveQuality.BLUNDER;
+    /** A mover-POV score as an {@link Eval} where the mover plays White. */
+    static Eval moverAsWhite(Score s) {
+        if (s.isCheckmate()) {
+            return s.isWinningMate() ? Eval.whiteMates(0) : Eval.blackMates(0);
         }
-        if (q == MoveQuality.BLUNDER && bestWp < LOST_POSITION_WP) {
-            q = MoveQuality.INACCURACY;
-        }
-        return q;
+        return Eval.fromUci(s, true);
     }
 }

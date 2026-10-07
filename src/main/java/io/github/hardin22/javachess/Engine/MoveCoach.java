@@ -75,6 +75,8 @@ public final class MoveCoach {
         MoveQuality emitted;
         boolean confirmed;
         boolean fallbackStarted;
+        MoveClassifier.Classification deferred;
+        int deferredDepth;
         ScheduledFuture<?> capTask;
         ScheduledFuture<?> deadlineTask;
 
@@ -261,10 +263,22 @@ public final class MoveCoach {
         }
         pending = p;
 
+        // Instant final verdicts that need no search of the new position.
+        Score instant = instantVerdict(fenBefore, fenAfter, uci, best, b);
+        if (instant != null) {
+            MoveClassifier.Classification c = MoveClassifier.classify(instant, instant, true);
+            p.playedIsBest = true; // no "better move" to show
+            emit(p, c, best == null ? 0 : best.depth, false);
+            finish(p);
+            analyzer.follow(fenAfter);
+            return;
+        }
+
         // Instant preliminary verdict from the lift search, if it scored this move deep enough.
         InfoLine scored = cand == null ? null : cand.lineFor(uci);
         if (best != null && scored != null && cand.depth() >= b.coachMinDepth() - 2) {
-            emit(p, MoveClassifier.classify(best.score, scored.score(), p.playedIsBest), scored.depth(), true);
+            verdict(p, MoveClassifier.classify(best.score, scored.score(), p.playedIsBest), scored.depth(), true,
+                    scored.score());
         }
 
         if (best == null || best.depth < b.coachMinDepth() - 2) {
@@ -288,6 +302,27 @@ public final class MoveCoach {
     }
 
     /**
+     * Moves that are BEST without searching the new position (research/SPEC.md section 8): a move that mates, the only
+     * legal move, and the engine's top move when the position before was searched deep enough
+     * ({@link EngineManager.Budget#coachMinDepth()} - 2: a shallower "best" is not trusted). Returns the mover's
+     * score to report, or null when a search is needed.
+     */
+    static Score instantVerdict(String fenBefore, String fenAfter, String uci, Best best, EngineManager.Budget b) {
+        Board after = new Board();
+        after.loadFromFen(fenAfter);
+        if (after.isMated()) {
+            return Score.mateDelivered();
+        }
+        if (legalMoveCount(fenBefore) == 1) {
+            return best != null ? best.score : Score.cp(0);
+        }
+        if (best != null && uci.equals(best.move) && best.depth >= b.coachMinDepth() - 2) {
+            return best.score;
+        }
+        return null;
+    }
+
+    /**
      * Guaranteed minimum: a {@link PositionAnalyzer.Priority#VERDICT} search of the new position to the verdict depth
      * (queued ahead of a bot move that shares the engine), then the live analysis follows the new position and
      * provides the deeper confirmation.
@@ -303,9 +338,11 @@ public final class MoveCoach {
                             return;
                         }
                         Score played = r.best().score().negate();
-                        Score best = p.bestBefore != null ? p.bestBefore : played;
-                        emit(p, MoveClassifier.classify(best, played, p.playedIsBest), r.depth(),
-                                r.depth() < b.coachConfirmDepth());
+                        if (p.bestBefore == null) {
+                            return; // no reference for the position before: no verdict rather than a wrong "best"
+                        }
+                        verdict(p, MoveClassifier.classify(p.bestBefore, played, p.playedIsBest), r.depth(),
+                                r.depth() < b.coachConfirmDepth(), played);
                     }));
         }
         analyzer.follow(fenAfter);
@@ -344,17 +381,20 @@ public final class MoveCoach {
         EngineManager.Budget b = budget.get();
         Score playedForMover;
         if (u.terminalScore() != null) {
-            playedForMover = u.terminalScore().mate() ? Score.mate(1) : Score.cp(0); // we mated / stalemated
+            playedForMover = u.terminalScore().negate(); // we mated (mate delivered) or stalemated (0)
         } else if (u.depth() >= b.coachMinDepth() || u.finished()) {
             playedForMover = u.score().negate();
         } else {
             return;
         }
+        if (p.bestBefore == null && !playedForMover.isWinningMate()) {
+            return; // no reference for the position before: no verdict rather than a wrong "best"
+        }
         Score bestBefore = p.bestBefore != null ? p.bestBefore : playedForMover;
         MoveClassifier.Classification c = MoveClassifier.classify(bestBefore, playedForMover, p.playedIsBest);
         boolean confirmation = u.finished() || u.terminalScore() != null || u.depth() >= b.coachConfirmDepth();
         if (p.emitted == null) {
-            emit(p, c, u.depth(), !confirmation);
+            verdict(p, c, u.depth(), !confirmation, playedForMover);
         } else if (confirmation && c.quality() != p.emitted) {
             emitFinalChange(p, c, u.depth());
         }
@@ -372,6 +412,10 @@ public final class MoveCoach {
                 if (pending != p || p.emitted != null || line == null) {
                     return;
                 }
+                if (p.bestBefore == null && !line.score().isWinningMate()) {
+                    finish(p); // no reference for the position before: no verdict rather than a wrong "best"
+                    return;
+                }
                 Score best = p.bestBefore != null ? p.bestBefore : line.score();
                 emit(p, MoveClassifier.classify(best, line.score(), p.playedIsBest), line.depth(), false);
                 finish(p);
@@ -380,14 +424,39 @@ public final class MoveCoach {
     }
 
     private void onCap(Pending p) {
-        if (pending != p || p.emitted == null) {
+        if (pending != p) {
+            return;
+        }
+        if (p.emitted == null && p.deferred != null) {
+            emit(p, p.deferred, p.deferredDepth, false);
+        }
+        if (p.emitted == null) {
             return; // still waiting for the minimum depth (until the hard deadline)
         }
         finish(p);
     }
 
+    /**
+     * Emits a verdict, except a preliminary "error" for a move from a position with a forced mate whose shallow
+     * search no longer sees the mate (but does not see the mover getting mated either): a deeper search usually
+     * finds the mate again (LED study: mating moves shown as inaccuracies at depth 12). That verdict waits for the
+     * confirmation depth, or the time cap.
+     */
+    private void verdict(Pending p, MoveClassifier.Classification c, int depth, boolean preliminary, Score played) {
+        if (preliminary && c.quality().isError() && p.bestBefore != null && p.bestBefore.isWinningMate()
+                && !played.isLosingMate()) {
+            p.deferred = c;
+            p.deferredDepth = depth;
+            return;
+        }
+        emit(p, c, depth, preliminary);
+    }
+
     private void onDeadline(Pending p) {
         if (pending == p) {
+            if (p.emitted == null && p.deferred != null) {
+                emit(p, p.deferred, p.deferredDepth, false);
+            }
             if (p.emitted == null) {
                 log.info("no verdict for {}: analysis did not reach depth {} in {} ms", p.uci,
                         budget.get().coachMinDepth(), HARD_DEADLINE_MS);
@@ -458,7 +527,7 @@ public final class MoveCoach {
     // ------------------------------------------------------------------------------------------
     // Helpers
 
-    private record Best(Score score, String move, int depth) {
+    record Best(Score score, String move, int depth) {
     }
 
     /**

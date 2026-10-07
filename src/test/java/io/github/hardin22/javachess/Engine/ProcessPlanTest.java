@@ -33,6 +33,22 @@ class ProcessPlanTest {
     }
 
     @Test
+    void stockfishLiteIsSizedForThePi5() {
+        ProcessPlan pi5 = new ProcessPlan(7_900, "8 GB+", false, 128, 32, 2, 600_000, 4);
+        EngineManager.Budget lite = EngineManager.Budget.lite(pi5);
+        assertEquals(2, lite.threads(), "Pi 5: two analysis threads in a game");
+        assertEquals(64, lite.hashMb());
+        assertEquals(new EngineManager.ReviewPlan(3, 1, 64), lite.review(), "review: 3 processes, a core for the UI");
+
+        ProcessPlan pi4 = new ProcessPlan(906, "1 GB", true, 16, 16, 2, 120_000, 4);
+        assertEquals(1, EngineManager.Budget.lite(pi4).threads());
+        assertEquals(1, EngineManager.Budget.lite(pi4).review().workers());
+
+        ProcessPlan mac = new ProcessPlan(24_000, "8 GB+", false, 128, 32, 4, 600_000, 10);
+        assertEquals(6, EngineManager.Budget.full(mac).review().workers());
+    }
+
+    @Test
     void detectsSomeRam() {
         assertTrue(ProcessPlan.totalRamMb() > 256);
     }

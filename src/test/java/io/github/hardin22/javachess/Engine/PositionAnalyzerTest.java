@@ -92,6 +92,13 @@ class PositionAnalyzerTest {
         assertEquals(Score.mate(0), u.get(0).terminalScore());
         assertTrue(u.get(0).whitePawns() < -900, "eval bar shows White mated");
         u.clear();
+        // scholar's mate: Black is checkmated, the bar must be fully white (regression)
+        analyzer.analyze(MateScoreTest.BLACK_MATED, 10, 1, u::add);
+        await(() -> !u.isEmpty());
+        assertEquals(Score.mate(0), u.get(0).terminalScore());
+        assertEquals(1000.0, u.get(0).whitePawns(), "eval bar shows White has mated");
+        assertEquals("1-0", u.get(0).evalText(0));
+        u.clear();
         analyzer.analyze("k7/8/1Q6/8/8/8/8/2K5 b - - 0 1", 10, 1, u::add); // stalemate
         await(() -> !u.isEmpty());
         assertEquals(Score.cp(0), u.get(0).terminalScore());
