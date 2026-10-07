@@ -64,7 +64,11 @@ public final class ReviewClassifier {
         final double brilliantWinningCp;
         /** B-E7: no Brilliant when the mover stands below this many centipawns after the move (any rating). */
         final double brilliantMinCpAfter;
-        /** G-E1 refinement: 0 = no capture is Great, 1 = only a pawn taking a pawn is never Great. */
+        /**
+         * Captures and Great. v2.1 rule (greatRule 2): 2 = SPEC v2.2, an exchange that must be made now (no free
+         * material, or a player under {@link #greatFreeMaterialRating}), otherwise a capture punishing a blunder.
+         * v1.9 rule: 0 = no capture, 1 = all but a pawn taking a pawn.
+         */
         final int greatCaptureRule;
         /** Great rule: 2 = SPEC v2.1 (outcome class change or only move; captures only punishing a blunder). */
         final int greatRule;
@@ -77,6 +81,8 @@ public final class ReviewClassifier {
         final double greatCaptureOppLoss;
         /** ... and with the second best move this much worse. */
         final double greatCaptureGap;
+        /** v2.2 (greatCaptureRule 2): taking free material is Great only for players under this rating. */
+        final double greatFreeMaterialRating;
         /** v2.1: a piece or the exchange given for pawns counts as a sacrifice of 2 (Brilliant). */
         final boolean pieceSacrifice;
         /** v1.9: no capture is Great (G-E1). */
@@ -174,7 +180,8 @@ public final class ReviewClassifier {
             greatClassGap = get("greatClassGap", 0.10);
             greatCaptureOppLoss = get("greatCaptureOppLoss", 0.10);
             greatCaptureGap = get("greatCaptureGap", 0.30);
-            greatCaptureRule = (int) get("greatCaptureRule", 0);
+            greatFreeMaterialRating = get("greatFreeMaterialRating", 1000);
+            greatCaptureRule = (int) get("greatCaptureRule", 2);
             brilliantWinningCp = get("brilliantWinningCp", 700);
             brilliantMinCpAfter = get("brilliantMinCpAfter", -15);
             greatForcingCheck = get("greatForcingCheck", 1) != 0;
@@ -577,7 +584,8 @@ public final class ReviewClassifier {
                 if (nearBest && !mates && !fromTheory) {
                     double oppLoss = i > 0 ? Math.max(0, epBefore[i - 1] - epAfter[i - 1]) : 0;
                     MoveClassification special = special(label, isTop, i, replay, p0, pos.get(i + 1), played[i],
-                            epBefore[i], epAfter[i], me, oppLoss, t, me ? kWhite : kBlack);
+                            epBefore[i], epAfter[i], me, oppLoss, t, me ? kWhite : kBlack,
+                            me ? in.whiteRating() : in.blackRating());
                     if (special != null) {
                         label = special;
                     }
@@ -662,7 +670,7 @@ public final class ReviewClassifier {
     private static MoveClassification special(MoveClassification label, boolean isTop, int i, GameReplay replay,
                                               PositionEval p0, PositionEval p1, Eval played, double epBefore,
                                               double epAfter, boolean me, double oppLoss,
-                                              Tuning t, double k) {
+                                              Tuning t, double k, int rating) {
         EngineLine second = p0.secondBest();
         Eval alternative = isTop ? (second == null ? null : second.eval()) : p0.eval();
         Board b0 = board(replay.fens().get(i));
@@ -689,7 +697,8 @@ public final class ReviewClassifier {
             return MoveClassification.GREAT; // G+1
         }
         if (t.greatRule == 2) {
-            return greatV21(b0, uci, i, replay, second, epBefore, me, oppLoss, t, k) ? MoveClassification.GREAT : null;
+            return greatV21(b0, uci, i, replay, second, epBefore, me, oppLoss, t, k, rating)
+                    ? MoveClassification.GREAT : null;
         }
         if (epBefore < t.greatMinEp || epBefore > t.greatMaxEp) {
             return null;
@@ -724,14 +733,26 @@ public final class ReviewClassifier {
      * keeping the material is routine.
      */
     private static boolean greatV21(Board b0, String uci, int i, GameReplay replay, EngineLine second, double epBefore,
-                                    boolean me, double oppLoss, Tuning t, double k) {
+                                    boolean me, double oppLoss, Tuning t, double k, int rating) {
         if (second == null || b0.isKingAttacked() || epBefore < t.greatMinEp) {
             return false;
         }
         double gap = epBefore - ep(second.eval(), me, k);
-        if (Tactics.isCapture(b0, uci)
-                && ((i > 0 && isRecapture(replay, i)) || oppLoss < t.greatCaptureOppLoss || gap < t.greatCaptureGap)) {
-            return false;
+        if (Tactics.isCapture(b0, uci)) {
+            if ((i > 0 && isRecapture(replay, i)) || gap < t.greatCaptureGap) {
+                return false;
+            }
+            if (t.greatCaptureRule == 2) {
+                // v2.2: an exchange that has to be made now can be Great; taking free material is routine (Best),
+                // except for players under 1000
+                Move m = Tactics.find(b0, uci);
+                double r = rating > 0 ? rating : t.defaultRating;
+                if (m != null && Tactics.see(b0, m.getTo()) > 0 && r >= t.greatFreeMaterialRating) {
+                    return false;
+                }
+            } else if (oppLoss < t.greatCaptureOppLoss) {
+                return false;
+            }
         }
         boolean changesOutcome = outcomeClass(epBefore, t) > outcomeClass(epBefore - gap, t) && gap >= t.greatClassGap;
         return changesOutcome || gap >= t.greatGap;
