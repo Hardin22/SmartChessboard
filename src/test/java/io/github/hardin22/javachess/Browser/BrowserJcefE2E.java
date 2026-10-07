@@ -78,12 +78,10 @@ class BrowserJcefE2E {
     @AfterAll
     static void stop() throws Exception {
         if (frame != null) {
-            SwingUtilities.invokeAndWait(() -> {
-                browser.close(true);
-                frame.dispose();
-            });
+            SwingUtilities.invokeAndWait(() -> frame.setVisible(false));
         }
-        JcefRuntime.disposeIfStarted();
+        // Chromium is not shut down here: tearing it down in a test JVM that exits right after makes Chromium
+        // trap on macOS now and then; its helper processes end with this JVM. (The app shuts it down in App.stop.)
     }
 
     private static BoardSnapshot waitFor(Predicate<BoardSnapshot> condition, String what) throws Exception {
