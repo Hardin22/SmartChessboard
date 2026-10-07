@@ -90,8 +90,10 @@ public final class ReviewClassifier {
          * points depend on the rating: on its labels the best slope is ~0.0015 under 1000 and ~0.007 over 2000)
          */
         final double slope;
-        /** ... multiplied by exp(slopeRating * (rating - 1500) / 1000) when the mover's rating is known. */
+        /** ... multiplied by exp(slopeRating * (rating - 1500) / 1000) ... */
         final double slopeRating;
+        /** ... with this rating for a player whose rating is unknown (a local human, an untagged import). */
+        final double defaultRating;
 
         private Tuning(Map<String, Double> overrides) {
             this.overrides = Map.copyOf(overrides);
@@ -124,6 +126,7 @@ public final class ReviewClassifier {
             bookExtendLoss = get("bookExtendLoss", 0.02);
             slope = get("slope", 0.0035);
             slopeRating = get("slopeRating", 0.5);
+            defaultRating = get("defaultRating", 1500);
         }
 
         private double get(String name, double def) {
@@ -140,7 +143,8 @@ public final class ReviewClassifier {
 
         /** Win chance slope for a player of this rating (0 = unknown). */
         double slope(int rating) {
-            return rating <= 0 ? slope : slope * Math.exp(slopeRating * (rating - 1500) / 1000.0);
+            double r = rating > 0 ? rating : defaultRating;
+            return slope * Math.exp(slopeRating * (r - 1500) / 1000.0);
         }
 
         /** This tuning with one number changed (names as in {@code -Djavachess.review.<name>}). */

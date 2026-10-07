@@ -152,7 +152,8 @@ public class HomeController implements NavigationAware {
                             I18n.t("home.resume.review"), () -> {
                                 ReviewController review = (ReviewController) mainController.getController("REVIEW");
                                 mainController.navigateTo("REVIEW");
-                                review.loadGame(last.movesAsUciString(), last.initialFen());
+                                review.loadGame(last.movesAsUciString(), last.initialFen(), last.whiteRating(),
+                                        last.blackRating());
                             });
                 } else {
                     resumeCard.setVisible(false);
