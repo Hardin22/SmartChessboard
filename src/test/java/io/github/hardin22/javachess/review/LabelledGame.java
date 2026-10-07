@@ -35,7 +35,9 @@ public record LabelledGame(String id, String url, String timeClass, int whiteRat
         try {
             JSONObject l = new JSONObject(Files.readString(labelFile));
             String id = l.getString("id");
-            JSONObject g = new JSONObject(Files.readString(gamesDir.resolve(id + ".json")));
+            // games without a game file (famous games imported as PGN) take their moves from the labels' SAN
+            Path gameFile = gamesDir.resolve(id + ".json");
+            JSONObject g = Files.exists(gameFile) ? new JSONObject(Files.readString(gameFile)) : new JSONObject();
             JSONArray a = l.getJSONArray("labels");
             List<String> uci = g.has("moves_uci") ? ChessComDataset.strings(g.getJSONArray("moves_uci"))
                     : uciFromSan(a);
