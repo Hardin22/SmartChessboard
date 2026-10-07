@@ -27,12 +27,13 @@ Gravità: **alta** (vicolo cieco, perdita di dati, partita bloccata), **media** 
 | QA-019 | media | logica | Import PGN lentissimo (1000 partite: 9,6 s su Mac, minuti sul Pi) | corretto |
 | QA-020 | media | logica | Re sollevato subito dopo una spinta di due case: eccezione nel listener della scacchiera, schermo non aggiornato | corretto |
 | QA-021 | media | logica | PvP: abbandono / patta d'accordo nelle prime mosse non archiviati (soglia delle partite interrotte applicata a tutte) | corretto |
-| QA-022 | media | UI | A partita finita "Abbandona" resta attivo e non fa nulla | assegnato a design |
-| QA-023 | bassa | UI | A partita finita il riquadro coach mostra ancora la valutazione e "mossa consigliata" | assegnato a design |
-| QA-024 | bassa | UI/prodotto | PvP: frecce della mossa migliore e verdetti LED attivi di default per entrambi i giocatori | assegnato a design (decisione) |
+| QA-022 | media | UI | A partita finita "Abbandona" resta attivo e non fa nulla | risolto da design (barra nascosta a fine partita, pulsanti abilitati solo quando hanno senso) |
+| QA-023 | bassa | UI | A partita finita il riquadro coach mostra ancora la valutazione e "mossa consigliata" | risolto da design |
+| QA-024 | bassa | UI/prodotto | PvP: frecce della mossa migliore e verdetti LED attivi di default per entrambi i giocatori | risolto da design (suggerimenti spenti di default in PvP e PvC, interruttori separati) |
 | QA-025 | media | logica | Import PGN grande: il parsing teneva il lock dell'archivio (il salvataggio della partita appena finita aspettava minuti sul Pi) | corretto |
-| QA-026 | bassa | logica | Ripresa rifiutata dopo uno spegnimento: la partita non finisce in archivio | proposto a features |
+| QA-026 | bassa | logica | Ripresa rifiutata dopo uno spegnimento: la partita non finisce in archivio | fatto da features (discard archivia come interrotta) |
 | QA-027 | media | logica | E2E dipendenti dall'ordine: salvataggi asincroni del test precedente contati nel successivo | corretto |
+| QA-028 | media | test/memoria | Pipeline software (Pi): heap dopo GC 130→512 MB in 20 partite; verificato che sono cache soft di JavaFX, non una perdita | verificato; test adeguato |
 
 ---
 
@@ -181,3 +182,10 @@ archiviarla come interrotta.
 ## QA-027 · E2E dipendenti dall'ordine (media, test)
 Fallimento visto solo nella cartella di main (5 → 6 partite): la partita lasciata dal test precedente veniva
 archiviata in modo asincrono durante il test successivo. `E2eHarness.awaitStorage()` prima di ogni test.
+
+## QA-028 · Memoria con la pipeline software (media, verifica)
+Con `-Dprism.order=sw` (come `run_pi.sh`) il long run mostrava l'heap dopo GC passare da 130 a 512 MB in 20 partite.
+Istogramma e JFR (OldObjectSample): `int[]` di `SWRTTexture` creati da `CacheFilter`/`ImagePool` (immagini di
+rendering di JavaFX tenute con SoftReference). Con `-Xmx256m` 30 partite girano e l'heap scende a 84 MB; con i flag
+di `run_pi.sh` (512 MB, SerialGC, ExitOnOutOfMemoryError) 30 partite senza OOM. Non è una perdita: il test ora libera
+le SoftReference prima di misurare (headless 70→72 MB) e, con i flag del Pi, controlla solo che non ci sia OOM.
