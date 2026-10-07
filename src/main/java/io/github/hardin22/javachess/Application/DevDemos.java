@@ -14,6 +14,10 @@ import io.github.hardin22.javachess.Controllers.PuzzleController;
 import io.github.hardin22.javachess.Controllers.ReviewController;
 import io.github.hardin22.javachess.Oggetti.ArchivedGame;
 import io.github.hardin22.javachess.Oggetti.Puzzle;
+import io.github.hardin22.javachess.Play.BotLevels;
+import io.github.hardin22.javachess.Play.GameSnapshot;
+import io.github.hardin22.javachess.Play.GameSnapshotStore;
+import io.github.hardin22.javachess.Play.TimeControl;
 import io.github.hardin22.javachess.Services.EngineService;
 import io.github.hardin22.javachess.Services.GameArchiveService;
 import io.github.hardin22.javachess.Services.PuzzleService;
@@ -63,6 +67,18 @@ final class DevDemos {
                 case "pvc-status" -> pvc(main, true, game -> game.devStatus(System.getProperty("javachess.demo.status", "")));
                 case "pvp-status" -> pvp(main, game -> game.devStatus(System.getProperty("javachess.demo.status", "")));
                 case "pvc-menu" -> pvc(main, true, game -> lookupFire(main, "game-menu"));
+                case "pvc-hint" -> pvc(main, true, game -> {
+                    lookupFire(main, "game-hint");
+                    if (Boolean.getBoolean("javachess.demo.hintMove")) {
+                        later(2.5, () -> lookupFire(main, "game-hint"));
+                    }
+                });
+                case "pvc-draw" -> pvc(main, true, game -> lookupFire(main, "game-draw"));
+                case "pvc-undo" -> pvc(main, true, game -> lookupFire(main, "game-undo"));
+                case "home-resume" -> {
+                    GameSnapshotStore.get().save(demoSnapshot());
+                    later(0.8, () -> main.navigateTo("HOME"));
+                }
                 case "pvc-select" -> pvc(main, true, game -> tapSquare(main, System.getProperty("javachess.demo.square", "f1")));
                 case "review" -> review(main);
                 case "puzzle" -> puzzle(main);
@@ -146,7 +162,12 @@ final class DevDemos {
     private static void pvc(MainController main, boolean white, java.util.function.Consumer<ActiveGameController> then) {
         ActiveGameController game = (ActiveGameController) main.getController("GAME");
         main.navigateTo("GAME");
-        game.startPvC(Integer.getInteger("javachess.demo.level", 10), white, EngineService.EngineType.STOCKFISH);
+        if (Integer.getInteger("javachess.demo.level") != null) {
+            game.startPvC(Integer.getInteger("javachess.demo.level"), white, EngineService.EngineType.STOCKFISH);
+        } else {
+            game.startPvC(BotLevels.byId(System.getProperty("javachess.demo.bot", BotLevels.DEFAULT_ID)).orElseThrow(),
+                    white, TimeControl.parseStorage(System.getProperty("javachess.demo.time", "")).orElse(TimeControl.UNLIMITED));
+        }
         List<String> moves = demoMoves();
         // Against the computer only the human moves are played; the engine answers.
         if (Boolean.parseBoolean(System.getProperty("javachess.demo.autoplay", "true"))) {
@@ -155,6 +176,15 @@ final class DevDemos {
         if (then != null) {
             later(Double.parseDouble(System.getProperty("javachess.demo.thenAfter", "2.5")), () -> then.accept(game));
         }
+    }
+
+    /** An interrupted game for the Home card: the first moves of the demo game against "Circolo", 10 + 5. */
+    private static GameSnapshot demoSnapshot() {
+        List<String> all = demoMoves();
+        List<String> moves = all.subList(0, Math.min(23, all.size()));
+        return new GameSnapshot(GameSnapshot.Mode.PVC, null, moves, true, BotLevels.DEFAULT_ID, null, 0,
+                TimeControl.minutes(10, 5), 312_000, 401_000, 1, 2, LocalDateTime.now().minusHours(3),
+                LocalDateTime.now().minusHours(2));
     }
 
     private static void review(MainController main) {

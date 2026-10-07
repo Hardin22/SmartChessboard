@@ -1077,6 +1077,25 @@
     -fx-text-fill: -c-fg2;
 }
 
+.row-clock {
+    -fx-background-color: -c-s2;
+    -fx-background-radius: 16px;
+    -fx-padding: 2px 16px;
+    -fx-font-family: "Geist Light";
+    -fx-font-size: 44px;
+    -fx-text-fill: -c-fg2;
+}
+
+.row-clock.active {
+    -fx-background-color: -c-lit;
+    -fx-text-fill: -c-lit-fg;
+}
+
+.row-clock.low {
+    -fx-background-color: -c-danger;
+    -fx-text-fill: white;
+}
+
 .status-card {
     -fx-background-color: -c-s1;
     -fx-background-radius: 32px;

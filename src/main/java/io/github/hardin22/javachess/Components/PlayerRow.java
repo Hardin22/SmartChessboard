@@ -16,6 +16,7 @@ public class PlayerRow extends HBox {
     private final Label meta = Ui.label("", "player-meta");
     private final MaterialView material;
     private final boolean white;
+    private final Label clock = Ui.label("", "row-clock");
 
     public PlayerRow(boolean white) {
         this.white = white;
@@ -26,8 +27,27 @@ public class PlayerRow extends HBox {
         VBox texts = new VBox(2, name, meta);
         texts.setMinWidth(0);
         texts.setAlignment(Pos.CENTER_LEFT);
-        getChildren().addAll(avatarBox, texts, Ui.hgrow(), material);
+        clock.managedProperty().bind(clock.visibleProperty());
+        clock.setVisible(false);
+        clock.setMinWidth(USE_PREF_SIZE);
+        getChildren().addAll(avatarBox, texts, Ui.hgrow(), material, clock);
         setAlignment(Pos.CENTER_LEFT);
+    }
+
+    /** The player's clock ("5:00"), lit while it runs, red under 20 seconds; null hides it. */
+    public void setClock(String text, boolean running, boolean low) {
+        clock.setVisible(text != null);
+        if (text == null) {
+            return;
+        }
+        String shown = ClockFace.format(text);
+        if (!shown.equals(clock.getText())) {
+            clock.setText(shown);
+        }
+        clock.getStyleClass().removeAll("active", "low");
+        if (running) {
+            clock.getStyleClass().add(low ? "low" : "active");
+        }
     }
 
     public boolean isWhite() {

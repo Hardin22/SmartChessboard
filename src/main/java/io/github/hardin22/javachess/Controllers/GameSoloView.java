@@ -35,6 +35,9 @@ final class GameSoloView extends VBox {
     final ToggleButton evalToggle = Ui.toolToggle(I18n.t("game.eval"), "fth-bar-chart-2");
     final Button engineButton;
     final Button resignButton;
+    final Button undoButton;
+    final Button hintButton;
+    final Button drawButton;
     private final HBox coach = new HBox();
     private final Label coachEval = Ui.label("", "eval-chip");
     private final Label coachLine = Ui.label("", "t-body-m");
@@ -78,9 +81,16 @@ final class GameSoloView extends VBox {
         engineButton = Ui.toolButton(I18n.t("game.engine"), "fth-cpu", controller::showEngines);
         resignButton = Ui.toolButton(I18n.t("game.resign"), "fth-flag", controller::requestResign);
         resignButton.getStyleClass().add("danger");
+        undoButton = Ui.toolButton(I18n.t("game.takeback"), "fth-corner-up-left", controller::takeBack);
+        hintButton = Ui.toolButton(I18n.t("game.hint"), "fth-help-circle", controller::requestHint);
+        drawButton = Ui.toolButton(I18n.t("game.draw.offer.short"), "fth-minus-circle", controller::offerBotDraw);
         hintsToggle.setOnAction(e -> controller.setShowBestMoves(hintsToggle.isSelected()));
         evalToggle.setOnAction(e -> controller.setShowEvaluation(evalToggle.isSelected()));
-        HBox tools = Ui.equalRow(12, hintsToggle, evalToggle, engineButton, resignButton);
+        // the always-on suggestions, evaluation and engine are in the "⋯" sheet
+        undoButton.setId("game-undo");
+        hintButton.setId("game-hint");
+        drawButton.setId("game-draw");
+        HBox tools = Ui.equalRow(12, undoButton, hintButton, drawButton, resignButton);
 
         Label movesTitle = Ui.label(I18n.t("game.moves"), "t-overline");
         VBox lower = new VBox(16, status, coach, movesTitle, movesScroll);
@@ -139,12 +149,22 @@ final class GameSoloView extends VBox {
         blackRow.setPosition(fen);
     }
 
+    /** A hint asked for ("Muovi il Cavallo in g1"): shown in the coach line until the move is made. */
+    void setHint(String text) {
+        coach.setVisible(true);
+        coachCaption.setText(I18n.t("game.hint"));
+        coachEval.setVisible(false);
+        coachEval.setManaged(false);
+        coachLine.setText(text);
+    }
+
     /** Coach line: best move for the player and its evaluation; hidden when suggestions and evaluation are off. */
     void setCoach(boolean visible, String evalText, boolean blackAhead, String line) {
         coach.setVisible(visible);
         if (!visible) {
             return;
         }
+        coachCaption.setText(I18n.t("game.coach"));
         coachEval.setText(evalText == null || evalText.isBlank() ? "–" : evalText);
         coachEval.getStyleClass().removeAll("white-adv", "black-adv");
         coachEval.getStyleClass().add(blackAhead ? "black-adv" : "white-adv");
