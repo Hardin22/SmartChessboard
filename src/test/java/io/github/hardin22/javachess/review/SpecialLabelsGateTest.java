@@ -336,10 +336,11 @@ class SpecialLabelsGateTest {
 
     private static void writeErrors(List<Error> errors, Baseline baseline, Map<String, Entry> allow,
                                     Map<String, Integer> shard) throws IOException {
-        StringBuilder sb = new StringBuilder("shard\tset\tid\tply\tsan\tkind\tours\tchesscom\tstatus\n");
+        StringBuilder sb = new StringBuilder("shard\tset\tid\tply\tsan\tkind\tours\tchesscom\tstatus\tmain\n");
         for (Error e : errors) {
             sb.append(String.join("\t", String.valueOf(shard.getOrDefault(e.id, 0)), e.set, e.id,
-                    String.valueOf(e.ply), e.san, e.kind, e.ours, e.cc, status(e, baseline, allow))).append('\n');
+                    String.valueOf(e.ply), e.san, e.kind, e.ours, e.cc, status(e, baseline, allow),
+                    String.valueOf(e.main))).append('\n');
         }
         Files.writeString(OUT.resolve("errors.tsv"), sb.toString(), StandardCharsets.UTF_8);
     }
