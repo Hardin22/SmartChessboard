@@ -104,14 +104,14 @@ public final class ReviewClassifier {
             winningAnywayCp = get("winningAnywayCp", 700);
             criticalMinEp = get("criticalMinEp", 0.40);
             brilliantFromGood = get("brilliantFromGood", 1) != 0;
-            greatGap = get("greatGap", 0.20);
-            greatPunishGap = get("greatPunishGap", 0.10);
-            greatMinEp = get("greatMinEp", 0.45);
+            greatGap = get("greatGap", 0.15);
+            greatPunishGap = get("greatPunishGap", 0.07);
+            greatMinEp = get("greatMinEp", 0.35);
             greatMaxEp = get("greatMaxEp", 0.95);
             greatFilters = get("greatFilters", 1) != 0;
             greatTakesBlunder = get("greatTakesBlunder", 0.10);
             missOpponentLoss = get("missOpponentLoss", 0.08);
-            greatOpponentLoss = get("greatOpponentLoss", 0.05);
+            greatOpponentLoss = get("greatOpponentLoss", 0.03);
             missNoWorse = get("missNoWorse", 0.10);
             missAnyway = get("missAnyway", 0.20);
             blunderAnywayLoss = get("blunderAnyway", 0.30);

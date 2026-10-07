@@ -49,7 +49,7 @@ public final class ReviewCv {
         };
         Path out = Path.of(a.getOrDefault("out", "target/cv/run"));
         Files.createDirectories(out);
-        Map<String, Integer> folds = folds(dumpDir.resolve("folds.json"));
+        Map<String, Integer> folds = folds(Path.of(a.getOrDefault("folds", dumpDir.resolve("folds.json").toString())));
         Map<String, LabelledGame> labelled = new HashMap<>();
         for (LabelledGame g : LabelledGame.loadAll(Path.of(a.getOrDefault("labels",
                 data.resolve("labels_chesscom").toString())), Path.of(a.getOrDefault("games",

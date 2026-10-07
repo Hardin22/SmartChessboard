@@ -28,6 +28,18 @@ public interface PositionEvaluator extends AutoCloseable {
         return evaluate(p.fen(), 2, Math.max(mainNodes, secondNodes));
     }
 
+    /**
+     * The calling thread is about to evaluate a block of consecutive positions of one game: an engine may reserve a
+     * process with a cleared hash for it, so the block's evaluations do not depend on what was searched before.
+     * Always paired with {@link #endBlock()} in a finally. No-op by default.
+     */
+    default void startBlock() throws Exception {
+    }
+
+    /** End of the calling thread's block (see {@link #startBlock()}). */
+    default void endBlock() {
+    }
+
     /** A new game starts: engines may clear their hash (no-op by default). */
     default void newGame() {
     }

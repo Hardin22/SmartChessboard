@@ -10,6 +10,7 @@ fold. Numbers are always on games the chosen parameters never saw.
   scripts/review/cv.py --grid grid.json                 # nested 5-fold CV over a grid of -Djavachess.review.* knobs
   scripts/review/cv.py -D good=0.06 -D mistake=0.18     # fixed knobs (same as a grid of one)
   scripts/review/cv.py --budget deep                    # labels from the deep dump (diagnostic)
+  scripts/review/cv.py --ref sf22                       # compare with chess.com Stockfish 16 depth 22 (default torch18)
   scripts/review/cv.py --mode second|mpv3               # second line everywhere / MultiPV 3 lines (diagnostic)
   scripts/review/cv.py stability lite lite-b            # our own noise: labels on two dumps of the same games
   scripts/review/cv.py ceiling [--budget deep]          # best exact any thresholds could reach with these evals
@@ -40,6 +41,10 @@ ORDER = ["brilliant", "great", "best", "book", "forced", "excellent", "good", "i
          "blunder"]
 PI5_NPS = 350_000      # per core, assumed until measured on a real Pi 5 (stockfish bench)
 PI5_PROCESSES = 3      # EngineManager.Budget.review() on a Pi 5 8 GB
+# reference labels (--ref): chess.com Game Review with Torch Human depth 18 (first export) or Stockfish 16 depth 22
+REFS = {"torch18": "labels_chesscom", "sf22": "labels_chesscom_sf22"}
+LABELS_DIR = DATA / REFS["torch18"]
+FOLDS = None           # --folds: another fold file than <dump>/folds.json
 
 
 def dist(a, b):
@@ -60,7 +65,9 @@ def classpath():
 def run_java(cp, knobs, out, budget, mode, dataset, dump):
     cmd = ["java", "-Xss8m"] + [f"-Djavachess.review.{k}={v}" for k, v in sorted(knobs.items())]
     cmd += ["-cp", cp, "io.github.hardin22.javachess.review.ReviewCv", "--out", str(out), "--budget", budget,
-            "--mode", mode, "--set", dataset, "--dump", str(dump)]
+            "--mode", mode, "--set", dataset, "--dump", str(dump), "--labels", str(LABELS_DIR)]
+    if FOLDS:
+        cmd += ["--folds", str(FOLDS)]
     r = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(f"ReviewCv failed for {knobs}:\n{r.stdout[-2000:]}\n{r.stderr[-4000:]}")
@@ -198,7 +205,7 @@ def cmd_cv(a):
     with ThreadPoolExecutor(max_workers=a.jobs) as ex:
         runs = list(ex.map(lambda k: (k, *run_java(cp, k, root / "runs" / f"{a.budget}-{a.mode}-{dataset}-{tag(k)}",
                                                      a.budget, a.mode, dataset, a.dump)), points))
-    name = a.name or (f"{dataset}-{a.budget}-{a.mode}-" + ("grid" if a.grid else tag(fixed)))
+    name = a.name or (f"{dataset}-{a.budget}-{a.mode}-{a.ref}-" + ("grid" if a.grid else tag(fixed)))
     out = root / name
     out.mkdir(parents=True, exist_ok=True)
     extra = []
@@ -360,6 +367,8 @@ def main():
     ap.add_argument("b", nargs="?", help="stability: second budget")
     ap.add_argument("--dump", default=str(DATA / "evals_labeled"))
     ap.add_argument("--budget", default="lite")
+    ap.add_argument("--folds", help="fold file (default <dump>/folds.json)")
+    ap.add_argument("--ref", default="torch18", choices=sorted(REFS), help="chess.com labels to compare with")
     ap.add_argument("--mode", default="product", choices=["product", "second", "mpv3"])
     ap.add_argument("--grid", help="JSON file: {knob: [values]} or [{knob: value}, ...]")
     ap.add_argument("-D", action="append", default=[], help="fixed knob, e.g. -D good=0.06")
@@ -370,6 +379,9 @@ def main():
     ap.add_argument("--final", action="store_true")
     ap.add_argument("--no-build", action="store_true", help="skip ./mvnw test-compile")
     a = ap.parse_args()
+    global LABELS_DIR, FOLDS
+    LABELS_DIR = DATA / REFS[a.ref]
+    FOLDS = a.folds
     {"stability": cmd_stability, "ceiling": cmd_ceiling, "noise": cmd_noise}.get(a.command, cmd_cv)(a)
 
 
