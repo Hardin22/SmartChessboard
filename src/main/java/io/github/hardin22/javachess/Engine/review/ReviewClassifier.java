@@ -272,6 +272,9 @@ public final class ReviewClassifier {
     public static final double INACCURACY_MAX = Tuning.DEFAULT.inaccuracyMax;
     public static final double MISTAKE_MAX = Tuning.DEFAULT.mistakeMax;
 
+    /** Rating of the win chance curve of the board LEDs ({@link #fast}): a club player. */
+    static final int LED_RATING = 1500;
+
     /** MultiPV 2 is only worth it in this win chance range (outside, no Great/Brilliant is possible). */
     static final double SECOND_LINE_MIN_EP = 0.20;
     static final double SECOND_LINE_MAX_EP = 0.97;
@@ -293,7 +296,8 @@ public final class ReviewClassifier {
      * @param playedIsBest true when the played move is the engine's best move
      */
     public static FastVerdict fast(Eval best, Eval played, boolean whiteMoved, boolean playedIsBest) {
-        double k = Tuning.DEFAULT.slope(0); // the review's curve for unknown ratings
+        // the LEDs keep the curve of a 1500 player (the review's default for unknown ratings follows chess.com instead)
+        double k = Tuning.DEFAULT.slope(LED_RATING);
         double wb = ep(best, whiteMoved, k);
         double wa = ep(played, whiteMoved, k);
         return new FastVerdict(baseLabel(best, played, whiteMoved, playedIsBest, false, Tuning.DEFAULT, k), wb, wa,
@@ -316,7 +320,7 @@ public final class ReviewClassifier {
      * full classification.
      */
     static MoveClassification baseLabel(Eval best, Eval played, boolean me, boolean isTop) {
-        return baseLabel(best, played, me, isTop, false, Tuning.DEFAULT, Tuning.DEFAULT.slope(0));
+        return baseLabel(best, played, me, isTop, false, Tuning.DEFAULT, Tuning.DEFAULT.slope(LED_RATING));
     }
 
     /**
