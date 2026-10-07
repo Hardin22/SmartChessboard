@@ -17,7 +17,8 @@ import java.util.TreeMap;
  * classifies the dumped evaluations with the current {@code -Djavachess.review.*} knobs and reports how many
  * certified Brilliants we find, our label for the missed ones, and how many other moves of those games we call
  * Brilliant (a rough upper bound of false positives: chess.com may have given more than one). Developer tool:
- * <pre>java -cp ... io.github.hardin22.javachess.review.BrilliantRecall [dump dir] [mode product|second]</pre>
+ * <pre>java -cp ... io.github.hardin22.javachess.review.BrilliantRecall [dump dir] [mode product|second] [budget]</pre>
+ * Hold-out games (folds.json) are skipped.
  */
 public final class BrilliantRecall {
 
@@ -29,6 +30,17 @@ public final class BrilliantRecall {
                 : EvalDumpTest.TEAM_DATA.resolve("evals_chessigma").toString());
         EvalDump.Mode mode = args.length > 1 && args[1].equals("second") ? EvalDump.Mode.SECOND_EVERYWHERE
                 : EvalDump.Mode.PRODUCT;
+        // hold-out games (folds.json "holdout") are never used for tuning
+        java.util.Set<String> holdout = new java.util.HashSet<>();
+        try {
+            org.json.JSONArray h = new org.json.JSONObject(java.nio.file.Files.readString(
+                    EvalDumpTest.TEAM_DATA.resolve("evals_labeled").resolve("folds.json"))).optJSONArray("holdout");
+            for (int i = 0; h != null && i < h.length(); i++) {
+                holdout.add(h.getString(i));
+            }
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
         Map<String, ChessComDataset.Game> games = new HashMap<>();
         for (ChessComDataset.Game g : ChessComDataset.load()) {
             games.put(g.id(), g);
@@ -39,8 +51,13 @@ public final class BrilliantRecall {
         int others = 0;
         int plies = 0;
         Map<String, Integer> missedAs = new TreeMap<>();
-        for (EvalDump.Game d : EvalDump.load(dir, "lite-cold")) {
+        int skipped = 0;
+        for (EvalDump.Game d : EvalDump.load(dir, args.length > 2 ? args[2] : "lite")) {
             ChessComDataset.Game g = games.get(d.id());
+            if (holdout.contains(d.id())) {
+                skipped++;
+                continue;
+            }
             if (g == null || !g.hasLabels() || !g.uci().equals(d.uci())) {
                 continue;
             }
@@ -64,6 +81,7 @@ public final class BrilliantRecall {
                 }
             }
         }
+        System.out.printf(Locale.ROOT, "(%d hold-out games skipped)%n", skipped);
         System.out.printf(Locale.ROOT, "Chessigma: %d/%d certified Brilliants found (recall %.2f), missed as %s; "
                 + "%d other moves called Brilliant in %d plies%n", found, positives,
                 positives == 0 ? 0 : (double) found / positives, missedAs, others, plies);
