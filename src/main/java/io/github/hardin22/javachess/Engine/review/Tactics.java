@@ -189,6 +189,21 @@ final class Tactics {
      * allows mate in one" as fake; measured on the Chessigma brilliant benchmark it only lost true Brilliants.)
      */
     static boolean isFakeSacrifice(Board b1, Square sq) {
+        return isFakeSacrifice(b1, sq, FAKE_MODE);
+    }
+
+    /**
+     * Calibration: 0 = any immediate win-back worth the piece makes a sacrifice fake, 1 = only taking back on the same
+     * square, 2 = never (default). On the chess.com Brilliants (Chessigma benchmark + labelled games, 108 moves) the
+     * win-back test rejected 24 real Brilliants for 9 good non-Brilliant moves: chess.com counts a piece left en prise
+     * as a sacrifice even when the material comes back at once.
+     */
+    static final int FAKE_MODE = Integer.getInteger("javachess.review.fakeMode", 2);
+
+    static boolean isFakeSacrifice(Board b1, Square sq, int mode) {
+        if (mode == 2) {
+            return false;
+        }
         Piece p = b1.getPiece(sq);
         if (p == Piece.NONE || b1.getSideToMove() == p.getPieceSide()) {
             return false;
@@ -201,6 +216,9 @@ final class Tactics {
         b.doMove(take);
         int value = value(p);
         for (Move m : b.legalMoves()) {
+            if (mode == 1 && m.getTo() != sq) {
+                continue;
+            }
             if (b.getPiece(m.getTo()) != Piece.NONE && see(b, m.getTo()) >= value) {
                 return true;
             }

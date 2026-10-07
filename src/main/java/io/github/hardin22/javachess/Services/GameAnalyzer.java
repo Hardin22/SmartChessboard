@@ -70,6 +70,12 @@ public class GameAnalyzer {
      */
     public GameReview review(String movetext, String initialFen, Consumer<Double> progressCallback,
                              Consumer<List<MoveAnalysis>> partialCallback) {
+        return review(movetext, initialFen, 0, 0, progressCallback, partialCallback);
+    }
+
+    /** Like {@link #review(String, String, Consumer, Consumer)} with the players' ratings (0 = unknown). */
+    public GameReview review(String movetext, String initialFen, int whiteRating, int blackRating,
+                             Consumer<Double> progressCallback, Consumer<List<MoveAnalysis>> partialCallback) {
         GameReplay replay = GameReplay.of(initialFen, movetext);
         lastReview = null;
         lastAnalysis = List.of();
@@ -93,7 +99,7 @@ public class GameAnalyzer {
         };
         AutoCloseable hold = holdLiveAnalysis();
         try (GameReviewer reviewer = reviewers.get()) {
-            GameReview r = reviewer.review(replay.initialFen(), replay.uci(), listener);
+            GameReview r = reviewer.review(replay.initialFen(), replay.uci(), whiteRating, blackRating, listener);
             lastAnalysis = toMoveAnalysis(r);
             lastReview = r;
             return r;
