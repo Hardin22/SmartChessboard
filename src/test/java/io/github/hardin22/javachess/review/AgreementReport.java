@@ -247,8 +247,15 @@ public final class AgreementReport {
         }
     }
 
-    /** True when our evaluation before ply {@code i} was already a forced mate against the side that moves. */
+    /**
+     * True when our evaluation before ply {@code i} was already a forced mate against the side that moves: the mover's
+     * win chance with the best move is 0 (only a mate gives exactly 0), or else the White POV score after the previous
+     * ply is a mate score against the mover.
+     */
     static boolean alreadyMatedAgainst(Reviewer.Result ours, int i) {
+        if (i < ours.winBefore().size()) {
+            return ours.winBefore().get(i) <= 1e-9;
+        }
         if (i == 0 || ours.whiteCp().size() < i) {
             return false;
         }
