@@ -32,7 +32,7 @@
     </board>
 
     <bottomBar>
-        <HBox styleClass="toolbar" alignment="CENTER">
+        <HBox styleClass="toolbar" alignment="CENTER" minHeight="-Infinity">
             <Button onAction="#firstMove" styleClass="btn, btn-secondary, icon-btn-lg" accessibleText="Inizio">
                 <graphic><FontIcon iconLiteral="fth-chevrons-left" iconSize="22" styleClass="icon"/></graphic>
             </Button>

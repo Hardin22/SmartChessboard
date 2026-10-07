@@ -195,7 +195,7 @@ public class ArchiveController implements NavigationAware {
                     String meta = time.isBlank() || "N/A".equals(time) || "∞".equals(time)
                             ? when : when + "  ·  " + time.replace(":00m", " min").replace("m +", " min +");
                     String openingName = game.optString("opening", "");
-                    if ("Opening Name".equals(openingName)) {
+                    if ("Opening Name".equals(openingName) || "Unknown".equalsIgnoreCase(openingName)) {
                         openingName = "";
                     }
                     String result = game.optString("result", "");

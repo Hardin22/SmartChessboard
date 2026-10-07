@@ -55,7 +55,7 @@
         <VBox spacing="12">
             <VBox fx:id="analysisContainer"/>
             <MoveListView fx:id="moveList" VBox.vgrow="ALWAYS" minHeight="88"/>
-            <HBox styleClass="toolbar">
+            <HBox styleClass="toolbar" minHeight="-Infinity">
                 <ToggleButton fx:id="evalToggle" onAction="#toggleEvaluation" text="%game.eval" styleClass="btn, btn-secondary, tool-btn" contentDisplay="TOP" maxWidth="Infinity" HBox.hgrow="ALWAYS">
                     <graphic><FontIcon iconLiteral="fth-bar-chart-2" iconSize="20" styleClass="icon"/></graphic>
                 </ToggleButton>

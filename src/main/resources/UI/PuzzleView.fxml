@@ -37,7 +37,7 @@
     </board>
 
     <bottomBar>
-        <HBox styleClass="toolbar">
+        <HBox styleClass="toolbar" minHeight="-Infinity">
             <Button fx:id="hintButton" onAction="#handleHint" text="%puzzle.hint" styleClass="btn, btn-secondary, btn-lg" maxWidth="Infinity" HBox.hgrow="ALWAYS">
                 <graphic><FontIcon iconLiteral="fth-help-circle" iconSize="20" styleClass="icon"/></graphic>
             </Button>

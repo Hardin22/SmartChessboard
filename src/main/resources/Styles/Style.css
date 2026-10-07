@@ -23,7 +23,7 @@
     -color-fg: #EDEDED;
     -color-fg-strong: #FFFFFF;
     -color-muted: #A1A1A1;
-    -color-subtle: #707070;
+    -color-subtle: #8A8A8A;
     -color-inverse-fg: #0A0A0A;
     -color-accent: #52A8FF;
     -color-accent-soft: #0D2847;
@@ -54,7 +54,7 @@
     -fx-selection-bar: #232323;
     -fx-selection-bar-non-focused: #232323;
     -fx-selection-bar-text: #FFFFFF;
-    -fx-prompt-text-fill: #707070;
+    -fx-prompt-text-fill: #8A8A8A;
 }
 
 .theme-light {
@@ -67,7 +67,7 @@
     -color-fg: #171717;
     -color-fg-strong: #000000;
     -color-muted: #5E5E5E;
-    -color-subtle: #8F8F8F;
+    -color-subtle: #6E6E6E;
     -color-inverse-fg: #FFFFFF;
     -color-accent: #0068D6;
     -color-accent-soft: #E6F1FE;
@@ -97,7 +97,7 @@
     -fx-selection-bar: #EBEBEB;
     -fx-selection-bar-non-focused: #EBEBEB;
     -fx-selection-bar-text: #000000;
-    -fx-prompt-text-fill: #8F8F8F;
+    -fx-prompt-text-fill: #6E6E6E;
 }
 
 /* ------------------------------------------------------------------ base */
