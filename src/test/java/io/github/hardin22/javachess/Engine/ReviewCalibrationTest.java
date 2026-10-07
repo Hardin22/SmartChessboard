@@ -46,7 +46,7 @@ class ReviewCalibrationTest {
         try (Stream<Path> s = Files.list(Path.of(dataset))) {
             files = s.filter(p -> p.toString().endsWith(".json")).sorted().toList();
         }
-        ReviewSettings settings = new ReviewSettings(nodes, nodes * 3 / 2, processes, 64);
+        ReviewSettings settings = new ReviewSettings(nodes, Long.getLong("review.secondNodes", 100_000), processes, 64);
         StockfishPool pool = new StockfishPool(sf, processes, 64);
         List<String> lines = new ArrayList<>();
         Files.createDirectories(out.toAbsolutePath().getParent());

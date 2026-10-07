@@ -19,8 +19,9 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * A few single-threaded Stockfish processes that evaluate review positions in parallel. One thread per process
- * makes node-limited searches deterministic (same nodes, same result on every machine), and N processes scale
- * better than N threads in one process for many short searches.
+ * with node limits makes results independent of the machine's speed (only the hash carried over from the previous
+ * positions can change a score slightly), and N processes scale better than N threads in one process for many
+ * short searches.
  */
 public final class StockfishPool implements PositionEvaluator {
 
