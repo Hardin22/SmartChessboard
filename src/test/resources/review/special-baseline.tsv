@@ -74,7 +74,6 @@ live_174231520474	41	fn-great	cv93	Rxb8	best	great
 live_174252377286	19	fn-great	cv93	e5	best	great
 live_174252377286	28	fn-brilliant	cv93	Nxe5	inaccuracy	brilliant
 live_174308174036	11	fn-great	cv93	Qxd8+	best	great
-live_174308174036	15	fn-great	cv93	Nd5	best	great
 live_174367977638	34	fn-great	cv93	Nxe3+	best	great
 live_174388155128	105	fn-great	cv93	e7	excellent	great
 live_174389074664	52	fn-great	cv93	Rh8	best	great
@@ -98,7 +97,6 @@ live_184210559738	19	fn-great	cv93	Qd6	best	great
 live_184210559738	21	fn-great	cv93	Bf3	best	great
 live_184210559738	27	fn-great	cv93	Bxg7	best	great
 live_184218578888	63	fn-great	cv93	Ke3	best	great
-live_184225478128	38	fn-great	cv93	Nxd1	best	great
 live_184274854214	33	fn-great	ex-holdout49	O-O	best	great
 live_184274854214	52	fn-great	ex-holdout49	Rf8	excellent	great
 live_184308204442	55	fp-great	ex-holdout49	Nxf4	great	best
@@ -110,7 +108,6 @@ live_184355907802	48	fn-great	cv93	Bxg2	best	great
 live_184435729088	28	fn-brilliant	cv93	Nxd3	excellent	brilliant
 live_184440015284	57	fn-great	ex-holdout49	Kf3	best	great
 live_184440015284	60	fn-great	ex-holdout49	hxg6	best	great
-live_184440015284	71	fn-great	ex-holdout49	Qd8+	best	great
 live_184440015284	105	fn-great	ex-holdout49	Kxd3	best	great
 live_184566976354	12	fn-great	cv93	b5	best	great
 live_184566976354	94	fp-great	cv93	Rxc5	great	best
