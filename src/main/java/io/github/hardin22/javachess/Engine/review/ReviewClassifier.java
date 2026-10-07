@@ -166,6 +166,11 @@ public final class ReviewClassifier {
         final double brilliantKingMarchPieces;
         /** v2.5 B-E11: no Brilliant when the opponent's best answer is a capture elsewhere with check. */
         final boolean brilliantNoCheckingCounter;
+        /**
+         * v2.5 B+P: a pawn given with check to drag the king out, from a position not yet won into a winning one, is a
+         * sacrifice although it is worth 1 (Kasparov - Topalov 1999, 33.c3+).
+         */
+        final boolean brilliantPawnCheckSac;
         /** Phase 4: an answer to check taking free material (SEE > 0) follows the free material rule of captures. */
         final boolean greatInCheckFreeMaterial;
         /** Phase 4: no Great for a bishop retreating from the pawn that has just advanced against it. */
@@ -290,6 +295,7 @@ public final class ReviewClassifier {
             greatPawnTradeOppLoss = get("greatPawnTradeOppLoss", 0.15);
             brilliantKingMarchPieces = get("brilliantKingMarchPieces", 6);
             brilliantNoCheckingCounter = get("brilliantNoCheckingCounter", 1) != 0;
+            brilliantPawnCheckSac = get("brilliantPawnCheckSac", 1) != 0;
             greatInCheckFreeMaterial = get("greatInCheckFreeMaterial", 1) != 0;
             greatKickedBishop = get("greatKickedBishop", 1) != 0;
             greatNoCashIn = get("greatNoCashIn", 1) != 0;
@@ -1286,7 +1292,8 @@ public final class ReviewClassifier {
         if (kingMarch) {
             return true; // the king itself is what is offered
         }
-        if (sac.value() < t.sacMin && !renewed) {
+        if (sac.value() < t.sacMin && !renewed && !(t.brilliantPawnCheckSac && pawnCheckSacrifice(b0, m, line, epBefore,
+                played, me))) {
             return false; // B-E1: nothing new is offered
         }
         if (t.brilliantNoCheckingCounter && checkingCounter(b0, m, line)) {
@@ -1314,6 +1321,25 @@ public final class ReviewClassifier {
             }
         }
         return true;
+    }
+
+    /**
+     * v2.5 B+P: a pawn pushed with check onto a square where the king takes it (the engine's line accepts), from a
+     * position not yet won (EP < 0.70) into a winning one (+2 or more): Kasparov - Topalov 1999, 33.c3+. On the 177
+     * games the other pawn sacrifices are Great or Best for chess.com (10 / 13) and none of them is taken by the king.
+     */
+    private static boolean pawnCheckSacrifice(Board b0, Move m, List<String> line, double epBefore, Eval played,
+                                              boolean me) {
+        if (b0.getPiece(m.getFrom()).getPieceType() != PieceType.PAWN || b0.getPiece(m.getTo()) != Piece.NONE
+                || line.size() < 2 || !line.get(0).equals(m.toString()) || epBefore >= 0.70
+                || (!played.isMateFor(me) && (played.isMate() || played.cpFor(me) < 200))) {
+            return false;
+        }
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        Move reply = Tactics.find(b1, line.get(1));
+        return b1.isKingAttacked() && reply != null && reply.getTo() == m.getTo()
+                && b1.getPiece(reply.getFrom()).getPieceType() == PieceType.KING;
     }
 
     /** True when the second move of {@code line} (the opponent's answer) is a capture elsewhere that gives check. */

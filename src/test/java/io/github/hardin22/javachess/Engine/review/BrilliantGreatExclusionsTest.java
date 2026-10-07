@@ -88,6 +88,21 @@ class BrilliantGreatExclusionsTest {
     }
 
     @Test
+    void aPawnGivenWithCheckToDragTheKingOutIsBrilliant() {
+        // Kasparov - Topalov 1999, 33.c3+!! Kxc3 (chess.com Brilliant): from +0.61 to +3.14, the king is dragged out
+        String fen = "3r3r/1R3p1p/Q5p1/1p6/1kq5/5PPB/2P4P/1K6 w - - 0 33";
+        String fen1 = play(fen, "c2c3");
+        List<PositionEval> ps = new ArrayList<>();
+        ps.add(new PositionEval(fen, Eval.cp(61), List.of(new EngineLine("h3d7", Eval.cp(61), List.of("h3d7"), 20)),
+                20, 0, false));
+        ps.add(new PositionEval(fen1, Eval.cp(314), List.of(new EngineLine("b4c3", Eval.cp(314),
+                List.of("b4c3", "a6a1", "c3d2"), 20)), 20, 0, false));
+        ReviewInput c3 = rated(new ReviewInput(fen, List.of("c2c3"), ps, OpeningBook.NONE, RATING, RATING), 2500, 2500);
+        assertEquals(MoveClassification.BRILLIANT, label(c3, Tuning.DEFAULT));
+        assertNotEquals(MoveClassification.BRILLIANT, label(c3, Tuning.DEFAULT.with("brilliantPawnCheckSac", 0)));
+    }
+
+    @Test
     void realBrilliantStaysBrilliant() {
         // live_146777979394 ply 11, 6.Bxf7+ (chess.com Brilliant with both engines)
         String fen = "r1bqk1nr/pppp1ppp/2n5/2b5/2B1P3/2p2N2/PP3PPP/RNBQK2R w KQkq - 0 6";
