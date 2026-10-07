@@ -57,8 +57,7 @@ public class PuzzleService {
     // --- locations -----------------------------------------------------------------------------------------
 
     private static Path userHome() {
-        String home = System.getProperty("javachess.home");
-        return home != null ? Path.of(home) : Path.of(System.getProperty("user.home"), ".javachess");
+        return org.example.javachess.Utils.AppPaths.dataDir();
     }
 
     /** Where the compact database is looked for, in order. */
