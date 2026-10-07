@@ -68,7 +68,7 @@
                 <Button fx:id="settingsButton" onAction="#toggleSettings" text="%game.analysis" styleClass="btn, btn-secondary, tool-btn" contentDisplay="TOP" maxWidth="Infinity" HBox.hgrow="ALWAYS">
                     <graphic><FontIcon iconLiteral="fth-sliders" iconSize="20" styleClass="icon"/></graphic>
                 </Button>
-                <Button onAction="#endGame" text="%game.end" styleClass="btn, btn-danger, tool-btn" contentDisplay="TOP" maxWidth="Infinity" HBox.hgrow="ALWAYS">
+                <Button fx:id="endButton" onAction="#endGame" text="%game.end" styleClass="btn, btn-danger, tool-btn" contentDisplay="TOP" maxWidth="Infinity" HBox.hgrow="ALWAYS">
                     <graphic><FontIcon iconLiteral="fth-flag" iconSize="20" styleClass="icon"/></graphic>
                 </Button>
             </HBox>

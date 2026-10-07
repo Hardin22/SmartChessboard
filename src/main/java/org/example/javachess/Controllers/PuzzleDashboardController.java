@@ -30,6 +30,13 @@ public class PuzzleDashboardController implements NavigationAware {
     private VBox themeSections;
     @FXML
     private Button startButton;
+    @FXML
+    private Label playerRatingLabel;
+    @FXML
+    private Label solvedLabel;
+    @FXML
+    private Label streakLabel;
+    private boolean ratingInitialised;
 
     private final List<ToggleButton> themeToggles = new ArrayList<>();
 
@@ -55,6 +62,23 @@ public class PuzzleDashboardController implements NavigationAware {
             }
             themeSections.getChildren().add(new VBox(10, title, chips));
         }
+    }
+
+    @Override
+    public void onNavigatedTo() {
+        // Progress file I/O off the FX thread.
+        org.example.javachess.Utils.AppExecutors.io().execute(() -> {
+            var stats = org.example.javachess.Services.PuzzleProgressService.getInstance().getStats();
+            Platform.runLater(() -> {
+                playerRatingLabel.setText(String.valueOf(stats.rating()));
+                solvedLabel.setText(stats.solved() + "/" + stats.attempts());
+                streakLabel.setText(String.valueOf(stats.currentStreak()));
+                if (!ratingInitialised) {
+                    ratingInitialised = true;
+                    ratingSlider.setValue(Math.round(stats.rating() / 50.0) * 50);
+                }
+            });
+        });
     }
 
     @FXML

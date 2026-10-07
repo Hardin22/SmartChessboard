@@ -12,6 +12,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import org.example.javachess.Engine.EngineProfile;
 import org.example.javachess.Engine.EngineSelection;
+import org.example.javachess.Engine.EngineStatus;
 
 /**
  * List of engine profiles from {@link EngineSelection}; tapping one switches engine at runtime.
@@ -22,6 +23,8 @@ public class EnginePicker extends VBox {
     private static final PseudoClass SELECTED = PseudoClass.getPseudoClass("selected");
     private final EngineSelection selection;
     private final ChangeListener<EngineProfile> activeListener = (obs, o, n) -> refreshSelection();
+    private final ChangeListener<EngineStatus> statusListener = (obs, o, n) -> showStatus(n);
+    private final Label statusLabel = new Label();
     private Runnable onPicked;
 
     public EnginePicker() {
@@ -34,8 +37,25 @@ public class EnginePicker extends VBox {
         for (EngineProfile profile : selection.profiles()) {
             getChildren().add(row(profile));
         }
+        statusLabel.getStyleClass().add("caption");
+        statusLabel.setWrapText(true);
+        statusLabel.managedProperty().bind(statusLabel.visibleProperty());
+        getChildren().add(statusLabel);
         selection.activeProfileProperty().addListener(new WeakChangeListener<>(activeListener));
+        selection.statusProperty().addListener(new WeakChangeListener<>(statusListener));
         refreshSelection();
+        showStatus(selection.statusProperty().get());
+    }
+
+    /** Loading / error message of the engine layer under the list (already in Italian). */
+    private void showStatus(EngineStatus status) {
+        boolean show = status != null && status.state() != EngineStatus.State.READY && !status.message().isBlank();
+        statusLabel.setVisible(show);
+        statusLabel.setText(show ? status.message() : "");
+        statusLabel.getStyleClass().remove("danger-text");
+        if (show && status.state() == EngineStatus.State.ERROR) {
+            statusLabel.getStyleClass().add("danger-text");
+        }
     }
 
     /** Called after the user picked a profile (e.g. to close a sheet). */

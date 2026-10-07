@@ -29,6 +29,9 @@ import org.example.javachess.Oggetti.OnlineGame;
 import org.example.javachess.Oggetti.PvcGame;
 import org.example.javachess.Oggetti.PvpGame;
 import org.example.javachess.Engine.AnalysisUpdate;
+import org.example.javachess.Engine.EngineProfile;
+import org.example.javachess.Engine.EngineSelection;
+import org.example.javachess.Engine.EngineStatus;
 import org.example.javachess.Engine.PositionAnalyzer;
 import org.example.javachess.Services.EngineService;
 import org.example.javachess.Utils.ConfigManager;
@@ -125,6 +128,29 @@ public class ActiveGameController implements NavigationAware {
         header.subtitleProperty().bind(openingNameLabel.textProperty());
         moveList.setFocusTraversable(false);
         gameView.landscapeProperty().addListener((obs, o, n) -> updateTopBarRotation());
+
+        EngineSelection engines = EngineSelection.get();
+        engines.activeProfileProperty().addListener((obs, o, n) -> showEngineState());
+        engines.statusProperty().addListener((obs, o, n) -> {
+            showEngineState();
+            if (n != null && n.state() == EngineStatus.State.ERROR && !n.message().isBlank()
+                    && mainController != null && gameView.getScene() != null) {
+                mainController.showToast(n.message());
+            }
+        });
+        showEngineState();
+    }
+
+    /** The "Motore" toolbar button shows the active engine, or that it is starting. */
+    private void showEngineState() {
+        EngineSelection engines = EngineSelection.get();
+        EngineStatus status = engines.statusProperty().get();
+        EngineProfile active = engines.activeProfileProperty().get();
+        if (status != null && status.state() == EngineStatus.State.LOADING) {
+            engineButton.setText(I18n.t("engine.loading"));
+        } else {
+            engineButton.setText(active == null ? I18n.t("game.engine") : active.displayName());
+        }
     }
 
     private void updateTopBarRotation() {

@@ -7,6 +7,7 @@ import org.example.javachess.Components.I18n;
 import org.example.javachess.Components.StatusChip;
 import org.example.javachess.Engine.EngineProfile;
 import org.example.javachess.Engine.EngineSelection;
+import org.example.javachess.Engine.EngineStatus;
 import org.kordamp.ikonli.javafx.FontIcon;
 
 public class HomeController implements NavigationAware {
@@ -31,6 +32,7 @@ public class HomeController implements NavigationAware {
     public void initialize() {
         EngineSelection selection = EngineSelection.get();
         selection.activeProfileProperty().addListener((obs, o, n) -> showEngine(n));
+        selection.statusProperty().addListener((obs, o, n) -> showEngine(selection.activeProfileProperty().get()));
         showEngine(selection.activeProfileProperty().get());
     }
 
@@ -43,8 +45,11 @@ public class HomeController implements NavigationAware {
         if (profile == null) {
             engineStatus.set(I18n.t("status.engine.none"), StatusChip.State.OFF);
         } else {
-            engineStatus.set(I18n.t("status.engine", profile.displayName()),
-                    profile.available() ? StatusChip.State.OK : StatusChip.State.WARN);
+            EngineStatus status = EngineSelection.get().statusProperty().get();
+            StatusChip.State state = !profile.available() ? StatusChip.State.WARN
+                    : status == null || status.state() == EngineStatus.State.READY ? StatusChip.State.OK
+                    : status.state() == EngineStatus.State.LOADING ? StatusChip.State.BUSY : StatusChip.State.WARN;
+            engineStatus.set(I18n.t("status.engine", profile.displayName()), state);
         }
     }
 

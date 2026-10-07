@@ -80,6 +80,11 @@ public class SettingsController implements NavigationAware {
     private StatusChip boardStatus;
     @FXML
     private Label versionLabel;
+    @FXML
+    private Label lichessStatusLabel;
+    @FXML
+    private javafx.scene.control.Button lichessConnectButton;
+    private boolean lichessBusy;
 
     private boolean updatingTheme;
 
@@ -152,6 +157,74 @@ public class SettingsController implements NavigationAware {
             rotateToggle.setSelected(mainController.isRotated());
         }
         HardwareStatus.bind(boardStatus);
+        showLichessAccount();
+    }
+
+    private void showLichessAccount() {
+        boolean connected = ConfigManager.hasLichessToken();
+        String user = isRedacted() ? "" : ConfigManager.getProperty("lichess.username", "");
+        lichessStatusLabel.setText(!connected ? I18n.t("settings.lichess.disconnected")
+                : user.isBlank() ? I18n.t("settings.lichess.connected.anon") : I18n.t("settings.lichess.connected", user));
+        lichessConnectButton.setText(I18n.t(connected ? "settings.lichess.disconnect" : "settings.lichess.connect"));
+        lichessConnectButton.setDisable(lichessBusy);
+    }
+
+    /** "Collega account" runs the Lichess OAuth (PKCE) login in a browser; "Scollega" revokes the token. */
+    @FXML
+    private void toggleLichessAccount() {
+        if (lichessBusy) {
+            return;
+        }
+        lichessBusy = true;
+        if (ConfigManager.hasLichessToken()) {
+            org.example.javachess.Utils.AppExecutors.io().execute(() -> {
+                new org.example.javachess.Services.LichessOAuth().logout(); // network: off the FX thread
+                javafx.application.Platform.runLater(() -> {
+                    lichessBusy = false;
+                    lichessApiKeyField.clear();
+                    showLichessAccount();
+                });
+            });
+            return;
+        }
+        lichessStatusLabel.setText(I18n.t("settings.lichess.waiting"));
+        lichessConnectButton.setDisable(true);
+        new org.example.javachess.Services.LichessOAuth()
+                .login(this::openLoginPage, java.time.Duration.ofMinutes(5))
+                .whenComplete((username, err) -> javafx.application.Platform.runLater(() -> {
+                    lichessBusy = false;
+                    if (err != null) {
+                        Throwable cause = err.getCause() != null ? err.getCause() : err;
+                        org.example.javachess.Utils.ErrorReporter.showError("Lichess", cause.getMessage());
+                    } else {
+                        lichessUsernameField.setText(username);
+                        lichessApiKeyField.setText(ConfigManager.getProperty("lichess.token", ""));
+                    }
+                    showLichessAccount();
+                }));
+    }
+
+    /** Desktop: system browser. Board (kiosk, no desktop browser): the integrated browser. */
+    private void openLoginPage(java.net.URI uri) {
+        boolean desktop = !Boolean.getBoolean("javachess.kiosk") && java.awt.Desktop.isDesktopSupported()
+                && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE);
+        if (desktop) {
+            org.example.javachess.Utils.AppExecutors.io().execute(() -> {
+                try {
+                    java.awt.Desktop.getDesktop().browse(uri);
+                } catch (Exception e) {
+                    org.example.javachess.Utils.ErrorReporter.showError("Lichess",
+                            org.example.javachess.Utils.ErrorReporter.userMessage(e));
+                }
+            });
+        } else {
+            javafx.application.Platform.runLater(() -> {
+                if (mainController.getController("BROWSER") instanceof BrowserController browser) {
+                    browser.loadPage(uri.toString());
+                }
+                mainController.navigateTo("BROWSER");
+            });
+        }
     }
 
     private void loadSettings() {

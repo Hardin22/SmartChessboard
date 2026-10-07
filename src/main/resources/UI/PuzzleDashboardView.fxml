@@ -25,7 +25,24 @@
                 <padding><Insets top="16" right="16" bottom="32" left="16"/></padding>
 
                 <VBox spacing="12">
-                    <Label text="%puzzle.rating" styleClass="section-label"/>
+                    <Label text="%puzzle.progress" styleClass="section-label"/>
+                    <HBox spacing="12">
+                        <VBox styleClass="stat-block" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                            <Label text="%puzzle.stats.rating" styleClass="stat-label"/>
+                            <Label fx:id="playerRatingLabel" text="1500" styleClass="stat-value"/>
+                        </VBox>
+                        <VBox styleClass="stat-block" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                            <Label text="%puzzle.stats.solved" styleClass="stat-label"/>
+                            <Label fx:id="solvedLabel" text="0" styleClass="stat-value"/>
+                        </VBox>
+                        <VBox styleClass="stat-block" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                            <Label text="%puzzle.stats.streak" styleClass="stat-label"/>
+                            <Label fx:id="streakLabel" text="0" styleClass="stat-value"/>
+                        </VBox>
+                    </HBox>
+                    <Label text="%puzzle.rating" styleClass="section-label">
+                        <VBox.margin><Insets top="12"/></VBox.margin>
+                    </Label>
                     <VBox styleClass="card" spacing="8">
                         <HBox alignment="BASELINE_LEFT" spacing="12">
                             <Label fx:id="ratingValueLabel" text="1500" styleClass="display, mono"/>

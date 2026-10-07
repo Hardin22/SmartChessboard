@@ -9,6 +9,7 @@ import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.layout.FlowPane;
 import org.example.javachess.Components.I18n;
+import org.example.javachess.Engine.EngineSelection;
 import org.example.javachess.Services.EngineService.EngineType;
 import org.example.javachess.Utils.ConfigManager;
 
@@ -94,6 +95,28 @@ public class GameSetupController implements NavigationAware {
         refreshDefaults();
         updateSelectionVisuals();
         updateBotSelectionVisuals();
+        markUnavailableBots();
+    }
+
+    /** Maia needs lc0 and its weights: rows of engines missing on this device are disabled, with the reason. */
+    private void markUnavailableBots() {
+        if (botStockfishBox == null) {
+            return;
+        }
+        Object[][] rows = { { botMaia1100Box, EngineType.MAIA_1100 }, { botMaia1500Box, EngineType.MAIA_1500 },
+                { botMaia1900Box, EngineType.MAIA_1900 } };
+        for (Object[] row : rows) {
+            Button button = (Button) row[0];
+            String id = ((EngineType) row[1]).profileId();
+            EngineSelection.get().profiles().stream().filter(p -> p.id().equals(id) && !p.available()).findFirst()
+                    .ifPresent(p -> {
+                        button.setDisable(true);
+                        if (button.getGraphic() != null
+                                && button.getGraphic().lookup(".option-description") instanceof Label desc) {
+                            desc.setText(I18n.t("engine.unavailable.short"));
+                        }
+                    });
+        }
     }
 
     private void buildPresets() {

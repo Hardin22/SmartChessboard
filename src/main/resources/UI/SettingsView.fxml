@@ -193,7 +193,18 @@
                         <VBox.margin><Insets top="12"/></VBox.margin>
                     </Label>
                     <VBox styleClass="card" spacing="10">
-                        <Label text="%settings.lichess" styleClass="card-title"/>
+                        <HBox alignment="CENTER_LEFT" spacing="12">
+                            <VBox spacing="2" HBox.hgrow="ALWAYS" minWidth="0">
+                                <Label text="%settings.lichess" styleClass="card-title"/>
+                                <Label fx:id="lichessStatusLabel" text="%settings.lichess.disconnected" styleClass="card-description" wrapText="true"/>
+                            </VBox>
+                            <Button fx:id="lichessConnectButton" text="%settings.lichess.connect" onAction="#toggleLichessAccount" styleClass="btn, btn-secondary">
+                                <graphic><FontIcon iconLiteral="fth-link" iconSize="18" styleClass="icon"/></graphic>
+                            </Button>
+                        </HBox>
+                        <Label text="%settings.lichess.advanced" styleClass="section-label">
+                            <VBox.margin><Insets top="8"/></VBox.margin>
+                        </Label>
                         <Label text="%settings.lichess.username" styleClass="field-label"/>
                         <TextField fx:id="lichessUsernameField"/>
                         <Label text="%settings.lichess.token" styleClass="field-label"/>

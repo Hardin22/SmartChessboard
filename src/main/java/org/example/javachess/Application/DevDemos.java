@@ -1,7 +1,6 @@
 package org.example.javachess.Application;
 
 import javafx.application.Platform;
-import javafx.scene.Node;
 import javafx.scene.control.Button;
 import org.example.javachess.Controllers.ActiveGameController;
 import org.example.javachess.Controllers.MainController;
@@ -52,15 +51,14 @@ final class DevDemos {
                     return;
                 }
                 Platform.runLater(() -> {
-                    String text = switch (sheet) {
-                        case "engine" -> "Motore";
-                        case "analysis" -> "Analisi";
-                        default -> "Termina";
+                    String id = switch (sheet) {
+                        case "engine" -> "#engineButton";
+                        case "analysis" -> "#settingsButton";
+                        default -> "#endButton";
                     };
-                    Node root = main.getMainContainer();
-                    root.lookupAll(".button").stream()
-                            .filter(n -> n instanceof Button b && text.equals(b.getText()))
-                            .findFirst().ifPresent(n -> ((Button) n).fire());
+                    if (main.getMainContainer().lookup(id) instanceof Button button) {
+                        button.fire();
+                    }
                 });
             });
         }
