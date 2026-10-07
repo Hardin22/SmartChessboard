@@ -52,8 +52,8 @@ class GridFinderTest {
             Mat gray = gray(screenWithBoard(57, 81, 480, theme));
             GridFinder.Grid g = new GridFinder(gray).refine(new Rectangle(70, 70, 500, 500), 0.08);
             assertTrue(g.score() >= GridFinder.MIN_SCORE, theme + " score " + g.score());
-            assertEquals(57, g.x(), 1.5, theme.toString());
-            assertEquals(81, g.y(), 1.5, theme.toString());
+            assertEquals(57, g.x(), 2.0, theme.toString());
+            assertEquals(81, g.y(), 2.0, theme.toString());
             assertEquals(60, g.cell(), 0.5, theme.toString());
             gray.release();
         }

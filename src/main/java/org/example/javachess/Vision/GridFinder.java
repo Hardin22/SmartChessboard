@@ -64,8 +64,8 @@ final class GridFinder {
         if (x < -0.5 || y < -0.5 || x + 8 * cell > w + 0.5 || y + 8 * cell > h + 0.5 || cell < 4) {
             return 0;
         }
-        double p0 = 0.06 * cell;
-        double p1 = 0.20 * cell;
+        double p0 = 0.03 * cell; // patches close to the corners: tighter alignment, pieces rarely reach there
+        double p1 = 0.15 * cell;
         double sumL = 0;
         double sumD = 0;
         double sqL = 0;
