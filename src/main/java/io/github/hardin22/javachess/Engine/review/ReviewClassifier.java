@@ -596,9 +596,14 @@ public final class ReviewClassifier {
 
     /** SPEC §5.2: the move leaves a piece en prise that is not simply lost (a sound sacrifice). */
     private static boolean brilliant(Board b0, String uci, boolean me) {
+        return sacrificeVerdict(b0, uci, me) == null;
+    }
+
+    /** Null when the move is a real sacrifice (SPEC §5.2), else why it is not (calibration tools). */
+    static String sacrificeVerdict(Board b0, String uci, boolean me) {
         Move m = Tactics.find(b0, uci);
         if (m == null || m.getPromotion() != Piece.NONE) {
-            return false;
+            return "promotion";
         }
         Side side = me ? Side.WHITE : Side.BLACK;
         int captured = Tactics.value(b0.getPiece(m.getTo()));
@@ -608,18 +613,23 @@ public final class ReviewClassifier {
         b1.doMove(m);
         List<Square> unsafeAfter = Tactics.unsafePieces(b1, side, captured);
         if (!b1.isKingAttacked() && unsafeAfter.size() < unsafeBefore.size()) {
-            return false; // saving pieces, not sacrificing
+            return "saves pieces"; // saving pieces, not sacrificing
         }
-        if (unsafeAfter.isEmpty() || movedWasTrapped) {
-            return false;
+        if (unsafeAfter.isEmpty()) {
+            return "nothing en prise";
         }
-        int real = 0;
+        if (movedWasTrapped) {
+            return "moved piece was trapped";
+        }
+        int trapped = 0;
         for (Square sq : unsafeAfter) {
-            if (!Tactics.isTrapped(b1, sq) && !Tactics.isFakeSacrifice(b1, sq)) {
-                real++;
+            if (Tactics.isTrapped(b1, sq)) {
+                trapped++;
+            } else if (!Tactics.isFakeSacrifice(b1, sq)) {
+                return null;
             }
         }
-        return real > 0;
+        return trapped == unsafeAfter.size() ? "trapped anyway" : "fake sacrifice";
     }
 
     /** True when move i captures on the square where the opponent just captured (a plain recapture). */
