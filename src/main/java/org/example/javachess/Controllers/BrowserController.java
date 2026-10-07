@@ -22,6 +22,8 @@ import java.io.File;
 
 public class BrowserController implements NavigationAware {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BrowserController.class);
+
     @FXML
     private StackPane browserContainer;
     @FXML
@@ -48,11 +50,11 @@ public class BrowserController implements NavigationAware {
     private boolean isInitializing = false;
 
     public void initialize() {
-        System.out.println("[BrowserController] Controller initialized. Waiting for loadPage().");
+        log.info("[BrowserController] Controller initialized. Waiting for loadPage().");
     }
 
     public void loadPage(String url) {
-        System.out.println("[BrowserController] Request to load: " + url);
+        log.info("[BrowserController] Request to load: " + url);
 
         if (cefApp == null && !isInitializing) {
             initializeJCEF(url);
@@ -77,7 +79,7 @@ public class BrowserController implements NavigationAware {
 
     private void initializeJCEF(String initialUrl) {
         isInitializing = true;
-        System.out.println("[BrowserController] Initializing JCEF...");
+        log.info("[BrowserController] Initializing JCEF...");
 
         new Thread(() -> {
             try {
@@ -104,11 +106,11 @@ public class BrowserController implements NavigationAware {
 
                 // ENABLE PERSISTENCE (Cookies/Login)
                 String cachePath = new File(userHome, ".javachess/jcef-cache").getAbsolutePath();
-                System.out.println("[BrowserController] Setting Cache Path: " + cachePath);
+                log.info("[BrowserController] Setting Cache Path: " + cachePath);
                 File cacheDir = new File(cachePath);
                 if (!cacheDir.exists()) {
                     boolean created = cacheDir.mkdirs();
-                    System.out.println("[BrowserController] Cache directory created: " + created);
+                    log.info("[BrowserController] Cache directory created: " + created);
                 }
 
                 // CORRECT WAY: Set settings directly via Builder
@@ -121,12 +123,12 @@ public class BrowserController implements NavigationAware {
                 // causing conflicts with Lichess?
                 // setup
 
-                System.out.println("[BrowserController] CefSettings Configured -> CachePath: " + settings.cache_path);
+                log.info("[BrowserController] CefSettings Configured -> CachePath: " + settings.cache_path);
 
                 builder.setAppHandler(new MavenCefAppHandlerAdapter() {
                     @Override
                     public void stateHasChanged(org.cef.CefApp.CefAppState state) {
-                        System.out.println("[JCEF] State: " + state);
+                        log.info("[JCEF] State: " + state);
                     }
                 });
 
@@ -137,75 +139,8 @@ public class BrowserController implements NavigationAware {
                     CefMessageRouter msgRouter = CefMessageRouter.create();
                     cefClient.addMessageRouter(msgRouter);
 
-                    // AUTO-LOGIN HANDLER
-                    cefClient.addLoadHandler(new org.cef.handler.CefLoadHandlerAdapter() {
-                        @Override
-                        public void onLoadEnd(CefBrowser browser, org.cef.browser.CefFrame frame, int httpStatusCode) {
-                            String url = browser.getURL();
-
-                            // CHESS.COM LOGIN
-                            if (url.contains("chess.com/login")) {
-                                System.out.println(
-                                        "[BrowserController] Detected Chess.com login page. Attempting auto-fill...");
-                                try (java.io.FileInputStream fis = new java.io.FileInputStream("config.properties")) {
-                                    java.util.Properties props = new java.util.Properties();
-                                    props.load(fis);
-                                    String user = props.getProperty("chess.com.username", "");
-                                    String pass = props.getProperty("chess.com.password", "");
-
-                                    if (!user.isEmpty() && !pass.isEmpty()) {
-                                        String script = "setTimeout(function() {" +
-                                                "  var u = document.getElementById('username');" +
-                                                "  var p = document.getElementById('password');" +
-                                                "  if (u && p) {" +
-                                                "    u.value = '" + user + "';" +
-                                                "    p.value = '" + pass + "';" +
-                                                "    u.dispatchEvent(new Event('input', { bubbles: true }));" +
-                                                "    p.dispatchEvent(new Event('input', { bubbles: true }));" +
-                                                "    console.log('Auto-filled Chess.com credentials');" +
-                                                "    var btn = document.getElementById('login');" +
-                                                "    if(btn) btn.click();" +
-                                                "  }" +
-                                                "}, 1000);";
-                                        browser.executeJavaScript(script, url, 0);
-                                    }
-                                } catch (Exception e) {
-                                    e.printStackTrace();
-                                }
-                            }
-
-                            // LICHESS LOGIN
-                            if (url.contains("lichess.org")) {
-                                System.out.println(
-                                        "[BrowserController] Detected Lichess login page. Attempting auto-fill...");
-                                try (java.io.FileInputStream fis = new java.io.FileInputStream("config.properties")) {
-                                    java.util.Properties props = new java.util.Properties();
-                                    props.load(fis);
-                                    String user = props.getProperty("lichess.username", "");
-                                    String pass = props.getProperty("lichess.password", "");
-
-                                    if (!user.isEmpty() && !pass.isEmpty()) {
-                                        String script = "setTimeout(function() {" +
-                                                "  var u = document.querySelector('input[name=\"username\"]');" +
-                                                "  var p = document.querySelector('input[name=\"password\"]');" +
-                                                "  if (u && p) {" +
-                                                "    u.value = '" + user + "';" +
-                                                "    p.value = '" + pass + "';" +
-                                                "    u.dispatchEvent(new Event('input', { bubbles: true }));" +
-                                                "    p.dispatchEvent(new Event('input', { bubbles: true }));" +
-                                                "    console.log('Auto-filled Lichess credentials');" +
-                                                "    var btn = document.querySelector('button.submit');" +
-                                                "    if(btn) btn.click();" +
-                                                "  }" +
-                                                "}, 1000);";
-                                        browser.executeJavaScript(script, url, 0);
-                                    }
-                                } catch (Exception e) {
-                                    e.printStackTrace();
-                                }
-                            }
-                        }
-                    });
+                    // No credential auto-fill: passwords are not stored (see ConfigManager). The user logs in once
+                    // in this browser and the session is kept in the persistent JCEF cache (~/.javachess/jcef-cache).
 
                     // ENABLE OFF-SCREEN RENDERING (OSR) ONLY FOR LINUX (Raspberry Pi)
                     // Windowed mode causes X11 focus stealing on Linux/ARM, so we need OSR there.
@@ -214,7 +149,7 @@ public class BrowserController implements NavigationAware {
                     boolean isLinux = System.getProperty("os.name").toLowerCase().contains("linux");
                     boolean useOSR = isLinux;
 
-                    System.out.println(
+                    log.info(
                             "[BrowserController] OS: " + System.getProperty("os.name") + " -> Using OSR: " + useOSR);
 
                     cefBrowser = cefClient.createBrowser(initialUrl, useOSR, false);
@@ -225,7 +160,9 @@ public class BrowserController implements NavigationAware {
 
                     botMover.setOnOrientationChanged(isFlipped -> {
                         this.isFlipped = isFlipped;
-                        visionService.setFlipped(isFlipped);
+                        if (visionService != null) {
+                            visionService.setFlipped(isFlipped);
+                        }
                     });
 
                     createHeaderBarFrame();
@@ -234,14 +171,15 @@ public class BrowserController implements NavigationAware {
                 });
 
             } catch (Exception e) {
-                e.printStackTrace();
+                log.error("Unexpected error", e);
                 isInitializing = false;
             }
         }).start();
     }
 
     // --- ONLINE GAME INTEGRATION ---
-    private org.example.javachess.Services.VisionService visionService = new org.example.javachess.Services.VisionService();
+    /** Created on first use: loading the ONNX model costs ~12 MB and a few hundred ms. */
+    private org.example.javachess.Services.VisionService visionService;
     private org.example.javachess.Vision.BotMover botMover = new org.example.javachess.Vision.BotMover();
     private com.github.bhlangonijr.chesslib.Board internalBoard = new com.github.bhlangonijr.chesslib.Board();
 
@@ -339,7 +277,7 @@ public class BrowserController implements NavigationAware {
     }
 
     private void startOnlineGame() {
-        System.out.println("[OnlineGame] Starting...");
+        log.info("[OnlineGame] Starting...");
         updateStatus("VISION STARTING...", java.awt.Color.YELLOW);
 
         isVisionRunning = true;
@@ -353,7 +291,12 @@ public class BrowserController implements NavigationAware {
         isGameSaved = false;
 
         // Initialize Vision Callback
-        visionService.setOnFenChanged(this::handleFenChange);
+        if (visionService == null) {
+            visionService = new org.example.javachess.Services.VisionService();
+        }
+        visionService.setFlipped(isFlipped);
+        visionService.setOnReading(this::handleReading);
+        visionService.setOnError(msg -> updateStatus(msg, java.awt.Color.RED));
 
         // HARD RESET VISION STATE: Ensure no "ghost" boards from previous sessions
         // persist
@@ -382,7 +325,7 @@ public class BrowserController implements NavigationAware {
 
             @Override
             public void onBoardSetupComplete() {
-                System.out.println("[OnlineGame] Board Setup Complete. Game Started.");
+                log.info("[OnlineGame] Board Setup Complete. Game Started.");
                 updateStatus("SETUP COMPLETE! GAME STARTED.", java.awt.Color.GREEN);
                 isSetupPhase = false;
 
@@ -396,7 +339,7 @@ public class BrowserController implements NavigationAware {
                         manager.setLogicalBoard(internalBoard);
                         manager.startGameMode(); // ACTIVATE GAME MODE
                     } catch (Exception e) {
-                        e.printStackTrace();
+                        log.error("Unexpected error", e);
                     }
                 }
             }
@@ -427,7 +370,9 @@ public class BrowserController implements NavigationAware {
 
     private void stopOnlineGame() {
         isVisionRunning = false;
-        visionService.stopScanning();
+        if (visionService != null) {
+            visionService.stopScanning();
+        }
         org.example.javachess.Services.BoardStateManager manager = org.example.javachess.Controllers.ArduinoController
                 .getInstance().getBoardStateManager();
         manager.stopGameMode(); // DEACTIVATE GAME MODE
@@ -435,73 +380,105 @@ public class BrowserController implements NavigationAware {
         updateStatus("VISION STOPPED", java.awt.Color.GRAY);
 
         // SAVE GAME
-        if (pgn.length() > 0 && !isGameSaved) {
-            // Only save if at least 3 moves were made
-            if (internalBoard.getHistory().size() >= 3) {
-                org.example.javachess.Services.GameArchiveService.saveGame(
-                        "Online (Browser)",
-                        "Unknown",
-                        pgn.toString(),
-                        initialFen,
-                        internalBoard.getFen(),
-                        "Unknown",
-                        "N/A");
+        if (!isGameSaved && !initialFen.isEmpty()) {
+            java.util.List<String> moves = java.util.Arrays.stream(pgn.toString().trim().split("\\s+"))
+                    .filter(org.example.javachess.Utils.PgnCodec::looksLikeUci).toList();
+            if (moves.size() >= 3) {
+                String decided = org.example.javachess.Utils.PgnCodec.resultOf(internalBoard);
+                org.example.javachess.Services.GameArchiveService.getInstance().add(
+                        new org.example.javachess.Oggetti.ArchivedGame(0,
+                                org.example.javachess.Oggetti.ArchivedGame.GameMode.BROWSER,
+                                currentSiteName(), "", "", decided != null ? decided : "*",
+                                decided != null ? "" : "Interrotta", "", "", java.time.LocalDateTime.now(),
+                                initialFen, internalBoard.getFen(), moves));
                 isGameSaved = true;
             } else {
-                System.out.println("[BrowserController] Game too short, not saving ("
-                        + internalBoard.getHistory().size() + " moves)");
+                log.info("Online game too short, not archived ({} moves)", moves.size());
             }
         }
     }
 
-    // --- DEBOUNCE REMOVED (Handled by VisionService) ---
+    private String currentSiteName() {
+        String url = cefBrowser != null ? cefBrowser.getURL() : "";
+        if (url != null && url.contains("chess.com")) {
+            return "Chess.com";
+        }
+        if (url != null && url.contains("lichess.org")) {
+            return "Lichess (browser)";
+        }
+        return "Online (browser)";
+    }
 
-    private void handleFenChange(String newFen) {
-        if (!isVisionRunning)
+    /**
+     * Disposes JCEF only if this session actually started it. Never call {@code CefApp.getInstance()} for this:
+     * it would initialise the native library just to shut it down ({@code UnsatisfiedLinkError N_PreInitialize}).
+     */
+    public static void disposeIfStarted() {
+        CefApp app = cefApp;
+        if (app == null) {
             return;
+        }
+        try {
+            app.dispose();
+            log.info("JCEF disposed");
+        } catch (Throwable t) {
+            log.warn("JCEF dispose failed: {}", t.toString());
+        }
+    }
 
-        // Ensure we have a valid FEN string (Piece Placement only)
-        String partialFen = newFen.split(" ")[0];
+    
+    private final org.example.javachess.Vision.PositionResolver resolver =
+            new org.example.javachess.Vision.PositionResolver();
+
+    /**
+     * New stable position seen on screen. The reading is matched against the positions that can legally follow
+     * the known one (PositionResolver), so one or two misread squares do not break the synchronisation.
+     */
+    private void handleReading(org.example.javachess.Vision.BoardReading reading) {
+        if (!isVisionRunning) {
+            return;
+        }
+        String partialFen = reading.placement();
 
         if (isSetupPhase) {
-            // FAST-FORWARD: Check if this is actually a single move from our current
-            // internal state (e.g. Start Pos)
-            // If so, switch to Game Mode immediately to trigger Move Replication (Cyan
-            // LEDs) instead of Setup (Red/White)
-            boolean isImmediateMove = false;
-            for (com.github.bhlangonijr.chesslib.move.Move m : internalBoard.legalMoves()) {
-                com.github.bhlangonijr.chesslib.Board test = internalBoard.clone();
-                test.doMove(m);
-                if (simplifyFen(test.getFen()).equals(partialFen)) {
-                    isImmediateMove = true;
-                    break;
-                }
-            }
+            // FAST-FORWARD: the screen shows our known position plus one move -> go straight to game mode
+            // (move replication LEDs) instead of the setup flow.
+            org.example.javachess.Vision.PositionResolver.Resolution fast = resolver.resolve(internalBoard, reading,
+                    false);
+            boolean isImmediateMove = fast.confident() && fast.moves().size() == 1;
 
             if (isImmediateMove) {
-                System.out.println("[OnlineGame] Immediate move detected during setup. Switching to Game Mode.");
+                log.info("Immediate move detected during setup, switching to game mode");
                 updateStatus("GAME SYNCED (MOVE DETECTED)", java.awt.Color.GREEN);
                 isSetupPhase = false;
                 org.example.javachess.Controllers.ArduinoController.getInstance().getBoardStateManager()
                         .startGameMode();
-                // Fall through to Game Logic below to execute the move
+                // fall through to the game logic below
             } else {
-                // NORMAL SETUP LOGIC
                 if (lastFen.isEmpty() || !simplifyFen(lastFen).equals(partialFen)) {
                     updateStatus("SETUP TARGET FOUND", java.awt.Color.MAGENTA);
 
-                    // Construct a valid FEN for the setup target
-                    // LOGIC: If board is flipped (Black) and it's not the standard start position,
-                    // it is likely Black's turn (or we assume it to allow Black moves).
+                    // If the board is flipped (we play black) and it is not the start position, assume black to move.
                     String turn = "w";
                     boolean isStandardStart = partialFen.equals("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
                     if (this.isFlipped && !isStandardStart) {
                         turn = "b";
                     }
 
-                    String fullSetupFen = partialFen + " " + turn + " KQkq - 0 1";
-                    System.out
-                            .println("[OnlineGame] Auto-detected Turn: " + turn + " (Flipped=" + this.isFlipped + ")");
+                    // Normalise through PgnCodec: drops impossible castling rights and rejects positions the
+                    // classifier got wrong (which would crash chesslib).
+                    com.github.bhlangonijr.chesslib.Board setupBoard = org.example.javachess.Utils.PgnCodec
+                            .boardFromFen(partialFen + " " + turn + " KQkq - 0 1");
+                    if (setupBoard == null) {
+                        updateStatus("POSIZIONE NON VALIDA, RIPROVO...", java.awt.Color.ORANGE);
+                        log.warn("Vision produced an impossible position: {}", partialFen);
+                        return;
+                    }
+                    if (reading.minConfidence() < 0.6f) {
+                        log.info("Uncertain squares in setup target: {}", reading.uncertainSquares(0.6f));
+                    }
+                    String fullSetupFen = setupBoard.getFen();
+                    log.info("Setup target {} (turn {}, flipped {})", fullSetupFen, turn, isFlipped);
 
                     lastFen = fullSetupFen;
                     org.example.javachess.Services.BoardStateManager manager = org.example.javachess.Controllers.ArduinoController
@@ -514,41 +491,42 @@ public class BrowserController implements NavigationAware {
         }
 
         // GAME LOGIC
-        if (partialFen.equals(simplifyFen(internalBoard.getFen())))
+        org.example.javachess.Vision.PositionResolver.Resolution res = resolver.resolve(internalBoard, reading, false);
+        if (res.unchanged()) {
             return;
-
-        // Check for Opponent Move
-        for (com.github.bhlangonijr.chesslib.move.Move legalMove : internalBoard.legalMoves()) {
-            com.github.bhlangonijr.chesslib.Board testBoard = internalBoard.clone();
-            testBoard.doMove(legalMove);
-
-            if (simplifyFen(testBoard.getFen()).equals(partialFen)) {
-                System.out.println("[OnlineGame] OPPONENT MOVED: " + legalMove);
-                updateStatus("OPPONENT MOVED: " + legalMove, java.awt.Color.MAGENTA);
-
-                updatePgn(legalMove);
-                internalBoard.doMove(legalMove);
-                lastFen = internalBoard.getFen(); // Store the FULL FEN from the internal board
-
-                // SYNC BOARD STATE MANAGER
-                org.example.javachess.Services.BoardStateManager manager = org.example.javachess.Controllers.ArduinoController
-                        .getInstance().getBoardStateManager();
-                manager.setLogicalBoard(internalBoard);
-                manager.startBotMoveReplication(legalMove.getFrom().name(), legalMove.getTo().name());
-
-                visionService.stopScanning(); // Pause while user replicates
-                return;
-            }
         }
+        if (!res.confident() || res.moves().size() != 1) {
+            java.util.List<String> diff = org.example.javachess.Vision.PositionResolver.differences(internalBoard,
+                    reading);
+            log.info("Screen position not matched to a legal move (margin {}, mismatches {}, differences {})",
+                    String.format("%.1f", res.margin()), res.mismatches(), diff);
+            updateStatus("LETTURA INCERTA: " + String.join(" ", diff.subList(0, Math.min(6, diff.size()))),
+                    java.awt.Color.ORANGE);
+            return;
+        }
+        com.github.bhlangonijr.chesslib.move.Move legalMove = res.moves().get(0);
+        log.info("Opponent moved: {} (mismatched squares: {})", legalMove, res.mismatches());
+        updateStatus("OPPONENT MOVED: " + legalMove, java.awt.Color.MAGENTA);
+
+        updatePgn(legalMove);
+        internalBoard.doMove(legalMove);
+        lastFen = internalBoard.getFen();
+
+        org.example.javachess.Services.BoardStateManager manager = org.example.javachess.Controllers.ArduinoController
+                .getInstance().getBoardStateManager();
+        manager.setLogicalBoard(internalBoard);
+        manager.startBotMoveReplication(legalMove.getFrom().name(), legalMove.getTo().name());
+
+        visionService.stopScanning(); // pause while the user replicates the move on the board
     }
 
     private void handlePhysicalMove(String from, String to) {
         try {
-            com.github.bhlangonijr.chesslib.move.Move move = new com.github.bhlangonijr.chesslib.move.Move(
-                    com.github.bhlangonijr.chesslib.Square.fromValue(from.toUpperCase()),
-                    com.github.bhlangonijr.chesslib.Square.fromValue(to.toUpperCase()));
+            // Legal move from the physical squares (a pawn reaching the last rank promotes to a queen).
+            com.github.bhlangonijr.chesslib.move.Move move = org.example.javachess.Utils.PgnCodec
+                    .fromUci(internalBoard, (from + to).toLowerCase());
 
-            if (internalBoard.isMoveLegal(move, true)) {
+            if (move != null) {
                 boolean isBlackMove = internalBoard.getSideToMove() == com.github.bhlangonijr.chesslib.Side.BLACK;
 
                 updateStatus("EXECUTING MOVE: " + move, java.awt.Color.CYAN);
@@ -558,14 +536,16 @@ public class BrowserController implements NavigationAware {
                 lastFen = internalBoard.getFen();
 
                 // If it was Black's turn, we assume the board is flipped (Black Player View)
-                botMover.makeMove(move.toString(), isBlackMove);
+                botMover.makeMove(org.example.javachess.Utils.PgnCodec.toUci(move), isBlackMove);
 
                 // SYNC BOARD STATE MANAGER (For LED Legal Moves)
                 org.example.javachess.Controllers.ArduinoController.getInstance().getBoardStateManager()
                         .setLogicalBoard(internalBoard);
 
                 // Pause vision briefly to skip animation
-                visionService.stopScanning();
+                if (visionService != null) {
+                    visionService.stopScanning();
+                }
                 new Thread(() -> {
                     try {
                         Thread.sleep(1500);
@@ -579,16 +559,12 @@ public class BrowserController implements NavigationAware {
                 updateStatus("ILLEGAL MOVE IGNORED", java.awt.Color.RED);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Unexpected error", e);
         }
     }
 
     private void updatePgn(com.github.bhlangonijr.chesslib.move.Move move) {
-        if (internalBoard.getSideToMove() == com.github.bhlangonijr.chesslib.Side.BLACK) { // White just moved
-            pgn.append(internalBoard.getMoveCounter()).append(". ").append(move.toString()).append(" ");
-        } else {
-            pgn.append(move.toString()).append(" ");
-        }
+        pgn.append(org.example.javachess.Utils.PgnCodec.toUci(move)).append(' ');
     }
 
     private String simplifyFen(String fen) {
@@ -634,7 +610,7 @@ public class BrowserController implements NavigationAware {
                         stage.setFullScreen(true);
                         stage.toFront();
                         stage.requestFocus();
-                        System.out.println("[BrowserController] JavaFX Focus Requested (Simple).");
+                        log.info("[BrowserController] JavaFX Focus Requested (Simple).");
                     }
                 }
             }

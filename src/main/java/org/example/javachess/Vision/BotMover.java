@@ -3,6 +3,8 @@ package org.example.javachess.Vision;
 import org.cef.browser.CefBrowser;
 
 public class BotMover {
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BotMover.class);
     private CefBrowser browser;
 
     public BotMover() {
@@ -15,7 +17,7 @@ public class BotMover {
 
     public void makeMove(String move, boolean isFlipped) {
         if (browser == null || move == null || move.length() < 4) {
-            System.err.println("[Bot] Browser not linked or invalid move.");
+            log.warn("[Bot] Browser not linked or invalid move.");
             return;
         }
 
@@ -32,12 +34,12 @@ public class BotMover {
         } else if (url.contains("lichess.org")) {
             makeMoveLichess(from, to, promotion, isFlipped);
         } else {
-            System.err.println("[Bot] Unknown site: " + url);
+            log.warn("[Bot] Unknown site: " + url);
         }
     }
 
     private void makeMoveChessCom(String from, String to, boolean isFlipped) {
-        System.out.println("[Bot] Chess.com Geometric Move: " + from + " -> " + to + " | Flipped: " + isFlipped);
+        log.info("[Bot] Chess.com Geometric Move: " + from + " -> " + to + " | Flipped: " + isFlipped);
 
         String script = "(function() {" +
                 "  console.log('[Bot] Attempting GEOMETRIC move: " + from + " -> " + to + "');" +
@@ -115,7 +117,7 @@ public class BotMover {
     }
 
     private void makeMoveLichess(String from, String to, String promotion, boolean isFlipped) {
-        System.out.println("[Bot] Lichess Native Move: " + from + " -> " + to + " | Flipped: " + isFlipped);
+        log.info("[Bot] Lichess Native Move: " + from + " -> " + to + " | Flipped: " + isFlipped);
 
         // 1. Inject JS to get Board Coordinates and trigger Java callback via Title
         // Change
@@ -156,7 +158,7 @@ public class BotMover {
             // Format: ORIENTATION:true/false
             String val = title.substring("ORIENTATION:".length());
             boolean isFlipped = Boolean.parseBoolean(val);
-            System.out.println("[Bot] Orientation Detected: " + (isFlipped ? "FLIPPED" : "STANDARD"));
+            log.info("[Bot] Orientation Detected: " + (isFlipped ? "FLIPPED" : "STANDARD"));
 
             // Notify Vision Service (via BrowserController, but we don't have direct access
             // here easily)
@@ -168,7 +170,7 @@ public class BotMover {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Unexpected error", e);
         }
     }
 
@@ -220,12 +222,12 @@ public class BotMover {
                     Thread.sleep(100); // 100ms delay
                     clickSquareNative(left, top, width, height, isFlipped, to);
                 } catch (InterruptedException e) {
-                    e.printStackTrace();
+                    log.error("Unexpected error", e);
                 }
             }).start();
 
         } catch (Exception e) {
-            System.err.println("[Bot] Error parsing move data: " + e.getMessage());
+            log.warn("[Bot] Error parsing move data: " + e.getMessage());
         }
     }
 
@@ -233,7 +235,7 @@ public class BotMover {
             boolean isFlipped, String square) {
         int file = square.charAt(0) - 'a'; // 0-7
         int rank = square.charAt(1) - '1'; // 0-7
-        System.out.println("[Bot] Calculating Click: Square=" + square + " Flipped=" + isFlipped + " Raw(f,r)=(" + file
+        log.info("[Bot] Calculating Click: Square=" + square + " Flipped=" + isFlipped + " Raw(f,r)=(" + file
                 + "," + rank + ")");
 
         if (isFlipped) {
@@ -242,7 +244,7 @@ public class BotMover {
         } else {
             rank = 7 - rank; // Rank 8 is at top (y=0) for standard board
         }
-        System.out.println("[Bot] Visual Logic: Target(col,row)=(" + file + "," + rank + ")");
+        log.info("[Bot] Visual Logic: Target(col,row)=(" + file + "," + rank + ")");
 
         float squareW = boardWidth / 8;
         float squareH = boardHeight / 8;
@@ -251,7 +253,7 @@ public class BotMover {
         int relX = (int) (boardLeft + (file * squareW) + (squareW / 2));
         int relY = (int) (boardTop + (rank * squareH) + (squareH / 2));
 
-        System.out.println("[Bot] Target Relative: " + square + " (" + relX + "," + relY + ")");
+        log.info("[Bot] Target Relative: " + square + " (" + relX + "," + relY + ")");
 
         // Convert to Screen Coordinates using the Browser Component
         try {
@@ -261,7 +263,7 @@ public class BotMover {
                 int screenX = loc.x + relX;
                 int screenY = loc.y + relY;
 
-                System.out.println("[Bot] Robot Click: " + square + " Screen(" + screenX + "," + screenY + ")");
+                log.info("[Bot] Robot Click: " + square + " Screen(" + screenX + "," + screenY + ")");
 
                 java.awt.Robot robot = new java.awt.Robot();
                 robot.mouseMove(screenX, screenY);
@@ -273,10 +275,10 @@ public class BotMover {
                 robot.mouseRelease(java.awt.event.InputEvent.BUTTON1_DOWN_MASK);
 
             } else {
-                System.err.println("[Bot] Browser component not showing, cannot calculate screen coordinates.");
+                log.warn("[Bot] Browser component not showing, cannot calculate screen coordinates.");
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Unexpected error", e);
         }
     }
 

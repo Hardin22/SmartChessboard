@@ -1,506 +1,560 @@
 package org.example.javachess.Vision;
 
-import ai.onnxruntime.*;
-import org.opencv.core.*;
+import ai.onnxruntime.OnnxTensor;
+import ai.onnxruntime.OrtEnvironment;
+import ai.onnxruntime.OrtException;
+import ai.onnxruntime.OrtSession;
+import org.opencv.core.CvType;
+import org.opencv.core.Mat;
+import org.opencv.core.Point;
+import org.opencv.core.Rect;
+import org.opencv.core.Scalar;
+import org.opencv.core.Size;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.awt.Rectangle;
-import java.awt.Robot;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.FloatBuffer;
-import java.util.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-public class PieceClassifier {
+/**
+ * Reads a chess position from a picture of a 2D board (a screenshot of chess.com / lichess) with a YOLOv8 ONNX
+ * model that detects the 12 piece types and the board itself.
+ *
+ * <h2>Pipeline</h2>
+ * <ol>
+ *   <li>Pre-processing: grey scale (the model was trained on grey images), robust contrast stretch (1st-99th
+ *       percentile) so dim or washed-out screens look the same, resize to 640x640 (letterbox for full screens).</li>
+ *   <li>Inference (onnxruntime, CPU, thread count capped on small machines such as the Raspberry Pi).</li>
+ *   <li>Decoding: every candidate box keeps its 13 class scores; non-maximum suppression per class-agnostic box.</li>
+ *   <li>Grid: squares are taken from the detected "board" box when it is reliable, otherwise from the whole image;
+ *       each piece box is assigned to the square under the centre of its lower half (tall pieces overlap the
+ *       square above).</li>
+ *   <li>Output: a {@link BoardReading} with a probability for each symbol on each square; legality is applied later
+ *       ({@link BoardReading#withPlacementRules()}, {@link PositionResolver}).</li>
+ * </ol>
+ * Instances are thread-safe for inference (onnxruntime sessions are) but are meant to be used from one worker
+ * thread, never from the JavaFX thread.
+ */
+public class PieceClassifier implements AutoCloseable {
 
-    private OrtEnvironment env;
-    private OrtSession session;
+    private static final Logger log = LoggerFactory.getLogger(PieceClassifier.class);
 
-    // Correct mapping from model metadata
-    private String[] classNames = {
-            "B", "K", "N", "P", "Q", "R",
-            "b", "board", "k", "n", "p", "q", "r"
-    };
+    public static final String DEFAULT_MODEL = "models/best.onnx";
+    private static final int INPUT = 640;
+    /** Low decode threshold: weak boxes still inform the per-square probabilities. */
+    private static final float DECODE_THRESHOLD = 0.20f;
+    private static final float NMS_IOU = 0.45f;
+    private static final float BOARD_FIND_THRESHOLD = 0.80f;
 
+    static {
+        try {
+            nu.pattern.OpenCV.loadLocally();
+        } catch (Throwable e) {
+            LoggerFactory.getLogger(PieceClassifier.class).error("OpenCV native library not available", e);
+        }
+    }
+
+    private final OrtEnvironment env;
+    private final OrtSession session;
+    private final String inputName;
+    private final String[] classNames;
+    private final int boardClass;
+    private final int[] symbolIndexOfClass; // class id -> index in BoardReading.SYMBOLS, -1 for "board"
+    private volatile boolean contrastStretch = true;
+    /** Vertical anchor of a piece box (0 = top, 0.5 = centre): tall pieces overlap the square above. */
+    private volatile float anchorY = 0.70f;
+
+    /** Loads the model from a file path, or from the classpath when no such file exists. */
     public PieceClassifier(String modelPath) throws OrtException {
         this.env = OrtEnvironment.getEnvironment();
+        OrtSession.SessionOptions options = new OrtSession.SessionOptions();
+        int cores = Runtime.getRuntime().availableProcessors();
+        options.setIntraOpNumThreads(Math.max(1, Math.min(cores <= 4 ? 2 : 4, cores)));
+        options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
+        this.session = env.createSession(loadModel(modelPath), options);
+        this.inputName = session.getInputNames().iterator().next();
 
-        // Try to load from file system first
-        java.io.File modelFile = new java.io.File(modelPath);
-        if (modelFile.exists()) {
-            this.session = env.createSession(modelPath, new OrtSession.SessionOptions());
-        } else {
-            // Try to load from resources (JAR)
-            try (java.io.InputStream is = getClass().getResourceAsStream("/" + modelPath)) {
-                if (is == null) {
-                    throw new java.io.FileNotFoundException("Model not found in resources: " + modelPath);
-                }
-                // Extract to temp file
-                java.io.File tempFile = java.io.File.createTempFile("onnx_model", ".onnx");
-                tempFile.deleteOnExit();
-                java.nio.file.Files.copy(is, tempFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                this.session = env.createSession(tempFile.getAbsolutePath(), new OrtSession.SessionOptions());
-                System.out.println("[Vision] Model extracted from JAR to: " + tempFile.getAbsolutePath());
-            } catch (java.io.IOException e) {
-                throw new OrtException(OrtException.OrtErrorCode.ORT_NO_SUCHFILE,
-                        "Failed to extract model from JAR: " + e.getMessage());
+        String[] names = readClassNames(session);
+        this.classNames = names;
+        int board = -1;
+        symbolIndexOfClass = new int[names.length];
+        for (int i = 0; i < names.length; i++) {
+            if ("board".equals(names[i])) {
+                board = i;
+                symbolIndexOfClass[i] = -1;
+            } else {
+                symbolIndexOfClass[i] = names[i].length() == 1 ? BoardReading.SYMBOLS.indexOf(names[i].charAt(0)) : -1;
             }
         }
+        this.boardClass = board;
+        log.info("Vision model loaded ({} classes, {} threads)", names.length,
+                Math.max(1, Math.min(cores <= 4 ? 2 : 4, cores)));
+    }
 
-        System.out.println("[Vision] Model loaded: " + modelPath);
+    private static byte[] loadModel(String modelPath) throws OrtException {
         try {
-            System.out.println("[Vision] Model Metadata: " + session.getMetadata().getCustomMetadata());
-        } catch (Exception e) {
-            System.out.println("[Vision] Could not read metadata.");
+            Path file = Paths.get(modelPath);
+            if (Files.isRegularFile(file)) {
+                return Files.readAllBytes(file);
+            }
+            try (InputStream in = PieceClassifier.class.getResourceAsStream("/" + modelPath)) {
+                if (in == null) {
+                    throw new OrtException(OrtException.OrtErrorCode.ORT_NO_SUCHFILE, "Model not found: " + modelPath);
+                }
+                return in.readAllBytes();
+            }
+        } catch (IOException e) {
+            throw new OrtException(OrtException.OrtErrorCode.ORT_NO_SUCHFILE, "Cannot read model: " + e.getMessage());
         }
     }
 
-    // NEW: Use YOLO to find the board on the full screen
-    public Rectangle findBoard(BufferedImage screen) {
-        Mat src = null;
-        Mat resized = null;
+    /** Class names from the Ultralytics metadata ("{0: 'B', 1: 'K', ...}"), with the known list as fallback. */
+    static String[] readClassNames(OrtSession session) {
+        String[] fallback = {"B", "K", "N", "P", "Q", "R", "b", "board", "k", "n", "p", "q", "r"};
         try {
-            // 1. Pre-process with Letterboxing
-            src = bufferedImageToMat(screen);
-
-            // Letterbox Logic
-            int targetW = 640;
-            int targetH = 640;
-            double scale = Math.min((double) targetW / src.width(), (double) targetH / src.height());
-            int newW = (int) (src.width() * scale);
-            int newH = (int) (src.height() * scale);
-
-            Mat scaled = new Mat();
-            Imgproc.resize(src, scaled, new Size(newW, newH));
-
-            // Create black canvas
-            resized = new Mat(new Size(targetW, targetH), src.type(), new Scalar(0, 0, 0));
-
-            // Center the image
-            int offsetX = (targetW - newW) / 2;
-            int offsetY = (targetH - newH) / 2;
-
-            Mat roi = resized.submat(offsetY, offsetY + newH, offsetX, offsetX + newW);
-            scaled.copyTo(roi);
-
-            // Convert to Grayscale then to RGB
-            Imgproc.cvtColor(resized, resized, Imgproc.COLOR_BGR2GRAY);
-            Imgproc.cvtColor(resized, resized, Imgproc.COLOR_GRAY2RGB);
-
-            // 2. Inference
-            float[] floatData = prepareInput(resized);
-            try (OnnxTensor inputTensor = OnnxTensor.createTensor(env, FloatBuffer.wrap(floatData),
-                    new long[] { 1, 3, 640, 640 });
-                    OrtSession.Result result = session
-                            .run(Collections.singletonMap(session.getInputNames().iterator().next(), inputTensor))) {
-
-                float[][][] output = (float[][][]) result.get(0).getValue();
-
-                // 3. Parse for "board" class (ID 7)
-                // INCREASED THRESHOLD: 0.75 for stricter detection
-                List<Detection> detections = parseDetections(output[0], 0.90f);
-
-                Detection bestBoard = null;
-                double maxArea = 0;
-
-                for (Detection d : detections) {
-                    if (d.classId == 7) {
-                        // GEOMETRY CHECK: Ignore non-square detections (AspectRatio must be ~1.0)
-                        float ratio = d.w / d.h;
-                        if (ratio < 0.90f || ratio > 1.10f) {
-                            System.out.println(
-                                    "[PieceClassifier] Ignored 'board' candidate with bad Aspect Ratio: " + ratio);
-                            continue;
-                        }
-
-                        double area = d.w * d.h;
-                        if (area > maxArea) {
-                            maxArea = area;
-                            bestBoard = d;
-                        }
-                    }
-                }
-
-                if (bestBoard != null) {
-                    // Reverse Letterboxing to get original coordinates
-                    // (x_detected - offsetX) / scale
-
-                    int x = (int) ((bestBoard.x - offsetX) / scale);
-                    int y = (int) ((bestBoard.y - offsetY) / scale);
-                    int w = (int) (bestBoard.w / scale);
-                    int h = (int) (bestBoard.h / scale);
-
-                    // Clamp to screen bounds
-                    x = Math.max(0, x);
-                    y = Math.max(0, y);
-                    w = Math.min(screen.getWidth() - x, w);
-                    h = Math.min(screen.getHeight() - y, h);
-
-                    return new Rectangle(x, y, w, h);
-                }
-            }
-
-            return null;
-
-        } catch (Exception e) {
-            System.err.println("[PieceClassifier] findBoard CRITICAL ERROR: " + e.getMessage());
-            e.printStackTrace();
-            return null;
-        } finally {
-            if (src != null)
-                src.release();
-            if (resized != null)
-                resized.release();
+            String names = session.getMetadata().getCustomMetadata().get("names");
+            String[] parsed = parseNames(names);
+            return parsed != null ? parsed : fallback;
+        } catch (OrtException | RuntimeException e) {
+            return fallback;
         }
     }
 
+    static String[] parseNames(String names) {
+        if (names == null) {
+            return null;
+        }
+        Matcher m = Pattern.compile("(\\d+)\\s*:\\s*'([^']*)'").matcher(names);
+        Map<Integer, String> map = new java.util.TreeMap<>();
+        while (m.find()) {
+            map.put(Integer.parseInt(m.group(1)), m.group(2));
+        }
+        if (map.isEmpty() || map.size() != map.keySet().stream().mapToInt(Integer::intValue).max().orElse(-1) + 1) {
+            return null;
+        }
+        return map.values().toArray(new String[0]);
+    }
+
+    /** Sets the vertical anchor used to assign a piece box to a square (tests compare 0.5 and 0.7). */
+    public void setAnchorY(float anchorY) {
+        this.anchorY = anchorY;
+    }
+
+    /** Disables the contrast normalisation (used by the tests to measure its effect). */
+    public void setContrastStretch(boolean enabled) {
+        this.contrastStretch = enabled;
+    }
+
+    // =================================================================== public API
+
+    /** Result kept for the existing callers: FEN placement in screen orientation and board presence. */
     public static class VisionResult {
-        public String fen;
-        public boolean hasBoard;
+        public final String fen;
+        public final boolean hasBoard;
+        public final BoardReading reading;
 
-        public VisionResult(String fen, boolean hasBoard) {
+        public VisionResult(String fen, boolean hasBoard, BoardReading reading) {
             this.fen = fen;
             this.hasBoard = hasBoard;
+            this.reading = reading;
         }
     }
 
-    public VisionResult getFenFromScreen(Rectangle boardRect, String debugPath) {
-        try {
-            // 1. Capture Board Area
-            Robot robot = new Robot();
-            BufferedImage boardCapture = robot.createScreenCapture(boardRect);
-            return getFenFromImage(boardCapture, debugPath, false);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
-    }
-
-    // Overload for backward compatibility and VisionController
-    public VisionResult getFenFromScreen(Rectangle boardRect) {
-        return getFenFromScreen(boardRect, null);
-    }
-
-    public VisionResult getFenFromImage(BufferedImage boardCapture, String debugPath, boolean isFlipped) {
+    /**
+     * Finds the board on a full screenshot. Returns its rectangle in screen pixels, or null.
+     */
+    public Rectangle findBoard(BufferedImage screen) {
         Mat src = null;
-        Mat resized = null;
+        Mat input = null;
         try {
-            long start = System.currentTimeMillis();
-
-            // 2. Pre-process
-            src = bufferedImageToMat(boardCapture);
-            resized = new Mat();
-            Imgproc.resize(src, resized, new Size(640, 640));
-
-            // Convert to Grayscale then to RGB (to match model training but keep 3
-            // channels)
-            Imgproc.cvtColor(resized, resized, Imgproc.COLOR_BGR2GRAY);
-            Imgproc.cvtColor(resized, resized, Imgproc.COLOR_GRAY2RGB);
-
-            // 3. Inference
-            float[] floatData = prepareInput(resized);
-            try (OnnxTensor inputTensor = OnnxTensor.createTensor(env, FloatBuffer.wrap(floatData),
-                    new long[] { 1, 3, 640, 640 });
-                    OrtSession.Result result = session
-                            .run(Collections.singletonMap(session.getInputNames().iterator().next(), inputTensor))) {
-
-                float[][][] output = (float[][][]) result.get(0).getValue();
-
-                // 4. Parse Output
-                List<Detection> detections = parseDetections(output[0], 0.6f); // Threshold 0.6
-
-                long duration = System.currentTimeMillis() - start;
-
-                // CHECK FOR BOARD PRESENCE
-                // We assume that even in a cropped image, the model should detect the "board"
-                // class
-                // with at least some confidence if it's actually a board.
-                // We lower the threshold slightly for this specific check to be safe.
-                boolean hasBoard = detections.stream().anyMatch(d -> d.classId == 7);
-
-                if (debugPath != null) {
-                    System.out.println("[Vision] Inference Time: " + duration + "ms | Detections: " + detections.size()
-                            + " | Flipped: " + isFlipped + " | HasBoard: " + hasBoard);
-
-                    // Convert src to grayscale for debug to show what model saw
-                    // Note: src is currently BGR.
-                    Imgproc.cvtColor(src, src, Imgproc.COLOR_BGR2GRAY);
-                    Imgproc.cvtColor(src, src, Imgproc.COLOR_GRAY2BGR); // Back to BGR for drawing colored boxes
-
-                    drawDebug(src, detections, debugPath);
+            src = toMat(screen);
+            double scale = Math.min((double) INPUT / src.width(), (double) INPUT / src.height());
+            int newW = (int) Math.round(src.width() * scale);
+            int newH = (int) Math.round(src.height() * scale);
+            int offX = (INPUT - newW) / 2;
+            int offY = (INPUT - newH) / 2;
+            input = preprocess(src, newW, newH, offX, offY);
+            List<Detection> detections = detect(input);
+            Detection best = null;
+            for (Detection d : detections) {
+                if (d.classId != boardClass || d.score < BOARD_FIND_THRESHOLD) {
+                    continue;
                 }
-
-                // 5. Generate FEN
-                String fen = generateFen(detections, isFlipped);
-                return new VisionResult(fen, hasBoard);
+                float ratio = d.w / d.h;
+                if (ratio < 0.85f || ratio > 1.15f) {
+                    continue; // a chessboard is square
+                }
+                if (best == null || d.w * d.h > best.w * best.h) {
+                    best = d;
+                }
             }
-
-        } catch (Exception e) {
-            e.printStackTrace();
+            if (best == null) {
+                return null;
+            }
+            int x = (int) Math.round((best.x - offX) / scale);
+            int y = (int) Math.round((best.y - offY) / scale);
+            int w = (int) Math.round(best.w / scale);
+            int h = (int) Math.round(best.h / scale);
+            x = Math.max(0, x);
+            y = Math.max(0, y);
+            w = Math.min(screen.getWidth() - x, w);
+            h = Math.min(screen.getHeight() - y, h);
+            return w > 0 && h > 0 ? new Rectangle(x, y, w, h) : null;
+        } catch (OrtException | RuntimeException e) {
+            log.error("Board search failed", e);
             return null;
         } finally {
-            if (src != null)
-                src.release();
-            if (resized != null)
-                resized.release();
+            release(src, input);
         }
     }
 
-    // Backward compatibility
+    /**
+     * Reads the position from a picture of the board (roughly cropped to it).
+     *
+     * @param isFlipped true when the picture shows black at the bottom
+     * @param debugPath optional PNG path where the detections are drawn (null = none)
+     */
+    public BoardReading read(BufferedImage boardImage, boolean isFlipped, String debugPath) throws OrtException {
+        Mat src = toMat(boardImage);
+        Mat input = null;
+        try {
+            long start = System.nanoTime();
+            input = preprocess(src, INPUT, INPUT, 0, 0);
+            List<Detection> detections = detect(input);
+            long ms = (System.nanoTime() - start) / 1_000_000;
+
+            // Grid: the detected board box when it is reliable and covers most of the picture, else the picture.
+            float gx = 0;
+            float gy = 0;
+            float gw = INPUT;
+            float gh = INPUT;
+            boolean hasBoard = false;
+            for (Detection d : detections) {
+                if (d.classId == boardClass && d.score >= 0.5f) {
+                    hasBoard = true;
+                    if (d.w * d.h >= 0.6f * INPUT * INPUT && d.w * d.h <= 1.05f * INPUT * INPUT) {
+                        gx = Math.max(0, d.x);
+                        gy = Math.max(0, d.y);
+                        gw = Math.min(INPUT - gx, d.w);
+                        gh = Math.min(INPUT - gy, d.h);
+                    }
+                    break;
+                }
+            }
+            float[][][] probs = squareProbabilities(detections, gx, gy, gw, gh, isFlipped);
+            BoardReading reading = new BoardReading(probs, hasBoard || hasPieces(detections), ms);
+            if (debugPath != null) {
+                drawDebug(src, detections, debugPath);
+            }
+            return reading;
+        } finally {
+            release(src, input);
+        }
+    }
+
+    /** Compatibility wrapper returning the FEN placement (board orientation, rank 8 first). */
+    public VisionResult getFenFromImage(BufferedImage boardCapture, String debugPath, boolean isFlipped) {
+        try {
+            BoardReading reading = read(boardCapture, isFlipped, debugPath);
+            return new VisionResult(reading.placement(), reading.hasBoard(), reading);
+        } catch (OrtException | RuntimeException e) {
+            log.error("Position reading failed", e);
+            return null;
+        }
+    }
+
     public VisionResult getFenFromImage(BufferedImage boardCapture, String debugPath) {
         return getFenFromImage(boardCapture, debugPath, false);
     }
 
-    private float[] prepareInput(Mat resized) {
-        float[] floatData = new float[3 * 640 * 640];
-        for (int y = 0; y < 640; y++) {
-            for (int x = 0; x < 640; x++) {
-                double[] pixel = resized.get(y, x);
-                floatData[0 * 640 * 640 + y * 640 + x] = (float) (pixel[0] / 255.0);
-                floatData[1 * 640 * 640 + y * 640 + x] = (float) (pixel[1] / 255.0);
-                floatData[2 * 640 * 640 + y * 640 + x] = (float) (pixel[2] / 255.0);
+    @Override
+    public void close() {
+        try {
+            session.close();
+        } catch (OrtException e) {
+            log.debug("Session close failed: {}", e.getMessage());
+        }
+    }
+
+    // =================================================================== pre-processing
+
+    /**
+     * Grey scale, robust contrast stretch and resize into a 640x640 canvas (black borders when letterboxing).
+     * Returns an 8-bit, 1-channel Mat.
+     */
+    Mat preprocess(Mat bgr, int w, int h, int offX, int offY) {
+        Mat gray = new Mat();
+        Imgproc.cvtColor(bgr, gray, Imgproc.COLOR_BGR2GRAY);
+        if (contrastStretch) {
+            stretchContrast(gray);
+        }
+        Mat resized = new Mat();
+        Imgproc.resize(gray, resized, new Size(w, h), 0, 0,
+                w < bgr.width() ? Imgproc.INTER_AREA : Imgproc.INTER_LINEAR);
+        gray.release();
+        if (w == INPUT && h == INPUT && offX == 0 && offY == 0) {
+            return resized;
+        }
+        Mat canvas = new Mat(INPUT, INPUT, CvType.CV_8UC1, new Scalar(0));
+        resized.copyTo(canvas.submat(new Rect(offX, offY, w, h)));
+        resized.release();
+        return canvas;
+    }
+
+    /** Maps the 1st..99th percentile of the grey levels to 0..255 (no-op for already full-range images). */
+    static void stretchContrast(Mat gray) {
+        int[] hist = new int[256];
+        byte[] data = new byte[(int) gray.total()];
+        gray.get(0, 0, data);
+        for (byte b : data) {
+            hist[b & 0xFF]++;
+        }
+        int total = data.length;
+        int lo = percentile(hist, total, 0.01);
+        int hi = percentile(hist, total, 0.99);
+        if (hi - lo < 16 || (lo <= 2 && hi >= 253)) {
+            return; // flat image or already using the full range
+        }
+        double scale = 255.0 / (hi - lo);
+        gray.convertTo(gray, CvType.CV_8UC1, scale, -lo * scale);
+    }
+
+    private static int percentile(int[] hist, int total, double q) {
+        long target = Math.round(total * q);
+        long acc = 0;
+        for (int i = 0; i < 256; i++) {
+            acc += hist[i];
+            if (acc >= target) {
+                return i;
             }
         }
-        return floatData;
+        return 255;
     }
 
-    private void drawDebug(Mat src, List<Detection> detections, String path) {
-        double scaleX = (double) src.width() / 640.0;
-        double scaleY = (double) src.height() / 640.0;
+    // =================================================================== inference
 
-        // Draw Grid
-        double cellW = src.width() / 8.0;
-        double cellH = src.height() / 8.0;
-        for (int i = 1; i < 8; i++) {
-            Imgproc.line(src, new Point(i * cellW, 0), new Point(i * cellW, src.height()), new Scalar(255, 0, 0), 1);
-            Imgproc.line(src, new Point(0, i * cellH), new Point(src.width(), i * cellH), new Scalar(255, 0, 0), 1);
+    private List<Detection> detect(Mat gray640) throws OrtException {
+        byte[] pixels = new byte[INPUT * INPUT];
+        gray640.get(0, 0, pixels);
+        float[] chw = new float[3 * INPUT * INPUT];
+        int plane = INPUT * INPUT;
+        for (int i = 0; i < plane; i++) {
+            float v = (pixels[i] & 0xFF) / 255f;
+            chw[i] = v;
+            chw[plane + i] = v;
+            chw[2 * plane + i] = v;
         }
-
-        for (Detection d : detections) {
-            double x = d.x * scaleX;
-            double y = d.y * scaleY;
-            double w = d.w * scaleX;
-            double h = d.h * scaleY;
-
-            Imgproc.rectangle(src, new Point(x, y), new Point(x + w, y + h), new Scalar(0, 255, 0), 2);
-
-            String label = classNames[d.classId] + " (" + String.format("%.2f", d.score) + ")";
-            Imgproc.putText(src, label, new Point(x, y - 5), Imgproc.FONT_HERSHEY_SIMPLEX, 0.5, new Scalar(0, 255, 0),
-                    2);
+        try (OnnxTensor tensor = OnnxTensor.createTensor(env, FloatBuffer.wrap(chw), new long[]{1, 3, INPUT, INPUT});
+             OrtSession.Result result = session.run(Collections.singletonMap(inputName, tensor))) {
+            float[][][] out = (float[][][]) result.get(0).getValue();
+            return decode(out[0], classNames.length);
         }
-        Imgcodecs.imwrite(path, src);
     }
 
-    private List<Detection> parseDetections(float[][] output, float threshold) {
-        int numClasses = output.length - 4;
+    /** Decodes YOLOv8 output [4 + classes][anchors] into boxes with all class scores, then applies NMS. */
+    static List<Detection> decode(float[][] output, int numClasses) {
         int anchors = output[0].length;
-
-        List<Detection> detections = new ArrayList<>();
-
+        List<Detection> candidates = new ArrayList<>();
         for (int i = 0; i < anchors; i++) {
-            float maxScore = 0;
-            int classId = -1;
-
+            float best = 0f;
+            int cls = -1;
+            float[] scores = new float[numClasses];
             for (int c = 0; c < numClasses; c++) {
-                float score = output[4 + c][i];
-                if (score > maxScore) {
-                    maxScore = score;
-                    classId = c;
+                float s = output[4 + c][i];
+                scores[c] = s;
+                if (s > best) {
+                    best = s;
+                    cls = c;
                 }
             }
-
-            if (maxScore > threshold) { // Increased threshold to 0.9
-                float cx = output[0][i];
-                float cy = output[1][i];
+            if (best > DECODE_THRESHOLD) {
                 float w = output[2][i];
                 float h = output[3][i];
-
-                float x = cx - w / 2;
-                float y = cy - h / 2;
-
-                detections.add(new Detection(classId, maxScore, x, y, w, h));
+                candidates.add(new Detection(cls, best, output[0][i] - w / 2, output[1][i] - h / 2, w, h, scores));
             }
         }
-        return applyNMS(detections);
-    }
-
-    private List<Detection> applyNMS(List<Detection> detections) {
-        detections.sort((a, b) -> Float.compare(b.score, a.score));
-        List<Detection> result = new ArrayList<>();
-
-        while (!detections.isEmpty()) {
-            Detection best = detections.remove(0);
-            result.add(best);
-            detections.removeIf(d -> calculateIoU(best, d) > 0.45f);
+        candidates.sort((a, b) -> Float.compare(b.score, a.score));
+        List<Detection> kept = new ArrayList<>();
+        for (Detection d : candidates) {
+            boolean suppressed = false;
+            for (Detection k : kept) {
+                // the board box contains every piece: only compare boards with boards and pieces with pieces
+                boolean sameKind = (k.classId == d.classId) || (!isBoardLike(k) && !isBoardLike(d));
+                if (sameKind && iou(k, d) > NMS_IOU) {
+                    suppressed = true;
+                    break;
+                }
+            }
+            if (!suppressed) {
+                kept.add(d);
+            }
         }
-        return result;
+        return kept;
     }
 
-    private float calculateIoU(Detection a, Detection b) {
+    private static boolean isBoardLike(Detection d) {
+        return d.w > 640f / 3 || d.h > 640f / 3; // a piece is at most ~1/8 of the board
+    }
+
+    static float iou(Detection a, Detection b) {
         float x1 = Math.max(a.x, b.x);
         float y1 = Math.max(a.y, b.y);
         float x2 = Math.min(a.x + a.w, b.x + b.w);
         float y2 = Math.min(a.y + a.h, b.y + b.h);
-
-        if (x2 < x1 || y2 < y1)
-            return 0;
-
-        float intersection = (x2 - x1) * (y2 - y1);
-        float areaA = a.w * a.h;
-        float areaB = b.w * b.h;
-
-        return intersection / (areaA + areaB - intersection);
+        if (x2 <= x1 || y2 <= y1) {
+            return 0f;
+        }
+        float inter = (x2 - x1) * (y2 - y1);
+        return inter / (a.w * a.h + b.w * b.h - inter);
     }
 
-    private String generateFen(List<Detection> detections, boolean isFlipped) {
-        Piece[][] grid = new Piece[8][8];
-        float cellW = 640f / 8;
-        float cellH = 640f / 8;
-
+    /**
+     * Per-square probabilities. The piece box whose anchor point (centre of its lower half) falls in a square
+     * decides it; with no box the square is empty with high probability.
+     */
+    float[][][] squareProbabilities(List<Detection> detections, float gx, float gy, float gw, float gh,
+                                    boolean isFlipped) {
+        int n = BoardReading.SYMBOLS.length();
+        float[][][] probs = new float[8][8][n];
+        Detection[][] owner = new Detection[8][8];
+        float cw = gw / 8f;
+        float ch = gh / 8f;
         for (Detection d : detections) {
-            // Ignore board class (7)
-            if (d.classId == 7)
+            if (d.classId == boardClass || symbolIndexOfClass[d.classId] < 0) {
                 continue;
-
-            int col = (int) ((d.x + d.w / 2) / cellW);
-            int row = (int) ((d.y + d.h / 2) / cellH);
-
-            if (col >= 0 && col < 8 && row >= 0 && row < 8) {
-                if (grid[row][col] == null) {
-                    grid[row][col] = getPieceFromClass(d.classId);
-                }
+            }
+            float ax = d.x + d.w / 2f;
+            float ay = d.y + d.h * anchorY;
+            int col = (int) Math.floor((ax - gx) / cw);
+            int row = (int) Math.floor((ay - gy) / ch);
+            if (col < 0 || col > 7 || row < 0 || row > 7) {
+                continue;
+            }
+            if (owner[col][row] == null || d.score > owner[col][row].score) {
+                owner[col][row] = d;
             }
         }
-
-        StringBuilder fen = new StringBuilder();
-
-        if (!isFlipped) {
-            // STANDARD ORIENTATION (White at Bottom)
-            // Screen Top (Row 0) is Rank 8. Left (Col 0) is A.
-            // Loop Row 0 -> 7. Loop Col 0 -> 7.
+        for (int col = 0; col < 8; col++) {
             for (int row = 0; row < 8; row++) {
-                int empty = 0;
-                for (int col = 0; col < 8; col++) {
-                    if (grid[row][col] == null) {
-                        empty++;
-                    } else {
-                        if (empty > 0) {
-                            fen.append(empty);
-                            empty = 0;
-                        }
-                        fen.append(grid[row][col].fenChar);
+                int file = isFlipped ? 7 - col : col;
+                int rank = isFlipped ? row : 7 - row;
+                float[] p = probs[file][rank];
+                Detection d = owner[col][row];
+                if (d == null) {
+                    java.util.Arrays.fill(p, 0.03f / (n - 1));
+                    p[n - 1] = 0.97f;
+                    continue;
+                }
+                float max = 0f;
+                for (int c = 0; c < d.scores.length; c++) {
+                    int s = symbolIndexOfClass[c];
+                    if (s >= 0) {
+                        p[s] += d.scores[c];
+                        max = Math.max(max, d.scores[c]);
                     }
                 }
-                if (empty > 0)
-                    fen.append(empty);
-                if (row < 7)
-                    fen.append("/");
-            }
-        } else {
-            // FLIPPED ORIENTATION (Black at Bottom)
-            // Screen Top (Row 0) is Rank 1. Left (Col 0) is H.
-            // Screen Bottom (Row 7) is Rank 8. Right (Col 7) is A.
-            // FEN expects Rank 8 first (A..H).
-            // So start at Row 7 (Bottom).
-            // In Row 7, A is at Col 7 (Right). H is at Col 0 (Left).
-            // Loop Row 7 -> 0. Loop Col 7 -> 0.
-            for (int row = 7; row >= 0; row--) {
-                int empty = 0;
-                for (int col = 7; col >= 0; col--) {
-                    if (grid[row][col] == null) {
-                        empty++;
-                    } else {
-                        if (empty > 0) {
-                            fen.append(empty);
-                            empty = 0;
-                        }
-                        fen.append(grid[row][col].fenChar);
-                    }
+                p[n - 1] = Math.max(0.01f, 1f - max);
+                float sum = 0f;
+                for (float v : p) {
+                    sum += v;
                 }
-                if (empty > 0)
-                    fen.append(empty);
-                if (row > 0)
-                    fen.append("/");
+                for (int i = 0; i < n; i++) {
+                    p[i] /= sum;
+                }
             }
         }
-
-        // fen.append(" w KQkq - 0 1"); // REMOVED: Let Controller handle turn/castling
-        return fen.toString();
+        return probs;
     }
 
-    private Piece getPieceFromClass(int classId) {
-        // CORRECT MAPPING from Metadata:
-        // 0: 'B', 1: 'K', 2: 'N', 3: 'P', 4: 'Q', 5: 'R' (White)
-        // 6: 'b' (Black Bishop)
-        // 7: 'board'
-        // 8: 'k', 9: 'n', 10: 'p', 11: 'q', 12: 'r' (Black)
-
-        switch (classId) {
-            case 0:
-                return new Piece('B');
-            case 1:
-                return new Piece('K');
-            case 2:
-                return new Piece('N');
-            case 3:
-                return new Piece('P');
-            case 4:
-                return new Piece('Q');
-            case 5:
-                return new Piece('R');
-            case 6:
-                return new Piece('b');
-            case 7:
-                return null; // board
-            case 8:
-                return new Piece('k');
-            case 9:
-                return new Piece('n');
-            case 10:
-                return new Piece('p');
-            case 11:
-                return new Piece('q');
-            case 12:
-                return new Piece('r');
-            default:
-                return null;
+    private boolean hasPieces(List<Detection> detections) {
+        int count = 0;
+        for (Detection d : detections) {
+            if (d.classId != boardClass && d.score >= 0.5f) {
+                count++;
+            }
         }
+        return count >= 2;
     }
 
-    private Mat bufferedImageToMat(BufferedImage bi) {
-        Mat mat;
-        if (bi.getType() != BufferedImage.TYPE_3BYTE_BGR) {
-            BufferedImage converted = new BufferedImage(bi.getWidth(), bi.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
-            converted.getGraphics().drawImage(bi, 0, 0, null);
-            bi = converted;
+    // =================================================================== helpers
+
+    static Mat toMat(BufferedImage bi) {
+        BufferedImage img = bi;
+        if (img.getType() != BufferedImage.TYPE_3BYTE_BGR) {
+            BufferedImage converted = new BufferedImage(img.getWidth(), img.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
+            java.awt.Graphics2D g = converted.createGraphics();
+            g.drawImage(img, 0, 0, null);
+            g.dispose();
+            img = converted;
         }
-        mat = new Mat(bi.getHeight(), bi.getWidth(), CvType.CV_8UC3);
-        byte[] data = ((DataBufferByte) bi.getRaster().getDataBuffer()).getData();
-        mat.put(0, 0, data);
+        Mat mat = new Mat(img.getHeight(), img.getWidth(), CvType.CV_8UC3);
+        mat.put(0, 0, ((DataBufferByte) img.getRaster().getDataBuffer()).getData());
         return mat;
     }
 
-    static class Detection {
-        int classId;
-        float score;
-        float x, y, w, h;
+    private void drawDebug(Mat src, List<Detection> detections, String path) {
+        Mat canvas = src.clone();
+        double sx = canvas.width() / (double) INPUT;
+        double sy = canvas.height() / (double) INPUT;
+        for (int i = 1; i < 8; i++) {
+            Imgproc.line(canvas, new Point(i * canvas.width() / 8.0, 0), new Point(i * canvas.width() / 8.0,
+                    canvas.height()), new Scalar(255, 0, 0), 1);
+            Imgproc.line(canvas, new Point(0, i * canvas.height() / 8.0), new Point(canvas.width(),
+                    i * canvas.height() / 8.0), new Scalar(255, 0, 0), 1);
+        }
+        for (Detection d : detections) {
+            Imgproc.rectangle(canvas, new Point(d.x * sx, d.y * sy), new Point((d.x + d.w) * sx, (d.y + d.h) * sy),
+                    new Scalar(0, 255, 0), 1);
+            Imgproc.putText(canvas, classNames[d.classId] + String.format(" %.2f", d.score),
+                    new Point(d.x * sx, Math.max(10, d.y * sy - 3)), Imgproc.FONT_HERSHEY_SIMPLEX, 0.4,
+                    new Scalar(0, 255, 0), 1);
+        }
+        Imgcodecs.imwrite(path, canvas);
+        canvas.release();
+    }
 
-        public Detection(int classId, float score, float x, float y, float w, float h) {
+    private static void release(Mat... mats) {
+        for (Mat m : mats) {
+            if (m != null) {
+                m.release();
+            }
+        }
+    }
+
+    /** One detected box in 640x640 input coordinates, with the scores of every class. */
+    static final class Detection {
+        final int classId;
+        final float score;
+        final float x;
+        final float y;
+        final float w;
+        final float h;
+        final float[] scores;
+
+        Detection(int classId, float score, float x, float y, float w, float h, float[] scores) {
             this.classId = classId;
             this.score = score;
             this.x = x;
             this.y = y;
             this.w = w;
             this.h = h;
+            this.scores = scores;
         }
     }
 
-    static class Piece {
-        char fenChar;
-
-        public Piece(char c) {
-            this.fenChar = c;
-        }
-    }
 }
