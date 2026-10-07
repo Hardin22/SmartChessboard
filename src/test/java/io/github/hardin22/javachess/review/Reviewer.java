@@ -20,13 +20,15 @@ public interface Reviewer extends AutoCloseable {
      * @param elapsedMs   wall time of the review
      * @param nodes       engine nodes searched (0 when unknown)
      * @param cacheHits   positions served by a cache (their time is not engine time)
+     * @param winBefore   mover's win chance with the best move, per ply (0..1), empty when unknown
+     * @param winAfter    mover's win chance after the played move, per ply (0..1), empty when unknown
      */
     record Result(List<ReviewLabel> labels, double whiteAccuracy, double blackAccuracy, List<Double> whiteCp,
-                  long elapsedMs, long nodes, int cacheHits) {
+                  long elapsedMs, long nodes, int cacheHits, List<Double> winBefore, List<Double> winAfter) {
 
         public Result(List<ReviewLabel> labels, double whiteAccuracy, double blackAccuracy, List<Double> whiteCp,
                       long elapsedMs) {
-            this(labels, whiteAccuracy, blackAccuracy, whiteCp, elapsedMs, 0, 0);
+            this(labels, whiteAccuracy, blackAccuracy, whiteCp, elapsedMs, 0, 0, List.of(), List.of());
         }
     }
 }

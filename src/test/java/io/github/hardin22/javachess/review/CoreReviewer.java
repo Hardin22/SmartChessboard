@@ -61,15 +61,20 @@ public final class CoreReviewer implements Reviewer {
         }
         List<ReviewLabel> labels = new ArrayList<>();
         List<Double> cp = new ArrayList<>();
+        List<Double> winBefore = new ArrayList<>();
+        List<Double> winAfter = new ArrayList<>();
         for (MoveReview m : r.moves()) {
             labels.add(ReviewLabel.of(m.label()));
             cp.add(m.after().legacyPawns() * 100);
+            winBefore.add(m.winBefore());
+            winAfter.add(m.winAfter());
         }
         // with cache hits the engine work is rebuilt from the stored evaluations (main pass + MultiPV re-searches)
         long nodes = r.stats().cacheHits() == 0 ? r.stats().nodes()
                 : r.positions().stream().mapToLong(p -> p.nodes()).sum()
                         + (long) r.stats().multiPvSearches() * settings.secondLineNodes();
-        return new Result(labels, r.whiteAccuracy(), r.blackAccuracy(), cp, ms, nodes, r.stats().cacheHits());
+        return new Result(labels, r.whiteAccuracy(), r.blackAccuracy(), cp, ms, nodes, r.stats().cacheHits(),
+                winBefore, winAfter);
     }
 
     @Override

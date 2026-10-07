@@ -41,7 +41,8 @@ class ChessComAgreementTest {
         Files.createDirectories(out);
 
         AgreementReport report;
-        StringBuilder csv = new StringBuilder("game,ply,san,ours,chesscom,white_cp\n");
+        StringBuilder csv = new StringBuilder("game,ply,san,ours,chesscom,white_cp,win_before,win_after,"
+                + "cc_acc_white,cc_acc_black,time_class,avg_rating\n");
         try (Reviewer reviewer = Reviewers.create(System.getProperty("review.reviewer", "core"), depth)) {
             report = new AgreementReport(reviewer.name());
             int done = 0;
@@ -50,8 +51,10 @@ class ChessComAgreementTest {
                 report.add(g, r);
                 for (int i = 0; i < g.plies(); i++) {
                     ReviewLabel t = g.hasLabels() ? g.labels().get(i) : null;
-                    csv.append(String.format(Locale.ROOT, "%s,%d,%s,%s,%s,%s%n", g.id(), i + 1, g.san().get(i),
-                            r.labels().get(i), t == null ? "" : t, i < r.whiteCp().size() ? r.whiteCp().get(i) : ""));
+                    csv.append(String.format(Locale.ROOT, "%s,%d,%s,%s,%s,%s,%s,%s,%s,%s,%s,%d%n", g.id(), i + 1,
+                            g.san().get(i), r.labels().get(i), t == null ? "" : t, at(r.whiteCp(), i),
+                            at(r.winBefore(), i), at(r.winAfter(), i), g.whiteAccuracy(), g.blackAccuracy(),
+                            g.timeClass(), g.averageRating()));
                 }
                 if (++done % 10 == 0) {
                     System.out.printf(Locale.ROOT, "review harness: %d/%d games, MAE %.2f, %.1f ms/ply%n", done,
@@ -89,6 +92,10 @@ class ChessComAgreementTest {
             out = new ArrayList<>(out.subList(0, limit));
         }
         return out;
+    }
+
+    private static String at(List<Double> v, int i) {
+        return i < v.size() ? String.format(Locale.ROOT, "%.5f", v.get(i)) : "";
     }
 
     private static void write(Path p, String s) throws IOException {
