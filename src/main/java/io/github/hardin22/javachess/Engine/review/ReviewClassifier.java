@@ -66,6 +66,19 @@ public final class ReviewClassifier {
         final double brilliantMinCpAfter;
         /** G-E1 refinement: 0 = no capture is Great, 1 = only a pawn taking a pawn is never Great. */
         final int greatCaptureRule;
+        /** Great rule: 2 = SPEC v2.1 (outcome class change or only move; captures only punishing a blunder). */
+        final int greatRule;
+        /** v2.1: win chance limits of the outcome classes losing / equal / winning. */
+        final double outcomeLow;
+        final double outcomeHigh;
+        /** v2.1: the smallest gap that counts when the move changes the outcome class. */
+        final double greatClassGap;
+        /** v2.1: a capture is Great only after an opponent's move losing this much ... */
+        final double greatCaptureOppLoss;
+        /** ... and with the second best move this much worse. */
+        final double greatCaptureGap;
+        /** v2.1: a piece or the exchange given for pawns counts as a sacrifice of 2 (Brilliant). */
+        final boolean pieceSacrifice;
         /** v1.9: no capture is Great (G-E1). */
         final boolean greatNoCapture;
         /**
@@ -151,9 +164,16 @@ public final class ReviewClassifier {
             criticalMinEp = get("criticalMinEp", 0.40);
             brilliantFromGood = get("brilliantFromGood", 1) != 0;
             brilliantRule = (int) get("brilliantRule", 2);
-            brilliantNonTopLoss = get("brilliantNonTopLoss", 0.03);
+            brilliantNonTopLoss = get("brilliantNonTopLoss", 0.01);
             fakeRegain = get("fakeRegain", 4);
             greatNoCapture = get("greatNoCapture", 1) != 0;
+            greatRule = (int) get("greatRule", 2);
+            pieceSacrifice = get("pieceSacrifice", 1) != 0;
+            outcomeLow = get("outcomeLow", 0.40);
+            outcomeHigh = get("outcomeHigh", 0.60);
+            greatClassGap = get("greatClassGap", 0.10);
+            greatCaptureOppLoss = get("greatCaptureOppLoss", 0.10);
+            greatCaptureGap = get("greatCaptureGap", 0.30);
             greatCaptureRule = (int) get("greatCaptureRule", 0);
             brilliantWinningCp = get("brilliantWinningCp", 700);
             brilliantMinCpAfter = get("brilliantMinCpAfter", -15);
@@ -166,7 +186,7 @@ public final class ReviewClassifier {
             brilliantMaxLoss = get("brilliantMaxLoss", 0.03);
             brilliantMinEpAfter = get("brilliantMinEpAfter", 0.48);
             brilliantMaxAlt = get("brilliantMaxAlt", 0.97);
-            greatGap = get("greatGap", 0.15);
+            greatGap = get("greatGap", 0.25);
             greatPunishGap = get("greatPunishGap", 0.15);
             greatMinEp = get("greatMinEp", 0.40);
             greatMaxEp = get("greatMaxEp", 0.98);
@@ -668,6 +688,9 @@ public final class ReviewClassifier {
         if (t.greatForcingCheck && forcingCheck(b0, uci, i, replay, second, epBefore, epAfter, me, t, k)) {
             return MoveClassification.GREAT; // G+1
         }
+        if (t.greatRule == 2) {
+            return greatV21(b0, uci, i, replay, second, epBefore, me, oppLoss, t, k) ? MoveClassification.GREAT : null;
+        }
         if (epBefore < t.greatMinEp || epBefore > t.greatMaxEp) {
             return null;
         }
@@ -690,6 +713,33 @@ public final class ReviewClassifier {
         double gap = epBefore - ep(second.eval(), me, k);
         boolean punishes = oppLoss >= t.greatOpponentLoss && gap >= t.greatPunishGap;
         return punishes || gap >= t.greatGap ? MoveClassification.GREAT : null;
+    }
+
+    /**
+     * SPEC v2.1 Great: the only move in chess.com's own sense, "critical to the outcome". The move changes the outcome
+     * class of the position compared with the second best move (losing below 0.40, equal up to 0.60, winning above)
+     * by at least {@link Tuning#greatClassGap}, or every other move loses at least {@link Tuning#greatGap}. A capture
+     * is Great only when it punishes the opponent's blunder (not a recapture, opponent's move lost at least
+     * {@link Tuning#greatCaptureOppLoss}, second best at least {@link Tuning#greatCaptureGap} worse): taking back or
+     * keeping the material is routine.
+     */
+    private static boolean greatV21(Board b0, String uci, int i, GameReplay replay, EngineLine second, double epBefore,
+                                    boolean me, double oppLoss, Tuning t, double k) {
+        if (second == null || b0.isKingAttacked() || epBefore < t.greatMinEp) {
+            return false;
+        }
+        double gap = epBefore - ep(second.eval(), me, k);
+        if (Tactics.isCapture(b0, uci)
+                && ((i > 0 && isRecapture(replay, i)) || oppLoss < t.greatCaptureOppLoss || gap < t.greatCaptureGap)) {
+            return false;
+        }
+        boolean changesOutcome = outcomeClass(epBefore, t) > outcomeClass(epBefore - gap, t) && gap >= t.greatClassGap;
+        return changesOutcome || gap >= t.greatGap;
+    }
+
+    /** 0 losing, 1 about equal, 2 winning (SPEC v2.1). */
+    private static int outcomeClass(double ep, Tuning t) {
+        return ep < t.outcomeLow ? 0 : ep > t.outcomeHigh ? 2 : 1;
     }
 
     /**
@@ -783,7 +833,7 @@ public final class ReviewClassifier {
         if (sac.value() < t.sacMin) {
             return false; // B-E1: nothing new is offered
         }
-        return sac.regain() < 0 || sac.regain() < sac.value() + t.fakeRegain; // B-E4
+        return sac.regain() < 0 || sac.regain() < sac.offered() + t.fakeRegain; // B-E4
     }
 
     /**
@@ -792,20 +842,21 @@ public final class ReviewClassifier {
      * the opponent accepts with its least valuable capturer, the most the mover then wins back at once (-1 when the
      * piece cannot be taken or taking it mates).
      */
-    record Sacrifice(int value, int regain) {
+    record Sacrifice(int value, int regain, int offered) {
 
         static Sacrifice of(Board b0, String uci, boolean me) {
             Move m = Tactics.find(b0, uci);
             if (m == null) {
-                return new Sacrifice(0, -1);
+                return new Sacrifice(0, -1, 0);
             }
             Side side = me ? Side.WHITE : Side.BLACK;
             java.util.Set<Square> before = Tactics.hanging(b0, side).keySet();
-            int captured = Tactics.value(b0.getPiece(m.getTo()));
+            Piece taken = b0.getPiece(m.getTo());
+            int captured = Tactics.value(taken);
             Board b1 = b0.clone();
             b1.doMove(m);
             if (b1.isMated()) {
-                return new Sacrifice(0, -1);
+                return new Sacrifice(0, -1, 0);
             }
             int movedNet = Tactics.see(b1, m.getTo()) - captured;
             Square newSq = null;
@@ -817,13 +868,26 @@ public final class ReviewClassifier {
                 }
             }
             int min = (int) Tuning.DEFAULT.sacMin;
-            if (movedNet >= min) {
-                return new Sacrifice(movedNet, Tactics.regainAfterCapture(b1, m.getTo()));
+            Square sacSq = movedNet >= min ? m.getTo() : newSq != null && newHang - captured >= min ? newSq : null;
+            int offered = sacSq == null ? 0 : sacSq == m.getTo() ? movedNet : newHang - captured;
+            int regain = sacSq == null ? -1 : Tactics.regainAfterCapture(b1, sacSq);
+            int value = Math.max(movedNet, newHang - captured);
+            if (Tuning.DEFAULT.pieceSacrifice) {
+                // SPEC v2.1: a piece (or the exchange) given for pawns is a sacrifice even if the pawns make the net
+                // loss 1: pieces lost along the exchange minus pieces won, pawns not counted
+                int pieceLoss = 0;
+                List<Integer> seq = Tactics.seePieceSequence(b1, m.getTo());
+                for (int j = 0; j < seq.size(); j++) {
+                    pieceLoss += j % 2 == 0 ? seq.get(j) : -seq.get(j);
+                }
+                pieceLoss -= taken.getPieceType() == PieceType.PAWN ? 0 : captured;
+                int moved = movedNet >= 2 || (movedNet >= 1 && pieceLoss >= 2) ? movedNet : 0;
+                value = Math.max(moved >= 1 ? moved : 0, newHang - captured);
+                if (moved >= 1) {
+                    value = Math.max(value, 2);
+                }
             }
-            if (newSq != null && newHang - captured >= min) {
-                return new Sacrifice(newHang - captured, Tactics.regainAfterCapture(b1, newSq));
-            }
-            return new Sacrifice(Math.max(movedNet, newHang - captured), -1);
+            return new Sacrifice(value, regain, offered);
         }
     }
 
