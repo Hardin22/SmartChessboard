@@ -20,7 +20,6 @@ daily_998267522	45	fn-great	ex-holdout49	Rf3	excellent	great
 daily_998267522	47	fn-great	ex-holdout49	c3	best	great
 live_117364247477	32	fn-great	cv93	Qxb2	best	great
 live_118493959209	32	fn-great	ex-holdout49	Bxc3	best	great
-live_118493959209	68	fp-great	ex-holdout49	Nc4+	great	best
 live_118493959209	84	fn-great	ex-holdout49	Nxf1	best	great
 live_122947746214	21	fn-great	ex-holdout49	Nxb5	inaccuracy	great
 live_122947746214	29	fn-great	ex-holdout49	Nxd4	best	great
@@ -129,7 +128,6 @@ bai_jinshi_ding_liren_2017	58	fn-brilliant	famous-brilliant	Rxf2	best	brilliant
 botvinnik_capablanca_1938	37	fn-great	famous-brilliant	e4	best	great
 botvinnik_capablanca_1938	75	fn-great	famous-brilliant	Kxh5	best	great
 botvinnik_tal_1960_g6	58	fn-great	famous-control	Rxc1	best	great
-byrne_fischer_1956	24	fp-great	famous-brilliant	Nxc3	great	best
 byrne_fischer_1956	34	fn-brilliant	famous-brilliant	Be6	great	brilliant
 byrne_fischer_1956	34	fp-great	famous-brilliant	Be6	great	brilliant
 capablanca_marshall_1918	71	fn-brilliant	famous-control	Bxf7+	best	brilliant
@@ -147,7 +145,6 @@ nezhmetdinov_chernikov_1962	40	fn-great	famous-brilliant	Qd8	best	great
 nezhmetdinov_chernikov_1962	41	fn-great	famous-brilliant	Nxf6	best	great
 polugaevsky_nezhmetdinov_1958	26	fn-great	famous-brilliant	Bh6	excellent	great
 polugaevsky_nezhmetdinov_1958	31	fn-great	famous-brilliant	Nd5	best	great
-polugaevsky_nezhmetdinov_1958	33	fn-great	famous-brilliant	g3	best	great
 polugaevsky_nezhmetdinov_1958	38	fn-brilliant	famous-brilliant	Be6	best	brilliant
 polugaevsky_nezhmetdinov_1958	54	fn-great	famous-brilliant	c5+	best	great
 reshevsky_petrosian_1953	50	fn-great	famous-control	Re6	best	great
@@ -161,8 +158,6 @@ spassky_bronstein_1960	24	fn-great	famous-brilliant	Be7	best	great
 spassky_fischer_1972_g1	24	fn-great	famous-control	Bxc5	best	great
 spassky_fischer_1972_g1	68	fn-great	famous-control	Bxg3	best	great
 spassky_fischer_1972_g1	79	fn-great	famous-control	Kh4	best	great
-spassky_fischer_1972_g1	87	fp-great	famous-control	Bf2	great	best
-spassky_fischer_1972_g1	91	fp-great	famous-control	Bg5	great	best
 tal_larsen_1965_g10	20	fn-great	famous-brilliant	Qb8	best	great
 tal_larsen_1965_g10	28	fn-great	famous-brilliant	Nd7	best	great
 topalov_shirov_1998	27	fn-great	famous-brilliant	Bb3	best	great
