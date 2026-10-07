@@ -60,7 +60,7 @@ public final class ReviewClassifier {
     /** Book: plies without a named position that can still lead back into one. */
     static final int BOOK_MAX_GAP = 4;
     /** Book labels stop after this many plies. */
-    static final int BOOK_MAX_PLY = 30;
+    static final int BOOK_MAX_PLY = 20;
 
     private ReviewClassifier() {
     }
