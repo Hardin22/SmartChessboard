@@ -525,6 +525,17 @@ public final class EngineManager implements EngineSelection {
      *   <li>depth 16 raises the ok/error agreement to 96% (when the position before was searched deeper) but costs
      *       p50 134 k / p95 330 k nodes (~0.4 / 1.1 s on one Pi 5 core): used only as a capped confirmation.</li>
      * </ul>
+     * Latency targets (verdict after the piece is put down; {@code CoachLatencyTest} asserts them with a
+     * machine-speed-normalised estimate, one analysis thread):
+     * <table>
+     *   <caption>Targets and estimates</caption>
+     *   <tr><th>board</th><th>profile</th><th>target p50 / p95</th><th>estimate p50 / p95</th><th>CFS-quota worst case</th></tr>
+     *   <tr><td>Pi 5</td><td>Stockfish</td><td>0.5 s / 1.5 s</td><td>~25-70 ms / ~170 ms</td><td>0.12 s / 0.7 s</td></tr>
+     *   <tr><td>Pi 4</td><td>Stockfish Lite</td><td>1 s / 3 s</td><td>~60-160 ms / ~390 ms</td><td>1.1 s / 2.0 s</td></tr>
+     * </table>
+     * The CFS-quota column comes from a linux/arm64 container on the Mac limited with {@code --cpus 0.25 / 0.11}
+     * (one Pi 5 / Pi 4 core): the 100 ms throttling makes it very pessimistic. Lift hints: 13 moves at depth 10 in
+     * 81 ms on one M4 core, i.e. ~0.3 s on a Pi 5 and capped at 0.6 s / 0.5 s (full / lite).
      *
      * @param threads            analysis engine threads
      * @param hashMb             analysis engine hash
