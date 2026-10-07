@@ -56,6 +56,8 @@ public final class ReviewClassifier {
         final double greatMaxEp;
         /** Not Great: taking a hanging piece, a plain recapture. */
         final boolean greatFilters;
+        /** ... but taking the piece the opponent just blundered (its move lost at least this) can be Great. */
+        final double greatTakesBlunder;
         /** Great after an opponent's error: the opponent's previous move lost at least this much. */
         final double greatOpponentLoss;
         /** Miss: the opponent's previous move lost at least this much. */
@@ -105,6 +107,7 @@ public final class ReviewClassifier {
             greatMinEp = get("greatMinEp", 0.45);
             greatMaxEp = get("greatMaxEp", 0.95);
             greatFilters = get("greatFilters", 1) != 0;
+            greatTakesBlunder = get("greatTakesBlunder", 0.10);
             missOpponentLoss = get("missOpponentLoss", 0.08);
             greatOpponentLoss = get("greatOpponentLoss", 0.05);
             missNoWorse = get("missNoWorse", 0.10);
@@ -560,8 +563,9 @@ public final class ReviewClassifier {
         }
         if (t.greatFilters) {
             Move m = Tactics.find(b0, uci);
-            if (m != null && b0.getPiece(m.getTo()) != Piece.NONE && !Tactics.isSafe(b0, m.getTo())) {
-                return null; // taking a hanging piece is not "great"
+            if (m != null && b0.getPiece(m.getTo()) != Piece.NONE && !Tactics.isSafe(b0, m.getTo())
+                    && oppLoss < t.greatTakesBlunder) {
+                return null; // taking a hanging piece is not "great" (unless it punishes a real blunder)
             }
             if (i > 0 && isRecapture(replay, i)) {
                 return null;
