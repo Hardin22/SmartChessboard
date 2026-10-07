@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *     -Djavachess.engines.dir=$HOME/Developer/javaChess/engines [-Dreview.depth=12] [-Dreview.limit=50] \
  *     [-Dreview.games=id1,id2] [-Dreview.timeClass=blitz] [-Dreview.labelledOnly=true] [-Dreview.out=target/review]
  * </pre>
- * Writes {@code report.md}, {@code summary.json} and {@code plies.csv} to {@code review.out}. The only hard assertion
+ * Writes {@code report.md}, {@code summary.json}, {@code games.csv} and {@code plies.csv} to {@code review.out}. The only hard assertion
  * is the mate sanity check (a mate given is never an error, an avoidable mate in one is never a good move), gated by
  * {@code -Dreview.strictMates=true} until the classification core lands.
  */
@@ -41,6 +41,8 @@ class ChessComAgreementTest {
         Files.createDirectories(out);
 
         AgreementReport report;
+        StringBuilder gamesCsv = new StringBuilder("game,time_class,white_rating,black_rating,cc_white,cc_black,"
+                + "ours_white,ours_black,tags,known_labels,plies\n");
         StringBuilder csv = new StringBuilder("game,ply,san,ours,chesscom,white_cp,win_before,win_after,"
                 + "cc_acc_white,cc_acc_black,time_class,avg_rating\n");
         try (Reviewer reviewer = Reviewers.create(System.getProperty("review.reviewer", "core"), depth)) {
@@ -49,6 +51,11 @@ class ChessComAgreementTest {
             for (ChessComDataset.Game g : games) {
                 Reviewer.Result r = reviewer.review(g);
                 report.add(g, r);
+                gamesCsv.append(String.format(Locale.ROOT, "%s,%s,%d,%d,%s,%s,%.2f,%.2f,%s,%d,%d%n", g.id(),
+                        g.timeClass(), g.whiteRating(), g.blackRating(), g.whiteAccuracy(), g.blackAccuracy(),
+                        r.whiteAccuracy(), r.blackAccuracy(), String.join(" ", g.tags()),
+                        g.hasLabels() ? g.labels().stream().filter(java.util.Objects::nonNull).count() : 0,
+                        g.plies()));
                 for (int i = 0; i < g.plies(); i++) {
                     ReviewLabel t = g.hasLabels() ? g.labels().get(i) : null;
                     csv.append(String.format(Locale.ROOT, "%s,%d,%s,%s,%s,%s,%s,%s,%s,%s,%s,%d%n", g.id(), i + 1,
@@ -66,6 +73,7 @@ class ChessComAgreementTest {
         write(out.resolve("report.md"), md);
         write(out.resolve("summary.json"), report.summaryJson().toString(2));
         write(out.resolve("plies.csv"), csv.toString());
+        write(out.resolve("games.csv"), gamesCsv.toString());
         System.out.println(report.summaryJson().toString(2));
         if (Boolean.getBoolean("review.strictMates")) {
             assertTrue(report.mateViolations().isEmpty(), report.mateViolations().size() + " mate violations:\n"
