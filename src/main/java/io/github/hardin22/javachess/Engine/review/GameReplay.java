@@ -21,9 +21,11 @@ import java.util.regex.Pattern;
  * @param sans            the same moves in SAN
  * @param fens            positions: {@code fens.size() == uci.size() + 1}
  * @param legalMoveCounts legal moves available before each played move
+ * @param drawn           per position: drawn by threefold repetition or the 50-move rule (the FEN alone does not
+ *                        tell an engine)
  */
 public record GameReplay(String initialFen, List<String> uci, List<String> sans, List<String> fens,
-                         List<Integer> legalMoveCounts) {
+                         List<Integer> legalMoveCounts, List<Boolean> drawn) {
 
     public static final String START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
     private static final Pattern SKIP = Pattern.compile("\\d+\\.+|\\d+\\.\\.\\.|1-0|0-1|1/2-1/2|\\*|\\$\\d+");
@@ -33,6 +35,7 @@ public record GameReplay(String initialFen, List<String> uci, List<String> sans,
         sans = List.copyOf(sans);
         fens = List.copyOf(fens);
         legalMoveCounts = List.copyOf(legalMoveCounts);
+        drawn = List.copyOf(drawn);
     }
 
     /** Replays whitespace separated move tokens (UCI or SAN, PGN movetext accepted). */
@@ -50,7 +53,9 @@ public record GameReplay(String initialFen, List<String> uci, List<String> sans,
         List<String> sans = new ArrayList<>();
         List<String> fens = new ArrayList<>();
         List<Integer> counts = new ArrayList<>();
+        List<Boolean> drawn = new ArrayList<>();
         fens.add(board.getFen());
+        drawn.add(false);
         for (String raw : tokens) {
             String token = stripMoveNumber(raw.trim());
             if (token.isEmpty() || SKIP.matcher(token).matches()) {
@@ -72,8 +77,9 @@ public record GameReplay(String initialFen, List<String> uci, List<String> sans,
             uci.add(m.toString());
             sans.add(san);
             fens.add(board.getFen());
+            drawn.add(board.isRepetition() || board.getHalfMoveCounter() >= 100);
         }
-        return new GameReplay(start, uci, sans, fens, counts);
+        return new GameReplay(start, uci, sans, fens, counts, drawn);
     }
 
     /** "12.e4" → "e4", "12...e5" → "e5". */

@@ -61,7 +61,8 @@ public record Eval(Kind kind, int value) {
         if (!s.mate()) {
             return cp(whiteToMove ? s.value() : -s.value());
         }
-        boolean sideToMoveWins = s.value() > 0;
+        // a delivered mate (Score.mateDelivered(), a negated mate 0) is a win for the side it belongs to
+        boolean sideToMoveWins = s.isWinningMate();
         return mateFor(whiteToMove == sideToMoveWins, Math.abs(s.value()));
     }
 
@@ -140,15 +141,14 @@ public record Eval(Kind kind, int value) {
         return WinModel.winChance(this, white);
     }
 
-    /** Back to a UCI score for the given side to move (mate 0 only for the side that is checkmated). */
+    /** Back to a UCI score for the given side to move (a checkmate is {@code Score.mateDelivered()} for the winner). */
     public Score toUci(boolean whiteToMove) {
         if (kind == Kind.CP) {
             return Score.cp(whiteToMove ? value : -value);
         }
         boolean sideToMoveWins = isMateFor(whiteToMove);
         if (value == 0) {
-            // UCI cannot express "the side to move has delivered mate"; only the mated side gets mate 0.
-            return sideToMoveWins ? Score.mate(1) : Score.mate(0);
+            return sideToMoveWins ? Score.mateDelivered() : Score.mate(0);
         }
         return Score.mate(sideToMoveWins ? value : -value);
     }

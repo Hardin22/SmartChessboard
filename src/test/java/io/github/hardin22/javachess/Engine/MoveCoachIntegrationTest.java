@@ -113,7 +113,7 @@ class MoveCoachIntegrationTest {
             "r1bqkbnr/pppp1ppp/2n5/4p2Q/4P3/8/PPPP1PPP/RNB1KBNR w KQkq - 2 3; h5e5; BLUNDER; hangs the queen",
             "r1bqkbnr/pppp1ppp/2n5/4p2Q/4P3/8/PPPP1PPP/RNB1KBNR w KQkq - 2 3; f1c4; OK; develops with threat",
             "k7/8/2K5/8/8/8/8/1Q6 w - - 0 1; b1b7; BEST; queen mate",
-            "k7/8/2K5/8/8/8/8/1Q6 w - - 0 1; b1b6; BLUNDER; stalemate throws the win",
+            "k7/8/2K5/8/8/8/8/1Q6 w - - 0 1; b1b6; ERROR; stalemate throws the win",
             "8/8/4k3/8/8/4K3/8/8 w - - 0 1; e3d3; OK; dead draw, any king move",
             "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 6 5; e1g1; OK; castles",
             "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 6 5; c4f7; ERROR; bishop sac that loses material",

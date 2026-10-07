@@ -12,9 +12,21 @@ public interface PositionEvaluator extends AutoCloseable {
      *
      * @param fen     the position (must have legal moves)
      * @param multiPv number of lines (1, or 2 for the second best move)
-     * @param nodes   node budget (deterministic and hardware independent, unlike time)
+     * @param nodes   node budget (hardware independent, unlike time)
      */
     PositionEval evaluate(String fen, int multiPv, long nodes) throws Exception;
+
+    /**
+     * Adds the second best line to an evaluation searched with MultiPV 1 (for Great/Brilliant). The default searches
+     * again with MultiPV 2; engines can search only the other moves, which is much cheaper.
+     *
+     * @param p           evaluation with at least the best line
+     * @param mainNodes   node budget {@code p} was searched with (cache key)
+     * @param secondNodes node budget of the second line
+     */
+    default PositionEval addSecondLine(PositionEval p, long mainNodes, long secondNodes) throws Exception {
+        return evaluate(p.fen(), 2, Math.max(mainNodes, secondNodes));
+    }
 
     /** A new game starts: engines may clear their hash (no-op by default). */
     default void newGame() {

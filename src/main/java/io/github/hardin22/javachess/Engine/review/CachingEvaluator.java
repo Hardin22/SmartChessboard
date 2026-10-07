@@ -29,6 +29,21 @@ public final class CachingEvaluator implements PositionEvaluator {
     }
 
     @Override
+    public PositionEval addSecondLine(PositionEval p, long mainNodes, long secondNodes) throws Exception {
+        PositionEval hit = cache.get(p.fen(), 2, mainNodes);
+        if (hit != null) {
+            hits.incrementAndGet();
+            return hit;
+        }
+        misses.incrementAndGet();
+        PositionEval r = engine.addSecondLine(p, mainNodes, secondNodes);
+        if (r.secondBest() != null) {
+            cache.put(r, 2, mainNodes);
+        }
+        return r;
+    }
+
+    @Override
     public void newGame() {
         engine.newGame();
     }

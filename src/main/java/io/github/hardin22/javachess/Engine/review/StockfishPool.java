@@ -19,8 +19,9 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * A few single-threaded Stockfish processes that evaluate review positions in parallel. One thread per process
- * makes node-limited searches deterministic (same nodes, same result on every machine), and N processes scale
- * better than N threads in one process for many short searches.
+ * with node limits makes results independent of the machine's speed (only the hash carried over from the previous
+ * positions can change a score slightly), and N processes scale better than N threads in one process for many
+ * short searches.
  */
 public final class StockfishPool implements PositionEvaluator {
 
@@ -42,13 +43,22 @@ public final class StockfishPool implements PositionEvaluator {
         Map<String, String> opts = new LinkedHashMap<>();
         opts.put("Threads", "1");
         opts.put("Hash", String.valueOf(Math.max(1, hashMb)));
+        List<java.util.concurrent.CompletableFuture<Void>> started = new ArrayList<>();
         for (int i = 0; i < n; i++) {
             UciClient c = new UciClient(EngineSpec.of("review-" + i, stockfish, opts));
-            c.start();
+            started.add(c.start());
             clients.add(c);
             idle.add(c);
         }
-        this.id = "sf:" + stockfish.getFileName();
+        String name = "";
+        try {
+            started.get(0).get(15, TimeUnit.SECONDS);
+            name = clients.get(0).engineName();
+        } catch (Exception e) {
+            // a failing engine fails its searches later; the id falls back to the file name
+        }
+        // part of the cache key: another engine version must not reuse cached evaluations
+        this.id = name == null || name.isBlank() ? "sf:" + stockfish.getFileName() : name.trim();
     }
 
     @Override
@@ -62,15 +72,46 @@ public final class StockfishPool implements PositionEvaluator {
         if (terminal.isPresent() && board.legalMoves().isEmpty()) {
             return PositionEval.terminal(fen, terminal.get());
         }
+        SearchResult r = search(fen, SearchLimits.nodes(nodes).withMultiPv(multiPv), nodes);
+        return toPositionEval(fen, board.getSideToMove() == com.github.bhlangonijr.chesslib.Side.WHITE, r);
+    }
+
+    /** Searches every move but the best one: its top line is the second best move. */
+    @Override
+    public PositionEval addSecondLine(PositionEval p, long mainNodes, long secondNodes) throws Exception {
+        if (p.terminal() || p.best() == null || p.secondBest() != null) {
+            return p;
+        }
+        Board board = new Board();
+        board.loadFromFen(p.fen());
+        List<String> others = new ArrayList<>();
+        for (var m : board.legalMoves()) {
+            if (!m.toString().equals(p.bestMove())) {
+                others.add(m.toString());
+            }
+        }
+        if (others.isEmpty()) {
+            return p;
+        }
+        boolean white = board.getSideToMove() == com.github.bhlangonijr.chesslib.Side.WHITE;
+        SearchResult r = search(p.fen(), SearchLimits.nodes(secondNodes).withSearchMoves(others), secondNodes);
+        if (r.lines().isEmpty()) {
+            return p;
+        }
+        InfoLine l = r.lines().get(0);
+        List<EngineLine> lines = new ArrayList<>(p.lines());
+        lines.add(new EngineLine(l.move(), Eval.fromUci(l.score(), white), l.pv(), l.depth()));
+        return new PositionEval(p.fen(), p.eval(), lines, p.depth(), p.nodes() + r.nodes(), false);
+    }
+
+    private SearchResult search(String fen, SearchLimits limits, long nodes) throws Exception {
         UciClient preferred = affinity.get();
         UciClient c = preferred != null && idle.remove(preferred) ? preferred : idle.take();
         affinity.set(c);
         try {
             // generous client-side cap: a node budget normally ends long before (protects against a hung engine)
             long capMs = Math.max(10_000, nodes / 20);
-            SearchResult r = c.search(fen, SearchLimits.nodes(nodes).withMultiPv(multiPv).withTimeout(capMs))
-                    .result().get(capMs + 10_000, TimeUnit.MILLISECONDS);
-            return toPositionEval(fen, board.getSideToMove() == com.github.bhlangonijr.chesslib.Side.WHITE, r);
+            return c.search(fen, limits.withTimeout(capMs)).result().get(capMs + 10_000, TimeUnit.MILLISECONDS);
         } finally {
             idle.add(c);
         }

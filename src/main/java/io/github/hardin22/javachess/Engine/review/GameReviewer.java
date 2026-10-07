@@ -50,9 +50,11 @@ public final class GameReviewer implements AutoCloseable {
         Path sf = EngineLocator.stockfish().path()
                 .orElseThrow(() -> new EngineException(EngineLocator.stockfish().describeMissing()));
         EngineManager m = EngineManager.get();
-        int cores = Runtime.getRuntime().availableProcessors();
         boolean lite = EngineManager.STOCKFISH_LITE.equals(m.activeProfile().id());
-        ReviewSettings s = lite ? ReviewSettings.lite(m.plan(), cores) : ReviewSettings.full(m.plan(), cores);
+        // processes and hash come from the engine budget of the board, nodes from the profile
+        EngineManager.ReviewPlan plan = m.budget().review();
+        ReviewSettings base = lite ? ReviewSettings.lite() : ReviewSettings.full();
+        ReviewSettings s = new ReviewSettings(base.nodes(), base.secondLineNodes(), plan.workers(), plan.hashMb());
         StockfishPool pool = new StockfishPool(sf, s.processes(), s.hashMb());
         Path dir = AppPaths.resolve("review-cache");
         return new GameReviewer(new CachingEvaluator(pool, EvalCache.in(dir, pool.id())), s, OpeningBook.standard());
@@ -95,7 +97,9 @@ public final class GameReviewer implements AutoCloseable {
                         if (Thread.currentThread().isInterrupted()) {
                             throw new InterruptedException();
                         }
-                        PositionEval p = evaluator.evaluate(replay.fens().get(idx), 1, settings.nodes());
+                        PositionEval p = replay.drawn().get(idx) && !mated(replay.fens().get(idx))
+                                ? PositionEval.terminal(replay.fens().get(idx), Eval.DRAW)
+                                : evaluator.evaluate(replay.fens().get(idx), 1, settings.nodes());
                         positions[idx] = p;
                         nodes.addAndGet(p.nodes());
                         l.onPosition(idx, p);
@@ -116,9 +120,10 @@ public final class GameReviewer implements AutoCloseable {
                 final int idx = i;
                 String fen = replay.fens().get(i);
                 second.add(pool.submit(() -> {
-                    PositionEval p = evaluator.evaluate(fen, 2, settings.secondLineNodes());
+                    PositionEval first = positions[idx];
+                    PositionEval p = evaluator.addSecondLine(first, settings.nodes(), settings.secondLineNodes());
                     positions[idx] = p;
-                    nodes.addAndGet(p.nodes());
+                    nodes.addAndGet(Math.max(0, p.nodes() - first.nodes()));
                     l.onProgress(0.9 + 0.1 * done2.incrementAndGet() / total2);
                     return null;
                 }));
@@ -138,6 +143,10 @@ public final class GameReviewer implements AutoCloseable {
         } finally {
             pool.shutdownNow();
         }
+    }
+
+    private static boolean mated(String fen) {
+        return Eval.terminal(fen).map(Eval::isCheckmate).orElse(false);
     }
 
     private static void await(List<Future<?>> jobs) throws InterruptedException, ExecutionException {

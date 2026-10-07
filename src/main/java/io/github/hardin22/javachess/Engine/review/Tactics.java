@@ -183,6 +183,31 @@ final class Tactics {
         return material(b, side);
     }
 
+    /**
+     * True when taking the piece on {@code sq} (opponent to move) lets its owner immediately win back as much (a
+     * capture worth at least the piece by static exchange): a trade, not a sacrifice. (WintrChess also treats "taking
+     * allows mate in one" as fake; measured on the Chessigma brilliant benchmark it only lost true Brilliants.)
+     */
+    static boolean isFakeSacrifice(Board b1, Square sq) {
+        Piece p = b1.getPiece(sq);
+        if (p == Piece.NONE || b1.getSideToMove() == p.getPieceSide()) {
+            return false;
+        }
+        Move take = leastValuableCapture(b1, sq);
+        if (take == null) {
+            return true;
+        }
+        Board b = b1.clone();
+        b.doMove(take);
+        int value = value(p);
+        for (Move m : b.legalMoves()) {
+            if (b.getPiece(m.getTo()) != Piece.NONE && see(b, m.getTo()) >= value) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     static Move find(Board b, String uci) {
         try {
             for (Move m : b.legalMoves()) {

@@ -1,21 +1,25 @@
 package io.github.hardin22.javachess.Engine.review;
 
-import io.github.hardin22.javachess.Oggetti.MoveAnalysis.MoveClassification;
-
 import java.util.List;
 
 /**
- * Accuracy of each move and of each player: exact port of Lichess {@code AccuracyPercent} ({@code research/SPEC.md}
- * §6). Uses the evaluation of every position (best play), not the played lines.
+ * Accuracy of each move and of each player, from the evaluation of every position (best play, not the played lines).
  *
- * <ul>
- *   <li>Move: {@code 103.1668 * exp(-0.04354 * (wpBefore - wpAfter)) - 3.1669 + 1}, clamped to 0..100 (100 when the
- *       win percent did not drop), win percents from {@link WinModel#accuracyWinPercent}.</li>
- *   <li>Player: mean of the volatility-weighted mean and the harmonic mean of the move accuracies; the weight of a
- *       move is the standard deviation of White's win percent in a sliding window, clamped to 0.5..12.</li>
- * </ul>
+ * <p>Default model, fitted on 120 chess.com games ({@code accuracies} of the public API, Stockfish 19 at 300k nodes):
+ * win percent {@code 100 / (1 + exp(-0.0015 * cp))} (cp not clamped, mate = 0/100), move accuracy
+ * {@code 100 * exp(-0.14 * winPercentLost)}, player accuracy = power mean of the move accuracies with exponent
+ * 0.4. Mean absolute error vs chess.com 2.7 points (the exact Lichess formula gives 6.3, it is much harsher than
+ * chess.com). The Lichess formula ({@code research/SPEC.md} §6) stays available with
+ * {@code -Djavachess.accuracy=lichess} for comparisons.</p>
  */
 public final class Accuracy {
+
+    /** Win percent slope per centipawn of the accuracy model (flatter than the classification curve). */
+    static final double K = 0.0015;
+    /** Move accuracy decay per win percent point lost. */
+    static final double A = 0.14;
+    /** Exponent of the power mean of the move accuracies. */
+    static final double P = 0.4;
 
     /** Lichess uses +0.15 for the standard starting position. */
     private static final Eval START_EVAL = Eval.cp(15);
@@ -23,17 +27,35 @@ public final class Accuracy {
     private Accuracy() {
     }
 
+    private static boolean lichess() {
+        return "lichess".equalsIgnoreCase(System.getProperty("javachess.accuracy", ""));
+    }
+
+    /** Win percent (0..100) of {@code white} (or Black) in the accuracy model. */
+    static double winPercent(Eval e, boolean white) {
+        if (lichess()) {
+            return WinModel.accuracyWinPercent(e, white);
+        }
+        if (e.isMate()) {
+            return e.isMateFor(white) ? 100 : 0;
+        }
+        return 100 / (1 + Math.exp(-K * (white ? e.value() : -e.value())));
+    }
+
     /** Accuracy (0..100) of a move that took the mover's win percent (0..100) from {@code before} to {@code after}. */
     public static double moveAccuracy(double before, double after) {
         if (after >= before) {
             return 100;
         }
-        double a = 103.1668100711649 * Math.exp(-0.04354415386753951 * (before - after)) - 3.166924740191411 + 1;
-        return Math.max(0, Math.min(100, a));
+        if (lichess()) {
+            double a = 103.1668100711649 * Math.exp(-0.04354415386753951 * (before - after)) - 3.166924740191411 + 1;
+            return Math.max(0, Math.min(100, a));
+        }
+        return 100 * Math.exp(-A * (before - after));
     }
 
     /**
-     * Per-move accuracy and volatility weight of a game.
+     * Per-move accuracy and volatility weight (Lichess, used only by the Lichess aggregation) of a game.
      *
      * @param initialFen starting position
      * @param positions  evaluation of every position ({@code moves + 1})
@@ -51,7 +73,7 @@ public final class Accuracy {
             if (i == 0 && isStandardStart(initialFen)) {
                 e = START_EVAL;
             }
-            wps[i] = WinModel.accuracyWinPercent(e, true);
+            wps[i] = winPercent(e, true);
         }
         int window = Math.max(2, Math.min(8, n / 10));
         // (window - 2) copies of the first window, then every sliding window: one window per move
@@ -75,15 +97,16 @@ public final class Accuracy {
         return out;
     }
 
-    /** Accuracy (0..100) of a player, NaN when the player made no counted move. */
+    /** Accuracy (0..100) of a player, NaN when the player made no move. */
     public static double forPlayer(List<MoveReview> moves, double[][] perMove, boolean white) {
+        boolean lichess = lichess();
         double weighted = 0;
         double weightSum = 0;
         double harmonicDen = 0;
+        double powerSum = 0;
         int count = 0;
         for (int i = 0; i < moves.size(); i++) {
-            MoveReview m = moves.get(i);
-            if (m.whiteMoved() != white || !counted(m.label())) {
+            if (moves.get(i).whiteMoved() != white) {
                 continue;
             }
             double a = perMove[0][i];
@@ -91,17 +114,16 @@ public final class Accuracy {
             weighted += a * w;
             weightSum += w;
             harmonicDen += 1.0 / Math.max(1, a);
+            powerSum += Math.pow(Math.max(1e-3, a), P);
             count++;
         }
         if (count == 0) {
             return Double.NaN;
         }
-        return (weighted / weightSum + count / harmonicDen) / 2;
-    }
-
-    /** Moves that count in the player's accuracy (Lichess counts all of them). */
-    static boolean counted(MoveClassification label) {
-        return true;
+        if (lichess) {
+            return (weighted / weightSum + count / harmonicDen) / 2;
+        }
+        return Math.pow(powerSum / count, 1 / P);
     }
 
     private static boolean isStandardStart(String fen) {
