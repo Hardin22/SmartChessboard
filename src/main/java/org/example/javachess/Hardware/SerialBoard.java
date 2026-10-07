@@ -121,6 +121,7 @@ public final class SerialBoard implements BoardHardware {
 
     @Override
     public void close() {
+        flush(400);
         running = false;
         txLock.lock();
         try {
@@ -134,6 +135,25 @@ public final class SerialBoard implements BoardHardware {
         }
         joinQuietly(readerThread);
         joinQuietly(writerThread);
+    }
+
+    /** Waits until the last requested frame has been acknowledged (e.g. LEDs off before exit). */
+    private void flush(long timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        txLock.lock();
+        try {
+            while (connected && !legacyFirmware && (frameDirty || inFlightSince != 0)) {
+                long left = deadline - System.currentTimeMillis();
+                if (left <= 0) {
+                    break;
+                }
+                txSignal.await(left, TimeUnit.MILLISECONDS);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            txLock.unlock();
+        }
     }
 
     private static void joinQuietly(Thread thread) {

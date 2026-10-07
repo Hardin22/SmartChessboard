@@ -36,6 +36,7 @@ public final class Hardware {
     private final MoveLeds moveLeds;
     private final BoardStateManager boardState;
     private final ReadOnlyBooleanWrapper connected = new ReadOnlyBooleanWrapper(false);
+    private boolean closed;
 
     private Hardware(BoardHardware board, LedMapping mapping) {
         this.board = board;
@@ -127,11 +128,12 @@ public final class Hardware {
     }
 
     /** Turns the LEDs off and closes the serial port. Called on application exit. */
-    public static void shutdown() {
+    public static synchronized void shutdown() {
         Hardware h = instance;
-        if (h == null) {
+        if (h == null || h.closed) {
             return;
         }
+        h.closed = true;
         h.boardState.shutdown();
         h.leds.shutdown();
         h.board.close();
