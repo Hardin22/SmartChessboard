@@ -72,6 +72,22 @@ class BrilliantGreatExclusionsTest {
     }
 
     @Test
+    void aSacrificeAnsweredByACheckingCaptureElsewhereIsNotBrilliant() {
+        // Spassky - Bronstein 1960, 16.Nxf7 (chess.com Great): the best answer leaves the knight and takes the rook
+        // with check, 16...exf1=Q+
+        String fen = "r1bqrnk1/ppp1bpp1/3N3p/2P5/3P4/3Q1N2/PPB1p1PP/R4RK1 w - - 2 16";
+        List<PositionEval> ps = new ArrayList<>();
+        ps.add(new PositionEval(fen, Eval.cp(248), List.of(
+                new EngineLine("d6f7", Eval.cp(248), List.of("d6f7", "e2f1q", "a1f1", "d8d5"), 20),
+                new EngineLine("d6e8", Eval.cp(-474), List.of("d6e8"), 20)), 20, 0, false));
+        ps.add(after(fen, "d6f7", Eval.cp(320)));
+        ReviewInput nxf7 = rated(new ReviewInput(fen, List.of("d6f7"), ps, OpeningBook.NONE, RATING, RATING), 2500,
+                2500);
+        assertEquals(MoveClassification.GREAT, label(nxf7, Tuning.DEFAULT));
+        assertEquals(MoveClassification.BRILLIANT, label(nxf7, Tuning.DEFAULT.with("brilliantNoCheckingCounter", 0)));
+    }
+
+    @Test
     void realBrilliantStaysBrilliant() {
         // live_146777979394 ply 11, 6.Bxf7+ (chess.com Brilliant with both engines)
         String fen = "r1bqk1nr/pppp1ppp/2n5/2b5/2B1P3/2p2N2/PP3PPP/RNBQK2R w KQkq - 0 6";

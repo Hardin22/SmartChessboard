@@ -162,6 +162,8 @@ public final class ReviewClassifier {
         final double greatPawnTradeOppLoss;
         /** v2.5 B+K: a king march is Brilliant with at least this many pieces (no pawns, no kings) on the board (0 = off). */
         final double brilliantKingMarchPieces;
+        /** v2.5 B-E11: no Brilliant when the opponent's best answer is a capture elsewhere with check. */
+        final boolean brilliantNoCheckingCounter;
         /** Phase 4: an answer to check taking free material (SEE > 0) follows the free material rule of captures. */
         final boolean greatInCheckFreeMaterial;
         /** Phase 4: no Great for a bishop retreating from the pawn that has just advanced against it. */
@@ -285,6 +287,7 @@ public final class ReviewClassifier {
             greatWonQuiet = get("greatWonQuiet", 1) != 0;
             greatPawnTradeOppLoss = get("greatPawnTradeOppLoss", 0.15);
             brilliantKingMarchPieces = get("brilliantKingMarchPieces", 6);
+            brilliantNoCheckingCounter = get("brilliantNoCheckingCounter", 1) != 0;
             greatInCheckFreeMaterial = get("greatInCheckFreeMaterial", 1) != 0;
             greatKickedBishop = get("greatKickedBishop", 1) != 0;
             greatNoCashIn = get("greatNoCashIn", 1) != 0;
@@ -1274,6 +1277,12 @@ public final class ReviewClassifier {
         if (sac.value() < t.sacMin && !renewed) {
             return false; // B-E1: nothing new is offered
         }
+        if (t.brilliantNoCheckingCounter && checkingCounter(b0, m, line)) {
+            // B-E11: the opponent's best answer leaves the piece and captures something else with check (Spassky -
+            // Bronstein 16.Nxf7 exf1=Q+, live_174521739268 24.Ndxb5 gxf4+): the move did not really offer the piece,
+            // it allowed a forcing counter-attack. chess.com Great / Best (177 games: 2 of 2, no Brilliant)
+            return false;
+        }
         if (t.brilliantNoLiquidation && lastPieceOnTheBoard(b0, m)) {
             // B-E9: live_174388155128 60.Nxf4 (+6.6) Kxf4 and the king and pawn ending is won: chess.com Best
             return false;
@@ -1293,6 +1302,21 @@ public final class ReviewClassifier {
             }
         }
         return true;
+    }
+
+    /** True when the second move of {@code line} (the opponent's answer) is a capture elsewhere that gives check. */
+    private static boolean checkingCounter(Board b0, Move m, List<String> line) {
+        if (line.size() < 2 || !line.get(0).equals(m.toString())) {
+            return false;
+        }
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        Move reply = Tactics.find(b1, line.get(1));
+        if (reply == null || reply.getTo() == m.getTo() || !Tactics.isCapture(b1, line.get(1))) {
+            return false;
+        }
+        b1.doMove(reply);
+        return b1.isKingAttacked();
     }
 
     /**
