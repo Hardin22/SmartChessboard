@@ -137,6 +137,23 @@ class BrilliantGreatExclusionsTest {
     }
 
     @Test
+    void anOfferThatWinsMoreMaterialAtOnceIsNotASacrifice() {
+        // Deep Blue - Kasparov 1997 g6, 17.Bf5 (chess.com Excellent): 17...exf5 18.Rxe7 wins the queen for the bishop
+        // and the rook, the line ends a pawn up: a tactic, not a sacrifice
+        String fen = "r1k2b1r/p2nq1p1/2b1p1Bp/1p1n4/3P4/3Q1NB1/1PP2PPP/R3R1K1 w - - 2 17";
+        List<PositionEval> ps = new ArrayList<>();
+        ps.add(new PositionEval(fen, Eval.cp(421), List.of(
+                new EngineLine("g6f5", Eval.cp(421), List.of("g6f5", "e6f5", "e1e7", "d5e7", "d3c3", "c8d8", "g3d6",
+                        "c6e4", "c3a5", "d8e8"), 20),
+                new EngineLine("g6e4", Eval.cp(273), List.of("g6e4"), 20)), 20, 0, false));
+        ps.add(after(fen, "g6f5", Eval.cp(421)));
+        ReviewInput bf5 = rated(new ReviewInput(fen, List.of("g6f5"), ps, OpeningBook.NONE, RATING, RATING), 2500,
+                2500);
+        assertNotEquals(MoveClassification.BRILLIANT, label(bf5, Tuning.DEFAULT));
+        assertEquals(MoveClassification.BRILLIANT, label(bf5, Tuning.DEFAULT.with("brilliantNoShamSacrifice", 0)));
+    }
+
+    @Test
     void realBrilliantStaysBrilliant() {
         // live_146777979394 ply 11, 6.Bxf7+ (chess.com Brilliant with both engines)
         String fen = "r1bqk1nr/pppp1ppp/2n5/2b5/2B1P3/2p2N2/PP3PPP/RNBQK2R w KQkq - 0 6";

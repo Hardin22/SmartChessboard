@@ -175,6 +175,8 @@ public final class ReviewClassifier {
         final boolean brilliantNoEmptyOffer;
         /** v2.5 B-E13: an offer taken back at once by a discovered attack, material level after the line: an exchange. */
         final boolean brilliantNoDiscoveredTrade;
+        /** v2.5 B-E14: accepting loses more material at once and the line ends about level: a sham sacrifice. */
+        final boolean brilliantNoShamSacrifice;
         /** Phase 4: an answer to check taking free material (SEE > 0) follows the free material rule of captures. */
         final boolean greatInCheckFreeMaterial;
         /** Phase 4: no Great for a bishop retreating from the pawn that has just advanced against it. */
@@ -302,6 +304,7 @@ public final class ReviewClassifier {
             brilliantPawnCheckSac = get("brilliantPawnCheckSac", 1) != 0;
             brilliantNoEmptyOffer = get("brilliantNoEmptyOffer", 1) != 0;
             brilliantNoDiscoveredTrade = get("brilliantNoDiscoveredTrade", 1) != 0;
+            brilliantNoShamSacrifice = get("brilliantNoShamSacrifice", 1) != 0;
             greatInCheckFreeMaterial = get("greatInCheckFreeMaterial", 1) != 0;
             greatKickedBishop = get("greatKickedBishop", 1) != 0;
             greatNoCashIn = get("greatNoCashIn", 1) != 0;
@@ -1308,6 +1311,12 @@ public final class ReviewClassifier {
             // line wins nothing: no material is really given (Topalov - Shirov 1998, 26...Nb4: chess.com Great)
             return false;
         }
+        if (t.brilliantNoShamSacrifice && !played.isMate() && shamSacrifice(b0, m, line)) {
+            // B-E14 (user, 22:20): taking the piece loses more material at once (Deep Blue - Kasparov 1997 g6, 17.Bf5
+            // exf5 18.Rxe7: the queen for the bishop), and the line ends about level in material: a tactic winning
+            // material, not a sacrifice (chess.com Excellent)
+            return false;
+        }
         if (t.brilliantNoDiscoveredTrade && discoveredTrade(b0, m, line)) {
             // B-E13 (user, 22:20): accepting only lets the mover take back as much at once on a piece the move itself
             // uncovered, and the line ends level: an exchange by discovered attack, not a sacrifice (live_184350007554
@@ -1371,6 +1380,19 @@ public final class ReviewClassifier {
             b.doMove(mv);
         }
         return Tactics.material(b, side) - Tactics.material(b0, side);
+    }
+
+    /**
+     * True when the line accepts the offered piece, the mover's next move wins back more than the piece (the capture
+     * is the point of the "sacrifice"), and 10 plies later the mover is at most a pawn up.
+     */
+    private static boolean shamSacrifice(Board b0, Move m, List<String> line) {
+        if (line.size() < 3 || !acceptedInLine(b0, m, line)) {
+            return false;
+        }
+        Side side = b0.getSideToMove();
+        int afterMove = lineGain(b0, line, side, 1);
+        return lineGain(b0, line, side, 3) > afterMove && lineGain(b0, line, side, 10) <= 1;
     }
 
     /**
