@@ -242,6 +242,28 @@ final class GameDuelView extends StackPane {
 
         void clearPrompt() {
             bottomSlot.getChildren().setAll(buttons);
+            noticeShown = false;
+        }
+
+        private boolean noticeShown;
+
+        /** A board instruction (place the pieces) in place of the buttons, large, until it is done. */
+        void notice(String title, String detail) {
+            Label t = Ui.wrap(title, "t-title");
+            Label d = Ui.wrap(detail, "t-body", "t-muted");
+            // inside a StackPane a wrapping label is measured on one line: give it the half's width
+            d.setPrefWidth(600);
+            t.setPrefWidth(600);
+            VBox panel = new VBox(10, t, d);
+            panel.getStyleClass().addAll("half-panel", "accent");
+            bottomSlot.getChildren().setAll(panel);
+            noticeShown = true;
+        }
+
+        void clearNotice() {
+            if (noticeShown) {
+                clearPrompt();
+            }
         }
 
         void setDrawEnabled(boolean enabled) {

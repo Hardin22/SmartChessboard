@@ -95,8 +95,30 @@ public class PuzzleDashboardController implements Screen {
 
         VBox footer = Ui.footer(startButton);
         root.setTop(header);
-        root.setCenter(Ui.scroll(body));
+        content = Ui.scroll(body);
+        root.setCenter(content);
         root.setBottom(footer);
+        this.footer = footer;
+    }
+
+    private javafx.scene.Node content;
+    private VBox footer;
+
+    /** First start without the puzzle database: say how to install it instead of a "Inizia" that finds nothing. */
+    private void showMissingDatabase(boolean missing) {
+        if (!missing) {
+            root.setCenter(content);
+            root.setBottom(footer);
+            return;
+        }
+        VBox empty = new VBox(18, io.github.hardin22.javachess.Components.Icons.of("fth-database", 64),
+                Ui.label(I18n.t("puzzle.nodb.title"), "empty-title"),
+                Ui.wrap(I18n.t("puzzle.nodb.text"), "empty-sub"),
+                Ui.label("scripts/build-puzzle-db.sh --download data/puzzles.db", "pill"),
+                Ui.wrap(I18n.t("puzzle.nodb.docs"), "t-small", "t-faint"));
+        empty.getStyleClass().add("empty-state");
+        root.setCenter(empty);
+        root.setBottom(null);
     }
 
     private static int round(int rating) {
@@ -115,7 +137,9 @@ public class PuzzleDashboardController implements Screen {
     public void onNavigatedTo() {
         io.github.hardin22.javachess.Utils.AppExecutors.io().execute(() -> {
             var stats = io.github.hardin22.javachess.Services.PuzzleProgressService.getInstance().getStats();
+            boolean missing = !PuzzleService.hasPuzzleData();
             Platform.runLater(() -> {
+                showMissingDatabase(missing);
                 playerRating = stats.rating();
                 ratingValue.setText(String.valueOf(stats.rating()));
                 solvedValue.setText(stats.solved() + "/" + stats.attempts());

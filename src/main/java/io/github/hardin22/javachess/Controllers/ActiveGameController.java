@@ -5,6 +5,8 @@ import com.github.bhlangonijr.chesslib.MoveBackup;
 import com.github.bhlangonijr.chesslib.Side;
 import com.github.bhlangonijr.chesslib.move.Move;
 import javafx.application.Platform;
+import javafx.beans.InvalidationListener;
+import javafx.beans.Observable;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.Button;
@@ -35,6 +37,11 @@ import io.github.hardin22.javachess.Oggetti.EvalBar;
 import io.github.hardin22.javachess.Oggetti.OnlineGame;
 import io.github.hardin22.javachess.Oggetti.PvcGame;
 import io.github.hardin22.javachess.Oggetti.PvpGame;
+import io.github.hardin22.javachess.Play.BotLevels;
+import io.github.hardin22.javachess.Play.GameClock;
+import io.github.hardin22.javachess.Play.GameSnapshot;
+import io.github.hardin22.javachess.Play.HintAdvisor;
+import io.github.hardin22.javachess.Play.TimeControl;
 import io.github.hardin22.javachess.Services.EngineService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -92,6 +99,7 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
     private Side drawOfferBy;
     private boolean ended;
     private String endMessage = "";
+    private String opponentElo;
 
     public ActiveGameController() {
         solo = new GameSoloView(this, soloEvalBar);
@@ -162,7 +170,13 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
     /** Two-player game with {@code seconds} on each clock (also used by the end-to-end tests: short clocks). */
     public void startPvPSeconds(int seconds, int increment) {
         setupBoard();
+        beginPvp(new PvpGame(chessBoard, duelEvalBar, openingNameLabel, whiteClock, blackClock, seconds, increment),
+                seconds, increment);
+    }
+
+    private void beginPvp(PvpGame game, int seconds, int increment) {
         mode = Mode.PVP;
+        unbindPvcExtras();
         pvpSeconds = seconds;
         pvpIncrement = increment;
         int minutes = Math.max(1, seconds / 60);
@@ -175,7 +189,7 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         duel.setBoardVisible(Prefs.bool(DUEL_BOARD_KEY, true));
         drawOfferBy = null;
         prepareCoach();
-        currentGame = new PvpGame(chessBoard, duelEvalBar, openingNameLabel, whiteClock, blackClock, seconds, increment);
+        currentGame = game;
         setupGameCallbacks();
         if (mainController != null) {
             mainController.face(Side.WHITE); // both halves are already turned towards their players
@@ -186,23 +200,52 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         refreshAll();
     }
 
+    /** Old-style game against Stockfish skill 0..20 or a Maia network (kept for scripts and tests). */
     public void startPvC(int difficulty, boolean isPlayerWhite, EngineService.EngineType botType) {
         setupBoard();
+        beginPvc(new PvcGame(chessBoard, soloEvalBar, openingNameLabel, isPlayerWhite, difficulty, botType),
+                isPlayerWhite, botName(botType, difficulty), null, botType != null && botType.name().startsWith("MAIA"));
+    }
+
+    /** Game against a level of the ladder (approximate Elo), with a clock or without. */
+    public void startPvC(BotLevels.Level level, boolean isPlayerWhite, TimeControl timeControl) {
+        setupBoard();
+        beginPvc(new PvcGame(chessBoard, soloEvalBar, openingNameLabel, isPlayerWhite, level, timeControl),
+                isPlayerWhite, level.name(), level.eloText(), level.isMaia());
+    }
+
+    /** A game interrupted by a restart or a power cut (Home, "Partita interrotta"). */
+    public void resumeSnapshot(GameSnapshot snapshot) {
+        setupBoard();
+        if (snapshot.mode() == GameSnapshot.Mode.PVP) {
+            TimeControl tc = snapshot.timeControl();
+            beginPvp(PvpGame.fromSnapshot(snapshot, chessBoard, duelEvalBar, openingNameLabel, whiteClock, blackClock),
+                    tc.isUnlimited() ? 0 : tc.initialSeconds(), tc.incrementSeconds());
+            return;
+        }
+        PvcGame game = PvcGame.fromSnapshot(snapshot, chessBoard, soloEvalBar, openingNameLabel);
+        BotLevels.Level level = game.getLevel();
+        beginPvc(game, snapshot.humanWhite(), level != null ? level.name() : I18n.t("game.computer"),
+                level != null ? level.eloText() : null, level != null && level.isMaia());
+    }
+
+    private void beginPvc(PvcGame game, boolean isPlayerWhite, String name, String elo, boolean maia) {
         mode = Mode.PVC;
         humanWhite = isPlayerWhite;
-        opponentName = botName(botType, difficulty);
-        title = opponentName;
+        opponentName = name;
+        opponentElo = elo;
+        title = elo == null ? name : name + " · " + elo;
         root.getChildren().setAll(solo);
         solo.boardFrame.setBoard(chessBoard);
         prepareCoach();
-        currentGame = new PvcGame(chessBoard, soloEvalBar, openingNameLabel, isPlayerWhite, difficulty, botType);
+        currentGame = game;
         solo.header.setTitle(I18n.t("game.vs.computer"));
-        solo.header.setSubtitle(opponentName);
-        solo.row(!isPlayerWhite).setIcon("fth-cpu");
+        solo.header.setSubtitle(title);
+        solo.row(!isPlayerWhite).setIcon(maia ? "fth-user" : "fth-cpu");
         solo.row(isPlayerWhite).setIcon(null);
-        solo.setPlayers(isPlayerWhite ? I18n.t("game.you") : opponentName,
-                I18n.t("common.white"), isPlayerWhite ? opponentName : I18n.t("game.you"), I18n.t("common.black"));
-        solo.resignButton.setDisable(false);
+        solo.setPlayers(isPlayerWhite ? I18n.t("game.you") : name,
+                I18n.t("common.white"), isPlayerWhite ? name : I18n.t("game.you"), I18n.t("common.black"));
+        bindPvcExtras(game);
         setupGameCallbacks();
         if (mainController != null) {
             mainController.face(isPlayerWhite ? Side.WHITE : Side.BLACK);
@@ -211,6 +254,126 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         updateStockfishState();
         currentGame.startGame();
         refreshAll();
+    }
+
+    // ================================================================== play extras (clock, takeback, hint, draw)
+
+    private final List<Runnable> pvcUnbind = new ArrayList<>();
+
+    /** Clock in the player rows and the hint advisor (both observable, changed on the FX thread). */
+    private void bindPvcExtras(PvcGame game) {
+        unbindPvcExtras();
+        GameClock clock = game.getClock();
+        if (clock != null) {
+            InvalidationListener update = o -> refreshPvcClock(game);
+            for (Observable p : List.of(clock.whiteTextProperty(), clock.blackTextProperty(),
+                    clock.runningProperty(), clock.whiteLowProperty(), clock.blackLowProperty())) {
+                p.addListener(update);
+                pvcUnbind.add(() -> p.removeListener(update));
+            }
+        }
+        refreshPvcClock(game);
+        HintAdvisor hints = game.hints();
+        InvalidationListener hintUpdate = o -> refreshHint(game);
+        for (Observable p : List.of(hints.levelProperty(), hints.textProperty(), hints.canAskMoreProperty())) {
+            p.addListener(hintUpdate);
+            pvcUnbind.add(() -> p.removeListener(hintUpdate));
+        }
+    }
+
+    private void unbindPvcExtras() {
+        pvcUnbind.forEach(Runnable::run);
+        pvcUnbind.clear();
+        solo.row(true).setClock(null, false, false);
+        solo.row(false).setClock(null, false, false);
+    }
+
+    private void refreshPvcClock(PvcGame game) {
+        GameClock clock = game.getClock();
+        if (clock == null || currentGame != game) {
+            solo.row(true).setClock(null, false, false);
+            solo.row(false).setClock(null, false, false);
+            return;
+        }
+        Side running = clock.runningProperty().get();
+        solo.row(true).setClock(clock.whiteTextProperty().get(), running == Side.WHITE, clock.whiteLowProperty().get());
+        solo.row(false).setClock(clock.blackTextProperty().get(), running == Side.BLACK, clock.blackLowProperty().get());
+    }
+
+    /** A hint asked for: the sentence in the coach line, the piece's square (then the move) on the screen board. */
+    private void refreshHint(PvcGame game) {
+        if (currentGame != game) {
+            return;
+        }
+        HintAdvisor hints = game.hints();
+        HintAdvisor.Level level = hints.levelProperty().get();
+        if (level == HintAdvisor.Level.NONE) {
+            solo.setCoach(showEvaluation || showBestMoves, null, false, null);
+        } else {
+            solo.setHint(hints.textProperty().get());
+            String from = hints.fromSquareProperty().get();
+            if (level == HintAdvisor.Level.PIECE && from != null && from.length() == 2) {
+                chessBoard.highlightSquare(from.charAt(0) - 'a', '8' - from.charAt(1), HINT_SQUARE);
+            }
+            String move = hints.moveProperty().get();
+            if (level == HintAdvisor.Level.MOVE && move != null && move.length() >= 4) {
+                chessBoard.drawArrowOnBoard(move.charAt(0) - 'a', '8' - move.charAt(1), move.charAt(2) - 'a',
+                        '8' - move.charAt(3), HINT_ARROW);
+            }
+        }
+        refreshPvcButtons();
+    }
+
+    private static final javafx.scene.paint.Color HINT_SQUARE = javafx.scene.paint.Color.rgb(79, 157, 255, 0.45);
+    private static final javafx.scene.paint.Color HINT_ARROW = javafx.scene.paint.Color.rgb(79, 157, 255, 0.85);
+
+    /** Takeback, hint and draw follow the game's own rules (re-read after every move and every message). */
+    private void refreshPvcButtons() {
+        if (mode != Mode.PVC || !(currentGame instanceof PvcGame pvc)) {
+            for (Button b : new Button[] { solo.undoButton, solo.hintButton, solo.drawButton }) {
+                b.setDisable(true);
+            }
+            solo.resignButton.setDisable(mode == Mode.ONLINE || ended);
+            return;
+        }
+        boolean running = pvc.isRunning() && !ended;
+        solo.undoButton.setDisable(!running || !pvc.canTakeBack());
+        HintAdvisor hints = pvc.hints();
+        HintAdvisor.Level level = hints.levelProperty().get();
+        solo.hintButton.setText(I18n.t(level == HintAdvisor.Level.PIECE ? "game.hint.more" : "game.hint"));
+        solo.hintButton.setDisable(!running || !pvc.isAwaitingHumanMove() || level == HintAdvisor.Level.THINKING
+                || !hints.canAskMoreProperty().get());
+        solo.drawButton.setDisable(!running || !pvc.canOfferDraw());
+        solo.resignButton.setDisable(!running);
+    }
+
+    /** "Annulla": the player's last move and the computer's answer; the LEDs show which pieces to put back. */
+    void takeBack() {
+        if (currentGame instanceof PvcGame pvc && pvc.canTakeBack() && pvc.takeBack()) {
+            refreshAll();
+        }
+    }
+
+    /** First tap: which piece to move. Second tap: the move itself. */
+    void requestHint() {
+        if (currentGame instanceof PvcGame pvc && pvc.isAwaitingHumanMove()) {
+            pvc.requestHint();
+            refreshPvcButtons();
+        }
+    }
+
+    /** "Patta": the computer answers with a ready sentence (accepts, too early, it thinks it is better). */
+    void offerBotDraw() {
+        if (!(currentGame instanceof PvcGame pvc) || !pvc.canOfferDraw()) {
+            return;
+        }
+        solo.drawButton.setDisable(true);
+        pvc.offerDraw().thenAccept(decision -> runFx(() -> {
+            if (mainController != null) {
+                mainController.showToast(decision.message());
+            }
+            refreshAll();
+        }));
     }
 
     public void startOnlineGame(String gameId) {
@@ -231,7 +394,8 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         solo.row(true).setIcon(null);
         solo.row(false).setIcon("fth-globe");
         solo.setPlayers(I18n.t("common.white"), "Lichess", I18n.t("common.black"), "Lichess");
-        solo.resignButton.setDisable(true);
+        opponentElo = null;
+        unbindPvcExtras();
         setupGameCallbacks();
         applyOrientation();
         currentGame.startGame();
@@ -273,6 +437,11 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
                 if (currentGame != null) {
                     currentGame.handleMoveInput(uci);
                 }
+            }
+
+            @Override
+            public void choosePromotion(String from, String to, boolean white, java.util.function.Consumer<String> done) {
+                PromotionPicker.show(mainController, white, piece -> done.accept(from + to + piece));
             }
         });
         chessBoard.resetBoard();
@@ -319,7 +488,7 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         if (currentGame instanceof PvpGame pvp && pvp.isClockPaused()) {
             return false;
         }
-        return mode == Mode.PVP || currentGame.getBoard().getSideToMove() == (humanWhite ? Side.WHITE : Side.BLACK);
+        return currentGame.isAwaitingHumanMove();
     }
 
     /** Boards on screen match the physical board as seen by whoever the interface faces. */
@@ -455,15 +624,25 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
                 && status.kind() != GameStatus.Kind.SETUP) {
             opponentMeta = I18n.t("game.thinking");
         }
+        if (opponentElo != null && !opponentMeta.equals(I18n.t("game.thinking"))) {
+            opponentMeta = opponentMeta + " · " + opponentElo;
+        }
         solo.row(!humanWhite).setMeta(opponentMeta);
+        refreshPvcButtons();
 
         StatusCard.Content content;
         if (!running && ended) {
             content = endCard();
+        } else if (status.kind() == GameStatus.Kind.READY && status.text().toLowerCase(Locale.ROOT).contains("allineata")) {
+            content = StatusCard.Content.of(Tone.DONE, I18n.t("game.status.resync.kicker"),
+                    I18n.t("game.status.aligned"), null);
         } else {
             content = switch (status.kind()) {
                 case SETUP -> StatusCard.Content.of(Tone.ACTION, I18n.t("game.status.setup.kicker"),
                         I18n.t("game.status.setup"), pretty(status.text()));
+                case RESYNC -> StatusCard.Content.of(Tone.ACTION, I18n.t("game.status.resync.kicker"),
+                        I18n.t("game.status.resync"), resyncDetail(status.text()));
+                case ENGINE -> engineCard();
                 case REPLICATE -> new StatusCard.Content(Tone.ACTION,
                         I18n.t("game.status.replicate.kicker", opponentName), pieceAt(status.from()),
                         (status.from() == null ? "" : status.from() + " → ") + status.to(),
@@ -492,6 +671,29 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
                 lastMove == null ? null : I18n.t("game.status.yourmove", lastMove));
     }
 
+    /** "mancano 3, da togliere 1 (in rosso)" from the board's resync message. */
+    private static String resyncDetail(String text) {
+        int colon = text.indexOf(':');
+        String rest = colon >= 0 ? text.substring(colon + 1).trim() : text;
+        return rest.isEmpty() ? I18n.t("game.status.resync.detail")
+                : Character.toUpperCase(rest.charAt(0)) + rest.substring(1) + ". " + I18n.t("game.status.resync.detail");
+    }
+
+    /** The engine does not answer: the game retries by itself; "Riprova" forces it now. */
+    private StatusCard.Content engineCard() {
+        Button retry = Ui.button(I18n.t("game.engine.retry"), "fth-refresh-cw", "btn-inverse", "btn-md");
+        retry.setOnAction(e -> {
+            if (currentGame instanceof PvcGame pvc) {
+                pvc.retryBotMove();
+            }
+        });
+        String text = status.text();
+        int colon = text.indexOf(':');
+        String detail = colon >= 0 ? text.substring(colon + 1).trim() : text;
+        return new StatusCard.Content(Tone.ERROR, I18n.t("game.engine.kicker"), I18n.t("game.engine.down"), null,
+                detail, List.of(retry));
+    }
+
     private StatusCard.Content endCard() {
         Integer outcome = GameStatus.outcomeFor(endMessage, humanWhite);
         if (outcome == null && currentGame.getBoard().isMated()) {
@@ -508,8 +710,15 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         Button again = Ui.button(I18n.t("game.end.again"), "fth-repeat", "btn-outline", "btn-md");
         again.setOnAction(e -> mainController.navigateTo(mode == Mode.PVP ? "PVP_SETUP" : "PVC_SETUP"));
         List<Node> buttons = mode == Mode.ONLINE ? List.of(review) : List.of(review, again);
+        String detail = capitalize(reason);
+        String move = null;
+        if (status.kind() == GameStatus.Kind.REPLICATE) {
+            // the bot's last move still has to be made on the physical board (the LEDs show it)
+            move = (status.from() == null ? "" : status.from() + " → ") + status.to();
+            detail = (detail == null || detail.isEmpty() ? "" : detail + ". ") + I18n.t("game.end.replicate");
+        }
         return new StatusCard.Content(outcome != null && outcome > 0 ? Tone.DONE : Tone.PLAIN,
-                I18n.t("game.end.kicker"), headline, null, capitalize(reason), buttons);
+                I18n.t("game.end.kicker"), headline, move, detail, buttons);
     }
 
     private String pieceAt(String square) {
@@ -551,8 +760,16 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
                 }
                 continue;
             }
+            boolean board = status.kind() == GameStatus.Kind.SETUP || status.kind() == GameStatus.Kind.RESYNC;
+            if (board) {
+                // an instruction that blocks the game: in each half, not only in the small state line
+                half.notice(I18n.t(status.kind() == GameStatus.Kind.RESYNC ? "game.status.resync" : "game.status.setup"),
+                        status.kind() == GameStatus.Kind.RESYNC ? resyncDetail(status.text()) : pretty(status.text()));
+            } else {
+                half.clearNotice();
+            }
             switch (status.kind()) {
-                case SETUP -> half.setState(pretty(status.text()), false);
+                case SETUP, RESYNC -> half.setState(I18n.t("game.status.resync.kicker"), false);
                 case ERROR -> half.setState(status.to() != null
                         ? I18n.t("game.status.error.square", status.to().toUpperCase(Locale.ROOT))
                         : pretty(status.text()), false);

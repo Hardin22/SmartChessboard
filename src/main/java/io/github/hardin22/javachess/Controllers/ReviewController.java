@@ -78,7 +78,7 @@ public class ReviewController implements Screen, GameNavigationListener {
     private final VBox progressBox = new VBox(12);
     private final Region progressFill = new Region();
     private final Label percentLabel = Ui.label("", "t-body-m");
-    private final HBox accuracyBox = new HBox(14);
+    private final HBox accuracyWrapper = new HBox(14);
     /** Accuracy texts ("82,5%"), read by the end-to-end tests. */
     private final Label whiteAccuracyLabel = Ui.label("0%", "accuracy-value");
     private final Label blackAccuracyLabel = Ui.label("0%", "accuracy-value");
@@ -175,14 +175,14 @@ public class ReviewController implements Screen, GameNavigationListener {
                 "t-muted"));
         progressBox.getStyleClass().add("card");
 
-        accuracyBox.getChildren().addAll(accuracyCard(true, whiteAccuracyLabel), accuracyCard(false,
+        accuracyWrapper.getChildren().addAll(accuracyCard(true, whiteAccuracyLabel), accuracyCard(false,
                 blackAccuracyLabel));
-        for (Node n : accuracyBox.getChildren()) {
+        for (Node n : accuracyWrapper.getChildren()) {
             HBox.setHgrow(n, Priority.ALWAYS);
             ((Region) n).setMaxWidth(Double.MAX_VALUE);
             ((Region) n).setPrefWidth(1);
         }
-        summary.getChildren().addAll(analyzeBox, progressBox, accuracyBox);
+        summary.getChildren().addAll(analyzeBox, progressBox, accuracyWrapper);
         showSummary(analyzeBox);
 
         // board: drags step through the moves, taps try moves (variations)
@@ -599,7 +599,7 @@ public class ReviewController implements Screen, GameNavigationListener {
         this.currentReview = review;
         whiteAccuracyLabel.setText(String.format(Locale.ITALIAN, "%.1f%%", whiteAccuracy));
         blackAccuracyLabel.setText(String.format(Locale.ITALIAN, "%.1f%%", blackAccuracy));
-        showSummary(accuracyBox);
+        showSummary(accuracyWrapper);
         countClassifications(analysis);
         evaluationGraph.setVisible(true);
         evaluationGraph.setData(analysis);
