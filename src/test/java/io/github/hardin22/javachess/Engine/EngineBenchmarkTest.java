@@ -150,7 +150,7 @@ class EngineBenchmarkTest {
         Board b = new Board();
         b.loadFromFen(fenAfter);
         if (MoveGenerator.generateLegalMoves(b).isEmpty()) {
-            return b.isKingAttacked() ? Score.mate(1) : Score.cp(0);
+            return b.isKingAttacked() ? Score.mateDelivered() : Score.cp(0);
         }
         return after.score().negate();
     }

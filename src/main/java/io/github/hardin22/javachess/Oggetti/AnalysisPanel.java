@@ -163,10 +163,10 @@ public class AnalysisPanel extends VBox {
         updateVisibility();
     }
 
-    /** "0.35" -> "+0.35", "-1.20" -> "−1.20", "M3"/"-M2" kept; anything unparsable -> an en dash. */
+    /** "0.35" -> "+0.35", "-1.20" -> "−1.20", "M3"/"-M2" and results kept; anything unparsable -> an en dash. */
     static String formatScore(String raw) {
         String s = raw == null ? "" : raw.trim();
-        if (s.matches("-?M\\d+") || s.equals("1-0") || s.equals("0-1")) {
+        if (s.matches("-?M\\d+") || s.equals("1-0") || s.equals("0-1") || s.equals("½-½")) {
             return s.startsWith("-M") ? "−" + s.substring(1) : s;
         }
         try {
