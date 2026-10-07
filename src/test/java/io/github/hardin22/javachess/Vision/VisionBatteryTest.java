@@ -209,32 +209,58 @@ class VisionBatteryTest {
         int ghosts = 0;
         int undecided = 0;
         List<String> failures = new ArrayList<>();
+        int modelRight = 0;
         for (Map.Entry<String, List<Fixture>> g : games.entrySet()) {
             List<Fixture> seq = g.getValue();
             seq.sort((a, b) -> Integer.compare(a.meta().getInt("ply"), b.meta().getInt("ply")));
+            // as in the app: calibrated on the game's first picture (the start position, recognised by occupancy)
+            TemplateReader reader = new TemplateReader();
+            Fixture first = seq.get(0);
+            if (first.meta().optBoolean("calibration")) {
+                reader.learn(first.image(), first.placement(), first.flipped());
+            }
             for (int i = 1; i < seq.size(); i++) {
                 Fixture before = seq.get(i - 1);
                 Fixture after = seq.get(i);
-                if (!before.meta().has("fen")) {
-                    continue;
-                }
-                Board b = new Board();
-                b.loadFromFen(before.meta().getString("fen"));
-                Move truth = null;
-                for (Move m : MoveGenerator.generateLegalMoves(b)) {
-                    Board c = b.clone();
-                    c.doMove(m);
-                    if (c.getFen().split(" ")[0].equals(after.placement())) {
-                        truth = m;
+                Board b = null;
+                List<Move> truth = null;
+                for (String side : List.of(" w ", " b ")) {
+                    Board candidate = io.github.hardin22.javachess.Utils.PgnCodec.boardFromFen(
+                            before.placement() + side + "KQkq - 0 1");
+                    if (candidate == null) {
+                        continue;
+                    }
+                    for (Move m1 : MoveGenerator.generateLegalMoves(candidate)) {
+                        Board c = candidate.clone();
+                        c.doMove(m1);
+                        if (c.getFen().split(" ")[0].equals(after.placement())) {
+                            truth = List.of(m1);
+                            b = candidate;
+                        }
+                        if (truth == null || truth.size() == 2) {
+                            for (Move m2 : MoveGenerator.generateLegalMoves(c)) {
+                                Board c2 = c.clone();
+                                c2.doMove(m2);
+                                if (c2.getFen().split(" ")[0].equals(after.placement()) && truth == null) {
+                                    truth = List.of(m1, m2); // the bot answered before the next picture
+                                    b = candidate;
+                                }
+                            }
+                        }
                     }
                 }
                 if (truth == null) {
                     continue; // not consecutive plies
                 }
                 moves++;
-                BoardReading r = classifier.read(after.image(), after.flipped(), null).withPlacementRules();
+                BoardReading m = classifier.read(after.image(), after.flipped(), null).withPlacementRules();
+                PositionResolver.Resolution modelRes = new PositionResolver().resolve(b, m, true);
+                if (modelRes.confident() && modelRes.moves().equals(truth)) {
+                    modelRight++;
+                }
+                BoardReading r = reader.isComplete() ? reader.read(after.image(), after.flipped()).withPlacementRules() : m;
                 PositionResolver.Resolution res = new PositionResolver().resolve(b, r, true);
-                if (res.confident() && res.moves().equals(List.of(truth))) {
+                if (res.confident() && res.moves().equals(truth)) {
                     right++;
                 } else if (res.confident()) {
                     ghosts++;
@@ -246,8 +272,9 @@ class VisionBatteryTest {
                 }
             }
         }
-        String report = String.format("Moves from vision readings: %d moves, %d right, %d wrong (ghost/other move),"
-                + " %d undecided%n%s", moves, right, ghosts, undecided, String.join("\n", failures));
+        String report = String.format("Moves from vision readings (calibrated reader, as in the app): %d moves,"
+                + " %d right, %d wrong (ghost/other move), %d undecided; the model alone: %d right%n%s", moves, right,
+                ghosts, undecided, modelRight, String.join("\n", failures));
         System.out.println(report);
         write("report-moves.md", report);
         assertTrue(ghosts == 0, "vision must never produce a wrong move: " + failures);
