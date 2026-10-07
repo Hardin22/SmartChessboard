@@ -23,6 +23,10 @@ class ReviewClassifierTest {
         // "mate 0": the side to move is checkmated, the OTHER side won
         assertEquals(Eval.blackMates(0), Eval.fromUci(Score.mate(0), true));
         assertEquals(Eval.whiteMates(0), Eval.fromUci(Score.mate(0), false));
+        // a delivered mate seen from the winner (negated mate 0)
+        assertEquals(Eval.whiteMates(0), Eval.fromUci(Score.mate(0).negate(), true));
+        assertEquals(Eval.blackMates(0), Eval.fromUci(Score.mateDelivered(), false));
+        assertEquals(Eval.whiteMates(0), Eval.fromUci(Eval.whiteMates(0).toUci(true), true));
     }
 
     @Test
