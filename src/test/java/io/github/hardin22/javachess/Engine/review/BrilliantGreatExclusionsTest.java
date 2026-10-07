@@ -171,6 +171,16 @@ class BrilliantGreatExclusionsTest {
     }
 
     @Test
+    void aQuietMoveLeavingAHeavierPieceEnPriseIsBrilliant() {
+        // live_145773198260 ply 31 (White 1103): 16.c5 leaves the rook d6 attacked by the knight f5: chess.com
+        // Brilliant; the pawn moved is worth less than the rook left, and c5 attacks nothing as big
+        ReviewInput c5 = rated(oneMove("r4rk1/pp3qpp/2pR4/3p1nB1/2PP4/8/PP2QPPP/RN4K1 w - - 1 16", "c4c5", Eval.cp(40),
+                "c4c5", Eval.cp(-7), "e2e3", Eval.cp(40)), 1103, 1103);
+        assertEquals(MoveClassification.BRILLIANT, label(c5, Tuning.DEFAULT));
+        assertEquals(MoveClassification.BEST, label(c5, Tuning.DEFAULT.with("brilliantHeavyLeft", 0)));
+    }
+
+    @Test
     void realBrilliantStaysBrilliant() {
         // live_146777979394 ply 11, 6.Bxf7+ (chess.com Brilliant with both engines)
         String fen = "r1bqk1nr/pppp1ppp/2n5/2b5/2B1P3/2p2N2/PP3PPP/RNBQK2R w KQkq - 0 6";
@@ -742,7 +752,8 @@ class BrilliantGreatExclusionsTest {
         ps.set(2, withLines(ps.get(2).fen(), Eval.cp(-409), "h6h5", Eval.cp(-161), "b7b6"));
         ReviewInput h5 = new ReviewInput(g.initialFen(), g.uciMoves(), ps, g.book(), 2500, 2500);
         assertEquals(MoveClassification.BRILLIANT, label(h5, Tuning.DEFAULT));
-        assertNotEquals(MoveClassification.BRILLIANT, label(h5, Tuning.DEFAULT.with("brilliantRenewed", 0)));
+        // B-TI (brilliantHeavyLeft) covers it: a pawn move leaving the rook already attacked en prise
+        assertNotEquals(MoveClassification.BRILLIANT, label(h5, Tuning.DEFAULT.with("brilliantHeavyLeft", 0)));
     }
 
     @Test

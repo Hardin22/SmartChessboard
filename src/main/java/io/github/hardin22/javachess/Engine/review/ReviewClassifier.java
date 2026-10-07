@@ -125,10 +125,11 @@ public final class ReviewClassifier {
         /** Phase 4: R9 also for an answer to check that does not move the king. */
         final boolean greatStartsMateInCheck;
         /**
-         * Phase 4: the engine's quiet move that leaves en prise again the piece the mover's previous move sacrificed
-         * (declined by the opponent) renews the sacrifice: B-E1 does not exclude it.
+         * Phase 4 B-TI (threat ignored, user 22:30): a quiet move leaving en prise an already attacked rook or queen,
+         * heavier than the moved piece, not taken by the reply and without a counter-threat as big, offers it.
+         * Replaces brilliantRenewed (shard-1), which it covers.
          */
-        final boolean brilliantRenewed;
+        final boolean brilliantHeavyLeft;
         /** Phase 4: no Great for a capture by an en prise piece when the position stays within this many cp of 0. */
         final double greatForcedTradeCp;
         final double brilliantTopRegain;
@@ -313,7 +314,7 @@ public final class ReviewClassifier {
             greatNoCashIn = get("greatNoCashIn", 1) != 0;
             greatStartsMatePunish = get("greatStartsMatePunish", 0.15);
             greatStartsMateInCheck = get("greatStartsMateInCheck", 1) != 0;
-            brilliantRenewed = get("brilliantRenewed", 1) != 0;
+            brilliantHeavyLeft = get("brilliantHeavyLeft", 1) != 0;
             greatForcedTradeCp = get("greatForcedTradeCp", 15);
             pieceSacrifice = get("pieceSacrifice", 1) != 0;
             outcomeLow = get("outcomeLow", 0.40);
@@ -851,7 +852,7 @@ public final class ReviewClassifier {
         Board b0 = board(replay.fens().get(i));
         String uci = replay.uci().get(i);
         if (t.brilliantRule == 2 && brilliantV19(b0, uci, me, isTop, alternative, played, epBefore, epAfter, t, k,
-                playedLine(uci, p0, p1), isTop && renewsSacrifice(replay, i, me, t)) && !(t.brilliantRecaptureNet && i > 0 && isRecapture(replay, i)
+                playedLine(uci, p0, p1)) && !(t.brilliantRecaptureNet && i > 0 && isRecapture(replay, i)
                 && Sacrifice.of(b0, uci, me).movedNet() < t.sacMin)) {
             // B-E10: taking back on the square of the opponent's capture is a sacrifice only when the recapturing
             // piece itself is lost for at least sacMin (live_173981415730 19...Nxd4 cxd4 Rxd4: a knight for two pawns
@@ -1160,39 +1161,6 @@ public final class ReviewClassifier {
         return m == null || b.getPiece(m.getFrom()).getPieceType() == PieceType.KING;
     }
 
-    /**
-     * Phase 4: move i (the engine's move, checked by the caller) is quiet (no capture, no check, not out of check)
-     * and leaves en prise the piece (bishop or more) that the mover's previous move offered as a sacrifice and the
-     * opponent declined: Bai Jinshi - Ding Liren 20...Rd4 21.h3 h5 (chess.com Brilliant, like Rotlewi - Rubinstein
-     * 23...Rd2, Kasparov - Topalov 37.Rd7 and Aronian - Anand 16...Nde5 after their own sacrifices).
-     */
-    private static boolean renewsSacrifice(GameReplay replay, int i, boolean me, Tuning t) {
-        if (!t.brilliantRenewed || i < 2) {
-            return false;
-        }
-        Board b0 = board(replay.fens().get(i));
-        String uci = replay.uci().get(i);
-        Move m = Tactics.find(b0, uci);
-        if (m == null || b0.isKingAttacked() || Tactics.isCapture(b0, uci)) {
-            return false;
-        }
-        String prev = replay.uci().get(i - 2);
-        Board bp = board(replay.fens().get(i - 2));
-        Move pm = Tactics.find(bp, prev);
-        if (pm == null || pm.getTo() == m.getFrom() || Sacrifice.of(bp, prev, me).value() < t.sacMin) {
-            return false;
-        }
-        Side side = me ? Side.WHITE : Side.BLACK;
-        Piece offered = b0.getPiece(pm.getTo());
-        if (offered == Piece.NONE || offered.getPieceSide() != side || Tactics.value(offered) < 3
-                || !Tactics.hanging(b0, side).containsKey(pm.getTo())) {
-            return false;
-        }
-        Board b1 = b0.clone();
-        b1.doMove(m);
-        return !b1.isKingAttacked() && Tactics.hanging(b1, side).containsKey(pm.getTo());
-    }
-
     /** 0 losing, 1 about equal, 2 winning (SPEC v2.1). */
     private static int outcomeClass(double ep, Tuning t) {
         return ep < t.outcomeLow ? 0 : ep > t.outcomeHigh ? 2 : 1;
@@ -1264,7 +1232,7 @@ public final class ReviewClassifier {
      */
     private static boolean brilliantV19(Board b0, String uci, boolean me, boolean isTop, Eval alternative,
                                         Eval played, double epBefore, double epAfter, Tuning t, double k,
-                                        List<String> line, boolean renewed) {
+                                        List<String> line) {
         Move m = Tactics.find(b0, uci);
         if (m == null || m.getPromotion() != Piece.NONE) {
             return false;
@@ -1310,7 +1278,7 @@ public final class ReviewClassifier {
         if (kingMarch) {
             return true; // the king itself is what is offered
         }
-        if (sac.value() < t.sacMin && !renewed && !(t.brilliantPawnCheckSac && pawnCheckSacrifice(b0, m, line, epBefore,
+        if (sac.value() < t.sacMin && !leavesHeavyPiece(b0, m, me, line, t) && !(t.brilliantPawnCheckSac && pawnCheckSacrifice(b0, m, line, epBefore,
                 played, me))) {
             return false; // B-E1: nothing new is offered
         }
@@ -1343,6 +1311,46 @@ public final class ReviewClassifier {
             return false;
         }
         return sac.regain() < 0 || sac.regain() < sac.offered() + t.fakeRegain; // B-E4
+    }
+
+    /**
+     * Phase 4 B-TI ("threat ignored", user 22:30: a piece left en prise is a sacrifice when taking it costs the
+     * opponent): the move, quiet and not a king move, leaves en prise a rook or queen that was already attacked, worth
+     * more than the moved piece; the reply of the line does not take it and the move creates no threat as big (that
+     * would be an exchange of threats). Byrne - Fischer 17...Be6 (queen b6), Karpov - Kasparov 1985/16 37...Rc1
+     * (queen e3), Aronian - Anand 13...Ng4 (rook f8), live_145773198260 16.c5 (rook d6), Bai - Ding 21...h5 (rook d4):
+     * chess.com Brilliant. Not: 24.Qe3 Tal - Larsen (the queen is heavier than the rook left), 15.c4 daily_1011391210
+     * and 20.Bc3 Nezhmetdinov - Chernikov (they attack the queen).
+     */
+    private static boolean leavesHeavyPiece(Board b0, Move m, boolean me, List<String> line, Tuning t) {
+        if (!t.brilliantHeavyLeft || b0.getPiece(m.getTo()) != Piece.NONE || b0.isKingAttacked()
+                || b0.getPiece(m.getFrom()).getPieceType() == PieceType.KING) {
+            return false;
+        }
+        Side side = me ? Side.WHITE : Side.BLACK;
+        Map<Square, Integer> before = Tactics.hanging(b0, side);
+        Board b1 = b0.clone();
+        b1.doMove(m);
+        Map<Square, Integer> after = Tactics.hanging(b1, side);
+        String reply = line.size() > 1 ? line.get(1) : "";
+        // a counter-threat at least as big as the piece left is an exchange of threats, not an offer
+        Map<Square, Integer> oppBefore = Tactics.hanging(b0, side.flip());
+        int threat = 0;
+        for (Map.Entry<Square, Integer> e : Tactics.hanging(b1, side.flip()).entrySet()) {
+            if (!oppBefore.containsKey(e.getKey())) {
+                threat = Math.max(threat, e.getValue());
+            }
+        }
+        for (Map.Entry<Square, Integer> e : before.entrySet()) {
+            Square sq = e.getKey();
+            if (sq != m.getFrom() && after.containsKey(sq) && after.get(sq) >= t.sacMin
+                    && Tactics.value(b0.getPiece(sq)) >= 5 && threat < Tactics.value(b0.getPiece(sq))
+                    && Tactics.value(b0.getPiece(m.getFrom())) < Tactics.value(b0.getPiece(sq))
+                    && !(reply.length() >= 4 && reply.substring(2, 4).equals(sq.value().toLowerCase(java.util.Locale.ROOT)))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** True when, after move {@code m}, the moved piece is the only piece (not pawn, not king) on the board. */

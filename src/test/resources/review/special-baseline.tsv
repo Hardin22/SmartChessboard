@@ -1,6 +1,6 @@
 # Brilliant/Great errors accepted today by SpecialLabelsGateTest (Phase 4). It only shrinks: regenerate
 # (-Dreview.special.regen=true) after fixing errors. Allowlisted exceptions are not repeated here.
-# exact 0.6857 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
+# exact 0.6858 on 9218 plies of the 142 labelled games (chess.com SF16 d22)
 id	ply	kind	set	san	ours	chesscom
 daily_1009092152	36	fn-great	cv93	Qxe1	best	great
 daily_1011205894	10	fn-great	cv93	Qxd1+	best	great
@@ -36,7 +36,6 @@ live_143542139438	29	fn-great	cv93	Bh7+	excellent	great
 live_143542139438	33	fn-brilliant	cv93	Qh5	best	brilliant
 live_145692245792	21	fn-great	cv93	Nexd4	best	great
 live_145692245792	49	fn-great	cv93	Rxf5	best	great
-live_145773198260	31	fn-brilliant	cv93	c5	best	brilliant
 live_166861688890	51	fn-great	cv93	Nd6+	best	great
 live_168110883796	19	fn-great	cv93	Rd1	best	great
 live_169307682848	22	fn-great	cv93	Ne3	excellent	great
@@ -119,7 +118,6 @@ anderssen_dufresne_1852	15	fn-great	famous-brilliant	Qb3	best	great
 anderssen_dufresne_1852	16	fn-great	famous-brilliant	Qf6	best	great
 anderssen_dufresne_1852	20	fn-great	famous-brilliant	Nge7	best	great
 anderssen_dufresne_1852	39	fn-great	famous-brilliant	Rxe7+	best	great
-aronian_anand_2013	26	fn-brilliant	famous-brilliant	Ng4	excellent	brilliant
 aronian_anand_2013	28	fn-great	famous-brilliant	cxd4	best	great
 aronian_anand_2013	36	fn-great	famous-brilliant	Nxg4	best	great
 aronian_anand_2013	38	fn-great	famous-brilliant	f5	inaccuracy	great
@@ -130,14 +128,11 @@ bai_jinshi_ding_liren_2017	58	fn-brilliant	famous-brilliant	Rxf2	best	brilliant
 botvinnik_capablanca_1938	37	fn-great	famous-brilliant	e4	best	great
 botvinnik_capablanca_1938	75	fn-great	famous-brilliant	Kxh5	best	great
 botvinnik_tal_1960_g6	58	fn-great	famous-control	Rxc1	best	great
-byrne_fischer_1956	34	fn-brilliant	famous-brilliant	Be6	great	brilliant
-byrne_fischer_1956	34	fp-great	famous-brilliant	Be6	great	brilliant
 fischer_petrosian_1971_g7	59	fn-great	famous-control	Kd2	best	great
 fischer_spassky_1972_g6	41	fn-great	famous-control	f4	best	great
 ivanchuk_yusupov_1991_g9	38	fn-great	famous-brilliant	gxf4	best	great
 ivanchuk_yusupov_1991_g9	62	fn-great	famous-brilliant	Kh7	best	great
 karpov_kasparov_1985_g16	36	fn-great	famous-brilliant	b4	best	great
-karpov_kasparov_1985_g16	74	fn-brilliant	famous-brilliant	Rc1	best	brilliant
 kasparov_topalov_1999	60	fp-great	famous-brilliant	Qc4	great	best
 kasparov_topalov_1999	63	fn-great	famous-brilliant	Qxa6+	best	great
 levitsky_marshall_1912	37	fn-great	famous-brilliant	Rxd5	best	great
