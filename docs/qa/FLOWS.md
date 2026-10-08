@@ -1,6 +1,7 @@
 # Mappa dei flussi di javaChess (audit QA)
 
-Stato del codice: branch `qa/v1` partito da main `5accc41`. Ogni flusso indica da dove si entra, gli stati che
+Stato del codice: branch `qa/v1` partito da main `5accc41`, poi allineato a main con la nuova UI (design/v2) e le
+funzioni di features (orologio PvC, annulla, ripresa, livelli in Elo). Ogni flusso indica da dove si entra, gli stati che
 attraversa, come se ne esce e **come è stato percorso** (E2E = test end-to-end automatico, SIM = app vera con la
 scacchiera simulata `-Djavachess.board=sim`, CODICE = solo lettura del codice). I problemi trovati hanno un
 codice `QA-nnn` che rimanda a [ISSUES.md](ISSUES.md).
@@ -24,7 +25,8 @@ main() ─ Bootstrap.init ─ cookie store ─ JavaFX start
 Chiusura finestra / Esc+Cmd-Q ─ App.stop:
    partita in corso → archiviata come interrotta ─ LED spenti, seriale chiusa ─ scritture pendenti
    (2 s) ─ JCEF ─ "quit" ai motori ─ kill dei processi figli ─ System.exit
-SIGTERM / Ctrl+C ─ shutdown hook: LED, scritture pendenti, JCEF (la partita in corso NON viene salvata → QA-012)
+SIGTERM / Ctrl+C / kill -9 / blackout ─ la partita in corso resta in current-game.json (snapshot a ogni mossa,
+   features) → al riavvio la Home offre "Partita interrotta · Riprendi / Ignora" (QA-012, verificato con kill -9)
 ```
 
 | Caso | Atteso | Verifica |
@@ -33,21 +35,23 @@ SIGTERM / Ctrl+C ─ shutdown hook: LED, scritture pendenti, JCEF (la partita in
 | Nessun motore installato | home "motore non disponibile", partita PvC: messaggio e nuovi tentativi (QA-002) | E2E (crash/hang), CODICE |
 | Nessuna scacchiera (`auto` senza Arduino) | chip "scacchiera scollegata", partite giocabili solo dallo schermo (QA-001) | CODICE |
 | Archivio corrotto | file messo da parte in `backups/`, avviso (una volta, QA-010) | test unitari archivio |
-| Chiusura a partita in corso | partita archiviata come interrotta, nessun processo/thread residuo | SIM, E2E lunga durata |
+| Chiusura a partita in corso | partita archiviata come interrotta, nessun processo/thread residuo | SIM (`-Djavachess.exitAfterMs`), E2E lunga durata |
+| kill -9 a partita in corso | snapshot coerente, nessun processo Stockfish orfano, ripresa dalla Home | SIM, E2E `gameLeftByARestart…` |
+| Ogni schermata (anche ruotata e con cambio tema) | nessun errore nel log | E2E `everyScreenOpens…` |
 
 ## 1. Home
 
 Entrate: avvio, "indietro" da ogni schermata, fine partita ("Termina").
-Contenuto: logo, stato scacchiera e motore, riquadro "ultima partita" (→ revisione) o "partita in corso"
-(→ GAME; in pratica non compare mai perché uscire da GAME termina la partita, vedi §2.6), statistiche
-(puzzle, serie, partite), azioni: Contro il computer, Due giocatori, Online (chess.com / Lichess), Puzzle,
-Archivio, Temi, Impostazioni.
+Contenuto (nuova UI): stato scacchiera e motore, saluto, carta "Partita interrotta · Riprendi / Ignora" (snapshot
+su disco) oppure "Ultima partita · Rivedi", azioni: Contro il computer (ultimo livello/colore), Due giocatori
+(ultima cadenza), Puzzle, Archivio, Online, Temi; ↻ e impostazioni in alto. La carta si nasconde a ogni ritorno
+finché i dati non sono ricaricati (QA-029).
 
 ## 2. Partite locali
 
 ### 2.1 Contro il computer (PvC)
 ```
-HOME ─ PVC_SETUP (livello 1-20 o Maia 1100/1500/1900, colore bianco/nero/casuale)
+HOME ─ PVC_SETUP (livello in Elo approssimativo o Maia, colore, cadenza opzionale)
   └─ Inizia ─ GAME: PvcGame.startGame
         ├─ BoardStateManager SETUP: LED dei pezzi mancanti/sbagliati, "Posiziona i pezzi…"
         │     (scacchiera scollegata: setup completato subito)
@@ -55,12 +59,15 @@ HOME ─ PVC_SETUP (livello 1-20 o Maia 1100/1500/1900, colore bianco/nero/casua
         ├─ mossa umana (sensori o schermo) → coach LED (verdetto) → bot (EngineManager.botMove)
         │     ├─ ok → mossa sullo schermo + REPLICATE: LED from/to, "Muovi l'avversario…" → PLAY
         │     └─ errore motore → messaggio + nuovo tentativo 2/5/15/30 s (QA-002, corretto)
-        └─ fine: matto (umano o bot), stallo/ripetizione/materiale/50 mosse, "Termina" (conferma),
-              uscita dalla schermata, chiusura app
-              → archivio (risultato PGN + terminazione), ultima mossa del bot da replicare (QA-003)
+        ├─ in partita: annulla (anche durante la replica: RESYNC), suggerimento, offerta di patta, abbandono
+        └─ fine: matto (umano o bot), patta (regole o accordo), tempo, abbandono (conferma), "Esci" (conferma),
+              chiusura app → archivio (risultato PGN + terminazione), ultima mossa del bot da replicare (QA-003),
+              carta di fine "Rivedi / Nuova partita"
 ```
-Verifica: SIM (partita intera con autoplay fino al matto del bot), E2E (matto, cambio motore a caldo,
-crash/blocco del motore), E2E scacchiera simulata (matto del bot e dell'umano con mosse fisiche).
+Verifica: SIM (partita intera con autoplay fino al matto del bot, vecchia e nuova UI), E2E (matto, cambio motore a
+caldo, crash/blocco del motore, partita giocata toccando lo schermo), E2E scacchiera simulata (matto del bot e
+dell'umano con mosse fisiche, abbandono, uscita con conferma, annulla durante la replica), E2E di features (livello,
+orologio, annulla, ripresa, tempo scaduto, suggerimento).
 
 ### 2.2 Due giocatori (PvP)
 ```
@@ -69,11 +76,14 @@ HOME ─ PVP_SETUP (minuti, incremento, preset) ─ GAME: PvpGame (orologi, barr
   fine: matto, patta automatica (stallo, triplice, materiale, 50 mosse), tempo (FIDE 6.9: patta se chi
   resta non può dare matto), "Termina" (conferma) → archivio
 ```
-Verifica: E2E (bandierina), E2E scacchiera simulata (matto, ripetizione, bandierina).
+Pausa (nuova UI): orologi fermi; una mossa sulla scacchiera in pausa viene rifiutata e rimessa (QA-030).
+Verifica: E2E (bandierina), E2E scacchiera simulata (matto con orologi fermi, triplice ripetizione, patta d'accordo,
+mossa in pausa).
 
 ### 2.3 Patta / abbandono
-Non esistono azioni distinte: "Termina partita" archivia come interrotta (`*`). Offerta di patta e abbandono
-sono nel brief di **features** (QA-013).
+Nuova UI: abbandono con conferma (PvC e per ciascun lato in PvP), offerta/accettazione di patta in PvP, patta
+offerta al bot (BotDrawPolicy, features). Archiviati come 0-1/1-0 "Abbandono" e ½-½ "Patta d'accordo" anche dopo
+poche mosse (QA-021).
 
 ### 2.4 Scacchiera scollegata / ricollegata a metà partita
 ```
@@ -92,12 +102,14 @@ bot fatta nel frattempo non veniva chiesta. Verifica: test unitari BoardStateMan
 da solo (QA-002). Analisi live: si riavvia in silenzio. Verifica: E2E `!crash` / `!hang`.
 
 ### 2.6 Interruzione e ripresa
-Uscire dalla schermata di gioco (indietro con conferma, Termina, apertura di un'altra vista, chiusura app)
-**termina** la partita e la archivia come interrotta. Non c'è ripresa dopo un riavvio: la fa **features**
-(snapshot a ogni mossa, QA-012).
+Uscire dalla schermata di gioco (indietro/"Esci" con conferma, apertura di un'altra vista, chiusura app) termina la
+partita e la archivia come interrotta, ma lo snapshot resta: la Home offre di riprenderla. Riprendendo, la scacchiera
+va prima rimessa nella posizione salvata (SETUP), poi si continua; quando la partita ripresa viene archiviata, la
+copia "interrotta" viene sostituita (una sola copia). "Ignora" la archivia come interrotta.
 
 ### 2.7 Riavvio dell'app a partita in corso
-Chiusura regolare → partita archiviata come interrotta. Kill/spegnimento del Pi → partita persa (QA-012).
+Chiusura regolare o kill/blackout → snapshot su disco → Home "Partita interrotta · Riprendi". Verifica: SIM
+(`-Djavachess.exitAfterMs`, kill -9), E2E `gameLeftByARestartIsResumedFromHomeOnTheBoard`.
 
 ## 3. Online
 ### 3.1 chess.com (browser integrato) — area **browser**
@@ -113,7 +125,8 @@ REVIEW: scacchiera + navigazione (prima/indietro/avanti/ultima, tocco sulla list
   analisi live della posizione (linea + valutazione, freccia) ─ "Analizza partita" → GameAnalyzer (thread)
   → progresso, risultati provvisori, precisione per colore, etichette, grafico, riepilogo (foglio)
   errore del motore → dialogo + pulsante di nuovo attivo
-indietro → sempre ARCHIVIO (anche se si veniva dalla home: QA-009)
+indietro → la schermata di provenienza (nuova UI, QA-009); uscendo, l'analisi completa in corso si ferma e i suoi
+motori si chiudono (QA-018)
 ```
 Verifica: E2E (precisione), SIM (snapshot).
 
@@ -134,13 +147,14 @@ Nessun database puzzle → "Nessun puzzle trovato con questi filtri" (fuorviante
 Verifica: E2E (risolto / con errore), E2E scacchiera simulata (setup fisico + soluzione).
 
 ## 7. Impostazioni e temi
-SETTINGS: tema (subito), rotazione (subito, non salvata: QA-006), suggerimenti, valutazione, animazione matto,
-livello bot, tempo di riflessione, cadenza PvP di default, luminosità LED, account Lichess (OAuth), Avanzate.
-I valori si salvano solo con "Salva impostazioni"; "indietro" li perde senza avviso (QA-005).
+SETTINGS (nuova UI): ogni controllo si salva subito (QA-005); tema, monitor capovolto (salvato), orientamento
+automatico, suggerimenti/valutazione separati per PvP e PvC (spenti di default, QA-024), animazione di fine partita,
+tempo di riflessione, luminosità LED, account Lichess, Avanzate.
 THEME: scacchiera e pezzi.
 
 ## 8. Rotazione dello schermo
-Solo dalle impostazioni (180°, non persistente). Il brief design la vuole sempre disponibile: **design**.
+Nuova UI: ↻ in ogni intestazione, nei fogli e nel menu della partita (temporanea, si riorienta verso chi gioca);
+"Monitor capovolto" nelle impostazioni per il montaggio (salvato). Verifica: E2E (ogni schermata ruotata).
 
 ## 9. Rete assente
 - Lichess (seek, stream, OAuth): errori mostrati come messaggi; area browser/Lichess.
