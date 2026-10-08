@@ -11,11 +11,11 @@ con gravità, passi, area e stato).
 
 | | |
 |---|---|
-| Problemi trovati | 31 (QA-001 … QA-031) |
-| Corretti da QA (logica, con test) | 18: QA-001 (parte logica), 002, 003, 004, 007, 008 (parte logica), 010, 018, 019, 020, 021, 025, 027, 028, 029, 030, 031 + resync per l'annulla mossa |
+| Problemi trovati | 32 (QA-001 … QA-032) |
+| Corretti da QA (logica, con test) | 19: QA-001 (parte logica), 002, 003, 004, 007, 008 (parte logica), 010, 018, 019, 020, 021, 025, 027, 028, 029, 030, 031, 032 + resync per l'annulla mossa |
 | Assegnati e già risolti | design: 005, 006, 008 (UI), 009, 015, 016, 022, 023, 024; features: 012, 013, 014, 026 |
 | Ancora aperti / in corso | browser: 011 (da verificare con browser/v2) |
-| Test | unit 515 (10 skip senza motori), E2E 31 (6 classi), tutti verdi con e senza finestra; nel "Pi in scatola" (Docker linux/arm64, 4 CPU, 2 GB, senza Stockfish) unit 495 (29 skip) ed E2E 28/28 senza finestra |
+| Test | unit 516 (10 skip senza motori), E2E 31 (6 classi), tutti verdi con e senza finestra; nel "Pi in scatola" (Docker linux/arm64, 4 CPU, 2 GB, senza Stockfish) unit 495 (29 skip) ed E2E 28/28 senza finestra |
 
 ## Bug di logica corretti (i più importanti)
 
@@ -33,7 +33,7 @@ con gravità, passi, area e stato).
 - **Home** (QA-029): al ritorno restava per un attimo la carta "Riprendi" della visita precedente: si poteva
   riprendere la partita sbagliata.
 - **PvP in pausa** (QA-030): una mossa sulla scacchiera faceva ripartire gli orologi; **PvC con orologio** (QA-031):
-  cadenza persa in archivio.
+  cadenza persa in archivio; **impostazioni** (QA-032) lette col valore vecchio se la scrittura era in coda.
 - **Mosse dallo schermo** (QA-001): `handleMoveInput` con promozione (`e7e8n`), `isAwaitingHumanMove()`; la UI di
   design le usa (tocco sulle case, selettore della promozione).
 
@@ -52,7 +52,7 @@ con gravità, passi, area e stato).
   puzzle, rotazione, tema; sulla scacchiera simulata anche cavo staccato con mosse fatte offline e mosse in pausa);
   falliscono su qualsiasi ERROR nel log o thread FX bloccato e stampano seme e traccia. 5 semi × 600 e 6 semi ×
   400-500 azioni puliti.
-- `LongRunEndToEndTest`: 20 partite di fila; thread, processi figli e heap (dopo aver liberato le cache soft)
+- `LongRunEndToEndTest`: 20 partite di fila (misura anche l'attesa del thread FX: max 20 ms, p99 13 ms); thread, processi figli e heap (dopo aver liberato le cache soft)
   restano fermi (es. thread 37→37, processi 2→2, heap 70→72 MB). Con i flag di `run_pi.sh` (512 MB, SerialGC) 30
   partite senza OutOfMemoryError.
 - Esecuzione senza finestra: `-De2e.headless=true` (JavaFX Monocle, rendering software), oltre a `xvfb-run` in CI.
