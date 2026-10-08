@@ -123,8 +123,12 @@ public final class BoardDiagnostics {
 
     /** Squares not checked yet ("a3, h7"), at most {@code max} names then "…". */
     public String uncheckedText(int max) {
+        return unchecked(checked.get(), max);
+    }
+
+    private static String unchecked(long ok, int max) {
         List<String> names = new ArrayList<>();
-        long todo = ~checked.get();
+        long todo = ~ok;
         for (int sq = 0; sq < 64; sq++) {
             if ((todo & Squares.bit(sq)) != 0) {
                 names.add(Squares.name(sq).toLowerCase(Locale.ROOT));
@@ -164,7 +168,7 @@ public final class BoardDiagnostics {
         board.setSquareListener(this::onSquare);
         message.set("Appoggia un pezzo su ogni casa e toglilo: la casa diventa verde. Le case bianche risultano "
                 + "occupate");
-        showSensors();
+        showSensors(0, occupied.get());
     }
 
     /** Ends any test: LEDs off, the board given back (idle until a screen starts a game or a set-up). */
@@ -229,24 +233,25 @@ public final class BoardDiagnostics {
             occupied.set(occupied.get() & ~bit);
         }
         long ok = placedSeen & liftedSeen;
-        checked.set(ok);
-        checkedCount.set(Long.bitCount(ok));
-        showSensors();
+        // LEDs and text first, counters and phase last: whoever watches them finds the rest done
+        showSensors(ok, occupied.get());
         if (ok == -1L) {
-            phase.set(Phase.DONE);
             board.setSquareListener(null);
             message.set("Tutti i 64 sensori funzionano");
             leds.playVictoryWave();
         } else {
-            message.set(checkedCount.get() + " case su 64 · mancano: " + uncheckedText(6));
+            message.set(Long.bitCount(ok) + " case su 64 · mancano: " + unchecked(ok, 6));
+        }
+        checked.set(ok);
+        checkedCount.set(Long.bitCount(ok));
+        if (ok == -1L) {
+            phase.set(Phase.DONE);
         }
     }
 
     /** Checked squares green, squares read as occupied (not yet checked) white. */
-    private void showSensors() {
+    private void showSensors(long ok, long occ) {
         Map<Integer, Integer> base = new HashMap<>();
-        long ok = checked.get();
-        long occ = occupied.get();
         for (int sq = 0; sq < 64; sq++) {
             long bit = Squares.bit(sq);
             if ((ok & bit) != 0) {

@@ -115,11 +115,12 @@ class CoordinateTrainerTest {
 
         String wrong = second.equals("a1") ? "h8" : "a1";
         sim.place(wrong.toUpperCase());
+        // the flash lasts 0.6 s: read it as soon as it is there
+        await(() -> leds.composeNow()[Squares.parse(wrong)] == LedColors.ERROR
+                && leds.composeNow()[Squares.parse(second)] == LedColors.GOOD);
         await(() -> t.mistakesProperty().get() == 1);
         assertEquals("No: quella è " + wrong + ", cercavi " + second, t.messageProperty().get());
         assertEquals(wrong, t.wrongSquareProperty().get());
-        assertEquals(LedColors.ERROR, leds.composeNow()[Squares.parse(wrong)]);
-        assertEquals(LedColors.GOOD, leds.composeNow()[Squares.parse(second)]);
 
         t.answer(t.targetProperty().get()); // a tap on the screen
         assertEquals(2, t.scoreProperty().get());

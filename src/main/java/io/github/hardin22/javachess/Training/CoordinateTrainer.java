@@ -189,23 +189,26 @@ public final class CoordinateTrainer {
         }
         String given = square.toLowerCase(Locale.ROOT);
         String asked = target.get();
-        if (given.equals(asked)) {
-            score.set(score.get() + 1);
+        boolean right = given.equals(asked);
+        // LEDs, texts and the next square first, the counters last: whoever watches a counter sees the rest done
+        if (right) {
             wrongSquare.set(null);
             message.set("Giusto!");
             flash(asked, LedColors.GOOD, null, 0);
+        } else if (mode == Mode.FIND) {
+            wrongSquare.set(given);
+            message.set("No: quella è " + given + ", cercavi " + asked);
+            flash(asked, LedColors.GOOD, given, LedColors.ERROR);
         } else {
-            mistakes.set(mistakes.get() + 1);
-            if (mode == Mode.FIND) {
-                wrongSquare.set(given);
-                message.set("No: quella è " + given + ", cercavi " + asked);
-                flash(asked, LedColors.GOOD, given, LedColors.ERROR);
-            } else {
-                message.set("No: era " + asked);
-                flash(asked, LedColors.GOOD, null, 0);
-            }
+            message.set("No: era " + asked);
+            flash(asked, LedColors.GOOD, null, 0);
         }
         next();
+        if (right) {
+            score.set(score.get() + 1);
+        } else {
+            mistakes.set(mistakes.get() + 1);
+        }
     }
 
     /** Ends early (leaving the screen) or when the time is up. */
