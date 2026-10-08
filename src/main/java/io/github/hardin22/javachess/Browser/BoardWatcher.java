@@ -217,7 +217,7 @@ public final class BoardWatcher {
             return;
         }
         pollOnce().whenComplete((v, e) -> {
-            if (e != null) {
+            if (e != null && running && gen == generation) { // after stop() a late answer does not matter
                 log.warn("Board watch failed", e);
             }
             if (running && gen == generation) {

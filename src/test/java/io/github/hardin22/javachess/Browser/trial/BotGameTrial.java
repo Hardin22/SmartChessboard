@@ -479,7 +479,17 @@ public final class BotGameTrial {
                     checks++;
                     if (!followedNow.equals(page)) {
                         diverged++;
-                        anomalies.add("ply " + st.plies() + ": followed " + followedNow + " page " + page);
+                        // how late: keep watching (the game goes on only when the opponent's move is followed)
+                        long lateSince = until - 4000;
+                        while (System.currentTimeMillis() - lateSince < 30_000 && !followedNow.equals(page)) {
+                            Thread.sleep(200);
+                            followedNow = SetupPosition.placement(owner.submit(sync::position).get());
+                        }
+                        String late = followedNow.equals(page)
+                                ? "followed after " + (System.currentTimeMillis() - lateSince) + " ms" : "not followed";
+                        System.out.println("LATE " + java.time.LocalTime.now() + " ply " + st.plies() + " " + late);
+                        anomalies.add("ply " + st.plies() + ": followed " + followedNow + " page " + page + " (" + late
+                                + ")");
                     }
                 } else if (settled) {
                     checks++;
