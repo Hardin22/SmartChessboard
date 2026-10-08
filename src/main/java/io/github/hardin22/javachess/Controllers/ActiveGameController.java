@@ -732,8 +732,12 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
             return StatusCard.Content.of(Tone.ACTION, I18n.t("game.status.setup.kicker"), I18n.t("game.status.setup"),
                     pretty);
         }
+        // "Salta guida": the rest of this set-up as a whole (all missing squares lit at once)
+        Button skip = Ui.button(I18n.t("game.status.setup.skip"), "fth-fast-forward", "btn-outline", "btn-md");
+        skip.setId("setup-skip");
+        skip.setOnAction(e -> io.github.hardin22.javachess.Hardware.Hardware.boardState().skipSetupGuide());
         return new StatusCard.Content(Tone.ACTION, I18n.t("game.status.setup") + " · " + t.step(), t.title(),
-                t.squares(), t.rest(), List.of());
+                t.squares(), t.rest(), List.of(skip));
     }
 
     private StatusCard.Content turnCard(boolean humanTurn, String lastMove) {

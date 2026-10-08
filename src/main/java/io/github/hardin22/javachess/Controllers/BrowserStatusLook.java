@@ -27,7 +27,7 @@ final class BrowserStatusLook {
             case SITE_UNREACHABLE -> "fth-cloud-off";
             case VERIFY -> "fth-shield";
             case LOGIN, LOGIN_FAILED, SAVE_LOGIN -> "fth-log-in";
-            case NOT_ACCEPTED, UNCERTAIN, BOARD_HIDDEN -> "fth-alert-triangle";
+            case NOT_ACCEPTED, UNCERTAIN, BOARD_HIDDEN, PAGE_CRASHED -> "fth-alert-triangle";
             case GAME_OVER -> "fth-flag";
             case YOUR_TURN, SETUP, REPLICATE -> "fth-grid";
             default -> "fth-globe";

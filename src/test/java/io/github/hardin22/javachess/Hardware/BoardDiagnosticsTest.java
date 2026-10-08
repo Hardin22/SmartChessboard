@@ -23,6 +23,7 @@ class BoardDiagnosticsTest {
     BoardStateManager manager;
     ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor();
     BoardDiagnostics diagnostics;
+    ScheduledExecutorService boardEvents;
 
     @BeforeEach
     void setUp() {
@@ -37,8 +38,8 @@ class BoardDiagnosticsTest {
             public void hintsCleared() {
             }
         };
-        manager = new BoardStateManager(leds, new MoveLeds(leds), Runnable::run, noHints,
-                Executors.newSingleThreadScheduledExecutor());
+        boardEvents = Executors.newSingleThreadScheduledExecutor();
+        manager = new BoardStateManager(leds, new MoveLeds(leds), Runnable::run, noHints, boardEvents);
         sim.start(manager);
         manager.awaitIdle();
         diagnostics = new BoardDiagnostics(manager, leds, timer, Runnable::run);
@@ -70,6 +71,7 @@ class BoardDiagnosticsTest {
         // starting position on the board: 32 squares read as occupied
         diagnostics.startSensorTest();
         assertEquals(BoardDiagnostics.Phase.SENSORS, diagnostics.phaseProperty().get());
+        manager.awaitIdle(); // the board has turned its own LEDs off and the test drew again
         assertEquals(BoardDiagnostics.DETECTED, ledAt("E2"), "occupied, not checked yet");
         assertEquals(0, ledAt("E4"));
 
@@ -105,6 +107,7 @@ class BoardDiagnosticsTest {
         });
         diagnostics.setTimings(5, 1);
         diagnostics.startLedTest();
+        manager.awaitIdle();
         assertEquals(0xFF0000, ledAt("A1"));
         assertEquals(0xFF0000, ledAt("H8"));
         await(() -> diagnostics.phaseProperty().get() == BoardDiagnostics.Phase.IDLE);
@@ -112,6 +115,25 @@ class BoardDiagnosticsTest {
         assertEquals(List.of("Rosso", "Verde", "Blu", "Bianco", "a1", "b1"), steps.subList(0, 6));
         assertEquals("h8", steps.get(67));
         assertEquals(0, ledAt("H8"), "LEDs off at the end");
+    }
+
+    @Test
+    void aTapNeverWaitsForABusyBoardThread() throws Exception {
+        boardEvents.submit(() -> {
+            try {
+                Thread.sleep(1_500); // a machine under load, swapping
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        long start = System.nanoTime();
+        diagnostics.startSensorTest();
+        diagnostics.startLedTest();
+        long ms = (System.nanoTime() - start) / 1_000_000;
+        assertTrue(ms < 500, "the buttons returned after " + ms + " ms");
+        assertEquals(BoardDiagnostics.Phase.LEDS, diagnostics.phaseProperty().get());
+        manager.awaitIdle();
+        assertTrue(ledAt("A1") != 0, "drawn again after the board caught up (the colour may have moved on)");
     }
 
     @Test
