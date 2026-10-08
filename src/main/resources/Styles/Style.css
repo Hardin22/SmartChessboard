@@ -1656,3 +1656,59 @@
 .rush-tile:pressed {
     -fx-background-color: -c-s3;
 }
+
+/* ---------------------------------------------------------------- statistics */
+
+.stats-big {
+    -fx-font-family: "Geist Light";
+    -fx-font-size: 76px;
+    -fx-text-fill: -c-fg;
+}
+
+.stats-pct {
+    -fx-font-family: "Geist Light";
+    -fx-font-size: 40px;
+    -fx-text-fill: -c-fg;
+}
+
+.stats-bar-part {
+    -fx-background-radius: 6px;
+}
+
+.stats-bar-part.win {
+    -fx-background-color: -c-ok;
+}
+
+.stats-bar-part.draw {
+    -fx-background-color: -c-warn;
+}
+
+.stats-bar-part.loss {
+    -fx-background-color: -c-danger;
+}
+
+.form-dot {
+    -fx-min-width: 48px;
+    -fx-min-height: 48px;
+    -fx-max-width: 48px;
+    -fx-max-height: 48px;
+    -fx-alignment: center;
+    -fx-background-radius: 24px;
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 20px;
+}
+
+.form-dot.win {
+    -fx-background-color: -c-ok-soft;
+    -fx-text-fill: -c-ok;
+}
+
+.form-dot.draw {
+    -fx-background-color: -c-warn-soft;
+    -fx-text-fill: -c-warn;
+}
+
+.form-dot.loss {
+    -fx-background-color: -c-danger-soft;
+    -fx-text-fill: -c-danger;
+}

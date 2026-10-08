@@ -56,6 +56,7 @@ public class HomeController implements Screen {
     private final Label pvpSub = Ui.label("", "tile-sub");
     private final Label puzzleValue = Ui.label("—", "tile-value");
     private final Label gamesValue = Ui.label("—", "tile-value");
+    private final Label statsValue = Ui.label("", "tile-value");
     private ChessBoardUI resumeBoard;
 
     public HomeController() {
@@ -104,15 +105,15 @@ public class HomeController implements Screen {
         Button online = smallTile("fth-globe", I18n.t("home.online.title"), null, I18n.t("home.online.description"),
                 this::showOnline);
         online.setId("home-online");
-        Button themes = smallTile("fth-grid", I18n.t("home.boards"), null, I18n.t("home.boards.description"),
-                () -> mainController.navigateTo("THEME"));
+        Button stats = smallTile("fth-bar-chart-2", I18n.t("home.stats"), statsValue, I18n.t("home.stats.description"),
+                () -> mainController.navigateTo("STATS"));
 
         VBox actions = new VBox(16,
                 Ui.sectionLabel(I18n.t("home.play")),
                 pvc, pvp,
                 Ui.gap(4),
                 Ui.equalRow(16, puzzles, archive),
-                Ui.equalRow(16, online, themes));
+                Ui.equalRow(16, online, stats));
 
         resumeSlot.managedProperty().bind(resumeSlot.visibleProperty());
 
@@ -242,10 +243,19 @@ public class HomeController implements Screen {
             var archive = io.github.hardin22.javachess.Services.GameArchiveService.getInstance();
             List<ArchivedGame> games = archive.list();
             ArchivedGame last = games.isEmpty() ? null : games.get(0);
+            String percent;
+            try {
+                var score = io.github.hardin22.javachess.Stats.PlayerStats.compute().total();
+                percent = score.games() == 0 ? "" : score.percentText();
+            } catch (RuntimeException e) {
+                percent = "";
+            }
+            String statsText = percent;
             var interrupted = inProgress ? java.util.Optional.<GameSnapshot>empty() : GameResume.available();
             Platform.runLater(() -> {
                 puzzleValue.setText(String.valueOf(progress.rating()));
                 gamesValue.setText(String.valueOf(games.size()));
+                statsValue.setText(statsText);
                 if (inProgress) {
                     showResume(I18n.t("home.resume.current"), game.getTitle(), game.getCurrentFen(),
                             game.getSubtitle(), I18n.t("home.resume.continue"), "fth-play",
