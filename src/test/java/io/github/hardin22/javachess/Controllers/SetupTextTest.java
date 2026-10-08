@@ -40,10 +40,29 @@ class SetupTextTest {
     }
 
     @Test
-    void otherMessagesStayWhole() {
-        SetupText t = SetupText.parse("Posiziona i pezzi: mancano 6");
+    void onlyPiecesToTakeAway() {
+        String m = "Posiziona i pezzi: togli quelli sulle case rosse (1)";
+        SetupText t = SetupText.parse(m);
         assertFalse(t.guided());
-        assertEquals("Posiziona i pezzi: mancano 6", t.title());
+        assertTrue(t.known(m));
+        assertEquals("Togli il pezzo dalla casa rossa", t.title());
+    }
+
+    @Test
+    void piecesMissingAndToTakeAway() {
+        SetupText t = SetupText.parse("Posiziona i pezzi: mancano 6, da togliere 2 (in rosso)");
+        assertEquals("Mancano 6 pezzi", t.title());
+        assertEquals("Togli 2 pezzi dalle case rosse", t.rest());
+        assertEquals("Manca 1 pezzo", SetupText.parse("Posiziona i pezzi: mancano 1").title());
+    }
+
+    @Test
+    void otherMessagesStayWhole() {
+        String m = "Posiziona i pezzi...";
+        SetupText t = SetupText.parse(m);
+        assertFalse(t.guided());
+        assertFalse(t.known(m));
+        assertEquals(m, t.title());
         assertNull(t.squares());
     }
 }

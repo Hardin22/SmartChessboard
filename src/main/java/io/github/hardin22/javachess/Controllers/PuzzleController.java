@@ -62,6 +62,8 @@ public class PuzzleController implements Screen {
 
     private Mode mode = Mode.NORMAL;
     private PuzzleRush rush;
+    /** Set while today's puzzle is being played: its result is recorded once, then cleared. */
+    private io.github.hardin22.javachess.Play.DailyPuzzle daily;
     private final List<Runnable> rushUnbind = new java.util.ArrayList<>();
     private final Label rushTime = Ui.label("", "rush-time");
     private final Label rushScore = Ui.label("0", "t-number");
@@ -254,6 +256,15 @@ public class PuzzleController implements Screen {
         setPuzzle(puzzle, targetRating, themes);
     }
 
+    /** Today's puzzle (the dashboard card): the same one all day, its result counted once for the daily streak. */
+    public void startDaily(Puzzle puzzle, io.github.hardin22.javachess.Play.DailyPuzzle today) {
+        leaveRush();
+        daily = today.doneToday() ? null : today;
+        configureGame();
+        setPuzzle(puzzle, puzzle.getRating(), java.util.Collections.singletonList("Tutti"));
+        header.setSubtitle(I18n.t("puzzle.daily.subtitle", puzzle.getRating()));
+    }
+
     public void setPuzzle(Puzzle puzzle, int targetRating, List<String> themes) {
         this.currentTargetRating = targetRating;
         this.currentThemes = themes;
@@ -420,6 +431,24 @@ public class PuzzleController implements Screen {
         boolean inRush = mode == Mode.RUSH && rush != null;
         puzzleGame.setRated(!inRush);
         PuzzleRush series = rush;
+        io.github.hardin22.javachess.Play.DailyPuzzle today = inRush ? null : daily;
+        if (today != null) {
+            puzzleGame.setResultListener(new PuzzleGame.ResultListener() {
+                @Override
+                public void finished(Puzzle puzzle, boolean solved, boolean clean) {
+                    io.github.hardin22.javachess.Utils.AppExecutors.storage().execute(() -> today.recordResult(solved));
+                    Platform.runLater(() -> {
+                        daily = null; // the next puzzle is an ordinary one
+                        configureGame();
+                    });
+                }
+
+                @Override
+                public void wrongMove(Puzzle puzzle) {
+                }
+            });
+            return;
+        }
         puzzleGame.setResultListener(!inRush ? null : new PuzzleGame.ResultListener() {
             @Override
             public void finished(Puzzle puzzle, boolean solved, boolean clean) {
@@ -440,6 +469,7 @@ public class PuzzleController implements Screen {
     }
 
     private void leaveRush() {
+        daily = null;
         rushUnbind.forEach(Runnable::run);
         rushUnbind.clear();
         if (rush != null) {

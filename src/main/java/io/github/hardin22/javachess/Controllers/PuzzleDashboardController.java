@@ -89,8 +89,10 @@ public class PuzzleDashboardController implements Screen {
             themes.getChildren().add(new VBox(12, Ui.label(I18n.t(section.getKey()), "row-title"), chips));
         }
 
+        dailyCard.setVisible(false);
+        dailyCard.setManaged(false);
         VBox body = new VBox(16,
-                stats,
+                stats, dailyCard,
                 Ui.gap(8), Ui.sectionLabel(I18n.t("puzzle.rush")), rushRow(),
                 reviewCard, weakBox,
                 Ui.gap(8), Ui.sectionLabel(I18n.t("puzzle.rating")), difficulty, quick,
@@ -109,6 +111,40 @@ public class PuzzleDashboardController implements Screen {
     private javafx.scene.Node content;
     private VBox footer;
     private final VBox reviewCard = new VBox(12);
+    private final VBox dailyCard = new VBox();
+    private final io.github.hardin22.javachess.Play.DailyPuzzle daily = new io.github.hardin22.javachess.Play.DailyPuzzle();
+
+    /** "Puzzle del giorno": shown only when the puzzle database gives one (works offline). */
+    private void refreshDaily() {
+        daily.load().whenComplete((puzzle, error) -> Platform.runLater(() -> {
+            boolean show = error == null && puzzle != null;
+            dailyCard.setVisible(show);
+            dailyCard.setManaged(show);
+            dailyCard.getChildren().clear();
+            if (!show) {
+                return;
+            }
+            Label title = Ui.label(I18n.t("puzzle.daily"), "row-title");
+            Label state = Ui.wrap(daily.statusText(), "t-small", daily.solvedToday() ? "t-ok" : "t-muted");
+            VBox texts = new VBox(4, title, state);
+            HBox.setHgrow(texts, javafx.scene.layout.Priority.ALWAYS);
+            Button go = Ui.button(I18n.t(daily.doneToday() ? "puzzle.daily.again" : "puzzle.daily.start"),
+                    daily.doneToday() ? "fth-rotate-ccw" : "fth-play", daily.doneToday() ? "btn-outline" : "btn-inverse",
+                    "btn-md");
+            go.setId("puzzle-daily");
+            go.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+            go.setOnAction(e -> {
+                PuzzleController controller = (PuzzleController) mainController.getController("PUZZLE_GAME");
+                mainController.navigateTo("PUZZLE_GAME");
+                controller.startDaily(puzzle, daily);
+            });
+            HBox row = new HBox(16, io.github.hardin22.javachess.Components.Icons.of("fth-sun", 32), texts, go);
+            row.setAlignment(Pos.CENTER_LEFT);
+            row.getStyleClass().add("card");
+            row.setPadding(new Insets(20, 22, 20, 22));
+            dailyCard.getChildren().add(row);
+        }));
+    }
     private final VBox weakBox = new VBox(12);
     private final List<Label> rushRecords = new ArrayList<>();
 
@@ -231,6 +267,7 @@ public class PuzzleDashboardController implements Screen {
 
     @Override
     public void onNavigatedTo() {
+        refreshDaily();
         io.github.hardin22.javachess.Utils.AppExecutors.io().execute(() -> {
             var stats = io.github.hardin22.javachess.Services.PuzzleProgressService.getInstance().getStats();
             boolean missing = !PuzzleService.hasPuzzleData() && !Boolean.getBoolean("javachess.demo.puzzlesUi");

@@ -715,7 +715,11 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
                 case ERROR -> StatusCard.Content.of(Tone.ERROR, I18n.t("game.status.error.kicker"),
                         status.to() != null ? I18n.t("game.status.error.square", status.to().toUpperCase(Locale.ROOT))
                                 : pretty(status.text()), status.to() != null ? pretty(status.text()) : null);
-                case INFO -> StatusCard.Content.of(Tone.PLAIN, "", pretty(status.text()), null);
+                case INFO -> status.text().toLowerCase(Locale.ROOT).startsWith("mossa annullata sulla scacchiera")
+                        // take-back made with the pieces (features): the player's turn again
+                        ? StatusCard.Content.of(Tone.TURN, I18n.t("game.takeback.board"), I18n.t("game.status.turn"),
+                                I18n.t("game.takeback.board.detail"))
+                        : StatusCard.Content.of(Tone.PLAIN, "", pretty(status.text()), null);
                 default -> turnCard(humanTurn, lastMove);
             };
         }
@@ -729,8 +733,10 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
     static StatusCard.Content setupCard(String text, String pretty) {
         SetupText t = SetupText.parse(text);
         if (!t.guided()) {
-            return StatusCard.Content.of(Tone.ACTION, I18n.t("game.status.setup.kicker"), I18n.t("game.status.setup"),
-                    pretty);
+            return t.known(text)
+                    ? StatusCard.Content.of(Tone.ACTION, I18n.t("game.status.setup"), t.title(), t.rest())
+                    : StatusCard.Content.of(Tone.ACTION, I18n.t("game.status.setup.kicker"),
+                            I18n.t("game.status.setup"), pretty);
         }
         // "Salta guida": the rest of this set-up as a whole (all missing squares lit at once)
         Button skip = Ui.button(I18n.t("game.status.setup.skip"), "fth-fast-forward", "btn-outline", "btn-md");
