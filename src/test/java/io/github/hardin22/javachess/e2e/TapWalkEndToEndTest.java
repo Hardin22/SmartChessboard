@@ -64,10 +64,15 @@ class TapWalkEndToEndTest {
 
     @BeforeAll
     static void startApp() throws Exception {
+        setUp("off");
+    }
+
+    /** Starts the app with {@code board} (off, sim), offline, with a "USB drive" and the error capture. */
+    static void setUp(String board) throws Exception {
         // a person taps; nothing may open the computer's own web browser
         System.setProperty("java.awt.headless", "true");
         cutTheNetwork();
-        app = E2eHarness.start("off");
+        app = E2eHarness.start(board);
         Path drive = Files.createDirectories(app.home.resolve("usb").resolve("PENNA"));
         Files.writeString(drive.resolve("torneo.pgn"), """
                 [White "Rossi"]
@@ -81,6 +86,13 @@ class TapWalkEndToEndTest {
                 [Result "1/2-1/2"]
 
                 1. d4 d5 2. c4 e6 3. Nc3 Nf6 1/2-1/2
+                """);
+        // a few puzzles in the Lichess CSV format, so that the puzzle screens open (the real database is 300 MB)
+        Files.writeString(app.home.resolve("puzzles.csv"), """
+                PuzzleId,FEN,Moves,Rating,RatingDeviation,Popularity,NbPlays,Themes,GameUrl,OpeningTags
+                tapA,6k1/r4ppp/8/8/8/8/5PPP/3R2K1 b - - 0 1,a7a6 d1d8,1200,80,90,100,mateIn1 endgame short,,
+                tapB,r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR b KQkq - 3 3,g8f6 f3f7,1100,80,90,100,mateIn1 opening short,,
+                tapC,6k1/5ppp/8/8/8/8/r4PPP/1R4K1 b - - 0 1,a2a1 b1a1,900,80,90,100,short,,
                 """);
         ch.qos.logback.classic.Logger root = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory
                 .getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
@@ -133,6 +145,10 @@ class TapWalkEndToEndTest {
 
     @AfterAll
     static void stopApp() throws Exception {
+        tearDown();
+    }
+
+    static void tearDown() throws Exception {
         if (capture != null) {
             ((ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME))
                     .detachAppender(capture);
@@ -145,8 +161,11 @@ class TapWalkEndToEndTest {
 
     @Test
     void tappingAroundEveryScreenLogsNoErrorsAndNeverDeadEnds() throws Exception {
-        long seed = Long.getLong("e2e.tap.seed", 20261008L);
-        int steps = Integer.getInteger("e2e.tap.steps", 600);
+        walk("tap walk", Long.getLong("e2e.tap.seed", 20261008L), Integer.getInteger("e2e.tap.steps", 600));
+    }
+
+    /** The walk itself: {@code steps} taps (or moves) from a random generator seeded with {@code seed}. */
+    static void walk(String name, long seed, int steps) throws Exception {
         Random random = new Random(seed);
         List<String> trail = new ArrayList<>();
         Map<String, Integer> views = new TreeMap<>();
@@ -177,11 +196,11 @@ class TapWalkEndToEndTest {
             awaitStorage();
             Thread.sleep(300);
         } catch (Exception | AssertionError e) {
-            fail("tap walk (seed " + seed + ") broke after " + trail.size() + " taps: " + e + "\nlast taps: "
+            fail(name + " (seed " + seed + ") broke after " + trail.size() + " taps: " + e + "\nlast taps: "
                     + tail(trail), e);
         }
-        assertTrue(ERRORS.isEmpty(), "tap walk (seed " + seed + "): errors " + ERRORS + "\nlast taps: " + tail(trail));
-        System.out.println("[tap walk] seed " + seed + ", " + trail.size() + " taps, screens " + views + ", "
+        assertTrue(ERRORS.isEmpty(), name + " (seed " + seed + "): errors " + ERRORS + "\nlast taps: " + tail(trail));
+        System.out.println("[" + name + "] seed " + seed + ", " + trail.size() + " taps, screens " + views + ", "
                 + archive().size() + " games archived, outside hosts tried " + NETWORK.stream().distinct().toList());
         GameArchiveService reread = new GameArchiveService(archive().getFile(), null,
                 archive().getFile().resolveSibling("backups"));
@@ -198,7 +217,10 @@ class TapWalkEndToEndTest {
         if ("GAME".equals(view) && random.nextInt(100) < 45) {
             AbstractGame current = fxGet(() -> E2eHarness.game(game));
             boolean sheet = fxGet(app.main::isSheetOpen);
-            if (current != null && !sheet && fxGet(current::isRunning) && fxGet(current::isAwaitingHumanMove)) {
+            boolean byScreen = !fxGet(() -> io.github.hardin22.javachess.Hardware.Hardware.boardState()
+                    .isHardwareConnected()); // with a board the player moves the pieces
+            if (byScreen && current != null && !sheet && fxGet(current::isRunning)
+                    && fxGet(current::isAwaitingHumanMove)) {
                 String uci = fxGet(() -> {
                     var legal = current.getBoard().legalMoves();
                     return legal.isEmpty() ? null : legal.get(random.nextInt(legal.size())).toString();

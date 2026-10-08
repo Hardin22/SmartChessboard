@@ -595,6 +595,9 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         if (currentGame == null) {
             return;
         }
+        if (currentGame instanceof OnlineGame online) {
+            humanWhite = online.isPlayingWhite(); // known once Lichess has sent the game ("Hai vinto" for the right side)
+        }
         status = GameStatus.parse(message, currentGame.isRunning());
         if (status.kind() == GameStatus.Kind.END) {
             ended = true;
