@@ -121,6 +121,12 @@ public class BoardStateManager implements BoardHardware.SensorListener {
     private long physical;
     private Board logical = new Board();
     private Board setupTarget = new Board();
+    /**
+     * The position the pieces on the board form, as last known for sure (a set-up completed, a move read or
+     * reproduced, the board back in step): it tells which piece stands on each square, which the sensors cannot.
+     * Games change the logical position before the board follows, so this is kept apart from it.
+     */
+    private Board shown = new Board();
     /** Piece-by-piece guide of the current set-up, or null when all the squares are shown together. */
     private SetupGuide setupGuide;
     /**
@@ -580,6 +586,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         pendingCheck = schedule(() -> {
             if (mode == Mode.RESYNC && physical == snapshot) {
                 log.info("Board back in sync with the game");
+                shown = logical.clone();
                 mode = Mode.PLAY;
                 touched = 0;
                 replicationRequired = 0;
@@ -598,7 +605,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
      * ({@link SetupGuide}); the starting position and small changes show every square together.
      */
     private void chooseSetupGuide() {
-        mustClear = hardwareConnected ? wrongPieces(logical, setupTarget, physical) : 0;
+        mustClear = hardwareConnected ? wrongPieces(shown, setupTarget, physical) : 0;
         setupWrong = mustClear;
         long seen = physical & ~mustClear;
         setupGuide = guidedSetupEnabled && hardwareConnected && SetupGuide.worthGuiding(setupTarget, seen)
@@ -632,10 +639,10 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         SetupGuide.Step step = setupGuide != null && hardwareConnected ? setupGuide.step(physical & ~mustClear)
                 : null;
         setupStep = step;
-        long shown = step != null ? step.missing() : missing;
+        long lit = step != null ? step.missing() : missing;
         Map<Integer, Integer> base = new HashMap<>();
         if (hardwareConnected) {
-            forEachSquare(shown, sq -> base.put(sq, LedColors.MISSING));
+            forEachSquare(lit, sq -> base.put(sq, LedColors.MISSING));
             forEachSquare(wrong, sq -> base.put(sq, LedColors.WRONG));
         }
         leds.replace(LedRenderer.Layer.BASE, base);
@@ -665,6 +672,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
                 mustClear = 0;
                 setupWrong = mustClear;
                 logical = setupTarget.clone(); // what the board shows now
+                shown = setupTarget.clone();
                 leds.clear(LedRenderer.Layer.BASE);
                 log.info("Board setup complete");
                 notifyListener(BoardMoveListener::onBoardSetupComplete);
@@ -682,6 +690,9 @@ public class BoardStateManager implements BoardHardware.SensorListener {
 
         if (!hardwareConnected || (missing == 0 && extra == 0)) {
             cancel(pendingTakeback);
+            if (hardwareConnected) {
+                shown = logical.clone(); // in step: the pieces are the game's (a take-back with the pieces, too)
+            }
             if (liftedSquare >= 0) {
                 hints.hintsCleared();
                 liftedSquare = -1;
@@ -769,6 +780,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
     private void commit(Move move) {
         log.info("Move detected on the board: {}", move);
         logical.doMove(move);
+        shown = logical.clone();
         touched = 0;
         liftedSquare = -1;
         hints.hintsCleared();
@@ -829,6 +841,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         pendingCheck = schedule(() -> {
             if (mode == Mode.REPLICATE && physical == snapshot) {
                 log.info("Opponent move replicated on the board");
+                shown = logical.clone();
                 mode = Mode.PLAY;
                 touched = 0;
                 replicationRequired = 0;
@@ -982,6 +995,9 @@ public class BoardStateManager implements BoardHardware.SensorListener {
 
     /** FEN of the physical board during setup, with the pieces the target position has on those squares. */
     private String setupFen() {
+        // the pieces of the last known position are trusted only while no square has been emptied or filled since
+        // the set-up started on the squares that matter here (removed ones are not drawn anyway)
+        boolean knownShown = (physical & ~occupancy(shown)) == 0;
         StringBuilder fen = new StringBuilder();
         for (int rank = 7; rank >= 0; rank--) {
             int empty = 0;
@@ -992,8 +1008,14 @@ public class BoardStateManager implements BoardHardware.SensorListener {
                         fen.append(empty);
                         empty = 0;
                     }
-                    Piece target = setupTarget.getPiece(Square.squareAt(square));
-                    fen.append(target != Piece.NONE ? target.getFenSymbol() : "P");
+                    Square sq = Square.squareAt(square);
+                    Piece target = setupTarget.getPiece(sq);
+                    // a piece still to take away is drawn as the one standing there, when known (a knight where
+                    // the king goes); a piece in place as the target's
+                    Piece standing = knownShown && (target == Piece.NONE || (mustClear & Squares.bit(square)) != 0)
+                            ? shown.getPiece(sq) : Piece.NONE;
+                    Piece drawn = standing != Piece.NONE ? standing : target;
+                    fen.append(drawn != Piece.NONE ? drawn.getFenSymbol() : "P");
                 } else {
                     empty++;
                 }

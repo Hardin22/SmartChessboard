@@ -271,6 +271,56 @@ class BoardStateManagerTest {
     }
 
     @Test
+    void aGameThatSetsItsPositionBeforeTheSetUpStillGetsTheWrongPieces() throws InterruptedException {
+        // as PvcGame/PvpGame do: the logical position is the game's before the board is set up
+        String lucena = "1K1k4/1P6/8/8/8/8/r7/2R5 w - - 0 1";
+        manager.setLogicalBoard(board(lucena));
+        manager.setSetupTargetFen(lucena);
+        manager.startSetupMode();
+        settle();
+        assertEquals(LedColors.WRONG, ledAt("b8"), "a knight stands where the white king goes");
+        assertEquals(LedColors.WRONG, ledAt("c1"), "a bishop where the rook goes");
+        assertTrue(events.stream().anyMatch(e -> e.endsWith("poi il Re bianco in b8 · passo 1 di 5")),
+                events.toString());
+    }
+
+    @Test
+    void afterAGameTheBoardIsKnownByItsLastPosition() throws InterruptedException {
+        play(AFTER_E4_E5); // the board shows 1. e4 e5 and the game reads it
+        settle();
+        manager.stopGameMode();
+        manager.setListener(new BoardStateManager.BoardMoveListener() {
+            @Override
+            public void onPhysicalMoveDetected(String from, String to) {
+            }
+
+            @Override
+            public void onBoardSetupComplete() {
+                events.add("setup complete");
+            }
+
+            @Override
+            public void onSetupProgress(String message) {
+                events.add("progress " + message);
+            }
+
+            @Override
+            public void onBoardStateUpdated(String fen, String errorSquare) {
+            }
+
+            @Override
+            public void onBotMoveReplicated() {
+            }
+        });
+        // next: a position with a black queen on e5, where the pawn of the last game stands
+        manager.setSetupTargetFen("4k3/8/8/4q3/4P3/8/8/4K3 w - - 0 1");
+        manager.startSetupMode();
+        settle();
+        assertEquals(LedColors.WRONG, ledAt("e5"), "the pawn of the last game is not the queen");
+        assertEquals(0, ledAt("e4"), "same pawn as in the last game");
+    }
+
+    @Test
     void anUnknownBoardIsJudgedByOccupancyOnly() throws InterruptedException {
         sim.setOccupancy(BoardStateManager.occupancy(new Board()) & ~Squares.bit(Squares.parse("e2")));
         manager.setSetupTargetFen("6k1/5ppp/r7/8/8/8/5PPP/3R2K1 w - - 0 1");
