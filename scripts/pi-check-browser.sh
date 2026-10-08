@@ -54,7 +54,7 @@ info "memory: ${MEM_MB} MB, available ${AVAIL_MB} MB"
 [ "$AVAIL_MB" -ge 1500 ] && pass "enough free memory for the browser (>= 1.5 GB)" \
   || fail "only ${AVAIL_MB} MB free: close other programs (the browser needs ~1-1.5 GB)"
 DISK_MB=$(df -Pm "$HOME" | awk 'NR==2 {print $4}')
-BUNDLE_NOW=$(ls -d "$HOME"/.jcef-bundle-*/ 2>/dev/null | head -1)
+BUNDLE_NOW=$(ls -d "$HOME"/.jcef-bundle-*/libcef.so 2>/dev/null | head -1 | xargs -r dirname)
 if [ -n "$BUNDLE_NOW" ]; then
   info "browser engine already on disk: $BUNDLE_NOW"
 elif [ "${DISK_MB:-0}" -ge 1200 ]; then
@@ -63,9 +63,14 @@ else
   fail "free disk ${DISK_MB:-?} MB: the browser engine needs ~450 MB plus room to unpack"
 fi
 export DISPLAY=${DISPLAY:-:0}
+SCREEN_OK=1
 if command -v xdpyinfo >/dev/null 2>&1; then
-  xdpyinfo >/dev/null 2>&1 && pass "screen $DISPLAY: $(xdpyinfo | awk '/dimensions/ {print $2}')" \
-    || fail "no screen on $DISPLAY (run it on the Pi's desktop session, or set DISPLAY)"
+  if xdpyinfo >/dev/null 2>&1; then
+    pass "screen $DISPLAY: $(xdpyinfo | awk '/dimensions/ {print $2}')"
+  else
+    fail "no screen on $DISPLAY (run it on the Pi's desktop session, or set DISPLAY)"
+    SCREEN_OK=0
+  fi
 else
   info "screen $DISPLAY (xdpyinfo not installed: not checked)"
 fi
@@ -79,8 +84,8 @@ fi
 JAR=$(ls -t javaChess*.jar target/javaChess*.jar 2>/dev/null | grep -v original | head -1 || true)
 [ -n "$JAR" ] && pass "app: $JAR" || fail "no javaChess jar here: build it (./mvnw clean -Ppi -DskipTests package)"
 say ""
-if [ -z "$JAR" ]; then
-  say "Stopping: the app is needed for the next steps."
+if [ -z "$JAR" ] || [ "$SCREEN_OK" = 0 ]; then
+  say "Stopping: the next steps need $([ -z "$JAR" ] && echo "the app" || echo "a screen")."
   exit 1
 fi
 
@@ -114,6 +119,9 @@ run_app() {
     mb=$(tree_rss_mb "$pid"); [ "${mb:-0}" -gt "$PEAK_MB" ] && PEAK_MB=$mb
     if grep -q "Browser status: RESTART_REQUIRED" "$log"; then status=restart; break; fi
     if grep -qE "Browser status: (UNAVAILABLE|OFFLINE|SITE_UNREACHABLE)" "$log"; then status=failed; break; fi
+    if grep -qE "Exception in Application start|Unable to open DISPLAY|Error initializing QuantumRenderer|OutOfMemoryError" "$log"; then
+      status=appfailed; break
+    fi
     if [ "$t" -ge "$STEP_TIMEOUT" ]; then status=timeout; break; fi
     sleep 1
   done
@@ -151,6 +159,7 @@ if [ "$RUN_STATUS" = restart ]; then
   [ "$RUN_STATUS" = restart ] && fail "still asks for a restart: libcef.so is not preloaded (see start2.log, run_pi.sh)"
 fi
 [ "$RUN_STATUS" = failed ] && fail "the browser could not start: $(grep -m1 -E 'Cannot start|Browser status: (UNAVAILABLE|OFFLINE|SITE_UNREACHABLE)' "$OUT"/start*.log | cut -c1-200)"
+[ "$RUN_STATUS" = appfailed ] && fail "the app itself did not start: $(grep -m1 -E 'Exception in Application start|Unable to open DISPLAY|Error initializing QuantumRenderer|OutOfMemoryError' "$OUT"/start*.log | cut -c1-200)"
 [ "$RUN_STATUS" = timeout ] && fail "no answer within ${STEP_TIMEOUT} s (slow network? PI_CHECK_TIMEOUT=600 to wait longer)"
 [ "$RUN_CRASH" = 1 ] && fail "the app crashed (hs_err files copied to the folder)"
 LOCAL_OK=0
