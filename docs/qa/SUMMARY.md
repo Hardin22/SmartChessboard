@@ -35,6 +35,10 @@ Rifatto il giro sull'app integrata:
 - **Long run esteso**: dopo ognuna delle 20 partite apre la revisione e avvia l'analisi completa abbandonandola a
   metà, poi statistiche, archivio, allenatore errori, puzzle, impostazioni, temi: thread 48→47, processi 2→2, heap
   dopo GC 127→135 MB, thread FX al massimo 141 ms.
+- **Suite** su qa/v1 fad7eae (main af5d0cc): 702 test, 0 falliti, 12 saltati, 34 E2E senza finestra; nel Pi in scatola
+  (Docker linux/arm64, 4 CPU, 2 GB, senza Stockfish) 682 test, 0 falliti, 31 saltati, 34/34 E2E, long run con giro
+  delle schermate thread 39→38, processi 2→2, heap 124→133 MB. Dopo l'unione di main 698da4b (impostazioni del browser
+  di design, funzioni di features) i due monkey dei tocchi (1500 + 1000 tocchi, due volte) sono ancora puliti.
 - Test instabili sotto carico segnalati ai proprietari: `CoordinateTrainerTest` (features, già corretto),
   `SyncWithRealBoardTest` (browser).
 
