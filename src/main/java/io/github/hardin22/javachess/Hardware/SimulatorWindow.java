@@ -59,12 +59,9 @@ public final class SimulatorWindow {
             pieces[square] = piece;
         }
         TextField moveField = new TextField();
-        moveField.setPromptText("mossa fisica, es. e2e4 (solleva e2, appoggia e4)");
+        moveField.setPromptText("mossa, es. e2e4 · e7e8q · e1g1 · -d5 +d6");
         moveField.setOnAction(e -> {
-            String text = moveField.getText().trim().toLowerCase();
-            if (text.matches("[a-h][1-8][a-h][1-8]")) {
-                board.lift(text.substring(0, 2));
-                board.place(text.substring(2, 4));
+            if (playTyped(moveField.getText())) {
                 moveField.clear();
             }
         });
@@ -89,6 +86,10 @@ public final class SimulatorWindow {
     }
 
     public void show() {
+        // on the computer's own screen, away from the app (which runs on the board's screen)
+        javafx.geometry.Rectangle2D primary = javafx.stage.Screen.getPrimary().getVisualBounds();
+        stage.setX(primary.getMinX() + 40);
+        stage.setY(primary.getMinY() + 40);
         stage.show();
         refresh();
         Thread.ofPlatform().daemon().name("simulator-window").start(() -> {
@@ -107,6 +108,47 @@ public final class SimulatorWindow {
                 }
             }
         });
+    }
+
+    /**
+     * Plays what was typed the way hands do on the board. "e2e4" lifts e2 and places e4; when e4 holds a piece it
+     * is taken away first (a capture). A promotion letter ("e7e8q") is ignored: the swap does not change the
+     * sensors. A king going two files from e1/e8 also moves the rook (castling). Anything else, such as en
+     * passant, is spelled square by square: "-e5 -d5 +d6" (lift e5, lift d5, place d6).
+     */
+    boolean playTyped(String typed) {
+        String text = typed.trim().toLowerCase();
+        if (text.matches("[a-h][1-8][a-h][1-8][qrbn]?")) {
+            int from = Squares.parse(text.substring(0, 2));
+            int to = Squares.parse(text.substring(2, 4));
+            if (board.isOccupied(to)) {
+                board.lift(to);
+            }
+            board.lift(from);
+            board.place(to);
+            int rank = from / 8;
+            boolean kingSquare = from % 8 == 4 && (rank == 0 || rank == 7) && to / 8 == rank;
+            if (kingSquare && Math.abs(to % 8 - from % 8) == 2) {
+                int rookFrom = rank * 8 + (to % 8 == 6 ? 7 : 0);
+                int rookTo = rank * 8 + (to % 8 == 6 ? 5 : 3);
+                if (board.isOccupied(rookFrom) && !board.isOccupied(rookTo)) {
+                    board.lift(rookFrom);
+                    board.place(rookTo);
+                }
+            }
+            return true;
+        }
+        if (text.matches("([+-][a-h][1-8])(\\s+[+-][a-h][1-8])*")) {
+            for (String step : text.split("\\s+")) {
+                if (step.charAt(0) == '-') {
+                    board.lift(step.substring(1));
+                } else {
+                    board.place(step.substring(1));
+                }
+            }
+            return true;
+        }
+        return false;
     }
 
     private void queueRefresh() {
