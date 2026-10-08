@@ -395,31 +395,67 @@ public class ArchiveController implements Screen {
                 card.getChildren().add(Ui.label(I18n.t("transfer.usb.files"), "t-small", "t-muted"));
             }
             for (PgnTransfer.PgnFile f : files) {
-                card.getChildren().add(transferOption("fth-file-text", f.name(), f.description(), () ->
-                        AppExecutors.io().execute(() -> {
-                            String message;
-                            boolean ok;
-                            try {
-                                message = PgnTransfer.describe(transfer.importFile(f, GameArchiveService.getInstance()));
-                                ok = true;
-                            } catch (java.io.IOException | RuntimeException ex) {
-                                message = I18n.t("transfer.usb.failed",
-                                        ErrorReporter.userMessage(ex));
-                                ok = false;
-                            }
-                            String m = message;
-                            boolean k = ok;
-                            Platform.runLater(() -> {
-                                showTransferResult(f.name(), k, m);
-                                loadArchive();
-                            });
-                        })));
+                card.getChildren().add(transferOption("fth-file-text", f.name(), f.description(),
+                        () -> prepareImport(transfer, f)));
             }
             card.getStyleClass().add("card");
             card.setPadding(new Insets(20));
             content.getChildren().add(card);
         });
         mainController.showSheet(I18n.t("transfer.usb"), content);
+    }
+
+    /** Counts the games first: a big file takes minutes on the Raspberry, so the first 500 can be chosen. */
+    private void prepareImport(PgnTransfer transfer, PgnTransfer.PgnFile file) {
+        AppExecutors.io().execute(() -> {
+            int games = PgnTransfer.countGames(file);
+            Platform.runLater(() -> {
+                if (games <= BIG_IMPORT) {
+                    runFileImport(transfer, file, Integer.MAX_VALUE);
+                    return;
+                }
+                Button first = Ui.wide(I18n.t("transfer.usb.first", BIG_IMPORT), null, "btn-inverse", "btn-lg");
+                first.setOnAction(e -> runFileImport(transfer, file, BIG_IMPORT));
+                Button all = Ui.wide(I18n.t("transfer.usb.all", games), null, "btn-outline", "btn-lg");
+                all.setOnAction(e -> runFileImport(transfer, file, Integer.MAX_VALUE));
+                VBox content = new VBox(16, Ui.wrap(I18n.t("transfer.usb.big", games), "t-body"), first, all);
+                mainController.showSheet(file.name(), content);
+            });
+        });
+    }
+
+    private static final int BIG_IMPORT = 500;
+
+    private void runFileImport(PgnTransfer transfer, PgnTransfer.PgnFile file, int max) {
+        javafx.scene.control.ProgressBar bar = new javafx.scene.control.ProgressBar(0);
+        bar.setMaxWidth(Double.MAX_VALUE);
+        bar.getStyleClass().add("progress-bar");
+        Label percent = Ui.label(I18n.t("transfer.usb.importing", 0), "t-body");
+        VBox waiting = new VBox(18, Icons.of("fth-file-text", 56), Ui.label(file.name(), "empty-title"), bar, percent);
+        waiting.getStyleClass().add("empty-state");
+        mainController.showSheet(I18n.t("transfer.usb"), waiting);
+        AppExecutors.io().execute(() -> {
+            String message;
+            boolean ok;
+            try {
+                var report = transfer.importFile(file, GameArchiveService.getInstance(), max, f -> Platform.runLater(() -> {
+                    bar.setProgress(f);
+                    percent.setText(I18n.t("transfer.usb.importing", Math.round(f * 100)));
+                }));
+                message = PgnTransfer.describe(report) + (report.warnings().isEmpty() ? ""
+                        : "\n" + String.join("\n", report.warnings().subList(0, Math.min(3, report.warnings().size()))));
+                ok = true;
+            } catch (java.io.IOException | RuntimeException ex) {
+                message = I18n.t("transfer.usb.failed", ErrorReporter.userMessage(ex));
+                ok = false;
+            }
+            String m = message;
+            boolean k = ok;
+            Platform.runLater(() -> {
+                showTransferResult(file.name(), k, m);
+                loadArchive();
+            });
+        });
     }
 
     /** For demos: the Lichess import sheet. */
