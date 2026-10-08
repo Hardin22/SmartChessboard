@@ -63,7 +63,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class AppEndToEndTest {
 
-    private static final long TIMEOUT_MS = 30_000;
+    private static final long TIMEOUT_MS = E2eHarness.TIMEOUT_MS;
     private static Path home;
     private static Path script;
     private static Stage stage;
@@ -374,7 +374,7 @@ class AppEndToEndTest {
         });
         waitFor("review engines closed after leaving", () -> liveChildProcesses() <= baseline);
         long closedAfter = System.currentTimeMillis() - left;
-        assertTrue(closedAfter < 3000, "engines closed " + closedAfter + " ms after leaving the review");
+        assertTrue(closedAfter < E2eHarness.scaled(3000), "engines closed " + closedAfter + " ms after leaving the review");
         Thread analysis = (Thread) field(review, "analysisThread");
         assertTrue(analysis == null || !analysis.isAlive(), "the review thread stopped");
         Thread.sleep(1000);
@@ -833,7 +833,7 @@ class AppEndToEndTest {
             }
             Thread.sleep(50);
         }
-        fail("Timed out waiting for " + what);
+        fail("Timed out waiting for " + what + " (" + TIMEOUT_MS + " ms)\n" + E2eHarness.diagnostics());
     }
 
 }

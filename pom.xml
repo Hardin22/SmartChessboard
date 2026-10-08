@@ -37,6 +37,8 @@
         <skipE2E>false</skipE2E>
         <!-- opt-in: real Chromium (JCEF) on a local page, see BrowserJcefE2E; -DskipJcefE2E=false -->
         <skipJcefE2E>true</skipJcefE2E>
+        <!-- extra JVM flags of the e2e tests, e.g. the Raspberry Pi's: -Xmx512m -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError -->
+        <e2e.argLine></e2e.argLine>
     </properties>
 
     <repositories>
@@ -232,6 +234,9 @@
                         </goals>
                         <configuration>
                             <skip>${skipE2E}</skip>
+                            <!-- soft references cleared at every GC: the long run measures only what the app really
+                                 holds (JavaFX keeps render caches softly). Extra JVM flags: -De2e.argLine="..." -->
+                            <argLine>-XX:SoftRefLRUPolicyMSPerMB=0 ${e2e.argLine}</argLine>
                             <!-- one JVM per class: each configures the global singletons its own way (board off / sim) -->
                             <reuseForks>false</reuseForks>
                             <excludes combine.self="override"/>

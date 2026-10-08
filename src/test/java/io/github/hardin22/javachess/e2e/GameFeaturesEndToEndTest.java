@@ -47,7 +47,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 class GameFeaturesEndToEndTest {
 
-    private static final long TIMEOUT_MS = 30_000;
+    private static final long TIMEOUT_MS = E2eHarness.TIMEOUT_MS;
     private static Path home;
     private static Path script;
 
@@ -156,7 +156,7 @@ class GameFeaturesEndToEndTest {
         assertEquals(List.of("d2d4", "e7e5"), fxGet(() -> game.getMovesUci()));
         assertEquals("club", game.getLevel().id());
         assertEquals(1, (int) fxGet(() -> game.getTakebacks()));
-        assertTrue(Math.abs(game.getClock().remainingMillis(Side.WHITE) - whiteLeft) < 1_500, "clock restored");
+        assertTrue(Math.abs(game.getClock().remainingMillis(Side.WHITE) - whiteLeft) < E2eHarness.scaled(1_500), "clock restored");
         fx(() -> {
             game.startGame();
             return null;
@@ -165,7 +165,7 @@ class GameFeaturesEndToEndTest {
         assertEquals("b8c6", fxGet(() -> game.getMovesUci().get(3)));
 
         // too early for a draw
-        BotDrawPolicy.Decision d = fxGet(() -> game.offerDraw()).get(10, TimeUnit.SECONDS);
+        BotDrawPolicy.Decision d = fxGet(() -> game.offerDraw()).get(TIMEOUT_MS, TimeUnit.MILLISECONDS);
         assertFalse(d.accepted());
         assertFalse(fxGet(() -> game.canOfferDraw()), "not again right away");
     }
@@ -250,7 +250,7 @@ class GameFeaturesEndToEndTest {
     }
 
     private static void flushStorage() throws Exception {
-        AppExecutors.storage().submit(() -> { }).get(10, TimeUnit.SECONDS);
+        AppExecutors.storage().submit(() -> { }).get(TIMEOUT_MS, TimeUnit.MILLISECONDS);
     }
 
     private static <T> T fx(Callable<T> action) throws Exception {
@@ -287,6 +287,6 @@ class GameFeaturesEndToEndTest {
             }
             Thread.sleep(50);
         }
-        throw new AssertionError("timed out waiting for " + what);
+        throw new AssertionError("timed out waiting for " + what + "\n" + E2eHarness.diagnostics());
     }
 }
