@@ -228,6 +228,32 @@ final class E2eHarness {
         waitForMode(BoardStateManager.Mode.PLAY);
     }
 
+    /**
+     * Reproduces {@code move} (already played in {@code after}, the position it led to) on the simulated board from
+     * whatever start position: captured piece off first (also en passant), then the moving piece, the rook when
+     * castling. Works for games from any position and for puzzles.
+     */
+    static void reproduce(Move move, Board after) {
+        SimulatedBoard sim = sim();
+        int from = move.getFrom().ordinal();
+        int to = move.getTo().ordinal();
+        com.github.bhlangonijr.chesslib.Piece moved = after.getPiece(move.getTo());
+        boolean pawn = moved.getPieceType() == com.github.bhlangonijr.chesslib.PieceType.PAWN;
+        if (sim.isOccupied(to)) {
+            sim.lift(to); // captured piece
+        } else if (pawn && from % 8 != to % 8) {
+            sim.lift(from / 8 * 8 + to % 8); // en passant
+        }
+        sim.lift(from);
+        sim.place(to);
+        if (moved.getPieceType() == com.github.bhlangonijr.chesslib.PieceType.KING && Math.abs(from % 8 - to % 8) == 2) {
+            int rank = from / 8;
+            boolean kingSide = to % 8 == 6;
+            sim.lift(rank * 8 + (kingSide ? 7 : 0));
+            sim.place(rank * 8 + (kingSide ? 5 : 3));
+        }
+    }
+
     /** Puts the pieces exactly as in the game position (setup or resync done by hand). */
     static void arrangeAsLogical() {
         arrangeAs(boardState().logicalFen());
