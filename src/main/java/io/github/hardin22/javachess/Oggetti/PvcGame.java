@@ -338,7 +338,7 @@ public class PvcGame extends AbstractGame {
         log.info(message);
         updateStatus(message);
 
-        saveGameToJson(message, openingPvc.getText(), "Player vs " + botName(), "");
+        saveGameToJson(message, openingPvc.getText(), "Player vs " + botName(), timeControl.archiveForm());
 
         saveGame = false;
         endGame(false);

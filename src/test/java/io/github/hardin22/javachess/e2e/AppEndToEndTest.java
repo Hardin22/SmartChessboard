@@ -459,6 +459,37 @@ class AppEndToEndTest {
         assertTrue(errors.isEmpty(), "errors while visiting the screens: " + errors);
     }
 
+    @Test
+    @Order(11)
+    void aGameAgainstTheBotWithAClockKeepsItsTimeControlInTheArchive() throws Exception {
+        Files.writeString(script, "e7e5\n");
+        int before = archive().size();
+        ActiveGameController game = fx(() -> {
+            ActiveGameController g = (ActiveGameController) main.getController("GAME");
+            main.navigateTo("GAME");
+            g.startPvC(io.github.hardin22.javachess.Play.BotLevels.byId(
+                    io.github.hardin22.javachess.Play.BotLevels.DEFAULT_ID).orElseThrow(), true,
+                    io.github.hardin22.javachess.Play.TimeControl.minutes(3, 2));
+            return g;
+        });
+        play(game, "e2e4", 2);
+        fx(() -> {
+            java.lang.reflect.Method resign = ActiveGameController.class.getDeclaredMethod("requestResign");
+            resign.setAccessible(true);
+            resign.invoke(game);
+            return null;
+        });
+        fireButton(I18n.t("game.resign.confirm.ok"));
+        ArchivedGame saved = waitForArchived(before + 1);
+        assertEquals("3+2", saved.timeControl(), "the clock of the game is in the archive (and its PGN)");
+        assertEquals("0-1", saved.result());
+        assertTrue(GameArchiveService.toPgn(saved).contains("[TimeControl \"180+2\"]"));
+        fx(() -> {
+            main.navigateTo("HOME");
+            return null;
+        });
+    }
+
     /** Taps the from-square then the to-square of {@code uci} on the game board (no physical board). */
     private static void tapMove(ActiveGameController game, String uci) throws Exception {
         tapSquare(game, uci.substring(0, 2));

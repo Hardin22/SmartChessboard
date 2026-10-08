@@ -35,6 +35,7 @@ Gravità: **alta** (vicolo cieco, perdita di dati, partita bloccata), **media** 
 | QA-027 | media | logica | E2E dipendenti dall'ordine: salvataggi asincroni del test precedente contati nel successivo | corretto |
 | QA-028 | media | test/memoria | Pipeline software (Pi): heap dopo GC 130→512 MB in 20 partite; verificato che sono cache soft di JavaFX, non una perdita | verificato; test adeguato |
 | QA-030 | bassa | logica | PvP in pausa: una mossa sulla scacchiera veniva accettata e faceva ripartire gli orologi | corretto |
+| QA-031 | bassa | logica | PvC con orologio: la cadenza non veniva salvata nell'archivio (né nel PGN) | corretto |
 | QA-029 | media | logica (Home) | Tornando in Home la carta "Riprendi" della visita precedente resta attiva finché i dati non sono ricaricati: si riprendeva la partita sbagliata | corretto (design informato) |
 
 ---
@@ -207,3 +208,8 @@ ora verifica anche che le mosse riprese siano quelle di B (10 esecuzioni su 10 v
 non accetta mosse in pausa, la scacchiera sì). **Correzione**: in pausa la mossa è rifiutata e la scacchiera va in
 `RESYNC` ("Partita in pausa: rimetti il pezzo dov'era"). Test E2E
 `aMoveOnTheBoardDuringAPauseIsTakenBackAndTheClocksStayStopped`.
+
+## QA-031 · Cadenza del PvC persa in archivio (bassa, logica)
+`PvcGame.endGameWithMessage` archiviava sempre `timeControl=""` anche per le partite con l'orologio di features
+(3+2, 10+5…): archivio e PGN senza `TimeControl`. Ora usa `TimeControl.archiveForm()`. Test E2E
+`aGameAgainstTheBotWithAClockKeepsItsTimeControlInTheArchive` (archivio "3+2", PGN `[TimeControl "180+2"]`).
