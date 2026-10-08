@@ -9,6 +9,8 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.control.ToggleGroup;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -26,6 +28,9 @@ import io.github.hardin22.javachess.Components.Ui;
 import io.github.hardin22.javachess.Oggetti.ArchivedGame;
 import io.github.hardin22.javachess.Oggetti.ChessBoardUI;
 import io.github.hardin22.javachess.Services.GameArchiveService;
+import io.github.hardin22.javachess.Stats.OnlineImport;
+import io.github.hardin22.javachess.Stats.PgnTransfer;
+import io.github.hardin22.javachess.Utils.AppExecutors;
 import io.github.hardin22.javachess.Utils.ErrorReporter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,6 +91,9 @@ public class ArchiveController implements Screen {
 
     public ArchiveController() {
         header = new ScreenHeader(I18n.t("archive.title"), () -> mainController.navigateTo("HOME"));
+        Button transfer = Ui.iconButton("fth-download", I18n.t("transfer.title"), this::openTransfer);
+        transfer.setId("archive-transfer");
+        header.setActions(transfer);
         build();
     }
 
@@ -255,6 +263,168 @@ public class ArchiveController implements Screen {
             options.getChildren().add(option);
         }
         mainController.showSheet(title, options);
+    }
+
+    // ================================================================== import / export
+
+    /** "Importa ed esporta": recent games from Lichess or Chess.com, PGN files on a USB drive. */
+    private void openTransfer() {
+        VBox content = new VBox(12);
+        for (OnlineImport.Source source : OnlineImport.Source.values()) {
+            content.getChildren().add(transferOption("fth-globe", I18n.t("transfer.online", source.label()),
+                    I18n.t("transfer.online.description"), () -> openOnlineImport(source, 50)));
+        }
+        content.getChildren().add(transferOption("fth-hard-drive", I18n.t("transfer.usb"),
+                I18n.t("transfer.usb.description"), this::openUsb));
+        mainController.showSheet(I18n.t("transfer.title"), content);
+    }
+
+    private static Button transferOption(String icon, String title, String description, Runnable action) {
+        Label t = Ui.label(title, "row-title");
+        Label d = Ui.wrap(description, "row-sub");
+        VBox texts = new VBox(4, t, d);
+        texts.setMinWidth(0);
+        HBox.setHgrow(texts, Priority.ALWAYS);
+        HBox row = new HBox(18, Icons.of(icon, 30), texts,
+                Icons.of("fth-chevron-right", 26));
+        row.setAlignment(Pos.CENTER_LEFT);
+        Button b = new Button();
+        b.setGraphic(row);
+        b.getStyleClass().setAll("option");
+        b.setMaxWidth(Double.MAX_VALUE);
+        b.setMinHeight(104);
+        b.setOnAction(e -> action.run());
+        return b;
+    }
+
+    /** Username (on-screen keyboard), how many games, Import; then the result in the same sheet. */
+    private void openOnlineImport(OnlineImport.Source source, int count) {
+        TouchKeyboard keyboard = new TouchKeyboard(I18n.t("transfer.username", source.label()));
+        keyboard.textProperty().set(OnlineImport.lastUsername(source));
+        ToggleGroup counts = new ToggleGroup();
+        List<ToggleButton> segments = new ArrayList<>();
+        for (int n : new int[] { 20, 50, 100 }) {
+            ToggleButton seg = new ToggleButton(I18n.t("transfer.count", n));
+            seg.setUserData(n);
+            seg.setSelected(n == count);
+            segments.add(seg);
+        }
+        HBox countBar = Ui.segmented(counts, segments);
+        Ui.keepOneSelected(counts);
+        Button start = Ui.wide(I18n.t("transfer.start"), "fth-download", "btn-primary", "btn-lg");
+        Runnable go = () -> {
+            int max = counts.getSelectedToggle() == null ? 50 : (int) counts.getSelectedToggle().getUserData();
+            runOnlineImport(source, keyboard.textProperty().get(), max);
+        };
+        start.setOnAction(e -> go.run());
+        keyboard.setOnDone(go);
+        start.disableProperty().bind(keyboard.textProperty().isEmpty());
+        VBox content = new VBox(16, keyboard, Ui.label(I18n.t("transfer.count.title"), "row-title"), countBar,
+                Ui.wrap(I18n.t("transfer.online.note"), "t-small", "t-muted"), start);
+        mainController.showSheet(I18n.t("transfer.online", source.label()), content);
+    }
+
+    private void runOnlineImport(OnlineImport.Source source, String user, int max) {
+        VBox waiting = new VBox(18, Icons.of("fth-download-cloud", 56),
+                Ui.label(I18n.t("transfer.running"), "empty-title"),
+                Ui.wrap(I18n.t("transfer.running.detail", user, source.label()), "empty-sub"));
+        waiting.getStyleClass().add("empty-state");
+        mainController.showSheet(I18n.t("transfer.online", source.label()), waiting);
+        new OnlineImport().importRecent(source, user, max).thenAccept(r -> Platform.runLater(() -> {
+            showTransferResult(source.label(), r.ok(), r.message());
+            if (!r.imported().isEmpty()) {
+                loadArchive();
+            }
+        }));
+    }
+
+    private void showTransferResult(String title, boolean ok, String message) {
+        VBox done = new VBox(18, Icons.of(ok ? "fth-check-circle" : "fth-alert-circle", 56),
+                Ui.wrap(message, "empty-title"));
+        done.getStyleClass().add("empty-state");
+        Button close = Ui.wide(I18n.t("common.done"), null, "btn-inverse", "btn-lg");
+        close.setOnAction(e -> mainController.closeSheet());
+        mainController.showSheet(title, new VBox(16, done, close));
+    }
+
+    /** The drives plugged in, each with "Esporta tutto" and its PGN files to import. */
+    private void openUsb() {
+        PgnTransfer transfer = new PgnTransfer();
+        AppExecutors.io().execute(() -> {
+            List<PgnTransfer.Drive> drives = transfer.drives();
+            java.util.Map<PgnTransfer.Drive, List<PgnTransfer.PgnFile>> files = new java.util.LinkedHashMap<>();
+            for (PgnTransfer.Drive d : drives) {
+                files.put(d, transfer.pgnFiles(d));
+            }
+            Platform.runLater(() -> showDrives(transfer, files));
+        });
+    }
+
+    private void showDrives(PgnTransfer transfer, java.util.Map<PgnTransfer.Drive, List<PgnTransfer.PgnFile>> drives) {
+        VBox content = new VBox(16);
+        if (drives.isEmpty()) {
+            VBox empty = new VBox(18, Icons.of("fth-hard-drive", 56),
+                    Ui.label(I18n.t("transfer.usb.none"), "empty-title"),
+                    Ui.wrap(I18n.t("transfer.usb.none.detail"), "empty-sub"));
+            empty.getStyleClass().add("empty-state");
+            Button retry = Ui.wide(I18n.t("transfer.usb.retry"), "fth-refresh-cw", "btn-outline", "btn-lg");
+            retry.setOnAction(e -> openUsb());
+            content.getChildren().addAll(empty, retry);
+        }
+        drives.forEach((drive, files) -> {
+            Button export = Ui.wide(I18n.t("transfer.usb.export"), "fth-upload", "btn-inverse", "btn-lg");
+            export.setOnAction(e -> AppExecutors.io().execute(() -> {
+                String message;
+                boolean ok;
+                try {
+                    var path = transfer.exportAll(drive, GameArchiveService.getInstance());
+                    message = I18n.t("transfer.usb.exported", path.getFileName());
+                    ok = true;
+                } catch (java.io.IOException | RuntimeException ex) {
+                    message = I18n.t("transfer.usb.failed", ErrorReporter.userMessage(ex));
+                    ok = false;
+                }
+                String m = message;
+                boolean k = ok;
+                Platform.runLater(() -> showTransferResult(drive.label(), k, m));
+            }));
+            VBox card = new VBox(12, Ui.label(drive.label(), "row-title"), export);
+            if (files.isEmpty()) {
+                card.getChildren().add(Ui.wrap(I18n.t("transfer.usb.nofiles"), "t-small", "t-muted"));
+            } else {
+                card.getChildren().add(Ui.label(I18n.t("transfer.usb.files"), "t-small", "t-muted"));
+            }
+            for (PgnTransfer.PgnFile f : files) {
+                card.getChildren().add(transferOption("fth-file-text", f.name(), f.description(), () ->
+                        AppExecutors.io().execute(() -> {
+                            String message;
+                            boolean ok;
+                            try {
+                                message = PgnTransfer.describe(transfer.importFile(f, GameArchiveService.getInstance()));
+                                ok = true;
+                            } catch (java.io.IOException | RuntimeException ex) {
+                                message = I18n.t("transfer.usb.failed",
+                                        ErrorReporter.userMessage(ex));
+                                ok = false;
+                            }
+                            String m = message;
+                            boolean k = ok;
+                            Platform.runLater(() -> {
+                                showTransferResult(f.name(), k, m);
+                                loadArchive();
+                            });
+                        })));
+            }
+            card.getStyleClass().add("card");
+            card.setPadding(new Insets(20));
+            content.getChildren().add(card);
+        });
+        mainController.showSheet(I18n.t("transfer.usb"), content);
+    }
+
+    /** For demos: the Lichess import sheet. */
+    public void devOpenImport() {
+        openOnlineImport(OnlineImport.Source.LICHESS, 50);
     }
 
     private void openSearch() {

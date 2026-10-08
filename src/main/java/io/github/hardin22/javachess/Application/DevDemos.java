@@ -105,6 +105,15 @@ final class DevDemos {
                     main.navigateTo("ARCHIVE");
                     later(1.2, () -> lookupFire(main, "archive-row"));
                 }
+                case "archive-transfer" -> {
+                    main.navigateTo("ARCHIVE");
+                    later(1.2, () -> lookupFire(main, "archive-transfer"));
+                }
+                case "archive-import" -> {
+                    main.navigateTo("ARCHIVE");
+                    later(1.2, () -> ((io.github.hardin22.javachess.Controllers.ArchiveController)
+                            main.getController("ARCHIVE")).devOpenImport());
+                }
                 case "archive-search" -> {
                     main.navigateTo("ARCHIVE");
                     later(1.2, () -> lookupFire(main, "archive-search"));
