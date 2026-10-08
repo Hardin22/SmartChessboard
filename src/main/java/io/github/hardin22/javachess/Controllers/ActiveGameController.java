@@ -374,7 +374,7 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
             for (Button b : new Button[] { solo.undoButton, solo.hintButton, solo.drawButton }) {
                 b.setDisable(true);
             }
-            solo.resignButton.setDisable(mode == Mode.ONLINE || ended);
+            solo.resignButton.setDisable(ended || currentGame == null || !currentGame.isRunning());
             solo.setToolsVisible(!ended && currentGame != null && currentGame.isRunning());
             return;
         }
@@ -1057,6 +1057,10 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         Button yes = Ui.wide(I18n.t("game.resign.confirm.ok"), "fth-flag", "btn-danger-solid", "btn-lg");
         yes.setOnAction(e -> {
             mainController.closeSheet();
+            if (currentGame instanceof OnlineGame online) {
+                online.resign(); // Lichess confirms the end through the stream; the game is archived then
+                return;
+            }
             resign(humanWhite ? Side.WHITE : Side.BLACK);
         });
         mainController.showSheet(I18n.t("game.resign.confirm"), new VBox(24, detail, Ui.equalRow(14, no, yes)));

@@ -307,6 +307,21 @@ public class LichessGameManager {
         command("abbandono", () -> client.resign(gameId));
     }
 
+    /**
+     * The player gives the game up: before both sides have moved Lichess only accepts an abort (no result, nothing
+     * rated), afterwards a resignation. The end arrives through the stream like any other ending.
+     *
+     * @return true when an abort was sent, false for a resignation
+     */
+    public boolean resignOrAbort() {
+        if (moves.size() < 2) {
+            abort();
+            return true;
+        }
+        resign();
+        return false;
+    }
+
     /** Offers (or accepts) a draw. */
     public void offerDraw() {
         command("proposta di patta", () -> client.offerDraw(gameId));
