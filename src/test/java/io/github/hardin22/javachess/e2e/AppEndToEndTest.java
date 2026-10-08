@@ -424,8 +424,12 @@ class AppEndToEndTest {
         capture.start();
         root.addAppender(capture);
         try {
-            List<String> views = List.of("HOME", "PVC_SETUP", "PVP_SETUP", "LICHESS_SETUP", "ARCHIVE", "REVIEW",
-                    "PUZZLE_DASHBOARD", "PUZZLE_GAME", "THEME", "SETTINGS", "GAME");
+            // every registered screen, also the ones added later (the integrated browser needs JCEF: left out)
+            Field registry = MainController.class.getDeclaredField("VIEWS");
+            registry.setAccessible(true);
+            List<String> views = ((java.util.Map<?, ?>) registry.get(null)).keySet().stream().map(String::valueOf)
+                    .filter(v -> !v.equals("BROWSER")).toList();
+            assertTrue(views.size() >= 11, "screens found: " + views);
             for (String view : views) {
                 fx(() -> {
                     main.navigateTo(view);
