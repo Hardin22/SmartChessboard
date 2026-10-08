@@ -69,6 +69,13 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         void onBotMoveReplicated();
     }
 
+    /** Raw sensor changes, for trainers that use the squares themselves (coordinates) and not moves. */
+    @FunctionalInterface
+    public interface SquareListener {
+        /** A piece was placed on ({@code occupied}) or lifted from {@code square} (0 = a1). */
+        void onSquareChanged(int square, boolean occupied);
+    }
+
     public interface EvaluationProvider {
         double getCurrentEvaluation();
     }
@@ -100,6 +107,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
     private volatile long errorSettleMs = 800;
 
     private volatile BoardMoveListener listener;
+    private volatile SquareListener squareListener;
     private volatile EvaluationProvider evaluationProvider;
     private volatile String bestMove;
     private volatile boolean evaluationEnabled = true;
@@ -178,6 +186,11 @@ public class BoardStateManager implements BoardHardware.SensorListener {
     /** Step of the guided set-up shown now (piece, squares, "passo 2 di 7"), or null. */
     public SetupGuide.Step setupStep() {
         return setupStep;
+    }
+
+    /** Receives every sensor change (on the callbacks thread); null to stop. Independent of the move listener. */
+    public void setSquareListener(SquareListener listener) {
+        squareListener = listener;
     }
 
     public void setListener(BoardMoveListener listener) {
@@ -405,6 +418,10 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         physical = occupied ? physical | bit : physical & ~bit;
         touched |= bit;
         log.debug("{} {} (mode {})", Squares.name(square), occupied ? "placed" : "lifted", mode);
+        SquareListener raw = squareListener;
+        if (raw != null) {
+            callbacks.execute(() -> raw.onSquareChanged(square, occupied));
+        }
         refresh();
     }
 
