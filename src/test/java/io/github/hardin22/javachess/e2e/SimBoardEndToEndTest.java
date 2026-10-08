@@ -258,6 +258,53 @@ class SimBoardEndToEndTest {
 
     @Test
     @Order(11)
+    void gameLeftByARestartIsResumedFromHomeOnTheBoard() throws Exception {
+        app.bot("d7d5", "g8f6", "e7e6"); // an opening no other test plays: its archived copies are told apart
+        ActiveGameController game = app.startPvc(true);
+        playOnBoard(game, "d2d4", 2);
+        reproduceLastMove(game);
+        playOnBoard(game, "c2c4", 4);
+        reproduceLastMove(game);
+        // the app is closed (game archived as interrupted, snapshot kept) and started again: the snapshot is read
+        // from disk and the pieces may be anywhere
+        fx(() -> {
+            app.main.navigateTo("HOME");
+            return null;
+        });
+        awaitStorage();
+        io.github.hardin22.javachess.Play.GameSnapshotStore.resetInstance();
+        sim().setOccupancy(0xFFFF_0000_0000_FFFFL);
+        fx(() -> {
+            app.main.navigateTo("HOME"); // "Partita interrotta · Riprendi"
+            return null;
+        });
+        waitFor("resume card", () -> !mossaLabels().isEmpty());
+        String cardsBefore = mossaLabels();
+        app.fireButton(I18n.t("home.resume.continue"));
+        waitFor("game resumed (card shown: " + cardsBefore + ")", () -> "GAME".equals(fxGet(app.main::getCurrentViewName))
+                && fxGet(() -> game(game) != null && game(game).getBoard().getBackup().size() == 4));
+        assertEquals(List.of("d2d4", "d7d5", "c2c4", "g8f6"), fxGet(() -> game(game).getBoard().getBackup().stream()
+                .map(b -> b.getMove().toString()).toList()), "the game just left, not the one saved before it");
+        waitForMode(BoardStateManager.Mode.SETUP); // pieces placed as in the resumed position
+        arrangeAs(fxGet(() -> game(game).getBoard().getFen()));
+        waitForMode(BoardStateManager.Mode.PLAY);
+        playOnBoard(game, "b1c3", 6);
+        reproduceLastMove(game);
+        fx(() -> {
+            app.main.navigateTo("HOME");
+            return null;
+        });
+        awaitStorage();
+        List<String> start = List.of("d2d4", "d7d5", "c2c4", "g8f6");
+        List<ArchivedGame> copies = archive().list().stream()
+                .filter(g -> g.movesUci().size() >= 4 && g.movesUci().subList(0, 4).equals(start)).toList();
+        assertEquals(1, copies.size(), "one archived copy of the resumed game (the interrupted one is replaced): "
+                + copies);
+        assertEquals(6, copies.get(0).movesUci().size());
+    }
+
+    @Test
+    @Order(12)
     void puzzleSetUpAndSolvedOnTheBoard() throws Exception {
         PuzzleController puzzles = fx(() -> {
             PuzzleController c = (PuzzleController) app.main.getController("PUZZLE_GAME");
@@ -294,6 +341,26 @@ class SimBoardEndToEndTest {
         });
         waitForMode(BoardStateManager.Mode.IDLE);
         assertTrue(Hardware.isInitialized());
+    }
+
+    /** Texts of the labels that show "Mossa N" (the resume card on Home). */
+    private static String mossaLabels() {
+        return fxGet(() -> {
+            List<String> out = new java.util.ArrayList<>();
+            java.util.Deque<javafx.scene.Node> todo = new java.util.ArrayDeque<>();
+            todo.add(app.stage.getScene().getRoot());
+            while (!todo.isEmpty()) {
+                javafx.scene.Node n = todo.poll();
+                if (n instanceof javafx.scene.control.Label l && l.getText() != null && l.getText().startsWith("Mossa")
+                        && l.getScene() != null) {
+                    out.add(l.getText());
+                }
+                if (n instanceof javafx.scene.Parent p) {
+                    todo.addAll(p.getChildrenUnmodifiable());
+                }
+            }
+            return String.join(" | ", out);
+        });
     }
 
     private static String toSeconds(String timeControl) {
