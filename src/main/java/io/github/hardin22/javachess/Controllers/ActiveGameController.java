@@ -1058,7 +1058,9 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
     }
 
     private void confirmLeave(boolean far) {
-        Label detail = Ui.wrap(I18n.t("game.leave.detail"), "t-body", "t-muted");
+        // a Lichess game is not stopped by leaving: it stays open there with the clock running
+        Label detail = Ui.wrap(I18n.t(mode == Mode.ONLINE ? "game.leave.detail.online" : "game.leave.detail"),
+                "t-body", "t-muted");
         Button stay = Ui.wide(I18n.t("game.leave.stay"), null, "btn-outline", "btn-lg");
         stay.setOnAction(e -> mainController.closeSheet());
         Button leave = Ui.wide(I18n.t("game.leave"), "fth-log-out", "btn-danger-solid", "btn-lg");
