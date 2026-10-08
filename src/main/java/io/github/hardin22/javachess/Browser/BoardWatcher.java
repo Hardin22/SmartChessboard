@@ -134,6 +134,15 @@ public final class BoardWatcher {
     private long lastAutoScroll;
     private int autoScrolls;
     private String lastVisionCheck;
+    // vision lag diagnostics: when the page's markup showed its current position, and the last polls
+    private String lagPagePlacement;
+    private long lagPageSince;
+    private boolean lagMeasured;
+    private long slowVisionFollows;
+    private long maxVisionLagMs;
+    private final java.util.ArrayDeque<String> trace = new java.util.ArrayDeque<>();
+    private long pollStartedAt;
+    private String pollNote;
 
     /**
      * @param vision vision model, or null when vision cannot be used at all
@@ -229,8 +238,11 @@ public final class BoardWatcher {
 
     /** One poll; completes on the executor thread. */
     CompletableFuture<Void> pollOnce() {
+        long started = System.currentTimeMillis();
         return BoardProbe.read(page).handleAsync((snapshot, error) -> {
             polls++;
+            pollStartedAt = started;
+            pollNote = "probe " + (System.currentTimeMillis() - started) + "ms";
             if (error != null) {
                 log.debug("Page probe failed: {}", error.toString());
                 pageCandidate = null;
@@ -285,9 +297,11 @@ public final class BoardWatcher {
             return CompletableFuture.completedFuture(null);
         }
         // board known from the page: a picture of the board only; otherwise the visible page, searched
+        long shotAt = System.currentTimeMillis();
         CompletableFuture<BufferedImage> picture = board != null ? BoardPicture.take(page, snapshot)
                 : page.screenshot(null);
         return picture.handleAsync((image, error) -> {
+            pollNote += ", picture " + (System.currentTimeMillis() - shotAt) + "ms";
             if (error != null) {
                 log.debug("Screenshot failed: {}", error.toString());
                 report(Problem.PAGE_UNREADABLE);
@@ -323,7 +337,9 @@ public final class BoardWatcher {
     private void readPicture(BoardSnapshot.BoardView board, BufferedImage image) {
         vision.setFlipped(board != null && board.flipped());
         vision.setBoardHint(board != null ? new Rectangle(0, 0, image.getWidth(), image.getHeight()) : null);
+        long readAt = System.currentTimeMillis();
         VisionTracker.Result result = vision.accept(image);
+        pollNote += ", " + result.status() + " " + (System.currentTimeMillis() - readAt) + "ms";
         calibrate(board, image, result);
         switch (result.status()) {
             case NEW_POSITION, STABLE -> {
@@ -365,6 +381,7 @@ public final class BoardWatcher {
 
     /** Sends an update when one of the stable readings changed since the last update. */
     private void publish(BoardSnapshot snapshot) {
+        measureVisionLag(snapshot);
         ReadMode m = mode;
         String v = visionStable == null ? null : visionStable.placement();
         String p = m.usesPage() ? pageStable : null;
@@ -380,6 +397,58 @@ public final class BoardWatcher {
             log.info("Vision and page differ: vision {}, page {}", v, p);
         }
         listener.onPosition(new PositionUpdate(snapshot, visionStable, p == null ? null : BoardReading.certain(p), m));
+    }
+
+    /**
+     * Diagnostics: how long after the page's markup vision shows the same position, in the modes where vision
+     * leads. A lag over {@value #SLOW_VISION_MS} ms is logged with the last polls (what each one took and what
+     * the vision tracker said), to tell a slow picture from a board judged still moving.
+     */
+    private void measureVisionLag(BoardSnapshot snapshot) {
+        long now = System.currentTimeMillis();
+        String pagePlacement = snapshot.board() == null || snapshot.board().animating() ? null
+                : snapshot.board().placement();
+        trace.addLast(java.time.LocalTime.now() + " +" + (now - pollStartedAt) + "ms " + pollNote
+                + (visionStable == null ? "" : ", vision " + shortPlacement(visionStable.placement()))
+                + (pagePlacement == null ? "" : ", page " + shortPlacement(pagePlacement)));
+        while (trace.size() > TRACE_POLLS) {
+            trace.removeFirst();
+        }
+        if (mode == ReadMode.PAGE || pagePlacement == null) {
+            return;
+        }
+        if (!pagePlacement.equals(lagPagePlacement)) {
+            lagPagePlacement = pagePlacement;
+            lagPageSince = now;
+            lagMeasured = false;
+        }
+        if (!lagMeasured && visionStable != null && pagePlacement.equals(visionStable.placement())) {
+            lagMeasured = true;
+            long lag = now - lagPageSince;
+            maxVisionLagMs = Math.max(maxVisionLagMs, lag);
+            if (lag > SLOW_VISION_MS) {
+                slowVisionFollows++;
+                log.warn("Vision showed the page's position {} ms after the page; last polls:\n  {}", lag,
+                        String.join("\n  ", trace));
+            }
+        }
+    }
+
+    private static String shortPlacement(String placement) {
+        return Integer.toHexString(placement.hashCode());
+    }
+
+    private static final long SLOW_VISION_MS = 3000;
+    private static final int TRACE_POLLS = 24;
+
+    /** Times vision followed the page more than {@value #SLOW_VISION_MS} ms late (vision modes). */
+    public long slowVisionFollows() {
+        return slowVisionFollows;
+    }
+
+    /** Longest lag of vision behind the page so far, in ms. */
+    public long maxVisionLagMs() {
+        return maxVisionLagMs;
     }
 
     private void report(Problem p) {
