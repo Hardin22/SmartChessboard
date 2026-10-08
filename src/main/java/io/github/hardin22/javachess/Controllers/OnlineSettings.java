@@ -103,9 +103,9 @@ final class OnlineSettings {
             readerDescription.setText(describe(mode));
             if (!updating) {
                 Prefs.set(READER_KEY, mode.name().toLowerCase(Locale.ROOT).replace('_', '-'));
-                boolean browserRunning = JcefRuntime.app() != null;
-                readerRestart.setVisible(browserRunning);
-                readerRestart.setManaged(browserRunning);
+                // the browser reads the setting each time it opens (BrowserController.showWindow)
+                readerRestart.setVisible(JcefRuntime.app() != null);
+                readerRestart.setManaged(readerRestart.isVisible());
             }
         });
         readerRestart.setVisible(false);
