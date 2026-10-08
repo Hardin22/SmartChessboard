@@ -45,6 +45,17 @@ Rifatto il giro sull'app integrata:
   normalmente: uscita 0, nessun crash report di macOS, nessun processo Chromium rimasto. Pi in scatola: 698 test,
   35/35 E2E, long run thread 38→38, processi 2→2, heap 125→133 MB; 1 fallimento instabile in `CoordinateTrainerTest`
   (un secondo assert sui LED letto troppo presto, segnalato a features).
+- **E2E affidabili sotto carico** (richiesta dell'orchestratore: 3 timeout in `AppEndToEndTest` e una crescita
+  dell'heap nel long run, con il Mac a 6 GB di swap). Uno dei tre era un bug vero (QA-036: la selezione del pezzo
+  spariva se la scacchiera si ridimensionava fra i due tocchi, la mossa andava persa e il bot non rispondeva mai);
+  gli altri due erano stalli da swap (la classe impiegava 123 s invece di 41). Ora ogni passo ha 90 s
+  (`-De2e.timeoutMs`), i limiti sui tempi si allungano col carico per CPU (`-De2e.timeScale`), e allo scadere il test
+  stampa carico, memoria libera e swap, i frame che JavaFX disegna in un secondo e gli stack dei thread occupati
+  dell'app. Long run: la JVM degli E2E libera le cache soft a ogni GC (`-XX:SoftRefLRUPolicyMSPerMB=0`,
+  `-De2e.argLine` per altri flag), la misura è la minima di tre, prima di parlare di perdita misura di nuovo e stampa le
+  classi cresciute; i worker dei pool sono contati a parte; il giro tocca tutte le schermate registrate. Istogramma
+  prima/dopo 20 partite: +4,6 MB di texture del rendering software e cache del testo, nessuna perdita. Suite completa
+  con 12 processi che occupano le CPU: 753 test, 0 falliti, 40 E2E.
 - Test instabili sotto carico segnalati ai proprietari: `CoordinateTrainerTest` (features, già corretto),
   `SyncWithRealBoardTest` (browser).
 
