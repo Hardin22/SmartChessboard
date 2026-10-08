@@ -515,8 +515,9 @@ public class BrowserController implements NavigationAware {
     static void restartApplication() {
         String launcher = System.getenv("JAVACHESS_LAUNCHER");
         try {
-            if (System.getenv("INVOCATION_ID") != null) {
-                log.info("Restarting through systemd");
+            if (System.getenv("INVOCATION_ID") != null || System.getenv("JAVACHESS_SUPERVISED") != null) {
+                // systemd, or the kiosk session's loop (docs/raspberry-pi.md) starts the app again
+                log.info("Restarting through the supervisor");
                 App.setExitCode(App.RESTART_EXIT_CODE);
                 Platform.exit();
                 return;

@@ -46,6 +46,12 @@ public class App extends Application {
             applyRenderingProfile(scene);
             primaryStage.setScene(scene);
             boolean fullScreen = DevOptions.placeStage(primaryStage);
+            if (fullScreen && DevOptions.borderlessInsteadOfFullScreen()) {
+                // macOS (development only): a borderless window over the whole screen instead of native full
+                // screen, whose separate space the browser's window cannot join (see docs/browser.md)
+                primaryStage.initStyle(javafx.stage.StageStyle.UNDECORATED);
+                fullScreen = false;
+            }
             primaryStage.setFullScreenExitHint("");
             if (Boolean.getBoolean("javachess.kiosk")) {
                 // kiosk (run_pi.sh): Esc must not leave full screen on the board's monitor
@@ -168,6 +174,14 @@ public class App extends Application {
 
     public static void main(String[] args) {
         Bootstrap.init(); // logging, ~/.javachess data folder + migration, global exception handler
+        if (java.util.Arrays.asList(args).contains("--install-browser")) {
+            // set-up step (run_pi.sh --install-browser): download the browser engine now, without a window, so that
+            // the first opening of the browser never needs the restart (on the Pi it shows the desktop meanwhile)
+            System.exit(io.github.hardin22.javachess.Browser.JcefRuntime.installOnly() ? 0 : 1);
+        }
+        // JCEF's documented first step, at the beginning of main(): loads the Chromium framework on macOS (later it
+        // can abort the process) and initialises Xlib for threads on Linux; see JcefRuntime.startup
+        io.github.hardin22.javachess.Browser.JcefRuntime.startup();
         // Persistent cookies for the HTTP clients (Lichess); cheap, keeps sessions across restarts
         try {
             java.net.CookieManager cookieManager = new java.net.CookieManager(

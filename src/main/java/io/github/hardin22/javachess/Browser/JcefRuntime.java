@@ -67,6 +67,121 @@ public final class JcefRuntime {
     private JcefRuntime() {
     }
 
+    private static volatile boolean frameworkLoaded;
+
+    /**
+     * JCEF's documented start-up step, to be called <b>at the beginning of {@code main()}</b>: "This method must be
+     * called at the beginning of the main() method to perform platform-specific startup initialization. On Linux this
+     * initializes Xlib multithreading and on macOS this dynamically loads the CEF framework." (javadoc of
+     * {@code org.cef.CefApp.startup}; JCEF's own sample, {@code tests/detailed/MainFrame}, calls it first thing).
+     * jcefmaven calls it only when the engine is built, i.e. at the first opening of the browser, with the app's
+     * threads running; on macOS loading the framework there let a {@code free()} on another thread abort the
+     * process (loading it makes PartitionAlloc the default malloc zone: crashes of 8 October 2026, reproduced by
+     * {@code CefLoadRace}). Does nothing when the engine is not installed yet (the first download then asks for a
+     * restart) or with {@code -Djavachess.browser.preload=false}. Returns true when done.
+     */
+    public static synchronized boolean startup() {
+        if (frameworkLoaded) {
+            return true;
+        }
+        if ("false".equals(System.getProperty("javachess.browser.preload"))) {
+            return false;
+        }
+        boolean mac = isMac();
+        boolean linux = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("linux");
+        if (!mac && !linux) {
+            return false; // nothing to do there (startup returns at once on Windows)
+        }
+        Path dir = installDir();
+        long t0 = System.nanoTime();
+        try {
+            if (!CefInstallationChecker.checkInstallation(dir.toFile())) {
+                return false;
+            }
+            if (linux && needsPreload() && preloadedLibcef() == null) {
+                return false; // arm64 without libcef.so preloaded by run_pi.sh: the engine asks for a restart
+            }
+            // as jcefmaven's CefInitializer: the bundle on java.library.path (JCEF finds its helper there), the
+            // JCEF library from the bundle, then CefApp.startup
+            String libraryPath = System.getProperty("java.library.path", "");
+            if (!libraryPath.contains(dir.toString())) {
+                System.setProperty("java.library.path", libraryPath
+                        + (libraryPath.isEmpty() || libraryPath.endsWith(java.io.File.pathSeparator)
+                        ? "" : java.io.File.pathSeparator) + dir.toAbsolutePath());
+            }
+            System.load(dir.resolve(mac ? "libjcef.dylib" : "libjcef.so").toString());
+            org.cef.SystemBootstrap.setLoader(name -> { });
+            String[] args = mac ? new String[]{"--framework-dir-path=" + dir.resolve(
+                    "Chromium Embedded Framework.framework")} : new String[0];
+            boolean ok = CefApp.startup(args);
+            frameworkLoaded = ok;
+            log.info("JCEF start-up step done at the start of the app in {} ms ({})",
+                    (System.nanoTime() - t0) / 1_000_000, ok ? "ok" : "failed");
+            return ok;
+        } catch (Throwable t) {
+            log.warn("JCEF start-up step not done at the start of the app: {}", t.toString());
+            return false;
+        }
+    }
+
+    /**
+     * What jcefmaven's {@code CefInitializer} does, minus {@code CefApp.startup} (already done by
+     * {@link #startup()} at the start of the app; a second call fails).
+     */
+    private static CefApp initializePreloaded(Path dir, java.util.List<String> jcefArgs, CefSettings settings) {
+        java.util.List<String> args = new java.util.ArrayList<>(jcefArgs);
+        if (!isMac()) { // Linux: after startup jcefmaven loads libcef.so (preloaded by run_pi.sh on the Pi)
+            System.load(dir.resolve("libcef.so").toString());
+            return CefApp.getInstance(args.toArray(new String[0]), settings);
+        }
+        String helper = dir.resolve("jcef Helper.app/Contents/MacOS/jcef Helper").toString();
+        args.add(0, "--framework-dir-path=" + dir.resolve("Chromium Embedded Framework.framework"));
+        args.add(0, "--main-bundle-path=" + dir.resolve("jcef Helper.app"));
+        args.add(0, "--browser-subprocess-path=" + helper);
+        settings.browser_subprocess_path = helper;
+        return CefApp.getInstance(args.toArray(new String[0]), settings);
+    }
+
+    /**
+     * Downloads and installs the engine without starting it ({@code run_pi.sh --install-browser}, part of the
+     * Raspberry Pi set-up): the app then finds it at its first start and never has to restart for it. Prints the
+     * progress; true when the engine is installed.
+     */
+    public static boolean installOnly() {
+        Path dir = installDir();
+        try {
+            if (CefInstallationChecker.checkInstallation(dir.toFile())) {
+                System.out.println("Browser engine already installed in " + dir);
+                return true;
+            }
+            System.out.println("Downloading the browser engine into " + dir + " (about 150 MB)...");
+            CefAppBuilder builder = new CefAppBuilder();
+            builder.setInstallDir(dir.toFile());
+            int[] last = {-1};
+            builder.setProgressHandler((state, percent) -> {
+                int p = Math.round(percent);
+                if (state == EnumProgress.DOWNLOADING && p / 10 != last[0]) {
+                    last[0] = p / 10;
+                    System.out.println("  " + p + "%");
+                } else if (state == EnumProgress.EXTRACTING || state == EnumProgress.INSTALL) {
+                    System.out.println("  " + state.name().toLowerCase(Locale.ROOT) + "...");
+                }
+            });
+            builder.install();
+            boolean ok = CefInstallationChecker.checkInstallation(dir.toFile());
+            System.out.println(ok ? "Browser engine installed in " + dir : "The browser engine is not complete");
+            return ok;
+        } catch (Exception e) {
+            System.out.println("Could not install the browser engine: " + e);
+            return false;
+        }
+    }
+
+    /** True when JCEF's start-up step was done at the start of the app (see {@link #startup()}). */
+    public static boolean startedUp() {
+        return frameworkLoaded;
+    }
+
     /** The running engine, or null. */
     public static synchronized CefApp app() {
         return app;
@@ -127,9 +242,25 @@ public final class JcefRuntime {
                         + (preloaded == null ? " (nothing preloaded)" : " (preloaded: " + preloaded + ")"));
             }
         }
+        if (isMac() && !frameworkLoaded && !"false".equals(System.getProperty("javachess.browser.preload"))) {
+            if (!CefInstallationChecker.checkInstallation(dir.toFile())) {
+                // first use: install, then load the framework at the next start of the app, while it is quiet
+                log.info("Installing the browser bundle (it is loaded at the next start)");
+                builder.install();
+                throw new RestartRequiredException("the Chromium framework is loaded at the start of the app");
+            }
+            // tools and tests that start the engine without the app's start-up: do the step now
+            startup();
+        }
         boolean gpu = useGpu(System.getProperty("javachess.browser.gpu"), isMac());
         builder.addJcefArgs(chromiumArgs(gpu).toArray(new String[0]));
-        log.info("Chromium graphics: {}", gpu ? "GPU" : "software (no GPU, no WebGL)");
+        String extra = System.getProperty("javachess.browser.chromiumArgs"); // experiments only
+        if (extra != null && !extra.isBlank()) {
+            builder.addJcefArgs(extra.trim().split("\\s+"));
+            log.info("Extra Chromium arguments: {}", extra);
+        }
+        log.info("Chromium graphics: {}", gpu ? "GPU" : softwareWebGl ? "software, WebGL by SwiftShader"
+                : "software (no WebGL)");
         CefSettings settings = builder.getCefSettings();
         Path cache = AppPaths.resolve("jcef-cache"); // login sessions survive restarts
         Files.createDirectories(cache);
@@ -161,7 +292,8 @@ public final class JcefRuntime {
         // the engine; on macOS that dispose aborts the process now and then (see shutdown()), so the engine is
         // started here without that hook and ours decides what is safe
         builder.install();
-        CefApp built = CefInitializer.initialize(dir.toFile(), builder.getJcefArgs(), settings);
+        CefApp built = frameworkLoaded ? initializePreloaded(dir, builder.getJcefArgs(), settings)
+                : CefInitializer.initialize(dir.toFile(), builder.getJcefArgs(), settings);
         Runtime.getRuntime().addShutdownHook(new Thread(JcefRuntime::shutdown, "jcef-shutdown"));
         log.info("Integrated browser ready (Chromium {})", cefVersion());
         return built;
@@ -200,10 +332,11 @@ public final class JcefRuntime {
     }
 
     /**
-     * Chromium's command line. Without the GPU Chromium 146 has no WebGL at all (no software fallback any more),
-     * which sites' bot checks (Cloudflare Turnstile) take as a sign of an automated browser: on macOS the GPU is
-     * used (the old reason to disable it, stability with JCEF 141, no longer holds with 146: see docs/browser.md);
-     * on Linux (Raspberry Pi, off-screen rendering) software rendering stays the default.
+     * Chromium's command line. The GPU stays off by default everywhere: on macOS Chromium's GPU in the app's
+     * process crashed JavaFX's OpenGL renderer (8 October 2026, at the first opening of chess.com: JavaFX's
+     * QuantumRenderer died inside Apple's Metal OpenGL layer with Chromium's frames on the stack; probably why the
+     * GPU was disabled since JCEF 141). Without the GPU Chromium 146 has no WebGL. {@code -Djavachess.browser.gpu}
+     * turns it on for experiments only.
      */
     static java.util.List<String> chromiumArgs(boolean gpu) {
         java.util.List<String> args = new java.util.ArrayList<>(java.util.List.of("--no-sandbox", "--no-zygote",
@@ -211,16 +344,25 @@ public final class JcefRuntime {
         if (!gpu) {
             args.addAll(java.util.List.of("--disable-gpu", "--disable-gpu-compositing", "--disable-gpu-rasterization",
                     "--disable-gpu-shader-disk-cache", "--disable-features=VizDisplayCompositor"));
+            if (softwareWebGl) {
+                // WebGL without the GPU: SwiftShader, in Chromium's GPU process (not in the app's): sites' bot
+                // checks (Cloudflare Turnstile) distrust a browser without WebGL. "Unsafe" because shaders of any
+                // page run on a software rasteriser: acceptable for the chess sites this browser is for
+                args.add("--enable-unsafe-swiftshader");
+            }
         }
         return args;
     }
 
-    /** {@code -Djavachess.browser.gpu=true|false}; by default the GPU only on macOS. */
+    /** {@code -Djavachess.browser.webgl=false} turns software WebGL off. */
+    static boolean softwareWebGl = !"false".equals(System.getProperty("javachess.browser.webgl"));
+
+    /** {@code -Djavachess.browser.gpu=true|false}; off by default (see {@link #chromiumArgs}). */
     static boolean useGpu(String setting, boolean mac) {
         if (setting != null && !setting.isBlank()) {
             return Boolean.parseBoolean(setting.trim());
         }
-        return mac;
+        return false;
     }
 
     /** False on macOS, see {@link #shutdown()}. */

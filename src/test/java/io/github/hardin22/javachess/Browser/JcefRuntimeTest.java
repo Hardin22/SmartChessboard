@@ -66,13 +66,15 @@ class JcefRuntimeTest {
     }
 
     @Test
-    void theGpuIsUsedOnMacOsAndSoftwareRenderingOnLinux() {
-        assertTrue(JcefRuntime.useGpu(null, true));
+    void theGpuIsOffByDefaultEverywhere() {
+        // on macOS Chromium's GPU in the app's process crashed JavaFX's OpenGL renderer (8 October 2026)
+        assertFalse(JcefRuntime.useGpu(null, true));
         assertFalse(JcefRuntime.useGpu(null, false));
         assertFalse(JcefRuntime.useGpu("false", true));
         assertTrue(JcefRuntime.useGpu("true", false));
-        assertFalse(JcefRuntime.chromiumArgs(true).contains("--disable-gpu"), "WebGL needs the GPU");
+        assertFalse(JcefRuntime.chromiumArgs(true).contains("--disable-gpu"), "only when asked for");
         assertTrue(JcefRuntime.chromiumArgs(false).containsAll(List.of("--disable-gpu", "--disable-gpu-compositing")));
         assertTrue(JcefRuntime.chromiumArgs(true).contains("--no-sandbox"));
+        assertTrue(JcefRuntime.chromiumArgs(false).contains("--enable-unsafe-swiftshader"), "WebGL in software");
     }
 }

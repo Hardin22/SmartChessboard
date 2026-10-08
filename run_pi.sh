@@ -74,5 +74,10 @@ if [ "${JAVACHESS_DEBUG:-0}" = "1" ]; then
   JVM_OPTS+=(-Dprism.verbose=true -Djavachess.metrics=true -Djavachess.log.level=DEBUG)
 fi
 
+if [ "${1:-}" = "--install-browser" ]; then
+  # set-up: download the browser engine now (no window), so that the app never restarts for it later
+  exec "$JAVA" -Xmx256m ${JAVACHESS_JCEF_DIR:+-Djavachess.jcef.dir="$JAVACHESS_JCEF_DIR"} -jar "$JAR" --install-browser
+fi
+
 # shellcheck disable=SC2086
 exec "$JAVA" "${JVM_OPTS[@]}" ${JAVACHESS_OPTS:-} -jar "$JAR" "$@"
