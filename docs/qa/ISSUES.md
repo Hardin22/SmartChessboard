@@ -6,7 +6,7 @@ Gravità: **alta** (vicolo cieco, perdita di dati, partita bloccata), **media** 
 
 | ID | Gravità | Area | Titolo | Stato |
 |---|---|---|---|---|
-| QA-001 | alta | logica+UI | Nessuna mossa possibile dallo schermo: senza scacchiera (o scollegata) partite e puzzle sono un vicolo cieco | logica corretta; UI assegnata a design |
+| QA-001 | alta | logica+UI | Nessuna mossa possibile dallo schermo: senza scacchiera (o scollegata) partite e puzzle sono un vicolo cieco | corretto (logica qa, tocco sulle case e selettore della promozione di design; E2E a tocchi) |
 | QA-002 | alta | logica | Se il motore fallisce (assente, crash, bloccato) la mossa del bot non viene mai ritentata: partita ferma | corretto |
 | QA-003 | media | logica | La mossa del bot che chiude la partita non viene fatta replicare; "Errore: controlla X" copre il risultato | corretto |
 | QA-004 | media | logica | Ricollegamento della scacchiera a metà partita: nessuna guida per rimettere i pezzi, mossa del bot persa | corretto |
@@ -15,9 +15,9 @@ Gravità: **alta** (vicolo cieco, perdita di dati, partita bloccata), **media** 
 | QA-007 | media | logica | Puzzle: una mossa durante la risposta dell'avversario contava come errore; mosse del lato avversario lette dalla scacchiera; mossa sbagliata senza guida LED | corretto |
 | QA-008 | media | logica+UI | Puzzle senza database: "Nessun puzzle trovato con questi filtri" invece di spiegare che mancano i dati | corretto (logica qa + stato vuoto di design) |
 | QA-009 | bassa | UI | Revisione aperta dalla home: "indietro" porta all'archivio | risolto da design (indietro torna alla schermata di provenienza) |
-| QA-010 | bassa | logica | Archivio danneggiato: il dialogo d'errore ricompare a ogni apertura dell'archivio | aperto |
+| QA-010 | bassa | logica | Archivio danneggiato: il dialogo d'errore ricompare a ogni apertura dell'archivio | corretto (`takeLoadProblemNotice`, una volta per sessione; `GameArchiveServiceTest`) |
 | QA-011 | media | logica+browser | Partita Lichess (API) lasciata a metà: non archiviata e non abbandonata su Lichess | corretto: Lichess si gioca nel browser integrato (archiviata come interrotta all'uscita); nel flusso API rimasto in Avanzate "Abbandona" funziona e la partita lasciata si riprende |
-| QA-012 | alta | logica | Kill/spegnimento del Pi a partita in corso: partita persa (lo shutdown hook non salva); nessuna ripresa | logica fatta da features (snapshot a ogni mossa, GameResume); carta in Home a design |
+| QA-012 | alta | logica | Kill/spegnimento del Pi a partita in corso: partita persa (lo shutdown hook non salva); nessuna ripresa | fatto (snapshot a ogni mossa e GameResume di features, carta "Riprendi" in Home di design; E2E) |
 | QA-013 | media | logica+UI | Nessun abbandono / offerta di patta: "Termina" archivia sempre come interrotta (`*`) | fatto: abbandono e patta nella UI di design, patta col bot (BotDrawPolicy) da features |
 | QA-014 | bassa | logica | Nome dell'apertura solo online (explorer Lichess, che ora chiede un token): offline non compare | fatto da features (libro offline prima dell'explorer) |
 | QA-015 | media | UI | Revisione: dopo "Analizza partita" la scacchiera si rimpicciolisce e le etichette si troncano | risolto da design (scacchiera a tutta larghezza nel ridisegno) |
