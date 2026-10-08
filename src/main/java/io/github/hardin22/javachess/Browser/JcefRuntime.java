@@ -67,6 +67,62 @@ public final class JcefRuntime {
     private JcefRuntime() {
     }
 
+    private static volatile boolean frameworkLoaded;
+
+    /**
+     * macOS: loads the Chromium framework now, at the start of the app, while no other thread is busy. Loading it
+     * makes PartitionAlloc the process's default malloc zone; for a moment the system's zone is not registered, and
+     * a {@code free()} on another thread at that moment aborts the process. Loaded at the first opening of the browser
+     * it raced with JavaFX's renderer and the JIT compiler (crashes of 8 October 2026; reproduced 17 times in 20 by
+     * {@code CefLoadRace}, never when loaded before other threads were busy). Does nothing elsewhere, when the engine
+     * is not installed yet, or with {@code -Djavachess.browser.preload=false}. Returns true when loaded.
+     */
+    public static synchronized boolean preloadFramework() {
+        if (frameworkLoaded) {
+            return true;
+        }
+        if (!isMac() || "false".equals(System.getProperty("javachess.browser.preload"))) {
+            return false;
+        }
+        Path dir = installDir();
+        long t0 = System.nanoTime();
+        try {
+            if (!CefInstallationChecker.checkInstallation(dir.toFile())) {
+                return false;
+            }
+            System.load(dir.resolve("libjcef.dylib").toString());
+            org.cef.SystemBootstrap.setLoader(name -> { }); // loaded just above, as jcefmaven does
+            boolean ok = CefApp.startup(new String[]{"--framework-dir-path=" + dir.resolve(
+                    "Chromium Embedded Framework.framework")});
+            frameworkLoaded = ok;
+            log.info("Chromium framework loaded at start-up in {} ms ({})", (System.nanoTime() - t0) / 1_000_000,
+                    ok ? "ok" : "failed");
+            return ok;
+        } catch (Throwable t) {
+            log.warn("Chromium framework not preloaded: {}", t.toString());
+            return false;
+        }
+    }
+
+    /**
+     * What jcefmaven's {@code CefInitializer} does on macOS, minus {@code CefApp.startup} (already done by
+     * {@link #preloadFramework()}; a second call fails).
+     */
+    private static CefApp initializePreloaded(Path dir, java.util.List<String> jcefArgs, CefSettings settings) {
+        java.util.List<String> args = new java.util.ArrayList<>(jcefArgs);
+        String helper = dir.resolve("jcef Helper.app/Contents/MacOS/jcef Helper").toString();
+        args.add(0, "--framework-dir-path=" + dir.resolve("Chromium Embedded Framework.framework"));
+        args.add(0, "--main-bundle-path=" + dir.resolve("jcef Helper.app"));
+        args.add(0, "--browser-subprocess-path=" + helper);
+        settings.browser_subprocess_path = helper;
+        return CefApp.getInstance(args.toArray(new String[0]), settings);
+    }
+
+    /** True when the framework was loaded at start-up (see {@link #preloadFramework()}). */
+    public static boolean frameworkPreloaded() {
+        return frameworkLoaded;
+    }
+
     /** The running engine, or null. */
     public static synchronized CefApp app() {
         return app;
@@ -127,9 +183,25 @@ public final class JcefRuntime {
                         + (preloaded == null ? " (nothing preloaded)" : " (preloaded: " + preloaded + ")"));
             }
         }
+        if (isMac() && !frameworkLoaded && !"false".equals(System.getProperty("javachess.browser.preload"))) {
+            if (!CefInstallationChecker.checkInstallation(dir.toFile())) {
+                // first use: install, then load the framework at the next start of the app, while it is quiet
+                log.info("Installing the browser bundle (it is loaded at the next start)");
+                builder.install();
+                throw new RestartRequiredException("the Chromium framework is loaded at the start of the app");
+            }
+            // tools and tests that start the engine without the app's start-up: load it now
+            preloadFramework();
+        }
         boolean gpu = useGpu(System.getProperty("javachess.browser.gpu"), isMac());
         builder.addJcefArgs(chromiumArgs(gpu).toArray(new String[0]));
-        log.info("Chromium graphics: {}", gpu ? "GPU" : "software (no GPU, no WebGL)");
+        String extra = System.getProperty("javachess.browser.chromiumArgs"); // experiments only
+        if (extra != null && !extra.isBlank()) {
+            builder.addJcefArgs(extra.trim().split("\\s+"));
+            log.info("Extra Chromium arguments: {}", extra);
+        }
+        log.info("Chromium graphics: {}", gpu ? "GPU" : softwareWebGl ? "software, WebGL by SwiftShader"
+                : "software (no WebGL)");
         CefSettings settings = builder.getCefSettings();
         Path cache = AppPaths.resolve("jcef-cache"); // login sessions survive restarts
         Files.createDirectories(cache);
@@ -161,7 +233,8 @@ public final class JcefRuntime {
         // the engine; on macOS that dispose aborts the process now and then (see shutdown()), so the engine is
         // started here without that hook and ours decides what is safe
         builder.install();
-        CefApp built = CefInitializer.initialize(dir.toFile(), builder.getJcefArgs(), settings);
+        CefApp built = frameworkLoaded ? initializePreloaded(dir, builder.getJcefArgs(), settings)
+                : CefInitializer.initialize(dir.toFile(), builder.getJcefArgs(), settings);
         Runtime.getRuntime().addShutdownHook(new Thread(JcefRuntime::shutdown, "jcef-shutdown"));
         log.info("Integrated browser ready (Chromium {})", cefVersion());
         return built;
@@ -212,9 +285,18 @@ public final class JcefRuntime {
         if (!gpu) {
             args.addAll(java.util.List.of("--disable-gpu", "--disable-gpu-compositing", "--disable-gpu-rasterization",
                     "--disable-gpu-shader-disk-cache", "--disable-features=VizDisplayCompositor"));
+            if (softwareWebGl) {
+                // WebGL without the GPU: SwiftShader, in Chromium's GPU process (not in the app's): sites' bot
+                // checks (Cloudflare Turnstile) distrust a browser without WebGL. "Unsafe" because shaders of any
+                // page run on a software rasteriser: acceptable for the chess sites this browser is for
+                args.add("--enable-unsafe-swiftshader");
+            }
         }
         return args;
     }
+
+    /** {@code -Djavachess.browser.webgl=false} turns software WebGL off. */
+    static boolean softwareWebGl = !"false".equals(System.getProperty("javachess.browser.webgl"));
 
     /** {@code -Djavachess.browser.gpu=true|false}; off by default (see {@link #chromiumArgs}). */
     static boolean useGpu(String setting, boolean mac) {

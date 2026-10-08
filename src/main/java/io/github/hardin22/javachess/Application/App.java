@@ -168,6 +168,9 @@ public class App extends Application {
 
     public static void main(String[] args) {
         Bootstrap.init(); // logging, ~/.javachess data folder + migration, global exception handler
+        // macOS: the browser's Chromium framework is loaded now, while no other thread is busy (loaded later it can
+        // abort the process: see JcefRuntime.preloadFramework)
+        io.github.hardin22.javachess.Browser.JcefRuntime.preloadFramework();
         // Persistent cookies for the HTTP clients (Lichess); cheap, keeps sessions across restarts
         try {
             java.net.CookieManager cookieManager = new java.net.CookieManager(

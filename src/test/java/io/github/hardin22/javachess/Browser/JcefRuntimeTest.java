@@ -75,5 +75,6 @@ class JcefRuntimeTest {
         assertFalse(JcefRuntime.chromiumArgs(true).contains("--disable-gpu"), "only when asked for");
         assertTrue(JcefRuntime.chromiumArgs(false).containsAll(List.of("--disable-gpu", "--disable-gpu-compositing")));
         assertTrue(JcefRuntime.chromiumArgs(true).contains("--no-sandbox"));
+        assertTrue(JcefRuntime.chromiumArgs(false).contains("--enable-unsafe-swiftshader"), "WebGL in software");
     }
 }
