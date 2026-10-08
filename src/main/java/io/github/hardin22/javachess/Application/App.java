@@ -101,6 +101,16 @@ public class App extends Application {
         } catch (RuntimeException e) {
             log.warn("Could not save the game in progress: {}", e.toString());
         }
+        // ...and so is a game followed in the integrated browser (only if it was opened: no view loaded for this)
+        try {
+            if (mainController != null && io.github.hardin22.javachess.Browser.JcefRuntime.app() != null
+                    && mainController.getController("BROWSER")
+                    instanceof io.github.hardin22.javachess.Controllers.BrowserController browser) {
+                browser.onAppExit();
+            }
+        } catch (RuntimeException e) {
+            log.warn("Could not save the browser game in progress: {}", e.toString());
+        }
         if (Hardware.isInitialized()) {
             Hardware.shutdown(); // LEDs off, serial port closed
         }

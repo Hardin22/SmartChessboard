@@ -145,6 +145,62 @@ class SyncWithRealBoardTest {
     }
 
     @Test
+    void leavingTheBrowserMidGameArchivesTheMovesAndTurnsTheLedsOff() throws Exception {
+        sim.setOccupancy(BoardStateManager.occupancy(new Board()));
+        manager.awaitIdle();
+        onOwner(() -> sync.start(OnlineGameSync.Mode.PLAY, PageInfo.of(site.url).withHint("game")));
+        seePage();
+        waitFor(() -> {
+            try {
+                return phase() == OnlineGameSync.Phase.MY_TURN;
+            } catch (Exception e) {
+                return false;
+            }
+        }, "setup complete (pieces already in place)");
+        String[][] game = {{"e2e4", "e7e5"}, {"g1f3", "b8c6"}, {"f1c4", "g8f6"}};
+        for (int i = 0; i < game.length; i++) {
+            hand(game[i][0]);
+            String mine = game[i][0];
+            waitFor(() -> site.played.contains(mine), "the move reached the page");
+            seePage();
+            site.opponentPlays(game[i][1]);
+            seePage();
+            assertEquals(OnlineGameSync.Phase.REPLICATE, phase());
+            if (i < game.length - 1) {
+                sim.lift(game[i][1].substring(0, 2));
+                sim.place(game[i][1].substring(2, 4));
+                waitFor(() -> {
+                    try {
+                        return phase() == OnlineGameSync.Phase.MY_TURN;
+                    } catch (Exception e) {
+                        return false;
+                    }
+                }, "replicated");
+            }
+        }
+        // the LEDs show the opponent's last move to reproduce; the user goes back to the app instead
+        assertTrue(sim.awaitFrame(f -> java.util.Arrays.stream(f).anyMatch(v -> v != 0), 2000) != null,
+                "the move to reproduce is lit");
+        sim.clearRecordedFrames();
+        onOwner(sync::stop);
+        manager.awaitIdle();
+        assertTrue(sim.awaitFrame(f -> java.util.Arrays.stream(f).allMatch(v -> v == 0), 2000) != null,
+                "LEDs off");
+        assertTrue(java.util.Arrays.stream(sim.lastFrame()).allMatch(v -> v == 0), "and they stay off");
+
+        assertEquals(1, archived.size(), "the game read so far is archived");
+        ArchivedGame saved = archived.get(0);
+        assertEquals("e2e4 e7e5 g1f3 b8c6 f1c4 g8f6", saved.movesAsUciString());
+        assertEquals("Interrotta", saved.termination());
+        assertEquals(ArchivedGame.GameMode.BROWSER, saved.mode());
+
+        // the board is free again: a piece moved now reaches neither the page nor the game
+        sim.lift("g8");
+        manager.awaitIdle();
+        assertEquals(List.of("e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6"), site.played);
+    }
+
+    @Test
     void promotionIsClickedInTheSitesMenu() throws Exception {
         String fen = "8/4P1k1/8/8/8/8/6K1/8 w - - 0 1";
         site.position(fen);

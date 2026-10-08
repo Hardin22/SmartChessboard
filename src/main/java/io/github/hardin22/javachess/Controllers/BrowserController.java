@@ -337,6 +337,21 @@ public class BrowserController implements NavigationAware {
         }
     }
 
+    /**
+     * The app is closing: a game followed in the browser is archived (as interrupted), and the board released, before
+     * the storage threads stop. Waits for the session thread (its events run in order), at most 2 s.
+     */
+    public void onAppExit() {
+        session.setVisible(false);
+        try {
+            sessionThread.submit(() -> { }).get(2, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            log.warn("The browser game could not be saved on exit: {}", e.toString());
+        }
+    }
+
     // ------------------------------------------------------------------ session commands
 
     private final class Commands implements BrowserSession.Commands {
