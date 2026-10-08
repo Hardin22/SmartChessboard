@@ -813,11 +813,53 @@
     -fx-font-size: 24px;
 }
 
+/* Form field edited with the on-screen keyboard (saved logins): label above, value below, accent when active. */
+.form-field {
+    -fx-background-color: -c-s1;
+    -fx-background-radius: 24px;
+    -fx-border-color: -c-line2;
+    -fx-border-radius: 24px;
+    -fx-border-width: 2px;
+    -fx-padding: 14px 14px 14px 28px;
+    -fx-min-height: 108px;
+    -fx-pref-height: 108px;
+    -fx-cursor: hand;
+}
+
+.form-field:active {
+    -fx-border-color: -c-accent;
+}
+
+.icon-btn.field-eye {
+    -fx-min-width: 72px;
+    -fx-min-height: 72px;
+    -fx-pref-width: 72px;
+    -fx-pref-height: 72px;
+    -fx-max-width: 72px;
+    -fx-max-height: 72px;
+    -fx-background-color: -c-s2;
+}
+
+.field-title {
+    -fx-font-size: 20px;
+    -fx-text-fill: -c-fg2;
+}
+
+.field-value {
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 28px;
+    -fx-text-fill: -c-fg;
+}
+
 /* On-screen keyboard */
 .keyboard {
     -fx-background-color: -c-s1;
     -fx-padding: 16px 10px 20px 10px;
     -fx-spacing: 10px;
+}
+
+.keyboard-display:empty {
+    -fx-text-fill: -c-fg3;
 }
 
 .key {

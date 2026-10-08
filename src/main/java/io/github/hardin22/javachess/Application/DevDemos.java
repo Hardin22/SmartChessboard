@@ -122,6 +122,20 @@ final class DevDemos {
                     main.navigateTo("ARCHIVE");
                     later(1.2, () -> lookupFire(main, "archive-search"));
                 }
+                case "settings-online", "settings-login" -> {
+                    main.navigateTo("SETTINGS");
+                    io.github.hardin22.javachess.Controllers.SettingsController settings =
+                            (io.github.hardin22.javachess.Controllers.SettingsController) main.getController("SETTINGS");
+                    later(0.6, () -> {
+                        javafx.scene.Node group = main.getMainContainer().getScene().lookup("#online-login-chess_com");
+                        if (group != null) {
+                            scrollIntoView(group);
+                        }
+                        if (demo.equals("settings-login")) {
+                            settings.openLoginForm(System.getProperty("javachess.demo.site", "chess_com"));
+                        }
+                    });
+                }
                 case "settings-advanced" -> {
                     main.navigateTo("SETTINGS");
                     ((io.github.hardin22.javachess.Controllers.SettingsController) main.getController("SETTINGS"))
@@ -138,6 +152,21 @@ final class DevDemos {
         PauseTransition pause = new PauseTransition(Duration.seconds(seconds));
         pause.setOnFinished(e -> action.run());
         pause.play();
+    }
+
+    /** Scrolls the enclosing scroll pane so that the node is near the top (screenshots of long pages). */
+    private static void scrollIntoView(Node node) {
+        Node p = node.getParent();
+        while (p != null && !(p instanceof javafx.scene.control.ScrollPane)) {
+            p = p.getParent();
+        }
+        if (p instanceof javafx.scene.control.ScrollPane scroll && scroll.getContent() != null) {
+            double contentHeight = scroll.getContent().getBoundsInLocal().getHeight();
+            double viewport = scroll.getViewportBounds().getHeight();
+            javafx.geometry.Bounds b = scroll.getContent().sceneToLocal(node.localToScene(node.getBoundsInLocal()));
+            double target = Math.max(0, b.getMinY() - 160);
+            scroll.setVvalue(contentHeight <= viewport ? 0 : Math.min(1, target / (contentHeight - viewport)));
+        }
     }
 
     /** Fires the node with this id (buttons) or simulates a tap on it. */

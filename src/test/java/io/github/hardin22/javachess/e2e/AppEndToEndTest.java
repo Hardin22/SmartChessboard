@@ -77,6 +77,7 @@ class AppEndToEndTest {
         System.setProperty("javachess.legacyDir", Files.createDirectories(home.resolve("legacy")).toString());
         System.setProperty("javachess.exportDir", home.resolve("exports").toString());
         System.setProperty("javachess.board", "off");
+        System.setProperty("javachess.redact", "true"); // saved browser logins in memory, never the real keyring
         ErrorReporter.setDialogsEnabled(false);
 
         script = home.resolve("engine-script.txt");
@@ -499,6 +500,83 @@ class AppEndToEndTest {
     }
 
     /** Taps the from-square then the to-square of {@code uci} on the game board (no physical board). */
+    @Test
+    @Order(12)
+    void settingsSaveAndRemoveABrowserLoginAndChooseTheBoardReading() throws Exception {
+        fx(() -> {
+            main.navigateTo("SETTINGS");
+            return null;
+        });
+        Button chessCom = (Button) fxGet(() -> stage.getScene().lookup("#online-login-chess_com"));
+        waitFor("saved logins read", () -> fxGet(() -> !chessCom.isDisabled()));
+        assertEquals(I18n.t("online.login.save"), fxGet(chessCom::getText), "nothing saved yet");
+        fx(() -> {
+            chessCom.fire();
+            return null;
+        });
+        io.github.hardin22.javachess.Components.TouchKeyboard keyboard = fxGet(() ->
+                (io.github.hardin22.javachess.Components.TouchKeyboard) stage.getScene().lookup(".keyboard"));
+        assertNotNull(keyboard, "the save form opens with the on-screen keyboard");
+        fireButton(I18n.t("online.login.next")); // empty name: goes on to the password
+        fireButton(I18n.t("online.login.store"));
+        assertTrue(fxGet(() -> labelShown(I18n.t("online.login.missing.username"))), "a name is required");
+        fx(() -> {
+            keyboard.textProperty().set("player@example.com");
+            return null;
+        });
+        fireButton(I18n.t("online.login.next"));
+        fx(() -> {
+            keyboard.textProperty().set("s3cret!");
+            return null;
+        });
+        assertFalse(fxGet(() -> labelShown("s3cret!")), "the password is shown as dots");
+        fireButton(I18n.t("online.login.store"));
+        waitFor("login saved", () -> fxGet(() -> labelShown(I18n.t("online.login.saved", "player@example.com"))));
+        assertFalse(fxGet(() -> main.isSheetOpen()));
+        assertEquals(I18n.t("online.login.remove"), fxGet(chessCom::getText));
+
+        fx(() -> {
+            chessCom.fire();
+            return null;
+        });
+        fireButton(I18n.t("online.login.remove")); // the confirmation's button (newest)
+        waitFor("login removed", () -> fxGet(() -> I18n.t("online.login.save").equals(chessCom.getText())));
+        assertTrue(fxGet(() -> labelShown(I18n.t("online.login.none"))));
+
+        javafx.scene.control.ToggleButton vision = (javafx.scene.control.ToggleButton) fxGet(() ->
+                stage.getScene().lookup("#online-reader-vision"));
+        assertTrue(fxGet(() -> ((javafx.scene.control.ToggleButton) stage.getScene().lookup("#online-reader-page"))
+                .isSelected()), "the page reading is the default");
+        fx(() -> {
+            vision.fire();
+            return null;
+        });
+        assertEquals("vision", ConfigManager.getProperty("browser.reader"));
+        fx(() -> {
+            ((javafx.scene.control.ToggleButton) stage.getScene().lookup("#online-reader-page")).fire();
+            main.navigateTo("HOME");
+            return null;
+        });
+        assertEquals("page", ConfigManager.getProperty("browser.reader"));
+    }
+
+    private static boolean labelShown(String text) {
+        List<Label> out = new ArrayList<>();
+        collectLabels(stage.getScene().getRoot(), out);
+        return out.stream().anyMatch(l -> l.getText() != null && l.getText().startsWith(text));
+    }
+
+    private static void collectLabels(Node node, List<Label> out) {
+        if (node instanceof Label l && l.isVisible() && l.getScene() != null) {
+            out.add(l);
+        }
+        if (node instanceof Parent p) {
+            for (Node child : p.getChildrenUnmodifiable()) {
+                collectLabels(child, out);
+            }
+        }
+    }
+
     private static void tapMove(ActiveGameController game, String uci) throws Exception {
         tapSquare(game, uci.substring(0, 2));
         tapSquare(game, uci.substring(2, 4));
