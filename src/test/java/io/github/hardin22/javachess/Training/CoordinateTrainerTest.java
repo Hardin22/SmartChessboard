@@ -147,7 +147,9 @@ class CoordinateTrainerTest {
             }
         });
         CoordinateTrainer t = trainer(CoordinateTrainer.Mode.NAME);
+        long begin = System.nanoTime();
         t.start();
+        assertTrue((System.nanoTime() - begin) / 1_000_000 < 200, "start() does not wait for the board thread");
         int asked = Squares.parse(t.targetProperty().get());
         assertEquals(LedColors.BEST, leds.composeNow()[asked]);
         manager.awaitIdle();
@@ -160,6 +162,7 @@ class CoordinateTrainerTest {
     void nameTheLitSquareAmongFourAndBeatTheRecord() {
         CoordinateTrainer first = trainer(CoordinateTrainer.Mode.NAME);
         first.start();
+        manager.awaitIdle();
         String asked = first.targetProperty().get();
         assertEquals(LedColors.BEST, leds.composeNow()[Squares.parse(asked)]);
         assertEquals(4, first.choicesProperty().get().size());

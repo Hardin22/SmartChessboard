@@ -68,6 +68,8 @@ public final class BoardDiagnostics {
     private long placedSeen;
     private long liftedSeen;
     private ScheduledFuture<?> ledTask;
+    /** The LED test's current frame (to draw it again). */
+    private Map<Integer, Integer> lastLedFrame;
     private long colorStepMs = COLOR_STEP_MS;
     private long squareStepMs = SQUARE_STEP_MS;
     private int generation;
@@ -164,7 +166,7 @@ public final class BoardDiagnostics {
             return;
         }
         phase.set(Phase.SENSORS);
-        occupied.set(board.physicalOccupancy());
+        occupied.set(board.latestOccupancy()); // never waits for the board thread
         board.setSquareListener(this::onSquare);
         message.set("Appoggia un pezzo su ogni casa e toglilo: la casa diventa verde. Le case bianche risultano "
                 + "occupate");
@@ -184,10 +186,29 @@ public final class BoardDiagnostics {
 
     // ------------------------------------------------------------------ internals
 
+    /**
+     * Frees the board for the test. Never waits for the board thread (this runs on a tap): the board turns its LEDs
+     * off a little later, so the test draws again once that is done.
+     */
     private void takeOver() {
         stop();
         board.stopGameMode();
-        board.awaitIdle(); // its "LEDs off" must not land on top of the test
+        int gen = generation;
+        board.runAfterPending(() -> fx.execute(() -> {
+            if (gen == generation) {
+                redraw();
+            }
+        }));
+    }
+
+    /** Draws the current state again (after the board cleared its LEDs). */
+    private void redraw() {
+        if (phase.get() == Phase.LEDS && lastLedFrame != null) {
+            leds.replace(LedRenderer.Layer.ANIMATION, lastLedFrame);
+        } else if (phase.get() == Phase.SENSORS) {
+            occupied.set(board.latestOccupancy()); // the board has caught up: this is what it reads now
+            showSensors(checked.get(), occupied.get());
+        }
     }
 
     private void runLedStep(int gen, int step) {
@@ -200,18 +221,21 @@ public final class BoardDiagnostics {
             for (int sq = 0; sq < 64; sq++) {
                 all.put(sq, COLORS[step]);
             }
+            lastLedFrame = all;
             leds.replace(LedRenderer.Layer.ANIMATION, all);
             ledStep.set(COLOR_NAMES[step]);
             ledTask = timer.schedule(() -> fx.execute(() -> runLedStep(gen, step + 1)), colorStepMs,
                     TimeUnit.MILLISECONDS);
         } else if (step < colorSteps + 64) {
             int sq = step - colorSteps;
-            leds.replace(LedRenderer.Layer.ANIMATION, Map.of(sq, LedColors.WHITE));
+            lastLedFrame = Map.of(sq, LedColors.WHITE);
+            leds.replace(LedRenderer.Layer.ANIMATION, lastLedFrame);
             ledStep.set(Squares.name(sq).toLowerCase(Locale.ROOT));
             message.set("Ora si accende una casa alla volta, da a1 a h8: deve essere quella scritta sullo schermo");
             ledTask = timer.schedule(() -> fx.execute(() -> runLedStep(gen, step + 1)), squareStepMs,
                     TimeUnit.MILLISECONDS);
         } else {
+            lastLedFrame = null;
             leds.clear(LedRenderer.Layer.ANIMATION);
             ledStep.set("");
             phase.set(Phase.IDLE);

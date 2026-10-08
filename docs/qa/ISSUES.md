@@ -40,6 +40,7 @@ Gravità: **alta** (vicolo cieco, perdita di dati, partita bloccata), **media** 
 | QA-033 | media | test/sicurezza dati | Prove e E2E con cartella dati temporanea: l'export "su chiavetta" vedeva (e scriveva su) ogni disco montato in /Volumes del Mac | corretto (`-Djavachess.usbRoots`, usato dagli E2E) |
 | QA-034 | media | browser | Tornando alla Home durante l'avvio di Chromium, a fine avvio la finestra del browser compare sopra l'app (anche su una partita PvC) e la sessione può prendersi la scacchiera | risolto da browser (f2cede3, flag "wanted"), verificato con Chromium vero (`AppBrowserJcefE2E`) |
 | QA-035 | bassa | logica | Partita Lichess via API col Nero: la scheda di fine diceva vinto/perso dal lato del Bianco | corretto |
+| QA-036 | media | logica (scacchiera a schermo) | Mosse a tocco: se la scacchiera si ridimensionava fra il primo e il secondo tocco la selezione spariva e la mossa andava persa (E2E "bot reply" instabile sotto carico) | corretto |
 | QA-029 | media | logica (Home) | Tornando in Home la carta "Riprendi" della visita precedente resta attiva finché i dati non sono ricaricati: si riprendeva la partita sbagliata | corretto (design informato) |
 
 ---
@@ -255,3 +256,13 @@ finestra nascosta) → partita PvC sulla scacchiera → di nuovo il browser.
 `ActiveGameController.startOnlineGame` fissava `humanWhite = true`: giocando col Nero la scheda di fine diceva
 "Hai vinto" a chi aveva perso. Ora il colore viene da `OnlineGame.isPlayingWhite()` (noto quando Lichess manda la
 partita). Test E2E `LichessApiEndToEndTest` (Lichess finto locale).
+
+## QA-036 · Selezione persa al ridimensionamento della scacchiera (media)
+**Passi**: partita senza scacchiera fisica, mossa toccando lo schermo: tocco sul pezzo (si vedono le destinazioni) →
+la scacchiera cambia misura (si adatta al contenitore: il riquadro di stato cambia testo, rotazione, primo layout dopo
+l'avvio della partita) → tocco sulla destinazione: non succede niente, il pezzo non è più scelto. `ChessBoardUI.setTileSize`
+chiamava `clearSelection()`. Sotto carico il primo layout della scacchiera nuova arrivava proprio fra i due tocchi
+dell'E2E, che aspettava poi invano la risposta del bot (fallimento visto dall'orchestratore con il Mac in swap).
+**Correzione**: al ridimensionamento la selezione viene ridisegnata alla nuova misura. Test: E2E
+`withoutABoardTheGameIsPlayedByTappingTheScreen` ridimensiona la scacchiera fra i due tocchi (fallisce senza la
+correzione).

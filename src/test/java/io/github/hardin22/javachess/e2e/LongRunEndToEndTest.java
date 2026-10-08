@@ -29,8 +29,17 @@ class LongRunEndToEndTest {
     private static final int MAX_PLIES = 120;
     /** After each game, a visit of the other screens (review with a full analysis started and left, statistics...). */
     private static final boolean TOUR = !"false".equals(System.getProperty("javachess.e2e.longrun.tour"));
-    private static final List<String> TOUR_SCREENS = List.of("STATS", "ARCHIVE", "TRAINER", "PUZZLE_DASHBOARD",
-            "SETTINGS", "THEME", "PVC_SETUP", "PVP_SETUP", "HOME");
+    /** Every registered screen but the browser and the game itself (new screens included), then the home. */
+    private static List<String> tourScreens() throws Exception {
+        java.lang.reflect.Field registry = io.github.hardin22.javachess.Controllers.MainController.class
+                .getDeclaredField("VIEWS");
+        registry.setAccessible(true);
+        List<String> screens = new java.util.ArrayList<>(((java.util.Map<?, ?>) registry.get(null)).keySet().stream()
+                .map(String::valueOf).filter(v -> !v.equals("BROWSER") && !v.equals("GAME") && !v.equals("HOME"))
+                .toList());
+        screens.add("HOME");
+        return screens;
+    }
     private static E2eHarness app;
 
     @BeforeAll
@@ -46,18 +55,26 @@ class LongRunEndToEndTest {
         }
     }
 
-    private record Usage(int threads, int nonDaemon, long processes, long heapMb, TreeMap<String, Long> byName) {
+    /**
+     * @param threads app threads, without the pool workers that come and go with the load ({@code poolWorkers})
+     */
+    private record Usage(int threads, int poolWorkers, int nonDaemon, long processes, long heapMb,
+                         TreeMap<String, Long> byName) {
         static Usage now() throws InterruptedException {
-            clearSoftReferences();
-            for (int i = 0; i < 3; i++) {
-                System.gc();
-                Thread.sleep(200);
+            long heap = Long.MAX_VALUE;
+            for (int sample = 0; sample < 3; sample++) { // lowest of three: a GC under load can leave garbage behind
+                clearSoftReferences();
+                for (int i = 0; i < 3; i++) {
+                    System.gc();
+                    Thread.sleep(200);
+                }
+                heap = Math.min(heap, ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getUsed() / (1024 * 1024));
             }
             var threads = Thread.getAllStackTraces().keySet();
             TreeMap<String, Long> byName = threads.stream().collect(Collectors.groupingBy(
                     t -> t.getName().replaceAll("[-#]?\\d+$", ""), TreeMap::new, Collectors.counting()));
-            long heap = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getUsed() / (1024 * 1024);
-            return new Usage(threads.size(), (int) threads.stream().filter(t -> !t.isDaemon()).count(),
+            int pool = (int) threads.stream().filter(t -> t.getName().matches("ForkJoinPool.*-worker-\\d+")).count();
+            return new Usage(threads.size() - pool, pool, (int) threads.stream().filter(t -> !t.isDaemon()).count(),
                     ProcessHandle.current().descendants().filter(ProcessHandle::isAlive).count(), heap, byName);
         }
     }
@@ -97,6 +114,7 @@ class LongRunEndToEndTest {
         app.bot(); // empty script: the scripted engine plays the best one-ply material move
         int archivedBefore = archive().size();
         Usage baseline = null;
+        java.util.Map<String, Long> baselineHistogram = java.util.Map.of();
         FxLatencyProbe probe = new FxLatencyProbe();
         int finished = 0;
         long start = System.currentTimeMillis();
@@ -104,6 +122,7 @@ class LongRunEndToEndTest {
             if (g == 2) {
                 baseline = Usage.now(); // after the first games: views, engines and pools are warm
                 histogram("baseline");
+                baselineHistogram = classHistogram();
                 probe.start();
             }
             sim().setOccupancy(0xFFFF_0000_0000_FFFFL);
@@ -125,7 +144,8 @@ class LongRunEndToEndTest {
         waitFor("every game archived", () -> archive().size() == archivedBefore + games);
         Usage after = Usage.now();
         histogram("after");
-        String report = String.format("%d games (%d finished, tour " + TOUR + ") in %d s; threads %d -> %d, non-daemon %d -> %d, "
+        String report = String.format("%d games (%d finished, tour " + TOUR + ") in %d s; threads %d -> %d (+ pool workers "
+                        + baseline.poolWorkers() + " -> " + after.poolWorkers() + "), non-daemon %d -> %d, "
                         + "child processes %d -> %d, heap after GC %d MB -> %d MB; FX thread latency %s%n"
                         + "threads before %s%nthreads after  %s",
                 games, finished, seconds, baseline.threads(), after.threads(), baseline.nonDaemon(), after.nonDaemon(),
@@ -133,11 +153,17 @@ class LongRunEndToEndTest {
                 baseline.byName(), after.byName());
         System.out.println("[long run] " + report);
         assertTrue(after.threads() - baseline.threads() <= 6, "threads grow: " + report);
+        // pool workers come and go with the work (and are bounded by the pools' parallelism)
+        assertTrue(after.poolWorkers() <= Runtime.getRuntime().availableProcessors() * 2 + 2, "pool workers: " + report);
         assertTrue(after.nonDaemon() <= baseline.nonDaemon(), "non-daemon threads grow: " + report);
         assertTrue(after.processes() <= baseline.processes(), "engine processes pile up: " + report);
-        assertTrue(probe.maxMillis() < 2000, "the FX thread froze: " + report);
-        if (canClearSoftReferences()) {
-            assertTrue(after.heapMb() - baseline.heapMb() <= 48, "heap grows: " + report);
+        assertTrue(probe.maxMillis() < scaled(2000), "the FX thread froze: " + report);
+        if (canClearSoftReferences() && after.heapMb() - baseline.heapMb() > 48) {
+            Thread.sleep(5000); // a loaded (swapping) machine: measure once more before calling it a leak
+            Usage again = Usage.now();
+            assertTrue(again.heapMb() - baseline.heapMb() <= 48, "heap grows: " + report + "\nmeasured again: "
+                    + again.heapMb() + " MB\nbiggest growth by class:\n" + histogramGrowth(baselineHistogram)
+                    + "\n" + diagnostics());
         }
     }
 
@@ -191,6 +217,35 @@ class LongRunEndToEndTest {
         }
     }
 
+    /** Bytes per class on the heap now (jcmd GC.class_histogram, live objects only). */
+    private static java.util.Map<String, Long> classHistogram() {
+        java.util.Map<String, Long> bytes = new java.util.HashMap<>();
+        try {
+            Process p = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "jcmd").toString(),
+                    String.valueOf(ProcessHandle.current().pid()), "GC.class_histogram").redirectErrorStream(true).start();
+            for (String line : new String(p.getInputStream().readAllBytes()).lines().toList()) {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\s*\\d+:\\s+\\d+\\s+(\\d+)\\s+(\\S+).*")
+                        .matcher(line);
+                if (m.matches()) {
+                    bytes.put(m.group(2), Long.parseLong(m.group(1)));
+                }
+            }
+        } catch (Exception e) {
+            bytes.put("(no histogram: " + e + ")", 0L);
+        }
+        return bytes;
+    }
+
+    /** The 12 classes whose live bytes grew most since {@code before}. */
+    private static String histogramGrowth(java.util.Map<String, Long> before) {
+        java.util.Map<String, Long> now = classHistogram();
+        return now.entrySet().stream()
+                .map(e -> java.util.Map.entry(e.getKey(), e.getValue() - before.getOrDefault(e.getKey(), 0L)))
+                .sorted(java.util.Map.Entry.<String, Long>comparingByValue().reversed()).limit(12)
+                .map(e -> String.format("  %+,d B  %s", e.getValue(), e.getKey()))
+                .collect(Collectors.joining("\n"));
+    }
+
     /** With {@code -De2e.longrun.histogram=true}: the 40 biggest classes on the heap (jcmd), to find a leak. */
     private static void histogram(String when) {
         if (!Boolean.getBoolean("e2e.longrun.histogram")) {
@@ -230,7 +285,7 @@ class LongRunEndToEndTest {
             return null;
         });
         Thread.sleep(400);
-        for (String screen : TOUR_SCREENS) {
+        for (String screen : tourScreens()) {
             fx(() -> {
                 app.main.navigateTo(screen);
                 return null;

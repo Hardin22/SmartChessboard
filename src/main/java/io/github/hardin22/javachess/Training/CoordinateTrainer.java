@@ -170,8 +170,7 @@ public final class CoordinateTrainer {
         wrongSquare.set(null);
         undoSquare = -1;
         if (board != null) {
-            board.stopGameMode(); // the board is free: no moves, no set-up
-            board.awaitIdle(); // its "LEDs off" must land before the first square is lit, not after
+            board.stopGameMode(); // the board is free: no moves, no set-up (its "LEDs off" comes later)
             board.setSquareListener(this::onSquare);
         }
         clock = clockFactory.get();
@@ -181,6 +180,10 @@ public final class CoordinateTrainer {
         message.set("");
         next();
         clock.start(Side.WHITE);
+        if (board != null) {
+            // the board turns its LEDs off on its own thread: light the square again once that is done
+            board.runAfterPending(this::relightTarget);
+        }
     }
 
     /** An answer: a square name ("e4"), touched (FIND) or chosen (NAME). */
@@ -276,6 +279,13 @@ public final class CoordinateTrainer {
     }
 
     /** The right name and three near ones (same file or rank, or a neighbour): the usual confusions. */
+    /** NAME: the asked square lit again (after the board cleared its LEDs). */
+    private void relightTarget() {
+        if (mode == Mode.NAME && state.get() == State.PLAYING && leds != null) {
+            leds.replace(LedRenderer.Layer.HINT, Map.of(Squares.parse(target.get()), LedColors.BEST));
+        }
+    }
+
     private List<String> choicesFor(String square) {
         int file = square.charAt(0) - 'a';
         int rank = square.charAt(1) - '1';
