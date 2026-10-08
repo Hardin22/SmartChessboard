@@ -281,8 +281,8 @@ translucent "glass" queen read with the wrong colour. The start position is reco
   (`-Dapple.awt.UIElement=true`, or answer the "reopen windows" alert).
 - Saved logins: with `-Djavachess.home` (tests, trials, screenshots) only the file in that folder is used, never the
   Keychain / Secret Service; `-Djavachess.credentials=system|file` overrides it.
-- `-Djavachess.browser.gpu=true|false`: Chromium with or without the GPU (default: with it on macOS, without on
-  Linux). Without the GPU Chromium 146 has no WebGL at all, which bot checks distrust.
+- `-Djavachess.browser.gpu=true|false`: Chromium with or without the GPU (default: without, everywhere). **Never
+  turn it on in the app on macOS**: see the lesson in the third round below.
 - `-Djavachess.demo=browser-cycle` (with `javachess.demo.urls`, `javachess.demo.rounds`): opens the browser, goes
   Home, opens it again, as `AppBrowserFullScreenJcefE2E` does in full screen.
 - `-Djavachess.jcef.dir=DIR` uses another engine folder; `-Djavachess.browser.osr=true|false` forces off-screen /
@@ -350,11 +350,16 @@ fine; 2 GB is not enough for chess.com.
   window leaves full screen while the browser is shown (and gets it back on Home), and the browser window covers the
   screen minus the menu bar. `AppBrowserFullScreenJcefE2E` runs the real app full screen on the last screen and opens
   the browser 5 times; also checked by hand with chess.com/login and lichess.org.
-- **Cloudflare's box failing on chess.com**: the app's Chromium had no WebGL (GPU disabled since JCEF 141) and the
-  app read the login page every 300 ms. Now the GPU is used on macOS, and login and verification pages are left
-  alone (see above): measured on the real chess.com login, 0 DevTools calls while it is shown. Whether the network's
+- **Cloudflare's box failing on chess.com**: the app's Chromium has no WebGL (GPU disabled) and the app read the
+  login page every 300 ms. Login and verification pages are now left alone (see above): measured on the real chess.com login, 0 DevTools calls while it is shown. Whether the network's
   reputation also plays a part can only be told by trying the box in Safari/Chrome on the same network.
 - On macOS a few of Chromium's notices to Java are refused by the JVM (the bare "Exception in thread JavaFX
   Application Thread" lines, same cause as the Linux ones): the end of a page load is now also learned from the
   page's `document.readyState`, or from `CefBrowser.isLoading` on pages the app does not read.
+- **Lesson: Chromium's GPU in the same process as JavaFX crashes on macOS.** Turning the GPU on (for WebGL) passed
+  the JCEF suite and 5 full-screen openings, then the user's app died at its first opening of chess.com: JavaFX's
+  QuantumRenderer thread (Prism ES2, `glDrawElements`) crashed inside Apple's Metal OpenGL layer
+  (`AppleMetalOpenGLRenderer buildPipelineState`) with Chromium's frames on the stack (crash report
+  java-2026-10-08-122745). Both use the system's OpenGL/Metal stack in one process. The GPU is off again by default
+  (1 hour later); any way to WebGL must be proven with many openings and real playing time, not with one test run.
 

@@ -200,10 +200,11 @@ public final class JcefRuntime {
     }
 
     /**
-     * Chromium's command line. Without the GPU Chromium 146 has no WebGL at all (no software fallback any more),
-     * which sites' bot checks (Cloudflare Turnstile) take as a sign of an automated browser: on macOS the GPU is
-     * used (the old reason to disable it, stability with JCEF 141, no longer holds with 146: see docs/browser.md);
-     * on Linux (Raspberry Pi, off-screen rendering) software rendering stays the default.
+     * Chromium's command line. The GPU stays off by default everywhere: on macOS Chromium's GPU in the app's
+     * process crashed JavaFX's OpenGL renderer (8 October 2026, at the first opening of chess.com: JavaFX's
+     * QuantumRenderer died inside Apple's Metal OpenGL layer with Chromium's frames on the stack; probably why the
+     * GPU was disabled since JCEF 141). Without the GPU Chromium 146 has no WebGL. {@code -Djavachess.browser.gpu}
+     * turns it on for experiments only.
      */
     static java.util.List<String> chromiumArgs(boolean gpu) {
         java.util.List<String> args = new java.util.ArrayList<>(java.util.List.of("--no-sandbox", "--no-zygote",
@@ -215,12 +216,12 @@ public final class JcefRuntime {
         return args;
     }
 
-    /** {@code -Djavachess.browser.gpu=true|false}; by default the GPU only on macOS. */
+    /** {@code -Djavachess.browser.gpu=true|false}; off by default (see {@link #chromiumArgs}). */
     static boolean useGpu(String setting, boolean mac) {
         if (setting != null && !setting.isBlank()) {
             return Boolean.parseBoolean(setting.trim());
         }
-        return mac;
+        return false;
     }
 
     /** False on macOS, see {@link #shutdown()}. */
