@@ -22,6 +22,8 @@ import java.util.Locale;
  *   <li>{@code board.baud}: serial speed, default 250000 (must match the firmware).</li>
  *   <li>{@code led.layout} snake|rows, {@code led.origin} a1|h1|a8|h8, {@code led.direction} ranks|files.</li>
  *   <li>{@code hardware.led.brightness}: 0-100 %.</li>
+ *   <li>{@code board.setup.guided}: positions other than the starting one are set up one kind of piece at a time
+ *       (default true).</li>
  * </ul>
  */
 public final class Hardware {
@@ -44,6 +46,7 @@ public final class Hardware {
         this.moveLeds = new MoveLeds(leds);
         this.boardState = new BoardStateManager(leds, moveLeds);
         leds.setBrightnessPercent(ConfigManager.getIntProperty("hardware.led.brightness", 100));
+        boardState.setGuidedSetup(ConfigManager.getBooleanProperty("board.setup.guided", true));
         board.start(new BoardHardware.SensorListener() {
             @Override
             public void onSquareChanged(int square, boolean occupied) {

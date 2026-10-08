@@ -1,6 +1,10 @@
 package io.github.hardin22.javachess.Analysis;
 
 import com.github.bhlangonijr.chesslib.Board;
+import com.github.bhlangonijr.chesslib.Piece;
+import com.github.bhlangonijr.chesslib.Square;
+import io.github.hardin22.javachess.Hardware.SetupGuide;
+import io.github.hardin22.javachess.Hardware.Squares;
 import io.github.hardin22.javachess.Services.BoardStateManager;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
@@ -16,8 +20,9 @@ import java.util.Locale;
  * <ul>
  *   <li>a move made with the real pieces is played in the analysis (a variation when it is not the game's move);</li>
  *   <li>when the analysis moves on the screen, the LEDs guide the pieces to the new position: one move forward is
- *       shown as a move to reproduce (from → to, like the computer's moves in a game), anything else (back, jumps,
- *       another line) as a position to set up (squares to fill and to empty).</li>
+ *       shown as a move to reproduce (from → to, like the computer's moves in a game), one move back as the same
+ *       move made backwards (and the captured piece to put back), anything else (jumps, another line) as a
+ *       position to set up (squares to fill and to empty, piece by piece for big changes).</li>
  * </ul>
  * The sensors only see where pieces are, not which ones: the guide is by occupancy, as in the game set-up.
  * Callbacks of the board manager arrive on the JavaFX thread, where this class lives.
@@ -89,6 +94,13 @@ public final class BoardFollower {
         if (uci != null && fromFen != null && samePosition(fromFen, target)
                 && (state.get() == State.FOLLOWING || state.get() == State.REPLICATING)) {
             replicate(fen, fromFen, uci);
+        } else if (state.get() == State.FOLLOWING || state.get() == State.REPLICATING) {
+            String undone = moveBetween(fen, target);
+            if (undone != null) {
+                takeBack(fen, undone);
+            } else {
+                place(fen);
+            }
         } else {
             place(fen);
         }
@@ -127,6 +139,48 @@ public final class BoardFollower {
         say("Esegui sulla scacchiera: " + MoveText.numbered(fromFen, uci));
     }
 
+    /** One move back: the piece goes back from → to on the LEDs, a captured piece comes back on its square. */
+    private void takeBack(String fen, String undone) {
+        long shownOccupancy = BoardStateManager.occupancy(board(target));
+        target = fen;
+        Board before = board(fen);
+        manager.setLogicalBoard(before);
+        String from = undone.substring(2, 4);
+        String to = undone.substring(0, 2);
+        manager.startBotMoveReplication(from.toUpperCase(Locale.ROOT), to.toUpperCase(Locale.ROOT));
+        state.set(State.REPLICATING);
+        StringBuilder text = new StringBuilder("Riporta indietro sulla scacchiera: ")
+                .append(MoveText.numbered(fen, undone)).append(", da ").append(from).append(" a ").append(to);
+        // the captured piece has to come back (next to the destination for en passant)
+        int captured = before.getPiece(Square.valueOf(from.toUpperCase(Locale.ROOT))) != Piece.NONE
+                ? Squares.parse(from) : -1;
+        long returning = BoardStateManager.occupancy(before) & ~shownOccupancy & ~Squares.bit(Squares.parse(to));
+        if (captured < 0 && returning != 0) {
+            captured = Long.numberOfTrailingZeros(returning);
+        }
+        if (captured >= 0) {
+            text.append(", poi rimetti ").append(SetupGuide.name(before.getPiece(Square.squareAt(captured)), false))
+                    .append(" in ").append(Squares.name(captured).toLowerCase(Locale.ROOT));
+        }
+        say(text.toString());
+    }
+
+    /** The legal move that leads from {@code fen} to {@code next}, or null. */
+    static String moveBetween(String fen, String next) {
+        if (fen == null || next == null) {
+            return null;
+        }
+        Board b = board(fen);
+        for (var move : b.legalMoves()) {
+            Board copy = b.clone();
+            copy.doMove(move);
+            if (samePosition(copy.getFen(), next)) {
+                return move.toString();
+            }
+        }
+        return null;
+    }
+
     private void following() {
         state.set(State.FOLLOWING);
         say("Muovi i pezzi per provare una variante");
@@ -149,7 +203,14 @@ public final class BoardFollower {
             String reached = sink.onBoardMove(uci);
             if (reached == null) {
                 log.info("board move {} refused by the analysis: guiding the board back", uci);
-                place(before);
+                if (!samePosition(target, before)) { // nobody has moved the analysis back yet
+                    String undone = moveBetween(before, target);
+                    if (undone != null) {
+                        takeBack(before, undone);
+                    } else {
+                        place(before);
+                    }
+                }
             } else if (state.get() == State.FOLLOWING) {
                 target = reached;
             }

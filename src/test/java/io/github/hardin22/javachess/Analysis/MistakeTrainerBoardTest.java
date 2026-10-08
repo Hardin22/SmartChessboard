@@ -81,7 +81,8 @@ class MistakeTrainerBoardTest {
 
         sim.lift("D2"); // 3. d4?
         sim.place("D4");
-        await(() -> follower.stateProperty().get() == BoardFollower.State.PLACING);
+        await(() -> follower.stateProperty().get() == BoardFollower.State.REPLICATING);
+        assertEquals("Riporta indietro sulla scacchiera: 3. d4, da d4 a d2", follower.messageProperty().get());
         assertEquals(MistakeTrainer.State.YOUR_MOVE, trainer.stateProperty().get());
         assertEquals("Non è la mossa giusta: rimetti il pezzo e riprova", trainer.messageProperty().get());
         assertEquals(start, trainer.fenProperty().get());

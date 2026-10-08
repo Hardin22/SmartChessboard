@@ -11,6 +11,7 @@ import io.github.hardin22.javachess.Hardware.BoardHardware;
 import io.github.hardin22.javachess.Hardware.LedColors;
 import io.github.hardin22.javachess.Hardware.LedRenderer;
 import io.github.hardin22.javachess.Hardware.MoveLeds;
+import io.github.hardin22.javachess.Hardware.SetupGuide;
 import io.github.hardin22.javachess.Hardware.Squares;
 import io.github.hardin22.javachess.Utils.AppExecutors;
 import org.slf4j.Logger;
@@ -103,12 +104,17 @@ public class BoardStateManager implements BoardHardware.SensorListener {
     private volatile String bestMove;
     private volatile boolean evaluationEnabled = true;
     private volatile boolean hardwareConnected;
+    private volatile boolean guidedSetupEnabled = true;
+    /** Step of the guided set-up shown now, or null (not guided, or not setting up). */
+    private volatile SetupGuide.Step setupStep;
 
     // state below is only touched on the events thread
     private Mode mode = Mode.IDLE;
     private long physical;
     private Board logical = new Board();
     private Board setupTarget = new Board();
+    /** Piece-by-piece guide of the current set-up, or null when all the squares are shown together. */
+    private SetupGuide setupGuide;
     private Side physicalMoveSide;
     private long touched;
     private int liftedSquare = -1;
@@ -155,6 +161,25 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         this.errorSettleMs = errorSettleMs;
     }
 
+    /**
+     * Guided set-up (default on, {@code board.setup.guided}): positions other than the starting one are set up one
+     * kind of piece at a time. Off: every empty square lights up together.
+     */
+    public void setGuidedSetup(boolean enabled) {
+        guidedSetupEnabled = enabled;
+        post(() -> {
+            if (mode == Mode.SETUP) {
+                chooseSetupGuide();
+                refresh();
+            }
+        });
+    }
+
+    /** Step of the guided set-up shown now (piece, squares, "passo 2 di 7"), or null. */
+    public SetupGuide.Step setupStep() {
+        return setupStep;
+    }
+
     public void setListener(BoardMoveListener listener) {
         this.listener = listener;
     }
@@ -197,6 +222,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
             setupTarget = new Board();
             setupTarget.loadFromFen(fen);
             if (mode == Mode.SETUP) {
+                chooseSetupGuide();
                 refresh();
             }
         });
@@ -207,7 +233,8 @@ public class BoardStateManager implements BoardHardware.SensorListener {
             mode = Mode.SETUP;
             awaitingSnapshot = false;
             lastProgress = null;
-            log.info("Setup mode");
+            chooseSetupGuide();
+            log.info("Setup mode{}", setupGuide != null ? " (guided piece by piece)" : "");
             refresh();
         });
     }
@@ -216,6 +243,8 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         post(() -> {
             mode = Mode.PLAY;
             awaitingSnapshot = false;
+            setupGuide = null;
+            setupStep = null;
             touched = 0;
             liftedSquare = -1;
             leds.clear(LedRenderer.Layer.BASE);
@@ -230,6 +259,8 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         post(() -> {
             mode = Mode.IDLE;
             awaitingSnapshot = false;
+            setupGuide = null;
+            setupStep = null;
             cancel(pendingCommit);
             cancel(pendingCheck);
             cancel(snapshotTimeout);
@@ -472,21 +503,41 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         }, hardwareConnected ? settleMs : 0);
     }
 
+    /**
+     * Big set-ups of a position other than the starting one are guided one kind of piece at a time
+     * ({@link SetupGuide}); the starting position and small changes show every square together.
+     */
+    private void chooseSetupGuide() {
+        setupGuide = guidedSetupEnabled && hardwareConnected && SetupGuide.worthGuiding(setupTarget, physical)
+                ? new SetupGuide(setupTarget) : null;
+        setupStep = null;
+    }
+
     private void refreshSetup() {
         long target = occupancy(setupTarget);
         long missing = target & ~physical;
         long wrong = physical & ~target;
+        SetupGuide.Step step = setupGuide != null && hardwareConnected ? setupGuide.step(physical) : null;
+        setupStep = step;
+        long shown = step != null ? step.missing() : missing;
         Map<Integer, Integer> base = new HashMap<>();
         if (hardwareConnected) {
-            forEachSquare(missing, sq -> base.put(sq, LedColors.MISSING));
+            forEachSquare(shown, sq -> base.put(sq, LedColors.MISSING));
             forEachSquare(wrong, sq -> base.put(sq, LedColors.WRONG));
         }
         leds.replace(LedRenderer.Layer.BASE, base);
         publish(setupFen(), null);
         boolean complete = !hardwareConnected || (missing == 0 && wrong == 0);
         if (!complete) {
-            progress("Posiziona i pezzi: mancano " + Long.bitCount(missing)
-                    + (wrong != 0 ? ", da togliere " + Long.bitCount(wrong) + " (in rosso)" : ""));
+            if (step != null) {
+                progress(step.message() + (wrong != 0 ? ", togli i pezzi sulle case rosse (" + Long.bitCount(wrong)
+                        + ")" : ""));
+            } else if (missing == 0 && setupGuide != null) {
+                progress("Posiziona i pezzi: togli quelli sulle case rosse (" + Long.bitCount(wrong) + ")");
+            } else {
+                progress("Posiziona i pezzi: mancano " + Long.bitCount(missing)
+                        + (wrong != 0 ? ", da togliere " + Long.bitCount(wrong) + " (in rosso)" : ""));
+            }
             cancel(pendingCheck);
             return;
         }
@@ -495,6 +546,8 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         pendingCheck = schedule(() -> {
             if (mode == Mode.SETUP && physical == snapshot) {
                 mode = Mode.IDLE;
+                setupGuide = null;
+                setupStep = null;
                 leds.clear(LedRenderer.Layer.BASE);
                 log.info("Board setup complete");
                 notifyListener(BoardMoveListener::onBoardSetupComplete);
