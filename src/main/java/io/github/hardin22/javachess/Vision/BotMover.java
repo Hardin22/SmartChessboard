@@ -1,295 +1,132 @@
 package io.github.hardin22.javachess.Vision;
 
-import org.cef.browser.CefBrowser;
+import io.github.hardin22.javachess.Browser.BoardProbe;
+import io.github.hardin22.javachess.Browser.BoardSnapshot;
+import io.github.hardin22.javachess.Browser.PageDriver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * Plays a move on the page (chess.com, lichess, or any board found by the probe) the way a person does: a click on
+ * the piece, a click on the destination and, for a promotion, a click on the piece chosen in the site's menu.
+ *
+ * <p>Clicks are real input events sent to Chromium ({@link PageDriver#click}): the sites accept them like a tap,
+ * the system mouse pointer does not move, and nothing depends on where the window is on the screen. Square
+ * centres come from the board's rectangle and orientation read on the page right before the move; a board that is
+ * scrolled out of view is scrolled back first.</p>
+ */
 public class BotMover {
 
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BotMover.class);
-    private CefBrowser browser;
+    private static final Logger log = LoggerFactory.getLogger(BotMover.class);
 
-    public BotMover() {
-        // No Robot needed anymore
+    /** Scrolls the page so that the main board is entirely visible (same board choice as the probe). */
+    public static final String SCROLL_BOARD_INTO_VIEW = "(() => {"
+            + " let best = null, area = 0;"
+            + " for (const el of document.querySelectorAll('cg-board, wc-chess-board, chess-board, [data-javachess-board]')) {"
+            + "  const r = el.getBoundingClientRect(); if (r.width * r.height > area) { best = el; area = r.width * r.height; } }"
+            + " if (best) best.scrollIntoView({block: 'center', inline: 'center'});"
+            + " return !!best; })()";
+
+    /** Order of the pieces in the promotion menus of chess.com and lichess, starting on the promotion square. */
+    private static final String PROMOTION_ORDER = "qnrb";
+
+    private final PageDriver page;
+    private final long clickGapMs;
+    private final long promotionDelayMs;
+    private final long scrollSettleMs;
+
+    public BotMover(PageDriver page) {
+        this(page, 90, 350, 300);
     }
 
-    public void setBrowser(CefBrowser browser) {
-        this.browser = browser;
+    BotMover(PageDriver page, long clickGapMs, long promotionDelayMs, long scrollSettleMs) {
+        this.page = page;
+        this.clickGapMs = clickGapMs;
+        this.promotionDelayMs = promotionDelayMs;
+        this.scrollSettleMs = scrollSettleMs;
     }
 
-    public void makeMove(String move, boolean isFlipped) {
-        if (browser == null || move == null || move.length() < 4) {
-            log.warn("[Bot] Browser not linked or invalid move.");
-            return;
+    /**
+     * Plays a move given in UCI ("e2e4", "e7e8q"). Completes when the clicks have been sent (whether the site
+     * accepted the move is seen on the next reading of the page); fails when there is no board or the move is
+     * malformed.
+     */
+    public CompletableFuture<Void> play(String uci) {
+        String move = uci == null ? "" : uci.trim().toLowerCase(Locale.ROOT);
+        if (!move.matches("[a-h][1-8][a-h][1-8][qrbn]?")) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid move: " + uci));
         }
-
-        // Ensure lowercase
-        move = move.toLowerCase();
-        String from = move.substring(0, 2);
-        String to = move.substring(2, 4);
-        String promotion = move.length() > 4 ? move.substring(4, 5) : "";
-
-        String url = browser.getURL();
-        if (url == null) {
-            log.warn("[Bot] Browser has no page loaded");
-            return;
-        }
-
-        if (url.contains("chess.com")) {
-            makeMoveChessCom(from, to, isFlipped);
-        } else if (url.contains("lichess.org")) {
-            makeMoveLichess(from, to, promotion, isFlipped);
-        } else {
-            log.warn("[Bot] Unknown site: " + url);
-        }
-    }
-
-    private void makeMoveChessCom(String from, String to, boolean isFlipped) {
-        log.info("[Bot] Chess.com Geometric Move: " + from + " -> " + to + " | Flipped: " + isFlipped);
-
-        String script = "(function() {" +
-                "  console.log('[Bot] Attempting GEOMETRIC move: " + from + " -> " + to + "');" +
-                "  " +
-                "  function getBoard() {" +
-                "    return document.querySelector('chess-board') || document.querySelector('#board-layout-chessboard');"
-                +
-                "  }" +
-                "  " +
-                "  function clickAt(board, square) {" +
-                "    var rect = board.getBoundingClientRect();" +
-                "    var file = square.charCodeAt(0) - 97; /* a=0, h=7 */" +
-                "    var rank = parseInt(square.charAt(1)) - 1; /* 1=0, 8=7 */" +
-                "    " +
-                "    var flipped = " + isFlipped + ";" +
-                "    if (flipped) {" +
-                "       /* file = 7 - file; REMOVED REDUNDANT FLIP */" +
-                "       /* rank is NOT inverted for visual calculation because Rank 1 is at Top on flipped board */" +
-                "       /* rank = rank; */" +
-                "    }" +
-                "    " +
-                "    var squareW = rect.width / 8;" +
-                "    var squareH = rect.height / 8;" +
-                "    " +
-                "    var x, y;" +
-                "    if (!flipped) {" +
-                "       x = rect.left + (file * squareW) + (squareW / 2);" +
-                "       y = rect.top + ((7 - rank) * squareH) + (squareH / 2);" +
-                "    } else {" +
-                "       x = rect.left + ((7 - file) * squareW) + (squareW / 2);" +
-                "       y = rect.top + (rank * squareH) + (squareH / 2);" +
-                "    }" +
-                "    " +
-                "    console.log('[Bot] Clicking ' + square + ' at ' + x + ',' + y + ' (Flipped: ' + flipped + ')');" +
-                "    " +
-                "    /* Visual Debug */" +
-                "    var debugDot = document.createElement('div');" +
-                "    debugDot.style.position = 'fixed';" +
-                "    debugDot.style.left = (x - 5) + 'px';" +
-                "    debugDot.style.top = (y - 5) + 'px';" +
-                "    debugDot.style.width = '10px';" +
-                "    debugDot.style.height = '10px';" +
-                "    debugDot.style.backgroundColor = 'red';" +
-                "    debugDot.style.borderRadius = '50%';" +
-                "    debugDot.style.zIndex = '9999';" +
-                "    debugDot.style.pointerEvents = 'none';" +
-                "    document.body.appendChild(debugDot);" +
-                "    setTimeout(function() { debugDot.remove(); }, 1000);" +
-                "    " +
-                "    var opts = {bubbles: true, cancelable: true, view: window, clientX: x, clientY: y};" +
-                "    " +
-                "    var target = document.elementFromPoint(x, y);" +
-                "    if (target) {" +
-                "       target.dispatchEvent(new MouseEvent('pointerdown', opts));" +
-                "       target.dispatchEvent(new MouseEvent('mousedown', opts));" +
-                "       target.dispatchEvent(new MouseEvent('mouseup', opts));" +
-                "       target.dispatchEvent(new MouseEvent('click', opts));" +
-                "       target.dispatchEvent(new MouseEvent('pointerup', opts));" +
-                "       return true;" +
-                "    }" +
-                "    return false;" +
-                "  }" +
-                "  " +
-                "  var board = getBoard();" +
-                "  if (board) {" +
-                "    if (clickAt(board, '" + from + "')) {" +
-                "       setTimeout(function() { clickAt(board, '" + to + "'); }, 200);" +
-                "    }" +
-                "  } else {" +
-                "    console.error('[Bot] Board not found!');" +
-                "  }" +
-                "})();";
-
-        browser.executeJavaScript(script, browser.getURL(), 0);
-    }
-
-    private void makeMoveLichess(String from, String to, String promotion, boolean isFlipped) {
-        log.info("[Bot] Lichess Native Move: " + from + " -> " + to + " | Flipped: " + isFlipped);
-
-        // 1. Inject JS to get Board Coordinates and trigger Java callback via Title
-        // Change
-        String script = "(function() {" +
-                "  var board = document.querySelector('cg-board');" +
-                "  if (board) {" +
-                "    var rect = board.getBoundingClientRect();" +
-                "    var isFlipped = " + isFlipped + ";" +
-                "    var titleData = 'LICHESS_MOVE:' + rect.left + ',' + rect.top + ',' + rect.width + ',' + rect.height + ',' + isFlipped + ',' + '"
-                + from + "' + ',' + '" + to + "';" +
-                "    document.title = titleData;" +
-                "  } else {" +
-                "    console.error('[Bot] Board not found for native move');" +
-                "  }" +
-                "})();";
-
-        browser.executeJavaScript(script, browser.getURL(), 0);
-    }
-
-    // This method should be called once during initialization
-    public void registerDisplayHandler() {
-        browser.getClient().addDisplayHandler(new org.cef.handler.CefDisplayHandlerAdapter() {
-            @Override
-            public void onTitleChange(CefBrowser browser, String title) {
-                if (title != null) {
-                    if (title.startsWith("LICHESS_MOVE:")) {
-                        handleLichessMove(title);
-                    } else if (title.startsWith("ORIENTATION:")) {
-                        handleOrientation(title);
-                    }
-                }
+        return visibleBoard().thenCompose(snapshot -> {
+            List<double[]> points = clickPoints(snapshot.board(), move);
+            log.info("Playing {} on the page ({} clicks, board {}x{} at {},{}{})", move, points.size(),
+                    Math.round(snapshot.board().rect().w()), Math.round(snapshot.board().rect().h()),
+                    Math.round(snapshot.board().rect().x()), Math.round(snapshot.board().rect().y()),
+                    snapshot.board().flipped() ? ", flipped" : "");
+            CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
+            for (int i = 0; i < points.size(); i++) {
+                double[] p = points.get(i);
+                long gap = i == 0 ? 0 : i == 2 ? promotionDelayMs : clickGapMs;
+                chain = chain.thenComposeAsync(v -> page.click(p[0], p[1]), delayed(gap));
             }
+            return chain;
         });
     }
 
-    private void handleOrientation(String title) {
-        try {
-            // Format: ORIENTATION:true/false
-            String val = title.substring("ORIENTATION:".length());
-            boolean isFlipped = Boolean.parseBoolean(val);
-            log.info("[Bot] Orientation Detected: " + (isFlipped ? "FLIPPED" : "STANDARD"));
-
-            // Notify Vision Service (via BrowserController, but we don't have direct access
-            // here easily)
-            // Actually, we can expose a listener or callback.
-            // But wait, BotMover is used by BrowserController.
-            // Let's add a callback to BotMover.
-            if (onOrientationChanged != null) {
-                onOrientationChanged.accept(isFlipped);
+    /** The page's board, scrolled into view when needed. */
+    private CompletableFuture<BoardSnapshot> visibleBoard() {
+        return BoardProbe.read(page).thenCompose(snapshot -> {
+            if (snapshot.board() == null) {
+                return CompletableFuture.failedFuture(new IllegalStateException("No board on the page"));
             }
-
-        } catch (Exception e) {
-            log.error("Unexpected error", e);
-        }
-    }
-
-    private java.util.function.Consumer<Boolean> onOrientationChanged;
-
-    public void setOnOrientationChanged(java.util.function.Consumer<Boolean> callback) {
-        this.onOrientationChanged = callback;
-    }
-
-    public void checkOrientation() {
-        String script = "(function() {" +
-                "  var isLichess = window.location.href.includes('lichess');" +
-                "  var isChessCom = window.location.href.includes('chess.com');" +
-                "  var flipped = false;" +
-                "  if (isLichess) {" +
-                "     flipped = document.body.classList.contains('orientation-black') || document.querySelector('.cg-wrap.orientation-black') !== null;"
-                +
-                "  } else if (isChessCom) {" +
-                "     var board = document.querySelector('chess-board') || document.querySelector('#board-layout-chessboard');"
-                +
-                "     if (board && (board.classList.contains('flipped') || board.classList.contains('flip-board'))) flipped = true;"
-                +
-                "     if (document.querySelector('.flipped') !== null) flipped = true;" +
-                "  }" +
-                "  document.title = 'ORIENTATION:' + flipped;" +
-                "})();";
-        browser.executeJavaScript(script, browser.getURL(), 0);
-    }
-
-    private void handleLichessMove(String titleData) {
-        try {
-            // Format: LICHESS_MOVE:left,top,width,height,isFlipped,from,to
-            String data = titleData.substring("LICHESS_MOVE:".length());
-            String[] parts = data.split(",");
-
-            float left = Float.parseFloat(parts[0]);
-            float top = Float.parseFloat(parts[1]);
-            float width = Float.parseFloat(parts[2]);
-            float height = Float.parseFloat(parts[3]);
-            boolean isFlipped = Boolean.parseBoolean(parts[4]);
-            String from = parts[5];
-            String to = parts[6];
-
-            clickSquareNative(left, top, width, height, isFlipped, from);
-
-            // Small delay between clicks
-            new Thread(() -> {
-                try {
-                    Thread.sleep(100); // 100ms delay
-                    clickSquareNative(left, top, width, height, isFlipped, to);
-                } catch (InterruptedException e) {
-                    log.error("Unexpected error", e);
-                }
-            }).start();
-
-        } catch (Exception e) {
-            log.warn("[Bot] Error parsing move data: " + e.getMessage());
-        }
-    }
-
-    private void clickSquareNative(float boardLeft, float boardTop, float boardWidth, float boardHeight,
-            boolean isFlipped, String square) {
-        int file = square.charAt(0) - 'a'; // 0-7
-        int rank = square.charAt(1) - '1'; // 0-7
-        log.info("[Bot] Calculating Click: Square=" + square + " Flipped=" + isFlipped + " Raw(f,r)=(" + file
-                + "," + rank + ")");
-
-        if (isFlipped) {
-            file = 7 - file;
-            // rank = rank; // Rank 1 (index 0) is at top (y=0) for flipped board
-        } else {
-            rank = 7 - rank; // Rank 8 is at top (y=0) for standard board
-        }
-        log.info("[Bot] Visual Logic: Target(col,row)=(" + file + "," + rank + ")");
-
-        float squareW = boardWidth / 8;
-        float squareH = boardHeight / 8;
-
-        // Relative to Browser Content
-        int relX = (int) (boardLeft + (file * squareW) + (squareW / 2));
-        int relY = (int) (boardTop + (rank * squareH) + (squareH / 2));
-
-        log.info("[Bot] Target Relative: " + square + " (" + relX + "," + relY + ")");
-
-        // Convert to Screen Coordinates using the Browser Component
-        try {
-            java.awt.Component view = browser.getUIComponent();
-            if (view != null && view.isShowing()) {
-                java.awt.Point loc = view.getLocationOnScreen();
-                int screenX = loc.x + relX;
-                int screenY = loc.y + relY;
-
-                log.info("[Bot] Robot Click: " + square + " Screen(" + screenX + "," + screenY + ")");
-
-                java.awt.Robot robot = new java.awt.Robot();
-                robot.mouseMove(screenX, screenY);
-                robot.mousePress(java.awt.event.InputEvent.BUTTON1_DOWN_MASK);
-                try {
-                    Thread.sleep(50);
-                } catch (InterruptedException e) {
-                }
-                robot.mouseRelease(java.awt.event.InputEvent.BUTTON1_DOWN_MASK);
-
-            } else {
-                log.warn("[Bot] Browser component not showing, cannot calculate screen coordinates.");
+            if (snapshot.board().rect().inside(snapshot.viewportWidth(), snapshot.viewportHeight())) {
+                return CompletableFuture.completedFuture(snapshot);
             }
-        } catch (Exception e) {
-            log.error("Unexpected error", e);
-        }
+            log.info("Board partly out of view, scrolling it into view");
+            return page.evaluate(SCROLL_BOARD_INTO_VIEW)
+                    .thenComposeAsync(v -> BoardProbe.read(page), delayed(scrollSettleMs))
+                    .thenCompose(again -> again.board() != null
+                            ? CompletableFuture.completedFuture(again)
+                            : CompletableFuture.failedFuture(new IllegalStateException("No board on the page")));
+        });
     }
 
-    private String toNumeric(String square) {
-        char file = square.charAt(0);
-        char rank = square.charAt(1);
-        int col = file - 'a' + 1;
-        return "" + col + rank;
+    private static Executor delayed(long ms) {
+        return ms <= 0 ? Runnable::run : CompletableFuture.delayedExecutor(ms, TimeUnit.MILLISECONDS);
+    }
+
+    /** Points to click (viewport CSS pixels): origin, destination and, for a promotion, the chosen piece. */
+    static List<double[]> clickPoints(BoardSnapshot.BoardView board, String uci) {
+        List<double[]> points = new ArrayList<>();
+        String from = uci.substring(0, 2);
+        String to = uci.substring(2, 4);
+        points.add(squareCenter(board.rect(), board.flipped(), from));
+        double[] target = squareCenter(board.rect(), board.flipped(), to);
+        points.add(target);
+        if (uci.length() == 5) {
+            // the menu opens on the promotion square and goes towards the centre of the board: queen first
+            int index = Math.max(0, PROMOTION_ORDER.indexOf(uci.charAt(4)));
+            double cell = board.rect().h() / 8;
+            double direction = target[1] < board.rect().centerY() ? 1 : -1;
+            points.add(new double[]{target[0], target[1] + direction * index * cell});
+        }
+        return points;
+    }
+
+    /** Centre of a square ("e4") on the screen, for a board drawn with white (or, if flipped, black) at the bottom. */
+    static double[] squareCenter(BoardSnapshot.Rect rect, boolean flipped, String square) {
+        int file = square.charAt(0) - 'a';
+        int rank = square.charAt(1) - '1';
+        int col = flipped ? 7 - file : file;
+        int row = flipped ? rank : 7 - rank;
+        double w = rect.w() / 8;
+        double h = rect.h() / 8;
+        return new double[]{rect.x() + (col + 0.5) * w, rect.y() + (row + 0.5) * h};
     }
 }

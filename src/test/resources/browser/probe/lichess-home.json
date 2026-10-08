@@ -1,0 +1,114 @@
+{
+ "site": "lichess",
+ "viewport": {
+  "w": 720,
+  "h": 967
+ },
+ "v": 1,
+ "dpr": 2,
+ "loggedIn": false,
+ "challenge": false,
+ "page": "home",
+ "title": "lichess.org • Free Online Chess",
+ "login": false,
+ "url": "https://lichess.org/",
+ "board": {
+  "flipped": true,
+  "lastMove": [
+   "b6",
+   "b5"
+  ],
+  "h": 352,
+  "turn": null,
+  "pieces": 16,
+  "result": null,
+  "animating": false,
+  "moves": null,
+  "w": 352,
+  "x": 0,
+  "y": 896.140625,
+  "placement": [
+   [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "K",
+    ""
+   ],
+   [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "P",
+    "P",
+    ""
+   ],
+   [
+    "R",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   [
+    "P",
+    "",
+    "",
+    "",
+    "",
+    "q",
+    "",
+    "p"
+   ],
+   [
+    "",
+    "",
+    "Q",
+    "p",
+    "P",
+    "",
+    "",
+    ""
+   ],
+   [
+    "",
+    "P",
+    "",
+    "",
+    "p",
+    "",
+    "",
+    ""
+   ],
+   [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "r",
+    "k",
+    "p"
+   ],
+   [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "r",
+    "",
+    ""
+   ]
+  ],
+  "status": null
+ }
+}

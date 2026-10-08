@@ -3,314 +3,250 @@ package io.github.hardin22.javachess.Services;
 import io.github.hardin22.javachess.Utils.AppPaths;
 import io.github.hardin22.javachess.Vision.BoardReading;
 import io.github.hardin22.javachess.Vision.PieceClassifier;
+import io.github.hardin22.javachess.Vision.TemplateReader;
+import io.github.hardin22.javachess.Vision.VisionTracker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.awt.Rectangle;
-import java.awt.Robot;
-import java.awt.Toolkit;
 import java.awt.image.BufferedImage;
 import java.nio.file.Path;
-import java.util.function.Consumer;
 
 /**
- * Watches the screen for a chess board (chess.com / lichess in the integrated browser) and reports the position.
+ * Reads chess positions from pictures of a 2D board: the integrated browser feeds it screenshots of the page
+ * (taken by Chromium itself, see {@code Browser/CdpPageDriver}), so it works whatever covers the window and needs
+ * no screen-recording permission.
  *
- * <ol>
- *   <li>Search: full-screen captures until the model finds the same board rectangle on 3 consecutive frames.</li>
- *   <li>Monitor: captures only the board; frames that changed since the previous one are skipped (piece
- *       animations), static frames are classified. A position is reported once it is stable on 2 frames.</li>
- * </ol>
- * Runs on its own daemon thread; callbacks are invoked on that thread (never the JavaFX thread).
- * Debug images are written only with {@code -Djavachess.vision.debug=true}, to {@code ~/.javachess/vision-debug/}.
+ * <p>Two readers:</p>
+ * <ul>
+ *   <li>the ONNX model ({@link PieceClassifier}, loaded on first use: ~12 MB and a few hundred ms), which knows
+ *       many board themes and piece sets but not all of them;</li>
+ *   <li>a reader calibrated on the board being watched ({@link TemplateReader}): it learns the site's own pieces
+ *       from pictures whose position is known for sure ({@link #learn}: the page's markup, or the start position
+ *       recognised by the model) and then reads any theme and piece set, cheaply (a few ms on the Pi). When it is
+ *       unsure the model's reading is combined with it.</li>
+ * </ul>
+ * <p>A {@link VisionTracker} locates the board, skips moving frames and reports each stable position once.
+ * Not thread-safe: use it from one worker thread, never from the JavaFX thread.</p>
+ *
+ * <p>Debug pictures with the detections are written with {@code -Djavachess.vision.debug=true} to
+ * {@code ~/.javachess/vision-debug/} (a ring of 50 files).</p>
  */
-public class VisionService {
+public class VisionService implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(VisionService.class);
-    private static final int LOCK_FRAMES = 3;
-    private static final int STABLE_FRAMES = 2;
-    private static final int LOST_FRAMES_BEFORE_SEARCH = 15;
 
     private final boolean debug = Boolean.getBoolean("javachess.vision.debug");
-    private volatile PieceClassifier classifier;
-    private volatile boolean running;
-    /** Incremented at every start: an old scan thread that is still finishing a frame sees it changed and quits. */
-    private volatile long generation;
-    private volatile boolean isFlipped;
-    private volatile Rectangle boardRect;
-    private Thread scanThread;
+    private final VisionTracker.Detector injected;
+    private PieceClassifier classifier;
+    private String unavailable;
+    private VisionTracker tracker;
+    private long frame;
+    private final TemplateReader templates = new TemplateReader();
+    private int calibratedReads;
+    private int modelReads;
 
-    private volatile Consumer<String> onFenChanged;
-    private volatile Consumer<BoardReading> onReading;
-    private volatile Consumer<Rectangle> onBoardFound;
-    private volatile Consumer<String> onError;
+    private static final String START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR";
+    /** Below this best-match quality the calibrated reading is trusted alone (no model inference). */
+    private static final double TRUSTED_QUALITY = 0.45;
 
-    /** Placement + reading of the last reported position. */
-    private volatile BoardReading lastReading;
-
+    /** Uses the bundled model, loaded on first use. */
     public VisionService() {
-        // The model is loaded lazily on the scan thread (never on the JavaFX thread).
+        this.injected = null;
     }
 
-    /** Called with the FEN placement (rank 8 first) when a new stable position is seen. */
-    public void setOnFenChanged(Consumer<String> callback) {
-        this.onFenChanged = callback;
+    /** Uses the given detector (tests). */
+    public VisionService(VisionTracker.Detector detector) {
+        this.injected = detector;
     }
 
-    /** Called with the full reading (probabilities, confidence) when a new stable position is seen. */
-    public void setOnReading(Consumer<BoardReading> callback) {
-        this.onReading = callback;
+    /** True when the model can be used; false (with {@link #unavailableReason()}) when it failed to load. */
+    public boolean isAvailable() {
+        return tracker() != null;
     }
 
-    public void setOnBoardFound(Consumer<Rectangle> callback) {
-        this.onBoardFound = callback;
+    /** Why vision cannot work (for the log and the user), or null. */
+    public String unavailableReason() {
+        tracker();
+        return unavailable;
     }
 
-    /** Called with a user message when vision cannot work (model missing, no screen capture permission...). */
-    public void setOnError(Consumer<String> callback) {
-        this.onError = callback;
+    /** Feeds one picture of the page; see {@link VisionTracker#accept}. */
+    public VisionTracker.Result accept(BufferedImage picture) {
+        VisionTracker t = tracker();
+        if (t == null) {
+            return new VisionTracker.Result(VisionTracker.Status.ERROR, null, null);
+        }
+        return t.accept(picture);
+    }
+
+    /** Reads one picture of a board, outside the tracking (used to cross-check other readings). */
+    public BoardReading readBoard(BufferedImage board, boolean flipped) throws Exception {
+        VisionTracker.Detector d = detector();
+        if (d == null) {
+            throw new IllegalStateException(unavailable);
+        }
+        return d.read(board, flipped).withPlacementRules();
     }
 
     public void setFlipped(boolean flipped) {
-        this.isFlipped = flipped;
-        log.info("Vision orientation: {}", flipped ? "black at the bottom" : "white at the bottom");
+        VisionTracker t = tracker();
+        if (t != null && t.isFlipped() != flipped) {
+            t.setFlipped(flipped);
+            log.info("Vision orientation: {}", flipped ? "black at the bottom" : "white at the bottom");
+        }
     }
 
-    public synchronized void startScanning() {
-        if (running) {
-            return;
+    /** Board rectangle in picture pixels when it is known (null: search the whole picture). */
+    public void setBoardHint(Rectangle board) {
+        VisionTracker t = tracker();
+        if (t != null) {
+            t.setBoardHint(board);
         }
-        running = true;
-        long myGeneration = ++generation;
-        scanThread = new Thread(() -> scanLoop(myGeneration), "vision-scan");
-        scanThread.setDaemon(true);
-        scanThread.start();
-        log.info("Vision scanning started");
+    }
+
+    /** Forgets the board and the last position: the next stable position is reported as new. */
+    public void resetState() {
+        VisionTracker t = tracker();
+        if (t != null) {
+            t.reset();
+        }
+    }
+
+    /** The current position will be reported again once stable (e.g. when a synchronisation restarts). */
+    public void forgetReported() {
+        VisionTracker t = tracker();
+        if (t != null) {
+            t.forgetReported();
+        }
+    }
+
+    private VisionTracker tracker() {
+        if (tracker == null) {
+            VisionTracker.Detector d = detector();
+            if (d != null) {
+                tracker = new VisionTracker(d);
+            }
+        }
+        return tracker;
+    }
+
+    private VisionTracker.Detector detector() {
+        if (injected != null) {
+            return injected;
+        }
+        if (classifier == null && unavailable == null) {
+            try {
+                classifier = new PieceClassifier(PieceClassifier.DEFAULT_MODEL);
+            } catch (Throwable e) {
+                log.error("Vision model cannot be loaded", e);
+                unavailable = "modello di riconoscimento non disponibile";
+            }
+        }
+        if (classifier == null) {
+            return null;
+        }
+        PieceClassifier pc = classifier;
+        return new VisionTracker.Detector() {
+            @Override
+            public Rectangle findBoard(BufferedImage picture) {
+                return pc.findBoard(picture);
+            }
+
+            @Override
+            public BoardReading read(BufferedImage board, boolean flipped) throws Exception {
+                return readBoardPicture(board, flipped, () -> pc.read(board, flipped, debug ? debugFile() : null));
+            }
+        };
+    }
+
+    /** Reads with the calibrated reader when it can, with the model otherwise or when the former is unsure. */
+    private BoardReading readBoardPicture(BufferedImage board, boolean flipped, ModelRead model) throws Exception {
+        if (templates.knownSymbols() >= 10 && templates.fits(board)) {
+            BoardReading t = templates.read(board, flipped);
+            if (templates.lastQuality() <= TRUSTED_QUALITY && minBest(t) >= 0.7f) {
+                calibratedReads++;
+                return t;
+            }
+            modelReads++;
+            return TemplateReader.fuse(t, model.read());
+        }
+        if (autoCalibrate) {
+            // the start position (or one or two plies after it), recognised by occupancy whatever the theme:
+            // learn this board's pieces from it
+            String opening = TemplateReader.looksLikeStart(board, flipped) ? START
+                    : TemplateReader.recogniseOpening(board, flipped);
+            if (opening != null) {
+                log.info("Vision calibrated on the opening position {}", opening);
+                templates.learn(board, opening, flipped);
+                calibratedReads++;
+                return templates.read(board, flipped);
+            }
+        }
+        modelReads++;
+        BoardReading m = model.read();
+        if (autoCalibrate && START.equals(m.withPlacementRules().placement()) && m.minConfidence() >= 0.4f) {
+            // the start position recognised by the model: a known position to learn this board's pieces from
+            log.info("Vision calibrated on the start position (model)");
+            templates.learn(board, START, flipped);
+        }
+        return m;
+    }
+
+    private interface ModelRead {
+        BoardReading read() throws Exception;
+    }
+
+    /** Lowest, over the squares, of the probability of the most likely symbol. */
+    private static float minBest(BoardReading r) {
+        float min = 1f;
+        for (int f = 0; f < 8; f++) {
+            for (int k = 0; k < 8; k++) {
+                min = Math.min(min, r.confidence(f, k));
+            }
+        }
+        return min;
+    }
+
+    private volatile boolean autoCalibrate = true;
+
+    /** Learns from the start position recognised by the model (on by default). */
+    public void setAutoCalibrate(boolean enabled) {
+        this.autoCalibrate = enabled;
     }
 
     /**
-     * Stops scanning without waiting for the scan thread (safe on the JavaFX thread): a frame being classified is
-     * discarded thanks to the generation check.
+     * Teaches the calibrated reader the look of this board's pieces from a picture whose position is known for sure
+     * (the page's markup at the same moment, or a position confirmed by the game).
      */
-    public synchronized void requestStop() {
-        running = false;
-        generation++;
-    }
-
-    public void stopScanning() {
-        Thread t;
-        synchronized (this) {
-            running = false;
-            t = scanThread;
+    public void learn(BufferedImage board, String placement, boolean flipped) {
+        if (templates.boardWidth() > 0 && !templates.fits(board)) {
+            templates.clear(); // the board changed size (zoom, window): learn it again
         }
-        if (t != null && t != Thread.currentThread()) {
-            try {
-                t.join(1500);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-        log.info("Vision scanning stopped");
+        templates.learn(board, placement, flipped);
     }
 
-    /** Forgets the locked board so the next scan searches the whole screen again. */
-    public void resetState() {
-        boardRect = null;
-        lastReading = null;
-        log.debug("Vision state reset");
+    /** True once every piece of the watched board has been learned. */
+    public boolean isCalibrated() {
+        return templates.isComplete();
     }
 
-    public Rectangle getBoardRect() {
-        return boardRect;
+    /** Readings made by the calibrated reader alone and with the model, for the logs and tests. */
+    public int[] readerStats() {
+        return new int[]{calibratedReads, modelReads};
     }
 
-    public BoardReading getLastReading() {
-        return lastReading;
-    }
-
-    private PieceClassifier classifier() {
-        PieceClassifier c = classifier;
-        if (c == null) {
-            synchronized (this) {
-                c = classifier;
-                if (c == null) {
-                    try {
-                        c = new PieceClassifier(PieceClassifier.DEFAULT_MODEL);
-                        classifier = c;
-                    } catch (Throwable e) {
-                        log.error("Vision model cannot be loaded", e);
-                        report("Riconoscimento della scacchiera non disponibile: " + e.getMessage());
-                        return null;
-                    }
-                }
-            }
-        }
-        return c;
-    }
-
-    private boolean active(long myGeneration) {
-        return running && generation == myGeneration;
-    }
-
-    private void scanLoop(long myGeneration) {
-        Robot robot;
-        try {
-            robot = new Robot();
-        } catch (Exception e) {
-            log.error("Screen capture not available", e);
-            report("Cattura dello schermo non disponibile (permessi di registrazione dello schermo?)");
-            running = false;
-            return;
-        }
-        PieceClassifier pc = classifier();
-        if (pc == null) {
-            if (generation == myGeneration) {
-                running = false;
-            }
-            return;
-        }
-        Rectangle candidate = null;
-        int candidateFrames = 0;
-        BufferedImage previous = null;
-        String lastSeen = null;
-        int stableFrames = 0;
-        int lostFrames = 0;
-        long frame = 0;
-
-        while (active(myGeneration)) {
-            try {
-                if (boardRect == null) {
-                    BufferedImage screen = robot.createScreenCapture(
-                            new Rectangle(Toolkit.getDefaultToolkit().getScreenSize()));
-                    Rectangle found = pc.findBoard(screen);
-                    if (found != null && candidate != null && similar(candidate, found)) {
-                        candidateFrames++;
-                    } else {
-                        candidate = found;
-                        candidateFrames = found == null ? 0 : 1;
-                    }
-                    if (candidateFrames >= LOCK_FRAMES) {
-                        boardRect = candidate;
-                        previous = null;
-                        stableFrames = 0;
-                        lastSeen = null;
-                        lostFrames = 0;
-                        log.info("Board locked at {}", boardRect);
-                        Consumer<Rectangle> cb = onBoardFound;
-                        if (cb != null) {
-                            cb.accept(boardRect);
-                        }
-                    } else {
-                        sleep(found == null ? 1000 : 150);
-                    }
-                    continue;
-                }
-
-                BufferedImage current = robot.createScreenCapture(boardRect);
-                if (previous != null && hasImageChanged(previous, current)) {
-                    previous = current; // animation in progress: wait for a still frame
-                    stableFrames = 0;
-                    sleep(30);
-                    continue;
-                }
-                previous = current;
-                String debugPath = debug ? debugFile(frame++) : null;
-                BoardReading reading = pc.read(current, isFlipped, debugPath).withPlacementRules();
-                if (!reading.hasBoard()) {
-                    if (++lostFrames >= LOST_FRAMES_BEFORE_SEARCH) {
-                        log.info("Board lost, searching again");
-                        boardRect = null;
-                        candidate = null;
-                        candidateFrames = 0;
-                    }
-                    sleep(100);
-                    continue;
-                }
-                lostFrames = 0;
-                String placement = reading.placement();
-                if (placement.equals(lastSeen)) {
-                    stableFrames++;
-                } else {
-                    lastSeen = placement;
-                    stableFrames = 1;
-                }
-                BoardReading reported = lastReading;
-                if (!active(myGeneration)) {
-                    break; // stopped (or restarted) while this frame was being classified
-                }
-                if (stableFrames >= STABLE_FRAMES && (reported == null || !reported.placement().equals(placement))) {
-                    lastReading = reading;
-                    log.info("Stable position {} (confidence min {}, mean {}, {} ms)", placement,
-                            String.format("%.2f", reading.minConfidence()),
-                            String.format("%.2f", reading.meanConfidence()), reading.inferenceMs());
-                    Consumer<BoardReading> rc = onReading;
-                    if (rc != null) {
-                        rc.accept(reading);
-                    }
-                    Consumer<String> fc = onFenChanged;
-                    if (fc != null) {
-                        fc.accept(placement);
-                    }
-                }
-                sleep(60);
-            } catch (Exception e) {
-                log.warn("Vision frame failed: {}", e.toString());
-                boardRect = null;
-                sleep(1000);
-            }
-        }
-    }
-
-    private String debugFile(long frame) {
+    private String debugFile() {
         Path dir = AppPaths.resolve("vision-debug");
         dir.toFile().mkdirs();
-        return dir.resolve("frame-" + (frame % 50) + ".png").toString(); // ring of 50 files
+        return dir.resolve("frame-" + (frame++ % 50) + ".png").toString();
     }
 
-    private void report(String message) {
-        Consumer<String> cb = onError;
-        if (cb != null) {
-            cb.accept(message);
+    @Override
+    public void close() {
+        if (classifier != null) {
+            classifier.close();
+            classifier = null;
         }
-    }
-
-    private static void sleep(long ms) {
-        try {
-            Thread.sleep(ms);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    /** True when the two captures differ (sampled every 6 pixels, small tolerance for compression noise). */
-    static boolean hasImageChanged(BufferedImage a, BufferedImage b) {
-        if (a.getWidth() != b.getWidth() || a.getHeight() != b.getHeight()) {
-            return true;
-        }
-        int changed = 0;
-        int samples = 0;
-        for (int y = 0; y < a.getHeight(); y += 6) {
-            for (int x = 0; x < a.getWidth(); x += 6) {
-                int p = a.getRGB(x, y);
-                int q = b.getRGB(x, y);
-                samples++;
-                if (Math.abs(((p >> 16) & 0xFF) - ((q >> 16) & 0xFF)) + Math.abs(((p >> 8) & 0xFF) - ((q >> 8) & 0xFF))
-                        + Math.abs((p & 0xFF) - (q & 0xFF)) > 24) {
-                    changed++;
-                }
-            }
-        }
-        return changed > Math.max(2, samples / 2000);
-    }
-
-    /** Intersection over union above 0.9. */
-    static boolean similar(Rectangle r1, Rectangle r2) {
-        Rectangle i = r1.intersection(r2);
-        if (i.isEmpty()) {
-            return false;
-        }
-        double inter = (double) i.width * i.height;
-        double union = (double) r1.width * r1.height + (double) r2.width * r2.height - inter;
-        return inter / union > 0.90;
     }
 }

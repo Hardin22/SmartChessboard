@@ -1,0 +1,111 @@
+{
+ "site": "chesscom",
+ "viewport": {
+  "w": 720,
+  "h": 967
+ },
+ "v": 1,
+ "dpr": 2,
+ "loggedIn": false,
+ "challenge": false,
+ "page": "game",
+ "title": "Play Chess Online for FREE - 2 Player Chess - Chess.com",
+ "login": false,
+ "url": "https://www.chess.com/play/online",
+ "board": {
+  "flipped": false,
+  "lastMove": [],
+  "h": 720,
+  "turn": null,
+  "pieces": 32,
+  "result": null,
+  "animating": false,
+  "moves": null,
+  "w": 720,
+  "x": 0,
+  "y": -350,
+  "placement": [
+   [
+    "R",
+    "N",
+    "B",
+    "Q",
+    "K",
+    "B",
+    "N",
+    "R"
+   ],
+   [
+    "P",
+    "P",
+    "P",
+    "P",
+    "P",
+    "P",
+    "P",
+    "P"
+   ],
+   [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   [
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p",
+    "p"
+   ],
+   [
+    "r",
+    "n",
+    "b",
+    "q",
+    "k",
+    "b",
+    "n",
+    "r"
+   ]
+  ],
+  "status": null
+ }
+}

@@ -35,6 +35,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.version>5.10.0</junit.version>
         <skipE2E>false</skipE2E>
+        <!-- opt-in: real Chromium (JCEF) on a local page, see BrowserJcefE2E; -DskipJcefE2E=false -->
+        <skipJcefE2E>true</skipJcefE2E>
     </properties>
 
     <repositories>
@@ -92,7 +94,7 @@
         <dependency>
             <groupId>me.friwi</groupId>
             <artifactId>jcefmaven</artifactId>
-            <version>127.3.1</version>
+            <version>146.0.10</version>
         </dependency>
         <dependency>
             <groupId>com.konghq</groupId>
@@ -226,6 +228,25 @@
                             <excludes combine.self="override"/>
                             <includes>
                                 <include>**/e2e/**/*Test.java</include>
+                            </includes>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <!-- Integrated browser with real Chromium: needs a display and the JCEF bundle (downloaded on
+                             first use). Opt-in: -DskipJcefE2E=false -->
+                        <id>jcef-e2e</id>
+                        <goals>
+                            <goal>test</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${skipJcefE2E}</skip>
+                            <argLine>--add-exports=java.desktop/sun.awt=ALL-UNNAMED --add-opens=java.desktop/sun.awt=ALL-UNNAMED --add-exports=java.desktop/sun.lwawt=ALL-UNNAMED --add-exports=java.desktop/sun.lwawt.macosx=ALL-UNNAMED --add-opens=java.desktop/sun.lwawt=ALL-UNNAMED --add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED</argLine>
+                            <systemPropertyVariables combine.children="append">
+                                <java.awt.headless>false</java.awt.headless>
+                            </systemPropertyVariables>
+                            <excludes combine.self="override"/>
+                            <includes>
+                                <include>**/*JcefE2E.java</include>
                             </includes>
                         </configuration>
                     </execution>

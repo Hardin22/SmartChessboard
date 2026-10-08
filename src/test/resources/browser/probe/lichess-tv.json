@@ -1,0 +1,114 @@
+{
+ "site": "lichess",
+ "viewport": {
+  "w": 720,
+  "h": 967
+ },
+ "v": 1,
+ "dpr": 2,
+ "loggedIn": false,
+ "challenge": false,
+ "page": "game",
+ "title": "Top Rated TV • lichess.org",
+ "login": false,
+ "url": "https://lichess.org/tv",
+ "board": {
+  "flipped": true,
+  "lastMove": [
+   "f7",
+   "f8"
+  ],
+  "h": 712,
+  "turn": "w",
+  "pieces": 16,
+  "result": null,
+  "animating": false,
+  "moves": null,
+  "w": 712,
+  "x": 2,
+  "y": 113.59375,
+  "placement": [
+   [
+    "R",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "K",
+    ""
+   ],
+   [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "P",
+    "P",
+    ""
+   ],
+   [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   [
+    "P",
+    "",
+    "",
+    "",
+    "",
+    "q",
+    "",
+    "p"
+   ],
+   [
+    "",
+    "P",
+    "",
+    "p",
+    "P",
+    "",
+    "",
+    ""
+   ],
+   [
+    "",
+    "",
+    "",
+    "",
+    "p",
+    "",
+    "",
+    ""
+   ],
+   [
+    "Q",
+    "",
+    "",
+    "",
+    "",
+    "r",
+    "",
+    "p"
+   ],
+   [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "k",
+    "r"
+   ]
+  ],
+  "status": null
+ }
+}

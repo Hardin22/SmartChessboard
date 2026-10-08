@@ -101,16 +101,36 @@ public class App extends Application {
         } catch (RuntimeException e) {
             log.warn("Could not save the game in progress: {}", e.toString());
         }
+        // ...and so is a game followed in the integrated browser (only if it was opened: no view loaded for this)
+        try {
+            if (mainController != null && io.github.hardin22.javachess.Browser.JcefRuntime.app() != null
+                    && mainController.getController("BROWSER")
+                    instanceof io.github.hardin22.javachess.Controllers.BrowserController browser) {
+                browser.onAppExit();
+            }
+        } catch (RuntimeException e) {
+            log.warn("Could not save the browser game in progress: {}", e.toString());
+        }
         if (Hardware.isInitialized()) {
             Hardware.shutdown(); // LEDs off, serial port closed
         }
         AppExecutors.shutdown(); // pending archive writes are completed first
-        io.github.hardin22.javachess.Controllers.BrowserController.disposeIfStarted();
+        io.github.hardin22.javachess.Browser.JcefRuntime.disposeIfStarted();
         io.github.hardin22.javachess.Engine.EngineManager.shutdownIfStarted(); // engines get "quit" before the kill below
         stopChildProcesses();
         logLingeringThreads();
         // Last resort for threads started by libraries that do not use daemon threads.
-        System.exit(0);
+        System.exit(exitCode);
+    }
+
+    /** Exit status of the process; {@link #RESTART_EXIT_CODE} asks the service manager to start the app again. */
+    private static volatile int exitCode = 0;
+
+    /** systemd restarts the app on a non-zero exit (deploy/javachess.service, Restart=on-failure). */
+    public static final int RESTART_EXIT_CODE = 75;
+
+    public static void setExitCode(int code) {
+        exitCode = code;
     }
 
     /** Engines (Stockfish, Lc0) and browser helpers must not outlive the app. */
@@ -161,7 +181,7 @@ public class App extends Application {
                 Hardware.shutdown();
             }
             AppExecutors.shutdown(); // finish pending archive / puzzle progress writes
-            io.github.hardin22.javachess.Controllers.BrowserController.disposeIfStarted();
+            io.github.hardin22.javachess.Browser.JcefRuntime.disposeIfStarted();
         }, "shutdown-hook"));
 
         launch(args);

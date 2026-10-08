@@ -1,0 +1,16 @@
+{
+ "site": "chesscom",
+ "viewport": {
+  "w": 720,
+  "h": 967
+ },
+ "v": 1,
+ "dpr": 2,
+ "loggedIn": false,
+ "challenge": false,
+ "page": "login",
+ "title": "Login - Chess.com",
+ "login": true,
+ "url": "https://www.chess.com/login",
+ "board": null
+}

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>javaChess test login</title>
+<style>body{font-family:sans-serif;background:#222;color:#eee;padding:40px} input,button{display:block;margin:12px 0;font-size:20px;padding:8px;width:300px}</style>
+</head>
+<body>
+<!-- Local stand-in for a site's login form (built like a framework does: values read from input events). -->
+<form id="f">
+  <input id="user" type="email" name="username" autocomplete="username" placeholder="Username or e-mail">
+  <input id="pass" type="password" name="password" autocomplete="current-password" placeholder="Password">
+  <button type="submit">Log In</button>
+</form>
+<div id="state"></div>
+<script>
+  const state = { user: '', pass: '', trusted: true };
+  for (const id of ['user', 'pass']) {
+    document.getElementById(id).addEventListener('input', (e) => {
+      state[id] = e.target.value;
+      state.trusted = state.trusted && e.isTrusted;
+    });
+  }
+  document.getElementById('f').addEventListener('submit', (e) => {
+    e.preventDefault();
+    window.javachessLogin = { user: state.user, pass: state.pass, trusted: state.trusted && e.isTrusted };
+    document.getElementById('f').remove();
+    document.getElementById('state').textContent = 'Welcome ' + state.user;
+  });
+</script>
+</body>
+</html>
