@@ -103,9 +103,12 @@ public class HomeController implements Screen {
                 () -> mainController.navigateTo("PUZZLE_DASHBOARD"));
         Button archive = smallTile("fth-archive", I18n.t("home.archive"), gamesValue, I18n.t("home.stats.games"),
                 () -> mainController.navigateTo("ARCHIVE"));
-        Button online = smallTile("fth-globe", I18n.t("home.online.title"), null, I18n.t("home.online.description"),
-                this::showOnline);
+        Button online = heroTile("fth-globe", I18n.t("home.online.title"),
+                Ui.label(I18n.t("home.online.description"), "tile-sub"), false, this::showOnline);
         online.setId("home-online");
+        Button training = smallTile("fth-book-open", I18n.t("home.training"), null, I18n.t("home.training.description"),
+                () -> mainController.navigateTo("TRAINING"));
+        training.setId("home-training");
         Button stats = smallTile("fth-bar-chart-2", I18n.t("home.stats"), statsValue, I18n.t("home.stats.description"),
                 () -> mainController.navigateTo("STATS"));
 
@@ -113,8 +116,9 @@ public class HomeController implements Screen {
                 Ui.sectionLabel(I18n.t("home.play")),
                 pvc, pvp,
                 Ui.gap(4),
-                Ui.equalRow(16, puzzles, archive),
-                Ui.equalRow(16, online, stats));
+                Ui.equalRow(16, puzzles, training),
+                Ui.equalRow(16, archive, stats),
+                online);
 
         resumeSlot.managedProperty().bind(resumeSlot.visibleProperty());
 

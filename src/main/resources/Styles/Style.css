@@ -657,7 +657,7 @@
     -fx-background-color: -c-s2;
 }
 
-.option:selected {
+.option:selected, .option.selected {
     -fx-border-color: -c-accent;
     -fx-background-color: -c-accent-soft;
 }
@@ -1887,4 +1887,127 @@
 
 .palette-tool:selected {
     -fx-background-color: -c-accent-soft;
+}
+
+/* ------------------------------------------------------------------ training */
+
+.tile .t-accent {
+    -fx-text-fill: -c-accent;
+}
+
+.opening-san {
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 20px;
+    -fx-text-fill: -c-accent;
+}
+
+.opening-moves {
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 22px;
+    -fx-text-fill: -c-fg2;
+}
+
+.level-chip {
+    -fx-background-radius: 999px;
+    -fx-padding: 6px 16px;
+    -fx-font-family: "Geist Medium";
+    -fx-font-size: 19px;
+    -fx-background-color: -c-s2;
+    -fx-text-fill: -c-fg2;
+}
+
+.level-chip.level-1 {
+    -fx-background-color: -c-warn-soft;
+    -fx-text-fill: -c-warn;
+}
+
+.level-chip.level-2 {
+    -fx-background-color: -c-accent-soft;
+    -fx-text-fill: -c-accent;
+}
+
+.level-chip.level-3 {
+    -fx-background-color: -c-ok-soft;
+    -fx-text-fill: -c-ok;
+}
+
+.theory-move {
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 24px;
+}
+
+.theory-track {
+    -fx-background-color: -c-s2;
+    -fx-background-radius: 999px;
+    -fx-min-height: 14px;
+    -fx-pref-height: 14px;
+    -fx-max-height: 14px;
+}
+
+.theory-bar {
+    -fx-background-color: -c-accent;
+    -fx-background-radius: 999px;
+}
+
+.drill-counter {
+    -fx-font-family: "Geist Light";
+    -fx-font-size: 76px;
+}
+
+.tip-card {
+    -fx-background-color: -c-warn-soft;
+    -fx-background-radius: 20px;
+    -fx-padding: 18px 22px;
+}
+
+.level-dot {
+    -fx-min-width: 12px;
+    -fx-min-height: 12px;
+    -fx-max-width: 12px;
+    -fx-max-height: 12px;
+    -fx-background-radius: 999px;
+}
+
+.level-dot.on {
+    -fx-background-color: -c-fg2;
+}
+
+.level-dot.off {
+    -fx-background-color: -c-line2;
+}
+
+.star-on {
+    -fx-icon-color: #E9B634;
+}
+
+.star-off {
+    -fx-icon-color: -c-line2;
+}
+
+.thumb {
+    -fx-background-radius: 8px;
+}
+
+.coordinate-target {
+    -fx-font-family: "Geist Light";
+    -fx-font-size: 140px;
+}
+
+.coordinate-time {
+    -fx-font-family: "Geist Light";
+    -fx-font-size: 52px;
+}
+
+.coordinate-choice {
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 40px;
+    -fx-min-height: 112px;
+    -fx-pref-height: 112px;
+}
+
+/* QR code: always black on white, with a quiet margin */
+.qr-plate {
+    -fx-background-color: white;
+    -fx-background-radius: 24px;
+    -fx-padding: 20px;
 }
