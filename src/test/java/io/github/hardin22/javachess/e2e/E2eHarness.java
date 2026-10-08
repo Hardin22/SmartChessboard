@@ -87,6 +87,10 @@ final class E2eHarness {
         System.setProperty("javachess.home", home.toString());
         System.setProperty("javachess.legacyDir", Files.createDirectories(home.resolve("legacy")).toString());
         System.setProperty("javachess.exportDir", home.resolve("exports").toString());
+        // "USB drives" of the tests: a folder of the temporary home, never the drives of this computer (/Volumes)
+        System.setProperty("javachess.usbRoots", Files.createDirectories(home.resolve("usb")).toString());
+        // the integrated browser never uses the Chromium bundle of this computer
+        System.setProperty("javachess.jcef.dir", home.resolve("jcef-none").toString());
         System.setProperty("javachess.board", boardMode);
         ErrorReporter.setDialogsEnabled(false);
 

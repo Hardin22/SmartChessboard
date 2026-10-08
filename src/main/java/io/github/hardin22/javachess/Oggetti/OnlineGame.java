@@ -188,6 +188,23 @@ public class OnlineGame extends AbstractGame {
         }
     }
 
+    /**
+     * Resignation asked for on the screen: sent to Lichess (an abort before both sides have moved); the game ends when
+     * Lichess confirms it through the stream, and is archived then.
+     */
+    public void resign() {
+        if (!gameRunning || lichessGameManager.isGameOver()) {
+            return;
+        }
+        boolean aborted = lichessGameManager.resignOrAbort();
+        updateStatus(aborted ? "Annullamento inviato a Lichess…" : "Abbandono inviato a Lichess…");
+    }
+
+    /** The side of the account playing this game (known once Lichess has sent the game). */
+    public boolean isPlayingWhite() {
+        return lichessGameManager.isWhite();
+    }
+
     @Override
     public void endGame(String endMessage, boolean saveGame) {
         boolean wasRunning = gameRunning;

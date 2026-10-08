@@ -112,11 +112,34 @@ Chiusura regolare o kill/blackout → snapshot su disco → Home "Partita interr
 (`-Djavachess.exitAfterMs`, kill -9), E2E `gameLeftByARestartIsResumedFromHomeOnTheBoard`.
 
 ## 3. Online
-### 3.1 chess.com (browser integrato) — area **browser**
-HOME ─ Online ─ chess.com → BROWSER (JCEF, login, visione, BotMover). In riscrittura sul branch browser/v2.
-### 3.2 Lichess
-Oggi: HOME ─ Lichess → se c'è una partita in corso (API) → GAME `OnlineGame`, altrimenti LICHESS_SETUP (seek)
-o "apri nel browser". Il brief browser chiede che il pulsante apra lichess.org nel browser (QA-011).
+### 3.1 chess.com e lichess.org nel browser integrato — area **browser** (browser/v2 su main)
+```
+HOME ─ Online (foglio) ─ Chess.com / Lichess → MainController.openBrowser(url) → BROWSER
+  vista JavaFX solo per avvio / download / errore (stesso BrowserStatus della barra sopra la pagina)
+  JcefRuntime.start (bundle ~/.jcef-bundle-<versione>; sul Pi primo avvio = installa e "Riavvia l'app")
+    ├─ errore (rete assente al primo avvio, disco, piattaforma) → "Browser non disponibile" + Riprova / Home
+    └─ ok → BrowserWindow (Swing sopra l'app) → pagina → BoardWatcher (markup + visione) → BrowserSession
+          → OnlineGameSync: SETUP sulla scacchiera → mosse fisiche giocate sulla pagina (BotMover, DevTools)
+            ↔ mosse dell'avversario replicate coi LED
+  Home (barra) → setVisible(false): sync.stop → partita vera (pagina di gioco, ≥6 semimosse) archiviata
+       come interrotta, scacchiera rilasciata (stopGameMode), finestra nascosta, HOME
+  chiusura app → BrowserController.onAppExit (archivia, max 2 s) → JcefRuntime.disposeIfStarted
+```
+Verifica: test unitari/integrazione del browser (macchina a stati, sync con BoardStateManager vero e scacchiera
+simulata, pagina finta), prove sul campo del team browser (docs/browser.md); QA: monkey dei tocchi
+(`TapWalkEndToEndTest`, rete esterna tagliata e nessun bundle) entra in BROWSER dalla Home e dalle impostazioni,
+vede "Browser non disponibile", tocca Riprova e Home senza errori. Su macOS chiudere l'app dopo aver aperto il browser
+può far crashare la JVM in `CefApp.dispose` (trovato dal team browser, correzione in corso).
+
+### 3.2 Lichess via API (Impostazioni → Avanzate → "Lichess API")
+```
+openLichess(): partita in corso sull'account (token) → GAME OnlineGame (stream Board API) ; altrimenti LICHESS_SETUP
+  mosse: scacchiera o schermo → POST move ; mosse avversarie dallo stream → replica coi LED
+  Abbandona (conferma) → resign (abort se non hanno mosso entrambi) → fine dallo stream → archivio (LICHESS)
+  Esci → stream chiuso, la partita resta aperta su Lichess → stessa voce delle Avanzate la riprende
+```
+Verifica: E2E `LichessApiEndToEndTest` contro un Lichess finto locale (ripresa, uscita, ripresa, abbandono col
+Nero, risultato e archivio), `LichessClientTest`, `LichessGameManagerTest` (QA-011).
 
 ## 4. Revisione
 Entrate: archivio (tocco su una riga o "Apri"), home ("Rivedi" ultima partita), DevOptions.
