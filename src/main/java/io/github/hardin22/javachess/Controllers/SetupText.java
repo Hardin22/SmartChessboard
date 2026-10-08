@@ -13,8 +13,17 @@ record SetupText(String title, String squares, String step, String rest) {
     private static final Pattern GUIDED = Pattern.compile(
             "^(Posiziona [^:·]+?)(?:(?::| in) ([a-h][1-8](?:, [a-h][1-8])*))?\\s*·\\s*(passo \\d+ di \\d+)(?:,\\s*(.*))?$");
 
+    /** Pieces to take away first: "Posiziona i pezzi: togli quelli sulle case rosse (2), poi il Re bianco in g1 · …". */
+    private static final Pattern TAKE_AWAY = Pattern.compile(
+            "^Posiziona i pezzi: togli quelli sulle case rosse \\((\\d+)\\), poi (.+?)\\s*·\\s*(passo \\d+ di \\d+)$");
+
     static SetupText parse(String message) {
         String text = message == null ? "" : message.trim();
+        Matcher away = TAKE_AWAY.matcher(text);
+        if (away.matches()) {
+            return new SetupText("Togli i pezzi dalle case rosse (" + away.group(1) + ")", null, away.group(3),
+                    "Poi " + away.group(2));
+        }
         Matcher m = GUIDED.matcher(text);
         if (!m.matches()) {
             return new SetupText(text, null, null, null);
