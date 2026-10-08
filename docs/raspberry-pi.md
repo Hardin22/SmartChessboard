@@ -27,9 +27,10 @@ inside the app jar, no separate install. Engines: `scripts/install-engines.sh` (
 build, checked) instead of the older apt package.
 
 Integrated browser (chess.com / Lichess pages): on the first use it downloads its Chromium bundle
-(~150 MB download, 440 MB in `~/.jcef-bundle-v141`); restart the app once afterwards, because on arm64
-`run_pi.sh` must preload `libcef.so`. Raspberry Pi OS *desktop* already has the libraries it needs; on
-*Lite* install `libnss3 libatk-bridge2.0-0 libcups2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1`.
+(~150 MB download, ~450 MB in `~/.jcef-bundle-<version>`); restart the app once afterwards (the app offers the
+button), because on arm64 `run_pi.sh` must preload `libcef.so`. Raspberry Pi OS *desktop* already has the libraries
+it needs; on *Lite* install `libnss3 libatk-bridge2.0-0 libcups2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2
+libgbm1`. `scripts/pi-check-browser.sh` checks all of it on the Pi and writes a report (see docs/browser.md).
 
 Display: set the monitor orientation in *Screen Configuration* (or `wlr-randr --output HDMI-A-1 --transform 90`).
 The app uses the whole screen and also works on a landscape 1920x720 or a desktop window.

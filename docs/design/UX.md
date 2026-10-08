@@ -169,6 +169,9 @@ Senza scacchiera collegata si può muovere toccando lo schermo (pezzo → punti 
 - **Coordinate**: Dal Bianco / Dal Nero e due riquadri (Trova la casa · Nomina la casa) con il record; la scacchiera
   è disegnata **senza coordinate**, come quella vera; il nome da trovare è enorme (140 px), le quattro risposte sono
   pulsanti da 112 px.
+- **Analisi libera**: dall'hub si compone una posizione nell'editor («Analizza questa posizione») e la si studia
+  nella schermata della revisione in modalità analisi: niente precisione né lista della partita, linee del computer,
+  mosse più giocate e varianti provate sullo schermo o con i pezzi veri (menu ⋯ → la scacchiera segue l'analisi).
 
 ### Statistiche
 - Periodo (Sempre · 30 giorni · 7 giorni) e, in carte: **Risultati** (percentuale dei punti enorme, barra

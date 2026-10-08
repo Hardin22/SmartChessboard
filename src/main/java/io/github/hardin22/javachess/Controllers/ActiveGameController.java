@@ -704,8 +704,7 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
                     I18n.t("game.status.aligned"), null);
         } else {
             content = switch (status.kind()) {
-                case SETUP -> StatusCard.Content.of(Tone.ACTION, I18n.t("game.status.setup.kicker"),
-                        I18n.t("game.status.setup"), pretty(status.text()));
+                case SETUP -> setupCard(status.text(), pretty(status.text()));
                 case RESYNC -> StatusCard.Content.of(Tone.ACTION, I18n.t("game.status.resync.kicker"),
                         I18n.t("game.status.resync"), resyncDetail(status.text()));
                 case ENGINE -> engineCard();
@@ -721,6 +720,20 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
             };
         }
         solo.status.show(content);
+    }
+
+    /**
+     * Set-up card. Guided set-up (one kind of piece at a time): "Prepara la scacchiera · passo 4 di 9", "Posiziona le
+     * Torri nere" and the squares written big, as the computer's moves are.
+     */
+    static StatusCard.Content setupCard(String text, String pretty) {
+        SetupText t = SetupText.parse(text);
+        if (!t.guided()) {
+            return StatusCard.Content.of(Tone.ACTION, I18n.t("game.status.setup.kicker"), I18n.t("game.status.setup"),
+                    pretty);
+        }
+        return new StatusCard.Content(Tone.ACTION, I18n.t("game.status.setup") + " · " + t.step(), t.title(),
+                t.squares(), t.rest(), List.of());
     }
 
     private StatusCard.Content turnCard(boolean humanTurn, String lastMove) {

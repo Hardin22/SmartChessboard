@@ -52,6 +52,11 @@ public class PositionEditor extends VBox {
 
     /** @param onUse receives the checked FEN when the player taps "Usa questa posizione" */
     public PositionEditor(String fen, Consumer<String> onUse) {
+        this(fen, onUse, I18n.t("setup.position.use"));
+    }
+
+    /** Same, with another text on the confirm button ("Analizza questa posizione"). */
+    public PositionEditor(String fen, Consumer<String> onUse, String useText) {
         super(16);
         board = new ChessBoardUI(BoardThemes.currentBoard(), BoardThemes.currentPieces(), 70);
         board.setShowCoordinates(true);
@@ -115,7 +120,7 @@ public class PositionEditor extends VBox {
         Button fenButton = Ui.toolButton(I18n.t("setup.position.fen"), "fth-type", () -> showFen(true));
         HBox tools = Ui.equalRow(12, clear, initial, flip, fenButton);
 
-        use = Ui.wide(I18n.t("setup.position.use"), "fth-check", "btn-primary", "btn-lg");
+        use = Ui.wide(useText, "fth-check", "btn-primary", "btn-lg");
         use.setOnAction(e -> {
             if (result != null && result.ok()) {
                 onUse.accept(result.fen());
