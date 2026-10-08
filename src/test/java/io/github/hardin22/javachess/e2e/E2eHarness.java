@@ -275,6 +275,17 @@ final class E2eHarness {
         });
     }
 
+    /** Fires the last visible, enabled button with this text if there is one now (no waiting). */
+    void fireButtonIfPresent(String text) throws Exception {
+        fx(() -> {
+            List<Button> found = buttons(text);
+            if (!found.isEmpty()) {
+                found.get(found.size() - 1).fire();
+            }
+            return null;
+        });
+    }
+
     private List<Button> buttons(String text) {
         List<Button> out = new ArrayList<>();
         collect(stage.getScene().getRoot(), text, out);
