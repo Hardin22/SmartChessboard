@@ -404,4 +404,23 @@ class BrowserSessionTest {
             assertFalse(a.label().startsWith("browser."), a.name());
         }
     }
+
+    @Test
+    void aFollowedBoardScrolledOutOfViewIsBroughtBack() {
+        // chess.com's /play/computer at 720 px (recorded fixture): the board is 645 px above the visible page
+        ready();
+        BoardSnapshot s = BoardProbe.parse(BoardProbeTest.fixture("chesscom-play-computer-720"));
+        session.pageLoading(s.url());
+        session.pageLoaded(s.url(), 200);
+        commands.clear();
+        session.onSnapshot(s);
+        assertEquals(BrowserStatus.State.READING, state(), "followed at once");
+        assertTrue(commands.contains("show"), "brought into view: " + commands);
+        commands.clear();
+        session.onSnapshot(s);
+        assertFalse(commands.contains("show"), "not again at once");
+        clock.addAndGet(BrowserSession.SHOW_BOARD_EVERY_MS);
+        session.onSnapshot(s);
+        assertTrue(commands.contains("show"), "again later while it stays away");
+    }
 }

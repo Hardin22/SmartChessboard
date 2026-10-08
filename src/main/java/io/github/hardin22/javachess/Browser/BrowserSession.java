@@ -119,6 +119,9 @@ public final class BrowserSession {
     private long verificationSince;
     private HandsOff handsOff;
     private long readingSince = -1;
+    private long lastShowBoard = Long.MIN_VALUE;
+    /** While the board is followed and scrolled out of view, it is brought back at most this often. */
+    static final long SHOW_BOARD_EVERY_MS = 3_000;
     private int readingRetries;
     private boolean readingStuckLogged;
 
@@ -377,6 +380,7 @@ public final class BrowserSession {
             if (!sync.isActive() && !pausedOnPage && visible && isMainBoard(s) && info.kind().syncsAutomatically()) {
                 startSync(info);
             }
+            keepBoardInView(s);
             sync.tick();
         });
     }
@@ -437,6 +441,24 @@ public final class BrowserSession {
         readingSince = clock.getAsLong();
         readingRetries = 0;
         readingStuckLogged = false;
+    }
+
+    /**
+     * The followed board scrolled out of view (chess.com's /play/computer scrolls it away at 720 px): the player
+     * must see it, so the page is scrolled back to it, at most every {@link #SHOW_BOARD_EVERY_MS}.
+     */
+    private void keepBoardInView(BoardSnapshot s) {
+        BoardSnapshot.BoardView b = s.board();
+        if (!sync.isActive() || b == null || s.viewportWidth() <= 0
+                || b.rect().mostlyInside(s.viewportWidth(), s.viewportHeight())) {
+            return;
+        }
+        long now = clock.getAsLong();
+        if (lastShowBoard == Long.MIN_VALUE || now - lastShowBoard >= SHOW_BOARD_EVERY_MS) {
+            lastShowBoard = now;
+            log.info("The followed board is out of view ({}): showing it", b.rect());
+            commands.showBoard();
+        }
     }
 
     /** Milliseconds the synchronisation has been waiting for its first reading of the board (-1 when not). */
