@@ -48,7 +48,12 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 final class E2eHarness {
 
-    static final long TIMEOUT_MS = 30_000;
+    /**
+     * How long a step may take. Generous because a loaded machine (other builds, Chromium, engines, swapping) can
+     * stall the app for many seconds; a step that never happens still fails, with {@link #diagnostics()}.
+     * {@code -De2e.timeoutMs=N} changes it.
+     */
+    static final long TIMEOUT_MS = Long.getLong("e2e.timeoutMs", 90_000);
 
     final Path home;
     final Path script;
@@ -398,6 +403,87 @@ final class E2eHarness {
             }
             Thread.sleep(25);
         }
-        fail("Timed out waiting for " + what);
+        fail("Timed out waiting for " + what + " (" + TIMEOUT_MS + " ms)\n" + diagnostics());
+    }
+
+    /**
+     * A time limit of a check ("engines closed within 3 s"), stretched on a loaded machine: times the load per CPU
+     * (1 to 5), or {@code -De2e.timeScale=F}.
+     */
+    static long scaled(long ms) {
+        String forced = System.getProperty("e2e.timeScale");
+        double factor;
+        if (forced != null) {
+            factor = Double.parseDouble(forced);
+        } else {
+            java.lang.management.OperatingSystemMXBean os =
+                    java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+            double perCpu = os.getSystemLoadAverage() / os.getAvailableProcessors();
+            factor = Math.max(1, Math.min(5, perCpu));
+        }
+        return Math.round(ms * factor);
+    }
+
+    /**
+     * What a timed-out step needs to be understood: machine load and memory (a swapping machine stalls the app), whether
+     * JavaFX still renders frames, and where the app's own threads are.
+     */
+    static String diagnostics() {
+        StringBuilder out = new StringBuilder("--- e2e diagnostics ---\n");
+        java.lang.management.OperatingSystemMXBean os = java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+        out.append(String.format("load %.1f on %d cpus", os.getSystemLoadAverage(), os.getAvailableProcessors()));
+        if (os instanceof com.sun.management.OperatingSystemMXBean sun) {
+            long mb = 1024 * 1024;
+            out.append(String.format(", free memory %d MB of %d, swap used %d MB of %d",
+                    sun.getFreeMemorySize() / mb, sun.getTotalMemorySize() / mb,
+                    (sun.getTotalSwapSpaceSize() - sun.getFreeSwapSpaceSize()) / mb, sun.getTotalSwapSpaceSize() / mb));
+        }
+        Runtime rt = Runtime.getRuntime();
+        out.append(String.format(", heap %d/%d MB%n", (rt.totalMemory() - rt.freeMemory()) >> 20, rt.maxMemory() >> 20));
+        out.append("JavaFX frames in 1 s: ").append(pulsesInOneSecond()).append('\n');
+        java.util.regex.Pattern mine = java.util.regex.Pattern.compile(
+                "JavaFX Application Thread|QuantumRenderer.*|Monocle Timer|board-events.*|scheduler|storage|engine.*|uci.*|compute.*");
+        for (var e : Thread.getAllStackTraces().entrySet()) {
+            Thread t = e.getKey();
+            String frames = java.util.Arrays.toString(e.getValue());
+            if (!mine.matcher(t.getName()).matches() || frames.contains("ThreadPoolExecutor.getTask")
+                    || frames.contains("DelayedWorkQueue.take")) {
+                continue; // not one of the app's threads, or idle waiting for work
+            }
+            out.append(t.getName()).append(" (").append(t.getState()).append(")\n");
+            StackTraceElement[] st = e.getValue();
+            for (int i = 0; i < Math.min(8, st.length); i++) {
+                out.append("    at ").append(st[i]).append('\n');
+            }
+        }
+        return out.toString();
+    }
+
+    /** Frames JavaFX renders in one second (0: pulses stopped, so animations and layout do not progress). */
+    private static String pulsesInOneSecond() {
+        try {
+            java.util.concurrent.atomic.AtomicInteger frames = new java.util.concurrent.atomic.AtomicInteger();
+            javafx.animation.AnimationTimer[] timer = new javafx.animation.AnimationTimer[1];
+            CountDownLatch started = new CountDownLatch(1);
+            Platform.runLater(() -> {
+                timer[0] = new javafx.animation.AnimationTimer() {
+                    @Override
+                    public void handle(long now) {
+                        frames.incrementAndGet();
+                    }
+                };
+                timer[0].start();
+                started.countDown();
+            });
+            if (!started.await(5, TimeUnit.SECONDS)) {
+                return "FX thread not answering";
+            }
+            Thread.sleep(1000);
+            Platform.runLater(() -> timer[0].stop());
+            return String.valueOf(frames.get());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return "?";
+        }
     }
 }

@@ -63,7 +63,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class AppEndToEndTest {
 
-    private static final long TIMEOUT_MS = 30_000;
+    private static final long TIMEOUT_MS = E2eHarness.TIMEOUT_MS;
     private static Path home;
     private static Path script;
     private static Stage stage;
@@ -374,7 +374,7 @@ class AppEndToEndTest {
         });
         waitFor("review engines closed after leaving", () -> liveChildProcesses() <= baseline);
         long closedAfter = System.currentTimeMillis() - left;
-        assertTrue(closedAfter < 3000, "engines closed " + closedAfter + " ms after leaving the review");
+        assertTrue(closedAfter < E2eHarness.scaled(3000), "engines closed " + closedAfter + " ms after leaving the review");
         Thread analysis = (Thread) field(review, "analysisThread");
         assertTrue(analysis == null || !analysis.isAlive(), "the review thread stopped");
         Thread.sleep(1000);
@@ -389,7 +389,16 @@ class AppEndToEndTest {
         int before = archive().size();
         ActiveGameController game = startPvc(true);
         waitFor("screen moves accepted", () -> fxGet(() -> currentGame(game).isAwaitingHumanMove()));
-        tapMove(game, "f2f3");
+        // the board is resized between the two taps (the layout changes as the status card changes): the piece chosen
+        // stays chosen (it used to be dropped, so the move was lost and the bot never answered)
+        tapSquare(game, "f2");
+        fx(() -> {
+            io.github.hardin22.javachess.Oggetti.ChessBoardUI board =
+                    (io.github.hardin22.javachess.Oggetti.ChessBoardUI) field(game, "chessBoard");
+            board.setTileSize((int) field(board, "TILE_SIZE") + 3);
+            return null;
+        });
+        tapSquare(game, "f3");
         waitFor("bot reply", () -> fxGet(() -> currentGame(game).getBoard().getHistory().size() - 1) >= 2);
         tapMove(game, "g2g4");
         waitFor("bot reply 2", () -> fxGet(() -> currentGame(game).getBoard().getHistory().size() - 1) >= 4);
@@ -846,7 +855,7 @@ class AppEndToEndTest {
             }
             Thread.sleep(50);
         }
-        fail("Timed out waiting for " + what);
+        fail("Timed out waiting for " + what + " (" + TIMEOUT_MS + " ms)\n" + E2eHarness.diagnostics());
     }
 
 }

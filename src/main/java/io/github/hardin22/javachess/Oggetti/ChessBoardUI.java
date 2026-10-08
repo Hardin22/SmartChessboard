@@ -152,7 +152,11 @@ public class ChessBoardUI extends StackPane {
             applyFixedSize();
         }
         stopCurrentAnimation();
-        clearSelection();
+        if (selected != null && moveInput != null) {
+            paintSelection(moveInput.position()); // a layout change between the two taps keeps the piece chosen
+        } else {
+            clearSelection();
+        }
         drawBoardBackground(side, side);
         java.util.Arrays.fill(drawn, null);
         pieceCanvas.getGraphicsContext2D().clearRect(0, 0, side, side);
