@@ -16,7 +16,7 @@ Gravità: **alta** (vicolo cieco, perdita di dati, partita bloccata), **media** 
 | QA-008 | media | logica+UI | Puzzle senza database: "Nessun puzzle trovato con questi filtri" invece di spiegare che mancano i dati | corretto (logica qa + stato vuoto di design) |
 | QA-009 | bassa | UI | Revisione aperta dalla home: "indietro" porta all'archivio | risolto da design (indietro torna alla schermata di provenienza) |
 | QA-010 | bassa | logica | Archivio danneggiato: il dialogo d'errore ricompare a ogni apertura dell'archivio | aperto |
-| QA-011 | media | browser | Partita Lichess (API) lasciata a metà: non archiviata e non abbandonata su Lichess | assegnato a browser |
+| QA-011 | media | logica+browser | Partita Lichess (API) lasciata a metà: non archiviata e non abbandonata su Lichess | corretto: Lichess si gioca nel browser integrato (archiviata come interrotta all'uscita); nel flusso API rimasto in Avanzate "Abbandona" funziona e la partita lasciata si riprende |
 | QA-012 | alta | logica | Kill/spegnimento del Pi a partita in corso: partita persa (lo shutdown hook non salva); nessuna ripresa | logica fatta da features (snapshot a ogni mossa, GameResume); carta in Home a design |
 | QA-013 | media | logica+UI | Nessun abbandono / offerta di patta: "Termina" archivia sempre come interrotta (`*`) | fatto: abbandono e patta nella UI di design, patta col bot (BotDrawPolicy) da features |
 | QA-014 | bassa | logica | Nome dell'apertura solo online (explorer Lichess, che ora chiede un token): offline non compare | fatto da features (libro offline prima dell'explorer) |
@@ -37,6 +37,7 @@ Gravità: **alta** (vicolo cieco, perdita di dati, partita bloccata), **media** 
 | QA-030 | bassa | logica | PvP in pausa: una mossa sulla scacchiera veniva accettata e faceva ripartire gli orologi | corretto |
 | QA-031 | bassa | logica | PvC con orologio: la cadenza non veniva salvata nell'archivio (né nel PGN) | corretto |
 | QA-032 | bassa | logica | Impostazione cambiata e partita avviata subito dopo: poteva valere ancora il valore vecchio (scrittura in coda dietro all'archivio) | corretto |
+| QA-033 | media | test/sicurezza dati | Prove e E2E con cartella dati temporanea: l'export "su chiavetta" vedeva (e scriveva su) ogni disco montato in /Volumes del Mac | corretto (`-Djavachess.usbRoots`, usato dagli E2E) |
 | QA-029 | media | logica (Home) | Tornando in Home la carta "Riprendi" della visita precedente resta attiva finché i dati non sono ricaricati: si riprendeva la partita sbagliata | corretto (design informato) |
 
 ---
@@ -114,6 +115,14 @@ apertura (`ArchiveController.readRows` lo mostra sempre).
 **Passi**: Home → Lichess con partita API in corso → indietro → Termina: `OnlineGame.endGame(…, false)` ferma lo
 stream; la partita non va in archivio e su Lichess resta aperta finché scade il tempo. Il brief browser sposta
 Lichess nel browser integrato: da verificare lì.
+
+**Verifica dopo l'integrazione di browser/v2 (8 ottobre)**: Home → Online → Lichess apre lichess.org nel browser
+integrato; tornando alla Home una partita seguita viene archiviata come interrotta (`OnlineGameSync.stop`, coperto dai
+test di browser), alla chiusura dell'app `BrowserController.onAppExit`. Il vecchio flusso via API resta in Impostazioni
+→ Avanzate → "Lichess API": lì il pulsante "Abbandona" era disabilitato e uscendo la partita restava aperta su Lichess
+senza modo di tornarci. Ora "Abbandona" (con conferma) invia l'abbandono, o l'annullamento se non hanno ancora mosso
+entrambi (Lichess rifiuta l'abbandono), e la fine arriva dallo stream e va in archivio; la voce delle Avanzate passa da
+`openLichess()`, che riprende una partita in corso. Test `LichessGameManagerTest`.
 
 ## QA-012 · Partita persa con kill / spegnimento (alta, logica)
 **Passi**: partita in corso → `kill <pid>` (o spegnimento del Pi): lo shutdown hook spegne i LED ma non archivia
@@ -221,3 +230,10 @@ dietro a un salvataggio lungo dell'archivio (7 MB con 3000 partite, più lento s
 ("Suggerimenti", "Valutazione"…) poteva non valere ancora per la partita avviata subito dopo. Ora il valore cambia
 subito in memoria (`ConfigManager.setPropertiesInMemory`) e solo la scrittura va in coda (`flush`). Test
 `ConfigManagerTest.aValueSetInMemoryIsReadAtOnceAndWrittenOnFlush`.
+
+## QA-033 · Chiavette del Mac nelle prove (media, test/sicurezza dati)
+`PgnTransfer` cerca le chiavette in `/Volumes` (macOS) o `/media` (Pi) anche quando l'app gira con una cartella dati
+temporanea (E2E, prove, snapshot): un test o un monkey che tocca "Esporta su chiavetta" scriveva
+`javachess-partite-<data>.pgn` su un disco vero del Mac. Ora `-Djavachess.usbRoots=<cartelle>` sostituisce i punti di
+montaggio; l'harness E2E usa `<home>/usb` (e una cartella JCEF vuota, così i test non caricano mai il Chromium del
+computer). Test `PgnTransferTest.usbRootsPropertyReplacesTheDrivesOfThisComputer`.
