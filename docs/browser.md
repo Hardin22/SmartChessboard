@@ -148,6 +148,27 @@ session expires the login page comes back; the app can then type the login for y
   shows, reading problems, the synchronisation) into one `BrowserStatus`: title, sentence, tone, progress, actions.
   The bar above the page (`BrowserBar`, Swing) and the JavaFX browser view show it.
 
+### Shutting Chromium down
+
+On macOS Chromium is **never disposed**: JCEF runs its shutdown on the Swing thread, which closes Cocoa windows
+outside the main thread, and macOS 27 aborts the process for that ("Must only be used from the main thread"). The
+jcefmaven library even registers a JVM shutdown hook that does it, so any process that had opened the browser could
+crash on exit now and then (4 crashes in the test runs of the night of 7-8 October 2026). `JcefRuntime` starts
+Chromium without that hook (`CefInitializer` instead of `CefAppBuilder.build()`) and its own hook only writes the
+cookies to disk, then lets Chromium end with the process; on Linux it still disposes Chromium. When macOS asks the
+app to quit through Chromium (Cmd+Q) the app quits its own way (`JcefRuntime.setQuitHandler`).
+
+Cookies (the login) are written to disk by Chromium only every ~30 s, so the app asks for it after every page load
+and when the user leaves the browser screen: a login survives even if the app is closed right after it. The flush is
+never waited for on the macOS main thread (JavaFX's thread there) nor on the Swing thread, which have to deliver it.
+
+A crash has a second cost on macOS: until someone answers the "reopen the windows?" alert that follows it, every new
+`java` process that starts AWT by itself hangs (`NSPersistentUIRestorer promptToIgnorePersistentStateWithCrashHistory`).
+The app is not affected (JavaFX starts first), test JVMs are: surefire sets `-Dapple.awt.UIElement=true`, which also
+keeps their Dock icons away. `JcefShutdownJcefE2E` starts Chromium in child JVMs and checks every way out (quit with
+the page open, without any shutdown call, after hiding the window, after closing the page) ends with status 0 and no
+crash report.
+
 ### Why the page markup is the default
 
 Field trials (below) on both sites, against the computer opponents, in the Raspberry-Pi-like box: the markup was
@@ -211,9 +232,9 @@ translucent "glass" queen read with the wrong colour. The start position is reco
   board, the watcher with a fake site, the synchronisation in every game situation (also with the real board
   manager, the simulated sensor board and BotMover), the state machine and its messages (fitting a 720 px screen),
   saved logins, the start-up logic.
-- Real Chromium on a local page that imitates both sites' markup and, like them, ignores untrusted events:
-  `./mvnw test -DskipE2E=true -DskipJcefE2E=false -Dtest=BrowserJcefE2E` (needs a display; add
-  `-Djavachess.jcef.dir=...` to reuse a downloaded engine).
+- Real Chromium on a local page that imitates both sites' markup and, like them, ignores untrusted events, and the
+  ways Chromium ends: `./mvnw test -DskipE2E=true -DskipJcefE2E=false -Dsurefire.failIfNoSpecifiedTests=false
+  -Dtest='*JcefE2E'` (needs a display; add `-Djavachess.jcef.dir=...` to reuse a downloaded engine).
 - Vision battery: `VisionBatteryTest` (committed core set) and an extended set downloaded by `BatteryDownload` (the
   sites' own board renders in many themes and piece sets, kept out of the repository) or captured in the trials.
 - Field trials against the sites' computer opponents (never people), as an anonymous guest:
@@ -224,5 +245,12 @@ translucent "glass" queen read with the wrong colour. The start position is reco
 - `-Djavachess.browser.snapshot=out.png` writes a picture of the browser window (bar + page).
 - `-Djavachess.vision.debug=true` writes the vision model's detections to `~/.javachess/vision-debug/`.
 - Chromium's own log: `~/.javachess/logs/chromium.log`.
+- `Vision showed the page's position N ms after the page; last polls: ...` (WARN, vision reading modes): vision was
+  more than 3 s behind the page's markup; each line of the trace is one poll (time to read the page, to take the
+  picture, what the vision tracker said: `MOVING` = the picture was still changing).
+- A Java test or tool that hangs at start-up on macOS after a crash: see [Shutting Chromium down](#shutting-chromium-down)
+  (`-Dapple.awt.UIElement=true`, or answer the "reopen windows" alert).
+- Saved logins: with `-Djavachess.home` (tests, trials, screenshots) only the file in that folder is used, never the
+  Keychain / Secret Service; `-Djavachess.credentials=system|file` overrides it.
 - `-Djavachess.jcef.dir=DIR` uses another engine folder; `-Djavachess.browser.osr=true|false` forces off-screen /
   windowed rendering.
