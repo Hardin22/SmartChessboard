@@ -27,6 +27,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class LongRunEndToEndTest {
 
     private static final int MAX_PLIES = 120;
+    /** After each game, a visit of the other screens (review with a full analysis started and left, statistics...). */
+    private static final boolean TOUR = !"false".equals(System.getProperty("javachess.e2e.longrun.tour"));
+    private static final List<String> TOUR_SCREENS = List.of("STATS", "ARCHIVE", "TRAINER", "PUZZLE_DASHBOARD",
+            "SETTINGS", "THEME", "PVC_SETUP", "PVP_SETUP", "HOME");
     private static E2eHarness app;
 
     @BeforeAll
@@ -112,13 +116,16 @@ class LongRunEndToEndTest {
                 return null;
             });
             waitForMode(BoardStateManager.Mode.IDLE);
+            if (TOUR) {
+                tourOfTheOtherScreens(archivedBefore + g + 1);
+            }
         }
         long seconds = (System.currentTimeMillis() - start) / 1000;
         probe.stop();
         waitFor("every game archived", () -> archive().size() == archivedBefore + games);
         Usage after = Usage.now();
         histogram("after");
-        String report = String.format("%d games (%d finished) in %d s; threads %d -> %d, non-daemon %d -> %d, "
+        String report = String.format("%d games (%d finished, tour " + TOUR + ") in %d s; threads %d -> %d, non-daemon %d -> %d, "
                         + "child processes %d -> %d, heap after GC %d MB -> %d MB; FX thread latency %s%n"
                         + "threads before %s%nthreads after  %s",
                 games, finished, seconds, baseline.threads(), after.threads(), baseline.nonDaemon(), after.nonDaemon(),
@@ -198,6 +205,37 @@ class LongRunEndToEndTest {
             System.out.println("[long run] heap histogram " + when + ":\n" + String.join("\n", lines));
         } catch (Exception e) {
             System.out.println("[long run] no histogram: " + e);
+        }
+    }
+
+    /**
+     * What a player does between games: reviews the game just played (the full analysis starts and is left half way,
+     * which must close its engines), then looks at the statistics, the archive, the mistake trainer, the puzzles,
+     * the settings and the themes.
+     */
+    private static void tourOfTheOtherScreens(int archived) throws Exception {
+        waitFor("game archived", () -> archive().size() >= archived);
+        io.github.hardin22.javachess.Oggetti.ArchivedGame last = archive().list().stream()
+                .max(java.util.Comparator.comparingInt(io.github.hardin22.javachess.Oggetti.ArchivedGame::id))
+                .orElseThrow();
+        fx(() -> {
+            io.github.hardin22.javachess.Controllers.ReviewController.open(app.main, last);
+            return null;
+        });
+        io.github.hardin22.javachess.Controllers.ReviewController review =
+                (io.github.hardin22.javachess.Controllers.ReviewController) fxGet(() -> app.main.getController("REVIEW"));
+        fx(() -> {
+            review.goTo(Math.min(8, last.movesUci().size()));
+            review.analyze();
+            return null;
+        });
+        Thread.sleep(400);
+        for (String screen : TOUR_SCREENS) {
+            fx(() -> {
+                app.main.navigateTo(screen);
+                return null;
+            });
+            Thread.sleep(80);
         }
     }
 
