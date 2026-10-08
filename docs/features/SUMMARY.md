@@ -115,7 +115,9 @@ Specifiche per design: [04 guida LED e aperture](specs/04-board-guide-and-openin
 | H6 | **Prova della scacchiera**: LED (colori e ordine a1→h8) e 64 sensori | fatto · UI | `Hardware.BoardDiagnostics` |
 | R9 | **Partita sul telefono**: link all'analisi di lichess (mosse nell'indirizzo, nessun caricamento) e codice QR | fatto · UI | `Stats.GameLinks` (dipendenza zxing core 3.5.3, Apache-2.0) |
 | P11 | **Partite con vantaggio** (senza pedone f, Cavallo, Torre, Donna, Donna e Torre) per entrambi i colori | fatto · UI | `Play.OddsPresets` |
-| P9 | Rivincita a colori invertiti | proposta a design (flusso) | spec 06 §4 |
+| P9 | Rivincita a colori invertiti | fatto **da design** (`ActiveGameController.rematchPvc`), verificato con un E2E | spec 06 §4 |
+| P10 | **Ritiro con i pezzi** (stile DGT) contro il computer: rimettere indietro la risposta del computer e poi la propria mossa annulla come il pulsante; mentre il computer pensa basta la propria | fatto, attivo | `BoardStateManager.setTakebackGesture`, `PvcGame.updateTakebackGesture` |
+| H7 | La scacchiera ricorda quali pezzi ha sopra anche quando la partita cambia posizione prima della disposizione (partita da posizione): guida e pezzi sbagliati funzionano anche lì; durante la disposizione lo schermo disegna i pezzi veri | fatto, attivo | `BoardStateManager` (posizione mostrata) |
 
 Verifiche: test unitari per ogni classe nuova (con la scacchiera simulata e il gestore vero per guida, ritiro,
 aperture, coordinate, prova); le 10 posizioni dei finali giocate con Stockfish da entrambe le parti: tutte risolte
@@ -125,7 +127,6 @@ case rosse (26), poi il Re bianco in g1 · passo 1 di 6". Un test instabile trov
 (`CoordinateTrainerTest`) era una vera corsa di ordinamento: le proprietà ora pubblicano contatori e stato per
 ultimi (20/20 da solo, 15/15 sotto carico).
 
-Non fatto: **P10** (ritiro riconosciuto rimettendo indietro i pezzi): con i soli sensori di presenza, contro il
-computer servirebbe riconoscere due semimosse disfatte; resta il pulsante Annulla con guida LED. **Chess960**:
+Non fatto: **Chess960**:
 richiede arrocchi 960 nel riconoscitore di mosse e nel motore, lavoro da pianificare a parte. **Puzzle del giorno
 offline**: esiste quello online (`PuzzleService.fetchDailyPuzzle`, non collegato).
