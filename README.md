@@ -31,6 +31,13 @@ how most development happens.
   <img src="docs/screenshots/archive.png" width="19%" alt="Archive">
 </p>
 <p align="center">
+  <img src="docs/screenshots/pvc-hint.png" width="19%" alt="Hint on request: the move as an arrow">
+  <img src="docs/screenshots/trainer-wrong.png" width="19%" alt="Replay your mistakes">
+  <img src="docs/screenshots/stats.png" width="19%" alt="Statistics">
+  <img src="docs/screenshots/rush.png" width="19%" alt="Timed puzzle series">
+  <img src="docs/screenshots/position.png" width="19%" alt="Starting position editor">
+</p>
+<p align="center">
   <img src="docs/screenshots/pvp-landscape.png" width="80%" alt="Two players on a 1920x720 landscape display">
 </p>
 
