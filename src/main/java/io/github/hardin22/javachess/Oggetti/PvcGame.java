@@ -103,6 +103,7 @@ public class PvcGame extends AbstractGame {
                 manager.startGameMode(); // ACTIVATE GAME MODE
                 boardReady = true;
                 startTurnClock();
+                updateTakebackGesture();
 
                 // the bot moves first when it is its turn (Black chosen, a position or a resumed game)
                 if (board.getSideToMove() != humanSide()) {
@@ -176,6 +177,7 @@ public class PvcGame extends AbstractGame {
                 io.github.hardin22.javachess.Controllers.ArduinoController.getInstance()
                         .getBoardStateManager()
                         .setLogicalBoard(board);
+                updateTakebackGesture();
 
                 final Move finalMove = move;
                 Platform.runLater(() -> chessBoardUI.setPosition(board.getFen(), finalMove));
@@ -293,6 +295,7 @@ public class PvcGame extends AbstractGame {
         io.github.hardin22.javachess.Controllers.ArduinoController.getInstance()
                 .getBoardStateManager()
                 .startBotMoveReplication(finalBestMove.getFrom().name(), finalBestMove.getTo().name());
+        updateTakebackGesture();
         if (board.isMated()) {
             notifyMate(); // Trigger Victory Animation
             String winner = board.getSideToMove().flip() == Side.WHITE ? "Bianco" : "Nero";
@@ -468,6 +471,11 @@ public class PvcGame extends AbstractGame {
      * Clocks keep their times. Returns false when there is nothing to take back.
      */
     public boolean takeBack() {
+        return takeBack(false);
+    }
+
+    /** {@code onBoard}: the player already put the pieces back (take-back made with the pieces). */
+    private boolean takeBack(boolean onBoard) {
         int plies = gameRunning ? pliesToTakeBack() : 0;
         if (plies == 0 || !undoPlies(plies)) {
             return false;
@@ -479,10 +487,47 @@ public class PvcGame extends AbstractGame {
             clock.start(humanSide());
         }
         updateOpeningLabel(openingPvc);
-        updateStatus("Mossa annullata: rimetti i pezzi come sullo schermo");
+        updateStatus(onBoard ? "Mossa annullata sulla scacchiera: tocca a te"
+                : "Mossa annullata: rimetti i pezzi come sullo schermo");
         evaluatePositionAndMoves();
         saveSnapshot();
+        updateTakebackGesture();
         return true;
+    }
+
+    /**
+     * Take-back with the pieces (as on a DGT board): putting the computer's answer and then the player's own move
+     * back on the board takes them back, like the Annulla button. The board manager is told the positions on the
+     * way; with the pieces, the answer has to go back first (the player's own move back alone would be a legal
+     * move). While the computer thinks, the player's move back alone is enough.
+     */
+    private void updateTakebackGesture() {
+        io.github.hardin22.javachess.Services.BoardStateManager manager =
+                io.github.hardin22.javachess.Controllers.ArduinoController.getInstance().getBoardStateManager();
+        int plies = gameRunning ? pliesToTakeBack() : 0;
+        if (plies == 0) {
+            manager.setTakebackGesture(java.util.List.of(), null);
+            return;
+        }
+        java.util.List<Board> path = new java.util.ArrayList<>();
+        for (int k = 1; k <= plies; k++) {
+            path.add(positionBefore(k));
+        }
+        manager.setTakebackGesture(path, () -> {
+            if (gameRunning && pliesToTakeBack() == plies) {
+                takeBack(true);
+            }
+        });
+    }
+
+    /** The position {@code plies} half-moves ago, replayed from the start. */
+    private Board positionBefore(int plies) {
+        Board replay = new Board();
+        replay.loadFromFen(initialFen);
+        for (int i = 0; i < movesUci.size() - plies; i++) {
+            replay.doMove(io.github.hardin22.javachess.Analysis.MoveText.legal(replay, movesUci.get(i)));
+        }
+        return replay;
     }
 
     /**

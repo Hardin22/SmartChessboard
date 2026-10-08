@@ -117,6 +117,64 @@ class BoardStateManagerTest {
         return leds.composeNow()[Squares.parse(square)];
     }
 
+    // --- take-back with the pieces ----------------------------------------------------------------------------
+
+    static final String AFTER_E4 = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1";
+    static final String AFTER_E4_E5 = "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2";
+
+    private static Board at(String fen) {
+        Board b = new Board();
+        b.loadFromFen(fen);
+        return b;
+    }
+
+    @Test
+    void puttingTheAnswerAndThenTheOwnMoveBackTakesThemBack() throws InterruptedException {
+        play(AFTER_E4_E5);
+        manager.setPhysicalMoveSide(Side.WHITE);
+        manager.setTakebackSettleMs(30);
+        manager.setTakebackGesture(List.of(at(AFTER_E4), new Board()), () -> events.add("takeback"));
+        sim.lift("e5");
+        sim.place("e7"); // the computer's answer goes back first: not a stray piece
+        settle(ERROR_SETTLE * 2);
+        assertFalse(events.stream().anyMatch(e -> e.startsWith("error")), events.toString());
+        assertFalse(events.contains("takeback"));
+        sim.lift("e4");
+        sim.place("e2");
+        settle(100);
+        assertEquals(List.of("takeback"), events.stream().filter(e -> !e.startsWith("error")).toList());
+        assertTrue(moves().isEmpty());
+    }
+
+    @Test
+    void takingBackTheOwnMoveWhileTheAnswerIsStillToReproduce() throws InterruptedException {
+        play(AFTER_E4);
+        manager.setLogicalBoard(at(AFTER_E4_E5));
+        manager.startBotMoveReplication("E7", "E5");
+        manager.setTakebackSettleMs(30);
+        manager.setTakebackGesture(List.of(at(AFTER_E4), new Board()), () -> events.add("takeback"));
+        settle();
+        sim.lift("e4");
+        sim.place("e2");
+        settle(100);
+        assertTrue(events.contains("takeback"), events.toString());
+        assertFalse(events.contains("replicated"));
+    }
+
+    @Test
+    void aNewLogicalPositionForgetsTheTakeback() throws InterruptedException {
+        play(AFTER_E4_E5);
+        manager.setTakebackSettleMs(30);
+        manager.setTakebackGesture(List.of(at(AFTER_E4), new Board()), () -> events.add("takeback"));
+        manager.setLogicalBoard(at(AFTER_E4_E5));
+        sim.lift("e5");
+        sim.place("e7");
+        sim.lift("e4");
+        sim.place("e2");
+        settle(100);
+        assertFalse(events.contains("takeback"));
+    }
+
     // --- setup ---------------------------------------------------------------------------------------------
 
     @Test
@@ -210,6 +268,56 @@ class BoardStateManagerTest {
         Board b = new Board();
         b.loadFromFen(fen);
         return b;
+    }
+
+    @Test
+    void aGameThatSetsItsPositionBeforeTheSetUpStillGetsTheWrongPieces() throws InterruptedException {
+        // as PvcGame/PvpGame do: the logical position is the game's before the board is set up
+        String lucena = "1K1k4/1P6/8/8/8/8/r7/2R5 w - - 0 1";
+        manager.setLogicalBoard(board(lucena));
+        manager.setSetupTargetFen(lucena);
+        manager.startSetupMode();
+        settle();
+        assertEquals(LedColors.WRONG, ledAt("b8"), "a knight stands where the white king goes");
+        assertEquals(LedColors.WRONG, ledAt("c1"), "a bishop where the rook goes");
+        assertTrue(events.stream().anyMatch(e -> e.endsWith("poi il Re bianco in b8 · passo 1 di 5")),
+                events.toString());
+    }
+
+    @Test
+    void afterAGameTheBoardIsKnownByItsLastPosition() throws InterruptedException {
+        play(AFTER_E4_E5); // the board shows 1. e4 e5 and the game reads it
+        settle();
+        manager.stopGameMode();
+        manager.setListener(new BoardStateManager.BoardMoveListener() {
+            @Override
+            public void onPhysicalMoveDetected(String from, String to) {
+            }
+
+            @Override
+            public void onBoardSetupComplete() {
+                events.add("setup complete");
+            }
+
+            @Override
+            public void onSetupProgress(String message) {
+                events.add("progress " + message);
+            }
+
+            @Override
+            public void onBoardStateUpdated(String fen, String errorSquare) {
+            }
+
+            @Override
+            public void onBotMoveReplicated() {
+            }
+        });
+        // next: a position with a black queen on e5, where the pawn of the last game stands
+        manager.setSetupTargetFen("4k3/8/8/4q3/4P3/8/8/4K3 w - - 0 1");
+        manager.startSetupMode();
+        settle();
+        assertEquals(LedColors.WRONG, ledAt("e5"), "the pawn of the last game is not the queen");
+        assertEquals(0, ledAt("e4"), "same pawn as in the last game");
     }
 
     @Test

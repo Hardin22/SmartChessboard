@@ -171,6 +171,7 @@ public final class CoordinateTrainer {
         undoSquare = -1;
         if (board != null) {
             board.stopGameMode(); // the board is free: no moves, no set-up
+            board.awaitIdle(); // its "LEDs off" must land before the first square is lit, not after
             board.setSquareListener(this::onSquare);
         }
         clock = clockFactory.get();
