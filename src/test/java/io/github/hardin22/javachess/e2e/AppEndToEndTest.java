@@ -71,6 +71,7 @@ class AppEndToEndTest {
 
     @BeforeAll
     static void startApp() throws Exception {
+        E2eHarness.requireOwnJvm();
         assumeTrue(!System.getProperty("os.name").toLowerCase().contains("win"), "engine wrapper is a shell script");
         home = Files.createTempDirectory("javachess-e2e");
         System.setProperty("javachess.home", home.toString());

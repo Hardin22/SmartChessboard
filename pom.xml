@@ -239,6 +239,11 @@
                             <argLine>-XX:SoftRefLRUPolicyMSPerMB=0 ${e2e.argLine}</argLine>
                             <!-- one JVM per class: each configures the global singletons its own way (board off / sim) -->
                             <reuseForks>false</reuseForks>
+                            <!-- with -Dtest=... surefire ignores the excludes and the unit execution would run the E2E
+                                 classes too, all in one JVM: they skip themselves there (E2eHarness.requireOwnJvm) -->
+                            <systemPropertyVariables combine.children="append">
+                                <e2e.ownJvm>true</e2e.ownJvm>
+                            </systemPropertyVariables>
                             <excludes combine.self="override"/>
                             <includes>
                                 <include>**/e2e/**/*Test.java</include>
@@ -258,6 +263,7 @@
                             <reuseForks>false</reuseForks>
                             <argLine>--add-exports=java.desktop/sun.awt=ALL-UNNAMED --add-opens=java.desktop/sun.awt=ALL-UNNAMED --add-exports=java.desktop/sun.lwawt=ALL-UNNAMED --add-exports=java.desktop/sun.lwawt.macosx=ALL-UNNAMED --add-opens=java.desktop/sun.lwawt=ALL-UNNAMED --add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED</argLine>
                             <systemPropertyVariables combine.children="append">
+                                <e2e.ownJvm>true</e2e.ownJvm>
                                 <java.awt.headless>false</java.awt.headless>
                             </systemPropertyVariables>
                             <excludes combine.self="override"/>

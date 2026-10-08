@@ -85,8 +85,19 @@ final class E2eHarness {
         }
     }
 
+    /**
+     * End-to-end classes run only in their own JVM (surefire executions "e2e" and "jcef-e2e", which set
+     * {@code e2e.ownJvm}). With {@code -Dtest=...} surefire also runs them in the unit-test JVM, several classes
+     * together, where their global singletons (board off / simulated, engines, archive) clash: they skip there.
+     * From an IDE: {@code -De2e.ownJvm=true}.
+     */
+    static void requireOwnJvm() {
+        assumeTrue(Boolean.getBoolean("e2e.ownJvm"), "end-to-end tests run in their own JVM (surefire execution e2e)");
+    }
+
     /** Starts JavaFX and the main layout; skips the test class when there is no display. */
     static E2eHarness start(String boardMode) throws Exception {
+        requireOwnJvm();
         assumeTrue(!System.getProperty("os.name").toLowerCase().contains("win"), "engine wrapper is a shell script");
         Path home = Files.createTempDirectory("javachess-e2e");
         System.setProperty("javachess.home", home.toString());
