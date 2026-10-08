@@ -263,12 +263,20 @@ final class E2eHarness {
         arrangeAs(boardState().logicalFen());
     }
 
-    /** Puts the pieces as in {@code fen} (e.g. the set-up target of a puzzle). */
+    /**
+     * Puts the pieces as in {@code fen} (e.g. the set-up target of a puzzle), like a player: pieces of the wrong
+     * kind on a square of the target (a knight where the king goes, as the manager knows them) are taken away and
+     * the right one put there.
+     */
     static void arrangeAs(String fen) {
         Board position = new Board();
         position.loadFromFen(fen);
         long target = BoardStateManager.occupancy(position);
         SimulatedBoard sim = sim();
+        boardState().awaitIdle(); // the latest set-up target is in
+        for (long bits = boardState().setupWrongSquares(); bits != 0; bits &= bits - 1) {
+            sim.lift(Long.numberOfTrailingZeros(bits));
+        }
         for (long bits = sim.occupancy() & ~target; bits != 0; bits &= bits - 1) {
             sim.lift(Long.numberOfTrailingZeros(bits));
         }

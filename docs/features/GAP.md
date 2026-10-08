@@ -95,3 +95,17 @@ in `docs/features/specs/` mandata alla sessione design. La classificazione della
 - **Revisione** (`-Djavachess.demo=review`): con il nuovo view-model la scheda mostra 2 linee del computer con
   valutazione, mosse in notazione italiana e profondità ("+2.22 13. h5 Dg5 14. Df3 … prof. 22"); il segno della
   seconda linea è stato verificato con Stockfish da riga di comando (stessa posizione, profondità 20).
+
+## Seconda ondata (8 ottobre): mancanze trovate usando l'app sulla scacchiera
+
+| # | Funzione | Priorità | Perché | Stato |
+|---|---|---|---|---|
+| H3 | Disposizione guidata per tipo di pezzo | indispensabile | I sensori vedono solo dove ci sono pezzi: per un puzzle o una posizione d'analisi lo schermo era l'unica guida su *quale* pezzo mettere dove. | fatto |
+| H4 | Pezzi giusti per occupazione ma sbagliati per tipo | indispensabile | Dalla posizione iniziale a un puzzle il gestore diceva "mancano 1" con due Cavalli al posto dei Re. | fatto |
+| H5 | Passo indietro in analisi come mossa al contrario | importante | Tornare indietro di una mossa era una disposizione generica. | fatto |
+| T1 | Allenamento sulle aperture offline | importante | Chessnut/Square Off/chess.com hanno corsi di aperture; qui c'erano già i dati di 3 milioni di partite. | fatto |
+| T3 | Finali contro il motore | importante | Lucena, Philidor, matti di base: allenamento classico, perfetto sulla scacchiera vera. | fatto |
+| T4 | Coordinate con i sensori | bello | Chi gioca su una scacchiera senza coordinate stampate le impara più lentamente. | fatto |
+| H6 | Prova della scacchiera (LED e sensori) | importante | Progetto open source da costruire: serve un collaudo. | fatto |
+| P11 | Partite con vantaggio | bello | Genitore e figlio alla stessa scacchiera. | fatto |
+

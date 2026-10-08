@@ -51,7 +51,12 @@ public final class SimulatorAutoplay {
                 if (mode == BoardStateManager.Mode.SETUP) {
                     Board target = new Board();
                     target.loadFromFen(manager.setupTargetFen());
-                    if (BoardStateManager.occupancy(target) != sim.occupancy()) {
+                    long wrong = manager.setupWrongSquares();
+                    if (BoardStateManager.occupancy(target) != sim.occupancy() || wrong != 0) {
+                        // pieces of the wrong kind go first, as a player swaps a knight for the king
+                        for (long bits = wrong; bits != 0; bits &= bits - 1) {
+                            sim.lift(Long.numberOfTrailingZeros(bits));
+                        }
                         sim.setOccupancy(BoardStateManager.occupancy(target));
                         log.info("Autoplay: pieces set up");
                     }

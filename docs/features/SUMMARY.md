@@ -96,3 +96,36 @@ collegato da design.
   al primo livello del suggerimento la freccia dei "suggerimenti sempre accesi" svela la mossa (proposta: frecce
   continue spente di default nel PvC) e il testo "Mostra la mossa" troncato nel pulsante.
 - Dopo l'integrazione della UI: un E2E sulle nuove schermate (QA) e una taratura a mano dei livelli Elo.
+
+## Seconda ondata (8 ottobre) — la scacchiera fisica al centro
+
+Specifiche per design: [04 guida LED e aperture](specs/04-board-guide-and-openings.md),
+[05 finali e coordinate](specs/05-endgames-and-coordinates.md),
+[06 prova della scacchiera, partita sul telefono, vantaggi](specs/06-board-test-share-odds.md).
+
+| # | Funzione | Stato | Dove |
+|---|---|---|---|
+| H3 | **Disposizione guidata pezzo per pezzo** (un tipo di pezzo alla volta, testo con pezzo e case, "passo i di n") per ogni posizione diversa da quella iniziale: puzzle, ripresa, analisi, editor, browser | fatto, **attivo ovunque** senza UI nuova (interruttore in Impostazioni da collegare) | `Hardware.SetupGuide`, `BoardStateManager.setGuidedSetup/setupStep` |
+| H4 | **Pezzi sbagliati riconosciuti**: se la scacchiera mostra ancora la posizione nota (es. quella iniziale), un Cavallo dove va il Re diventa rosso e va tolto prima | fatto, attivo ovunque | `BoardStateManager.wrongPieces` |
+| H5 | In analisi con la scacchiera, **un passo indietro = la mossa al contrario** sui LED (con il pezzo catturato da rimettere) | fatto, attivo | `BoardFollower.takeBack` |
+| T1 | **Allenamento sulle aperture**, offline: 20 aperture (9 Bianco, 11 Nero), risposte pesate sulle partite reali, teoria dopo l'errore, padronanza per apertura | fatto · UI | `Training.OpeningTrainer`, `OpeningExplorer`, `OpeningCatalog`, `OpeningProgress` |
+| T2 | **Mosse più giocate** in qualunque posizione (prime 20 semimosse, 3 milioni di partite lichess, offline) | fatto · UI (facoltativa in analisi) | `Training.OpeningExplorer` |
+| T3 | **Finali**: 10 posizioni verificate con Stockfish (matti di base, pedoni, torre: Lucena, Philidor) contro il motore, con obiettivo e giudizio automatico | fatto · UI | `Training.EndgameDrills`, `DrillSession`, `DrillProgress` |
+| T4 | **Coordinate** con i sensori: "Trova la casa" (si tocca la casa vera) e "Nomina la casa" (LED acceso, 4 nomi), 30 s, record | fatto · UI | `Training.CoordinateTrainer` |
+| H6 | **Prova della scacchiera**: LED (colori e ordine a1→h8) e 64 sensori | fatto · UI | `Hardware.BoardDiagnostics` |
+| R9 | **Partita sul telefono**: link all'analisi di lichess (mosse nell'indirizzo, nessun caricamento) e codice QR | fatto · UI | `Stats.GameLinks` (dipendenza zxing core 3.5.3, Apache-2.0) |
+| P11 | **Partite con vantaggio** (senza pedone f, Cavallo, Torre, Donna, Donna e Torre) per entrambi i colori | fatto · UI | `Play.OddsPresets` |
+| P9 | Rivincita a colori invertiti | proposta a design (flusso) | spec 06 §4 |
+
+Verifiche: test unitari per ogni classe nuova (con la scacchiera simulata e il gestore vero per guida, ritiro,
+aperture, coordinate, prova); le 10 posizioni dei finali giocate con Stockfish da entrambe le parti: tutte risolte
+nei limiti; i link di lichess aperti nel browser integrato (partita e posizione); il QR riletto dal decodificatore
+nei test; un puzzle nell'app vera (Monocle, scacchiera simulata) mostra "Posiziona i pezzi: togli quelli sulle
+case rosse (26), poi il Re bianco in g1 · passo 1 di 6". Un test instabile trovato dall'orchestratore
+(`CoordinateTrainerTest`) era una vera corsa di ordinamento: le proprietà ora pubblicano contatori e stato per
+ultimi (20/20 da solo, 15/15 sotto carico).
+
+Non fatto: **P10** (ritiro riconosciuto rimettendo indietro i pezzi): con i soli sensori di presenza, contro il
+computer servirebbe riconoscere due semimosse disfatte; resta il pulsante Annulla con guida LED. **Chess960**:
+richiede arrocchi 960 nel riconoscitore di mosse e nel motore, lavoro da pianificare a parte. **Puzzle del giorno
+offline**: esiste quello online (`PuzzleService.fetchDailyPuzzle`, non collegato).
