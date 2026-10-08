@@ -15,7 +15,7 @@ con gravità, passi, area e stato).
 | Corretti da QA (logica, con test) | 18: QA-001 (parte logica), 002, 003, 004, 007, 008 (parte logica), 010, 018, 019, 020, 021, 025, 027, 028, 029, 030, 031 + resync per l'annulla mossa |
 | Assegnati e già risolti | design: 005, 006, 009, 015, 022, 023, 024; features: 012, 013, 014, 026 |
 | Ancora aperti / in corso | design: 008 (schermata senza database), 016 (Riprova), 017 (riquadro partita in corso, con features); browser: 011 |
-| Test | unit 515 (10 skip senza motori), E2E 29 (4 classi), tutti verdi con e senza finestra; nel "Pi in scatola" (Docker linux/arm64, 4 CPU, 2 GB, senza Stockfish) unit 495 (29 skip) ed E2E 28/28 senza finestra |
+| Test | unit 515 (10 skip senza motori), E2E 31 (6 classi), tutti verdi con e senza finestra; nel "Pi in scatola" (Docker linux/arm64, 4 CPU, 2 GB, senza Stockfish) unit 495 (29 skip) ed E2E 28/28 senza finestra |
 
 ## Bug di logica corretti (i più importanti)
 
@@ -47,6 +47,11 @@ con gravità, passi, area e stato).
 - `AppEndToEndTest` (senza scacchiera): in più crash/blocco del motore con ripresa, uscita dalla revisione che chiude
   i motori, partita giocata toccando lo schermo, ogni schermata aperta/ruotata/con cambio tema senza errori nel log,
   partita col bot con orologio archiviata con la sua cadenza.
+- `RandomWalkEndToEndTest` e `SimRandomWalkEndToEndTest` ("monkey" con seme): centinaia di azioni casuali
+  (schermate, partite, mosse con promozioni, annulla, suggerimenti, patte, pause, abbandoni, uscite, revisioni,
+  puzzle, rotazione, tema; sulla scacchiera simulata anche cavo staccato con mosse fatte offline e mosse in pausa);
+  falliscono su qualsiasi ERROR nel log o thread FX bloccato e stampano seme e traccia. 5 semi × 600 e 6 semi ×
+  400-500 azioni puliti.
 - `LongRunEndToEndTest`: 20 partite di fila; thread, processi figli e heap (dopo aver liberato le cache soft)
   restano fermi (es. thread 37→37, processi 2→2, heap 70→72 MB). Con i flag di `run_pi.sh` (512 MB, SerialGC) 30
   partite senza OutOfMemoryError.

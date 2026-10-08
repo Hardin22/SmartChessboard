@@ -218,7 +218,9 @@ with no board and a deterministic UCI engine as a child process, and play: a gam
 stored), the review of an archived game with accuracies, and the archive screen (open, export, delete). Further E2E
 classes play every local mode to the end on the simulated board (`SimBoardEndToEndTest`: moves lifted and placed on
 the sensors, bot moves reproduced, cable unplugged and plugged back, take-back, puzzle set up on the board) and run 20
-games in a row checking that threads, engine processes and heap do not grow (`LongRunEndToEndTest`). They need a
+games in a row checking that threads, engine processes and heap do not grow (`LongRunEndToEndTest`); two seeded
+"monkey" walks (`RandomWalkEndToEndTest` on the screen, `SimRandomWalkEndToEndTest` on the simulated board with the
+cable unplugged now and then) fail on any error in the log and print the seed to replay it. They need a
 display (CI runs everything under `xvfb-run`) or `-De2e.headless=true`; on a machine without a display they are
 skipped. QA notes: [docs/qa](docs/qa/SUMMARY.md).
 
