@@ -122,6 +122,38 @@ final class DevDemos {
                     main.navigateTo("ARCHIVE");
                     later(1.2, () -> lookupFire(main, "archive-search"));
                 }
+                case "browser" -> {
+                    // the start-up view of the integrated browser in a given state, without starting Chromium
+                    main.navigateTo("BROWSER");
+                    var state = io.github.hardin22.javachess.Browser.BrowserStatus.State.valueOf(
+                            System.getProperty("javachess.demo.state", "STARTING"));
+                    double progress = Double.parseDouble(System.getProperty("javachess.demo.progress", "-2"));
+                    List<io.github.hardin22.javachess.Browser.BrowserStatus.Action> actions = new ArrayList<>();
+                    for (String a : System.getProperty("javachess.demo.actions", "").split(",")) {
+                        if (!a.isBlank()) {
+                            actions.add(io.github.hardin22.javachess.Browser.BrowserStatus.Action.valueOf(a.trim()));
+                        }
+                    }
+                    Object[] args = System.getProperty("javachess.demo.args", "").isEmpty() ? new Object[0]
+                            : System.getProperty("javachess.demo.args").split("\\|");
+                    var status = io.github.hardin22.javachess.Browser.BrowserStatus.of(state, progress, actions, args);
+                    later(0.5, () -> ((io.github.hardin22.javachess.Controllers.BrowserController)
+                            main.getController("BROWSER")).devShow(status));
+                }
+                case "settings-online", "settings-login" -> {
+                    main.navigateTo("SETTINGS");
+                    io.github.hardin22.javachess.Controllers.SettingsController settings =
+                            (io.github.hardin22.javachess.Controllers.SettingsController) main.getController("SETTINGS");
+                    later(0.6, () -> {
+                        javafx.scene.Node group = main.getMainContainer().getScene().lookup("#online-login-chess_com");
+                        if (group != null) {
+                            scrollIntoView(group);
+                        }
+                        if (demo.equals("settings-login")) {
+                            settings.openLoginForm(System.getProperty("javachess.demo.site", "chess_com"));
+                        }
+                    });
+                }
                 case "settings-advanced" -> {
                     main.navigateTo("SETTINGS");
                     ((io.github.hardin22.javachess.Controllers.SettingsController) main.getController("SETTINGS"))
@@ -138,6 +170,21 @@ final class DevDemos {
         PauseTransition pause = new PauseTransition(Duration.seconds(seconds));
         pause.setOnFinished(e -> action.run());
         pause.play();
+    }
+
+    /** Scrolls the enclosing scroll pane so that the node is near the top (screenshots of long pages). */
+    private static void scrollIntoView(Node node) {
+        Node p = node.getParent();
+        while (p != null && !(p instanceof javafx.scene.control.ScrollPane)) {
+            p = p.getParent();
+        }
+        if (p instanceof javafx.scene.control.ScrollPane scroll && scroll.getContent() != null) {
+            double contentHeight = scroll.getContent().getBoundsInLocal().getHeight();
+            double viewport = scroll.getViewportBounds().getHeight();
+            javafx.geometry.Bounds b = scroll.getContent().sceneToLocal(node.localToScene(node.getBoundsInLocal()));
+            double target = Math.max(0, b.getMinY() - 160);
+            scroll.setVvalue(contentHeight <= viewport ? 0 : Math.min(1, target / (contentHeight - viewport)));
+        }
     }
 
     /** Fires the node with this id (buttons) or simulates a tap on it. */

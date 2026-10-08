@@ -445,6 +445,18 @@ public class MainController {
     }
 
     /**
+     * Sheet whose content has its own two-column layout for wide windows (a form beside the on-screen keyboard): in
+     * a wide window it may be up to {@code wideMaxWidth} wide instead of 760.
+     */
+    public void showWideSheet(String title, Node content, double wideMaxWidth) {
+        openSheet(title, content, null, false, false);
+        if (isWide() && !sheetLayer.getChildren().isEmpty()
+                && sheetLayer.getChildren().get(0) instanceof Region sheet) {
+            sheet.setMaxWidth(wideMaxWidth);
+        }
+    }
+
+    /**
      * Sheet for the player at the far end of the screen (two-player games): it opens from the top edge, turned
      * towards them.
      */
