@@ -46,6 +46,7 @@ public class SettingsController implements Screen {
     private final Label lichessStatus = Ui.wrap("", "row-sub");
     private final Button lichessButton = Ui.button("", "fth-link", "btn-outline", "btn-md");
     private final VBox accountFields = new VBox(0);
+    private final OnlineSettings online = new OnlineSettings(() -> mainController, loginVault());
     private ToggleButton flippedSwitch;
     private ToggleButton autoRotateSwitch;
     private boolean lichessBusy;
@@ -130,6 +131,9 @@ public class SettingsController implements Screen {
                 stepperBlock(I18n.t("settings.pvpincrement"), I18n.t("settings.pvpincrement.description"),
                         increment));
 
+        // online play: saved logins and board reading of the integrated browser
+        VBox onlineGroup = online.build();
+
         // board and LEDs
         Stepper brightness = new Stepper(10, 100, 10, Prefs.integer("hardware.led.brightness", 100));
         brightness.format(v -> v + "%", null);
@@ -157,6 +161,7 @@ public class SettingsController implements Screen {
                 Ui.sectionLabel(I18n.t("settings.game")), game,
                 Ui.sectionLabel(I18n.t("settings.computer")), computer,
                 Ui.sectionLabel(I18n.t("settings.clock")), clock,
+                Ui.sectionLabel(I18n.t("settings.online")), onlineGroup,
                 Ui.sectionLabel(I18n.t("settings.hardware")), hardware,
                 Ui.sectionLabel(I18n.t("settings.engine")), engine,
                 Ui.sectionLabel(I18n.t("settings.system")), about);
@@ -223,6 +228,7 @@ public class SettingsController implements Screen {
         }
         autoRotateSwitch.setSelected(Prefs.bool(MainController.AUTOROTATE_KEY, true));
         HardwareStatus.bind(boardStatus);
+        online.refresh();
     }
 
     @Override
@@ -295,6 +301,35 @@ public class SettingsController implements Screen {
     /** Screenshot/demo runs hide (and never overwrite) the stored accounts. */
     private static boolean isRedacted() {
         return System.getProperty("javachess.snapshot") != null || Boolean.getBoolean("javachess.redact");
+    }
+
+    /**
+     * The saved browser logins: the system keyring, or (screenshots, demos) an in-memory one so that those runs never
+     * read or change the real logins. Runs with another data folder ({@code -Djavachess.home}: tests, trials) use
+     * it too: a test tapping "Rimuovi" must never delete the user's real login.
+     * {@code -Djavachess.demo.logins=chess_com,lichess} pre-fills the in-memory store.
+     */
+    private static io.github.hardin22.javachess.Components.LoginVault loginVault() {
+        if (!isRedacted() && System.getProperty("javachess.demo") == null
+                && System.getProperty("javachess.home") == null) {
+            return io.github.hardin22.javachess.Components.LoginVault.system();
+        }
+        List<io.github.hardin22.javachess.Browser.ChessSite> sites = new java.util.ArrayList<>();
+        for (String name : System.getProperty("javachess.demo.logins", "").split(",")) {
+            for (io.github.hardin22.javachess.Browser.ChessSite site : io.github.hardin22.javachess.Browser.ChessSite.values()) {
+                if (site != io.github.hardin22.javachess.Browser.ChessSite.OTHER
+                        && site.name().equalsIgnoreCase(name.trim())) {
+                    sites.add(site);
+                }
+            }
+        }
+        return io.github.hardin22.javachess.Components.LoginVault.memory(
+                sites.toArray(io.github.hardin22.javachess.Browser.ChessSite[]::new));
+    }
+
+    /** Opens the "save login" form for a site (DevOptions demo). */
+    public void openLoginForm(String site) {
+        online.openSave(io.github.hardin22.javachess.Browser.ChessSite.valueOf(site.toUpperCase(Locale.ROOT)));
     }
 
     private void refreshAccounts() {
