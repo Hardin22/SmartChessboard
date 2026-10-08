@@ -33,7 +33,7 @@ class SetupTextTest {
         SetupText t = SetupText.parse(
                 "Posiziona i pezzi: togli quelli sulle case rosse (2), poi il Re bianco in g1 · passo 1 di 6");
         assertTrue(t.guided());
-        assertEquals("Togli i pezzi dalle case rosse (2)", t.title());
+        assertEquals("Togli 2 pezzi dalle case rosse", t.title());
         assertNull(t.squares());
         assertEquals("passo 1 di 6", t.step());
         assertEquals("Poi il Re bianco in g1", t.rest());

@@ -292,6 +292,9 @@ public class ReviewController implements Screen, GameNavigationListener {
     public void setWide(boolean wide) {
         this.wideLayout = wide;
         refreshGraphVisibility();
+        if (session != null) {
+            refreshMoveCard();
+        }
         body.getChildren().clear();
         // Portrait: the board never shrinks below its full width. Wide: it fits the height instead.
         boardFrame.setMinHeight(wide ? 64 : Region.USE_PREF_SIZE);
@@ -1204,7 +1207,10 @@ public class ReviewController implements Screen, GameNavigationListener {
                     moveSub.setText(ReviewLabels.name(c));
                 }
                 if (insight.showBest()) {
-                    Button best = Ui.button(I18n.t("analysis.best.show.short"), "fth-eye", "btn-outline", "btn-md");
+                    // landscape: the middle column is narrow, the eye alone keeps the label readable
+                    Button best = Ui.button(wideLayout ? "" : I18n.t("analysis.best.show.short"), "fth-eye",
+                            "btn-outline", "btn-md");
+                    best.setAccessibleText(I18n.t("analysis.best.show.short"));
                     best.setOnAction(e -> session.showBestLine());
                     moveActions.getChildren().add(best);
                 }

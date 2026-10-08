@@ -21,8 +21,9 @@ record SetupText(String title, String squares, String step, String rest) {
         String text = message == null ? "" : message.trim();
         Matcher away = TAKE_AWAY.matcher(text);
         if (away.matches()) {
-            return new SetupText("Togli i pezzi dalle case rosse (" + away.group(1) + ")", null, away.group(3),
-                    "Poi " + away.group(2));
+            int n = Integer.parseInt(away.group(1));
+            return new SetupText(n == 1 ? "Togli il pezzo dalla casa rossa" : "Togli " + n + " pezzi dalle case rosse",
+                    null, away.group(3), "Poi " + away.group(2));
         }
         Matcher m = GUIDED.matcher(text);
         if (!m.matches()) {
