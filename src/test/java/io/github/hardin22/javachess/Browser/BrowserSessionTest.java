@@ -111,6 +111,27 @@ class BrowserSessionTest {
     }
 
     @Test
+    void aPageWhoseProcessEndedIsReopenedOnceThenOffered() {
+        ready();
+        session.pageLoading("https://lichess.org/analysis");
+        session.pageLoaded("https://lichess.org/analysis", 200);
+        commands.clear();
+        session.pageLoadFailed("https://lichess.org/analysis", "RENDERER_TS_PROCESS_OOM");
+        assertEquals(BrowserStatus.State.PAGE_CRASHED, state(), "not \"the site does not answer\"");
+        assertEquals(List.of(BrowserStatus.Action.RELOAD), session.status().actions());
+        assertEquals(List.of("reload"), commands, "reopened by itself");
+        session.pageLoading("https://lichess.org/analysis");
+        assertEquals(BrowserStatus.State.LOADING, state());
+        clock.addAndGet(10_000);
+        session.pageLoadFailed("https://lichess.org/analysis", "RENDERER_TS_PROCESS_CRASHED");
+        assertEquals(List.of("reload"), commands, "again within a minute: the user decides");
+        assertEquals(BrowserStatus.State.PAGE_CRASHED, state());
+        clock.addAndGet(BrowserSession.CRASH_RELOAD_EVERY_MS);
+        session.pageLoadFailed("https://lichess.org/analysis", "RENDERER_TS_PROCESS_CRASHED");
+        assertEquals(List.of("reload", "reload"), commands);
+    }
+
+    @Test
     void loadingSlowSiteOfflineAndUnreachable() {
         ready();
         session.pageLoading("https://www.chess.com/login");

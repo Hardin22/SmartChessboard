@@ -227,8 +227,8 @@ public class PuzzleController implements Screen {
             content = new StatusCard.Content(Tone.ACTION, I18n.t("puzzle.solution"), I18n.t("puzzle.solution.title"),
                     move, I18n.t("puzzle.solution.detail"), List.of());
         } else if (lower.startsWith("configura") || lower.startsWith("posiziona")) {
-            content = StatusCard.Content.of(Tone.ACTION, I18n.t("game.status.setup.kicker"),
-                    I18n.t("game.status.setup"), io.github.hardin22.javachess.Oggetti.AnalysisPanel.prettify(text));
+            content = ActiveGameController.setupCard(text,
+                    io.github.hardin22.javachess.Oggetti.AnalysisPanel.prettify(text));
         } else if (lower.contains("tocca a te") || lower.contains("pronta")) {
             content = StatusCard.Content.of(Tone.TURN, side, I18n.t("puzzle.find"), I18n.t("puzzle.find.detail"));
         } else if (lower.contains("avversario")) {

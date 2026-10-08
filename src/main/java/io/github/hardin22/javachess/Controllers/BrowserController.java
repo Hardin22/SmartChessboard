@@ -177,8 +177,7 @@ public class BrowserController implements NavigationAware {
         window = w;
         mover = new BotMover(w.page());
         vision = new VisionService();
-        BoardWatcher.ReadMode mode = BoardWatcher.ReadMode.parse(ConfigManager.getProperty("browser.reader",
-                DEFAULT_READER));
+        BoardWatcher.ReadMode mode = readModeSetting();
         watcher = new BoardWatcher(w.page(), vision, watchThread, new BoardWatcher.Listener() {
             @Override
             public void onSnapshot(io.github.hardin22.javachess.Browser.BoardSnapshot snapshot) {
@@ -236,8 +235,13 @@ public class BrowserController implements NavigationAware {
             }
         });
         session.setVisible(true);
+        watcher.setReadMode(readModeSetting()); // a change in the settings applies from the next opening
         watcher.start();
         startTicker();
+    }
+
+    private static BoardWatcher.ReadMode readModeSetting() {
+        return BoardWatcher.ReadMode.parse(ConfigManager.getProperty("browser.reader", DEFAULT_READER));
     }
 
     /** Opening the same site again keeps the page (a game in progress is not interrupted). */

@@ -38,6 +38,13 @@ how most development happens.
   <img src="docs/screenshots/position.png" width="19%" alt="Starting position editor">
 </p>
 <p align="center">
+  <img src="docs/screenshots/training.png" width="19%" alt="Training: openings, endgames, square names">
+  <img src="docs/screenshots/opening.png" width="19%" alt="Opening trainer with the theory moves">
+  <img src="docs/screenshots/drill.png" width="19%" alt="Endgame drill against the engine">
+  <img src="docs/screenshots/coordinates.png" width="19%" alt="Name the lit square">
+  <img src="docs/screenshots/settings-online.png" width="19%" alt="Settings: saved logins and board reading">
+</p>
+<p align="center">
   <img src="docs/screenshots/pvp-landscape.png" width="80%" alt="Two players on a 1920x720 landscape display">
 </p>
 
@@ -65,9 +72,14 @@ accuracy and move labels are computed by the real review engine. Design principl
   own tiles, evaluation graph with the notable moves, engine lines and variations, accuracy by phase and key
   moments, big step-through buttons and board drags. Reviews are saved; **Replay your mistakes** turns the
   positions where you went wrong into exercises.
+- **Training**, offline and with the real pieces: **openings** (20 lines for White and Black; the app answers with
+  the moves people really play and says when you leave the theory), **endgames** (basic mates, pawn and rook endings
+  against the engine at full strength, with hints and the idea behind each), **square names** (find or name a square
+  in 30 seconds, on a board drawn without coordinates).
 - **Statistics**: results with White and Black, recent form, average accuracy and its trend, opponents, openings.
 - **Archive** of every game, grouped by day, with search (on-screen keyboard), filters by mode, result and period,
-  and a preview to review, export (PGN) or delete a game; import your recent games from Lichess or Chess.com by
+  and a preview to review, export (PGN), open on your phone (a QR code to the lichess analysis board, nothing uploaded)
+  or delete a game; import your recent games from Lichess or Chess.com by
   username, or PGN files from a USB drive.
 - **Touch-first interface**: large type and 80 px+ targets, a rotate button in every screen (and a two-finger twist),
   automatic orientation towards the player, moves on the screen when no board is connected.
