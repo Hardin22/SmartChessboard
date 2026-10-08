@@ -123,6 +123,11 @@ public class BoardStateManager implements BoardHardware.SensorListener {
     private Board setupTarget = new Board();
     /** Piece-by-piece guide of the current set-up, or null when all the squares are shown together. */
     private SetupGuide setupGuide;
+    /**
+     * Set-up: occupied squares known to hold another piece than the target wants (from the last position, when the
+     * sensors still match it). They must be emptied first; a square leaves the set when its piece is lifted.
+     */
+    private long mustClear;
     private Side physicalMoveSide;
     private long touched;
     private int liftedSquare = -1;
@@ -178,6 +183,20 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         post(() -> {
             if (mode == Mode.SETUP) {
                 chooseSetupGuide();
+                refresh();
+            }
+        });
+    }
+
+    /**
+     * Skips the piece-by-piece guide of the set-up in progress: every square to fill lights up at once (the next
+     * set-up is guided again).
+     */
+    public void skipSetupGuide() {
+        post(() -> {
+            if (mode == Mode.SETUP && setupGuide != null) {
+                setupGuide = null;
+                setupStep = null;
                 refresh();
             }
         });
@@ -258,6 +277,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
             awaitingSnapshot = false;
             setupGuide = null;
             setupStep = null;
+            mustClear = 0;
             touched = 0;
             liftedSquare = -1;
             leds.clear(LedRenderer.Layer.BASE);
@@ -274,6 +294,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
             awaitingSnapshot = false;
             setupGuide = null;
             setupStep = null;
+            mustClear = 0;
             cancel(pendingCommit);
             cancel(pendingCheck);
             cancel(snapshotTimeout);
@@ -417,6 +438,9 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         }
         physical = occupied ? physical | bit : physical & ~bit;
         touched |= bit;
+        if (!occupied) {
+            mustClear &= ~bit; // the wrong piece is gone: the square now waits for the right one
+        }
         log.debug("{} {} (mode {})", Squares.name(square), occupied ? "placed" : "lifted", mode);
         SquareListener raw = squareListener;
         if (raw != null) {
@@ -525,16 +549,38 @@ public class BoardStateManager implements BoardHardware.SensorListener {
      * ({@link SetupGuide}); the starting position and small changes show every square together.
      */
     private void chooseSetupGuide() {
-        setupGuide = guidedSetupEnabled && hardwareConnected && SetupGuide.worthGuiding(setupTarget, physical)
+        mustClear = hardwareConnected ? wrongPieces(logical, setupTarget, physical) : 0;
+        long seen = physical & ~mustClear;
+        setupGuide = guidedSetupEnabled && hardwareConnected && SetupGuide.worthGuiding(setupTarget, seen)
                 ? new SetupGuide(setupTarget) : null;
         setupStep = null;
+    }
+
+    /**
+     * Squares occupied in both {@code believed} and {@code target} with different pieces, when {@code believed} is
+     * what the board shows ({@code physical} matches its occupancy); 0 when nothing is known.
+     */
+    static long wrongPieces(Board believed, Board target, long physical) {
+        if (believed == null || occupancy(believed) != physical) {
+            return 0;
+        }
+        long wrong = 0;
+        for (long bits = physical & occupancy(target); bits != 0; bits &= bits - 1) {
+            int sq = Long.numberOfTrailingZeros(bits);
+            Square square = Square.squareAt(sq);
+            if (believed.getPiece(square) != target.getPiece(square)) {
+                wrong |= Squares.bit(sq);
+            }
+        }
+        return wrong;
     }
 
     private void refreshSetup() {
         long target = occupancy(setupTarget);
         long missing = target & ~physical;
-        long wrong = physical & ~target;
-        SetupGuide.Step step = setupGuide != null && hardwareConnected ? setupGuide.step(physical) : null;
+        long wrong = (physical & ~target) | (physical & mustClear);
+        SetupGuide.Step step = setupGuide != null && hardwareConnected ? setupGuide.step(physical & ~mustClear)
+                : null;
         setupStep = step;
         long shown = step != null ? step.missing() : missing;
         Map<Integer, Integer> base = new HashMap<>();
@@ -547,8 +593,9 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         boolean complete = !hardwareConnected || (missing == 0 && wrong == 0);
         if (!complete) {
             if (step != null) {
-                progress(step.message() + (wrong != 0 ? ", togli i pezzi sulle case rosse (" + Long.bitCount(wrong)
-                        + ")" : ""));
+                // pieces to take away first, then the group asked: "…, poi il Re bianco in g1 · passo 1 di 6"
+                progress(wrong == 0 ? step.message() : "Posiziona i pezzi: togli quelli sulle case rosse ("
+                        + Long.bitCount(wrong) + "), poi " + step.message().substring("Posiziona ".length()));
             } else if (missing == 0 && setupGuide != null) {
                 progress("Posiziona i pezzi: togli quelli sulle case rosse (" + Long.bitCount(wrong) + ")");
             } else {
@@ -565,6 +612,8 @@ public class BoardStateManager implements BoardHardware.SensorListener {
                 mode = Mode.IDLE;
                 setupGuide = null;
                 setupStep = null;
+                mustClear = 0;
+                logical = setupTarget.clone(); // what the board shows now
                 leds.clear(LedRenderer.Layer.BASE);
                 log.info("Board setup complete");
                 notifyListener(BoardMoveListener::onBoardSetupComplete);
