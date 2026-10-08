@@ -197,6 +197,21 @@ class BoardStateManagerTest {
     }
 
     @Test
+    void theGuideCanBeSkippedForTheCurrentSetUp() throws InterruptedException {
+        sim.setOccupancy(0);
+        manager.setSetupTargetFen("1K1k4/1P6/8/8/8/8/r7/2R5 w - - 0 1");
+        manager.startSetupMode();
+        settle();
+        assertEquals("Posiziona il Re bianco in b8", manager.setupStep().instruction());
+        assertEquals(0, ledAt("d8"));
+        manager.skipSetupGuide();
+        settle();
+        assertEquals(null, manager.setupStep());
+        assertEquals(LedColors.MISSING, ledAt("d8"), "every square at once");
+        assertTrue(events.contains("progress Posiziona i pezzi: mancano 5"), events.toString());
+    }
+
+    @Test
     void guidedSetupCanBeTurnedOff() throws InterruptedException {
         manager.setGuidedSetup(false);
         sim.setOccupancy(0);

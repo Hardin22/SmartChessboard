@@ -188,6 +188,20 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         });
     }
 
+    /**
+     * Skips the piece-by-piece guide of the set-up in progress: every square to fill lights up at once (the next
+     * set-up is guided again).
+     */
+    public void skipSetupGuide() {
+        post(() -> {
+            if (mode == Mode.SETUP && setupGuide != null) {
+                setupGuide = null;
+                setupStep = null;
+                refresh();
+            }
+        });
+    }
+
     /** Step of the guided set-up shown now (piece, squares, "passo 2 di 7"), or null. */
     public SetupGuide.Step setupStep() {
         return setupStep;
