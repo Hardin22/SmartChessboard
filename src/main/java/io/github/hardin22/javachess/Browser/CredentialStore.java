@@ -59,21 +59,45 @@ public final class CredentialStore {
 
     private final List<Backend> backends;
 
-    /** The store for this computer: system keyring when there is one, the owner-only file otherwise. */
+    /**
+     * The store for this computer: system keyring when there is one, the owner-only file otherwise. With another
+     * data folder ({@code -Djavachess.home}, used by tests, trials and screenshots) only the file in that folder is
+     * used, so that nothing run there can read or remove the user's real saved logins;
+     * {@code -Djavachess.credentials=system|file} overrides the choice.
+     */
     public static CredentialStore system() {
         List<Backend> list = new ArrayList<>();
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (os.contains("mac")) {
-            list.add(new MacKeychain());
-        } else if (os.contains("linux")) {
-            list.add(new SecretTool());
+        if (useSystemKeyring(System.getProperty("javachess.credentials"),
+                System.getProperty(AppPaths.HOME_PROPERTY), System.getenv(AppPaths.HOME_ENV))) {
+            String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+            if (os.contains("mac")) {
+                list.add(new MacKeychain());
+            } else if (os.contains("linux")) {
+                list.add(new SecretTool());
+            }
         }
         list.add(new OwnerOnlyFile(AppPaths.resolve("credentials")));
         return new CredentialStore(list);
     }
 
+    static boolean useSystemKeyring(String override, String homeProperty, String homeEnv) {
+        if (override != null && !override.isBlank()) {
+            return override.trim().equalsIgnoreCase("system");
+        }
+        return isBlank(homeProperty) && isBlank(homeEnv);
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
+    }
+
     CredentialStore(List<Backend> backends) {
         this.backends = List.copyOf(backends);
+    }
+
+    /** Which backends are used, for tests and logs. */
+    List<String> backendNames() {
+        return backends.stream().map(b -> b.getClass().getSimpleName()).toList();
     }
 
     /** Name of the place where new logins are saved ("Portachiavi di macOS"...), for the settings screen. */

@@ -513,6 +513,7 @@ public final class BotGameTrial {
                 .put("setups", setups).put("notAccepted", notAccepted)
                 .put("calibratedReads", reads[0]).put("modelReads", reads[1])
                 .put("visionCalibrated", vision.isCalibrated())
+                .put("slowVisionFollows", watcher.slowVisionFollows()).put("maxVisionLagMs", watcher.maxVisionLagMs())
                 .put("anomalies", new JSONArray(anomalies.subList(0, Math.min(10, anomalies.size()))))
                 .put("seconds", (System.currentTimeMillis() - started) / 1000);
     }

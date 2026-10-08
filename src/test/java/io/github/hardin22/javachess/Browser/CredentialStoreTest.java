@@ -25,6 +25,22 @@ class CredentialStoreTest {
     }
 
     @Test
+    void theSystemKeyringIsUsedOnlyWithTheRealDataFolder() {
+        assertTrue(CredentialStore.useSystemKeyring(null, null, null), "the app as installed");
+        assertFalse(CredentialStore.useSystemKeyring(null, "/tmp/test-home", null), "tests, trials, screenshots");
+        assertFalse(CredentialStore.useSystemKeyring(null, null, "/tmp/other"));
+        assertTrue(CredentialStore.useSystemKeyring("system", "/tmp/test-home", null));
+        assertFalse(CredentialStore.useSystemKeyring("file", null, null));
+    }
+
+    @Test
+    void theStoreOfATestRunNeverReachesTheKeyring() throws Exception {
+        // surefire runs with -Djavachess.home=target/test-home: only the file there
+        CredentialStore s = CredentialStore.system();
+        assertEquals(List.of("OwnerOnlyFile"), s.backendNames());
+    }
+
+    @Test
     void savesLoadsAndRemovesPerSite() throws Exception {
         CredentialStore s = store();
         assertFalse(s.has(ChessSite.CHESS_COM));

@@ -78,6 +78,8 @@ public class BrowserController implements NavigationAware {
     private volatile BotMover mover;
     private VisionService vision;
     private volatile String pendingUrl;
+    /** The user is on the browser screen (or opening it): a window that becomes ready may be shown. */
+    private volatile boolean wanted;
     private boolean stageWasFullScreen;
     private ScheduledFuture<?> ticker;
 
@@ -111,6 +113,7 @@ public class BrowserController implements NavigationAware {
     public void loadPage(String url) {
         log.info("Browser requested: {}", url);
         pendingUrl = url;
+        wanted = true;
         if (window != null) {
             showWindow(url);
             return;
@@ -138,8 +141,14 @@ public class BrowserController implements NavigationAware {
                     log.info("Browser installed, restart required: {}", error.getMessage());
                     session.engineRestartRequired();
                 } else {
-                    log.error("Cannot start the integrated browser", error);
-                    session.engineFailed(JcefRuntime.classify(error));
+                    BrowserSession.Failure failure = JcefRuntime.classify(error);
+                    if (failure == BrowserSession.Failure.NO_NETWORK) {
+                        // expected (first start without Internet): the user sees it, no stack trace needed
+                        log.warn("Cannot start the integrated browser: no network ({})", error.toString());
+                    } else {
+                        log.error("Cannot start the integrated browser", error);
+                    }
+                    session.engineFailed(failure);
                 }
                 return;
             }
@@ -188,7 +197,15 @@ public class BrowserController implements NavigationAware {
                 AppExecutors.io(), () -> { }, System::currentTimeMillis));
         w.bar().show(session.status());
         session.engineReady();
-        Platform.runLater(() -> showWindow(null)); // the page is already loading
+        Platform.runLater(() -> {
+            // the page is already loading; if the user left during the start-up (it can take minutes the first
+            // time) the window waits for the next loadPage instead of covering whatever they are doing now
+            if (wanted) {
+                showWindow(null);
+            } else {
+                log.info("Browser ready in the background (the user left the browser screen)");
+            }
+        });
         io.github.hardin22.javachess.Browser.BrowserSnapshot.scheduleIfRequested(w, Platform::exit);
     }
 
@@ -228,6 +245,7 @@ public class BrowserController implements NavigationAware {
 
     /** Back to the app: the synchronisation stops (a game in progress is archived), the window is hidden. */
     private void hideWindow() {
+        wanted = false;
         session.setVisible(false);
         BoardWatcher wt = watcher;
         if (wt != null) {
@@ -237,6 +255,7 @@ public class BrowserController implements NavigationAware {
         BrowserWindow w = window;
         if (w != null) {
             SwingUtilities.invokeLater(w::hide);
+            JcefRuntime.flushCookies(); // the login is on disk even if the app is closed right after
         }
         Platform.runLater(() -> {
             if (mainController != null) {
@@ -333,6 +352,7 @@ public class BrowserController implements NavigationAware {
         // leaving the start-up screen without the page: nothing runs in the background
         BrowserWindow w = window;
         if (w == null || !w.isShowing()) {
+            wanted = false;
             session.setVisible(false);
         }
     }
@@ -425,10 +445,5 @@ public class BrowserController implements NavigationAware {
         }
         io.github.hardin22.javachess.Utils.ErrorReporter.showError(I18n.t("browser.title"),
                 I18n.t("browser.restart.manual"));
-    }
-
-    /** Kept for callers of the old API. */
-    public static void disposeIfStarted() {
-        JcefRuntime.disposeIfStarted();
     }
 }

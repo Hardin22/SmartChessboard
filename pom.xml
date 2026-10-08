@@ -204,6 +204,9 @@
                 <configuration>
                     <systemPropertyVariables>
                         <java.awt.headless>true</java.awt.headless>
+                        <!-- macOS: no Dock icon for test JVMs, and no modal "reopen windows?" alert after an
+                             earlier java crash, which blocks AWT's start-up until someone answers it -->
+                        <apple.awt.UIElement>true</apple.awt.UIElement>
                         <!-- tests never read or write the real ~/.javachess nor the working directory files -->
                         <javachess.home>${project.build.directory}/test-home</javachess.home>
                         <javachess.legacyDir>${project.build.directory}/test-legacy</javachess.legacyDir>
