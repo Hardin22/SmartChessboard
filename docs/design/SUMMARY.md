@@ -118,7 +118,9 @@ e cosa è cambiato nel codice.
   `EndgamesController`/`DrillController`, `CoordinatesController` (base comune `BoardScreen`); «Più giocate» in
   revisione (in verticale il grafico cede loro il posto nelle prime mosse); «Apri sul telefono» (QR,
   `PhoneLinkSheet`) in revisione e nell'anteprima dell'archivio; vantaggio (`Play.OddsPresets`) nel foglio della
-  posizione iniziale; rivincita contro il computer.
+  posizione iniziale; rivincita contro il computer; **analisi libera** di una posizione (R7 della spec 01:
+  `ReviewController.openPosition`, ingresso dall'hub Allenamento tramite l'editor); carta della disposizione guidata
+  (spec 04 §1: «Posiziona le Torri nere» e le case in grande, `SetupText`).
 - Test: scenario E2E delle Impostazioni (salva/rimuovi accesso, lettura) e dell'Allenamento (apertura giocata e
   mossa fuori linea, coordinata giusta, prova scacchiera senza hardware, vantaggio scelto).
 

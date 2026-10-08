@@ -42,8 +42,11 @@ public class TrainingController implements Screen {
         HBox coordinates = row("fth-crosshair", I18n.t("training.coordinates"),
                 I18n.t("training.coordinates.what"), coordinatesSub, () -> mainController.navigateTo("COORDINATES"));
         coordinates.setId("training-coordinates");
+        HBox analysis = row("fth-activity", I18n.t("training.analysis"), I18n.t("training.analysis.what"),
+                new Label(), this::openAnalysis);
+        analysis.setId("training-analysis");
         Label note = Ui.wrap(I18n.t("training.note"), "t-small", "t-muted");
-        VBox body = new VBox(16, openings, endgames, coordinates, Ui.gap(8), note);
+        VBox body = new VBox(16, openings, endgames, coordinates, analysis, Ui.gap(8), note);
         body.getStyleClass().add("screen-body");
         root.getChildren().addAll(header, Ui.scroll(body));
         root.getStyleClass().add("screen");
@@ -83,6 +86,16 @@ public class TrainingController implements Screen {
                         : I18n.t("training.coordinates.none"));
             });
         });
+    }
+
+    /** Free analysis: the position editor, then the analysis board on the chosen position. */
+    private void openAnalysis() {
+        io.github.hardin22.javachess.Components.PositionEditor editor =
+                new io.github.hardin22.javachess.Components.PositionEditor(null, fen -> {
+                    mainController.closeSheet();
+                    ReviewController.openPosition(mainController, fen);
+                }, I18n.t("training.analysis.go"));
+        mainController.showSheet(I18n.t("training.analysis"), editor);
     }
 
     @Override

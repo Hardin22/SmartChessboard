@@ -385,6 +385,36 @@ public class ReviewController implements Screen, GameNavigationListener {
         review.restoreSavedReview();
     }
 
+    /**
+     * Free analysis of a position (R7): no game, so no accuracy, analysis button or move list; moves tried on the
+     * screen or on the real board build variations, with the computer lines and the popular moves.
+     */
+    public static void openPosition(MainController main, String fen) {
+        ReviewController review = (ReviewController) main.getController("REVIEW");
+        review.backTarget = main.getCurrentViewName() == null ? "HOME" : main.getCurrentViewName();
+        main.navigateTo("REVIEW");
+        review.loadGame("", fen);
+        review.setAnalysisOnly(true);
+    }
+
+    private boolean analysisOnly;
+
+    private void setAnalysisOnly(boolean on) {
+        analysisOnly = on;
+        header.setTitle(I18n.t(on ? "analysis.free.title" : "review.title"));
+        for (Node n : new Node[] { summary, tabBarNode, tabContent }) {
+            n.setVisible(!on);
+            n.setManaged(!on);
+        }
+        if (on) {
+            setGameInfo(I18n.t("analysis.free.subtitle"), "");
+            AnalysisSession.Position p = session == null ? null : session.positionProperty().get();
+            if (p != null) {
+                onPosition(null, p);
+            }
+        }
+    }
+
     /** The archived game shown, or null for moves just played that are not (yet) in the archive. */
     private ArchivedGame archivedGame;
 
@@ -446,6 +476,9 @@ public class ReviewController implements Screen, GameNavigationListener {
         this.currentBlackRating = blackRating;
         this.currentPgn = pgn;
         cancelFullAnalysis(); // the review of the previous game would keep six engines busy for nothing
+        if (analysisOnly) {
+            setAnalysisOnly(false);
+        }
         analysisGeneration.incrementAndGet();
         this.currentInitialFen = initialFen == null || initialFen.isBlank() ? START_FEN : initialFen;
         if (arduinoController == null) {
@@ -1051,7 +1084,9 @@ public class ReviewController implements Screen, GameNavigationListener {
         reviewChessBoard.showPosition(now.fen(), now.lastMove(), oneStepForward);
         int ply = now.mainPly();
         int total = uciMoves.size();
-        plyLabel.setText(now.inVariation() ? I18n.t("review.ply.variation", ply, total)
+        plyLabel.setText(analysisOnly ? (now.ply() == 0 ? I18n.t("analysis.free.start")
+                : I18n.t("analysis.free.ply", now.ply()))
+                : now.inVariation() ? I18n.t("review.ply.variation", ply, total)
                 : ply == 0 ? I18n.t("review.start") : I18n.t("review.ply", ply, total));
         prevButton.setDisable(!session.canGoBackProperty().get());
         firstButton.setDisable(!session.canGoBackProperty().get());

@@ -140,6 +140,12 @@ final class DevDemos {
                         later(2.2, () -> lookupFire(main, "opening-hint"));
                     }
                 }
+                case "analysis" -> {
+                    main.navigateTo("TRAINING");
+                    later(0.5, () -> io.github.hardin22.javachess.Controllers.ReviewController.openPosition(main,
+                            System.getProperty("javachess.demo.fen",
+                                    "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3")));
+                }
                 case "drill" -> {
                     var drill = io.github.hardin22.javachess.Training.EndgameDrills.byId(
                             System.getProperty("javachess.demo.drill", "")).orElse(
