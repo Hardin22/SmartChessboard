@@ -136,8 +136,9 @@ facile preparare la posizione di partenza: è il pezzo che manca. Da pianificare
 ## Chiusura della seconda ondata
 
 Integrato su `origin/main` fino a `40c6264`; in attesa: `bd70eb7` (corsa del LED nel trainer delle coordinate,
-riprodotta con un test) e `9c75287` (puzzle del giorno). Suite completa con E2E headless: 731 test; l'unico
-fallimento intermittente visto (`AppEndToEndTest.withoutABoardTheGameIsPlayedByTappingTheScreen`, "bot reply")
-viene dal motore finto degli E2E che resta bloccato dopo i test di crash/blocco ("ignored stop", "bot returned no
-move"): segnalato a QA, che lo segue. Schermate collegate da design: hub Allenamento, prova della scacchiera, QR,
+riprodotta con un test), `9c75287` (puzzle del giorno) ed `ecb3bce` (prova della scacchiera e coordinate non
+bloccano più il thread dello schermo). Suite completa con E2E headless: 744 test. Il fallimento intermittente
+`AppEndToEndTest.withoutABoardTheGameIsPlayedByTappingTheScreen` ("bot reply") aveva una causa vera trovata da QA
+(QA-036, `fc82636`): un ridimensionamento della scacchiera fra i due tocchi cancellava la selezione e la mossa
+andava persa; le righe del motore finto nel log venivano dal test precedente. Schermate collegate da design: hub Allenamento, prova della scacchiera, QR,
 vantaggi, rivincita.
