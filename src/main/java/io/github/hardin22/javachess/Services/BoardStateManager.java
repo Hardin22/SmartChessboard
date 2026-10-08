@@ -136,6 +136,8 @@ public class BoardStateManager implements BoardHardware.SensorListener {
     private long mustClear;
     /** Copy of {@link #mustClear} readable from any thread. */
     private volatile long setupWrong;
+    /** Copy of the sensors' occupancy readable from any thread without waiting. */
+    private volatile long physicalNow;
     /** Positions the board may go back through to take moves back (oldest last), and what to do then. */
     private List<Board> takebackPath = List.of();
     private Runnable takebackAction;
@@ -255,6 +257,15 @@ public class BoardStateManager implements BoardHardware.SensorListener {
     /** Tests: how long the board must show the earlier position before the take-back counts. */
     public void setTakebackSettleMs(long ms) {
         takebackSettleMs = ms;
+    }
+
+    /**
+     * Runs {@code action} on the callbacks thread once every request made so far (e.g. the LEDs turned off by
+     * {@link #stopGameMode()}) has been carried out. Never blocks: screens use it to draw on the LEDs after the
+     * board has finished clearing them, instead of waiting for the board thread.
+     */
+    public void runAfterPending(Runnable action) {
+        post(() -> callbacks.execute(action));
     }
 
     /** Receives every sensor change (on the callbacks thread); null to stop. Independent of the move listener. */
@@ -491,6 +502,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
             return;
         }
         physical = occupied ? physical | bit : physical & ~bit;
+        physicalNow = physical;
         touched |= bit;
         if (!occupied) {
             mustClear &= ~bit; // the wrong piece is gone: the square now waits for the right one
@@ -1116,6 +1128,11 @@ public class BoardStateManager implements BoardHardware.SensorListener {
 
     public long physicalOccupancy() {
         return query(() -> physical);
+    }
+
+    /** The sensors' occupancy as last received, without waiting for the board thread (for screens). */
+    public long latestOccupancy() {
+        return physicalNow;
     }
 
     public String logicalFen() {
