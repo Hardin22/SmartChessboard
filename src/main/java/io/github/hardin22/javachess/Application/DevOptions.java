@@ -55,6 +55,17 @@ public final class DevOptions {
     private DevOptions() {
     }
 
+    /**
+     * macOS: "full screen" is a borderless window covering the screen. A native full-screen window lives in its own
+     * space, where the integrated browser's (Swing) window cannot go without a visible switch, and AWT's exclusive
+     * full screen over it crashed the app (8 October 2026). The app runs on the Raspberry Pi; macOS is for
+     * development and tests. {@code -Djavachess.nativeFullScreen=true} keeps native full screen.
+     */
+    public static boolean borderlessInsteadOfFullScreen() {
+        return System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("mac")
+                && !Boolean.getBoolean("javachess.nativeFullScreen");
+    }
+
     /** Positions the stage; returns true when full screen should be applied by the caller. */
     public static boolean placeStage(Stage stage) {
         List<Screen> screens = Screen.getScreens();

@@ -100,6 +100,35 @@ Diagnostics: `JAVACHESS_DEBUG=1 ./run_pi.sh` logs the rendering pipeline, the st
 
 ## 5. Start automatically (kiosk)
 
+Install the integrated browser's engine once, during the set-up (otherwise it is downloaded at the first opening of
+the browser and the app restarts to load it):
+
+```bash
+./run_pi.sh --install-browser
+```
+
+### Kiosk session (recommended: nothing of the desktop is ever seen)
+
+Raspberry Pi OS Bookworm runs the labwc compositor. A user `~/.config/labwc/autostart` replaces the system one, so
+the session starts only javaChess on a black background: no panel, no desktop icons, no wallpaper, not even while
+the app starts or restarts.
+
+```bash
+sudo apt install -y swaybg
+mkdir -p ~/.config/labwc
+cat > ~/.config/labwc/autostart <<'EOF'
+swaybg -c '#000000' &
+sh -c 'while true; do JAVACHESS_SUPERVISED=1 "$HOME/javachess/run_pi.sh"; sleep 1; done' &
+EOF
+```
+
+With desktop auto-login (`raspi-config` -> System Options -> Boot / Auto Login) the board's screen shows only the
+app from then on (to get the desktop back, remove `~/.config/labwc/autostart`). The loop starts the app again if it
+ever ends (the app's "Riavvia l'app" uses it). Checked in the Pi box with Pi OS's labwc (see docs/browser.md,
+"Raspberry Pi: never the desktop").
+
+### Or: a systemd user service in the normal desktop
+
 ```bash
 mkdir -p ~/.config/systemd/user
 cp deploy/javachess.service ~/.config/systemd/user/

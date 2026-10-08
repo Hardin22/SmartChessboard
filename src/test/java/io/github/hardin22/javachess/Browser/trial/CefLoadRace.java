@@ -30,7 +30,7 @@ public final class CefLoadRace {
             start();
         }
         if (mode.equals("preload")) {
-            System.out.println("[load-race] preloaded " + JcefRuntime.preloadFramework());
+            System.out.println("[load-race] preloaded " + JcefRuntime.startup());
         }
         for (int i = 0; i < 4; i++) {
             Thread t = new Thread(busy, "free-" + i);

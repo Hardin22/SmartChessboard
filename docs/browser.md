@@ -95,6 +95,21 @@ and never moves on a site. It prints PASS/FAIL lines, the peak memory of the app
 folder with `report.txt`, the logs and the pictures: send `report.txt` when something fails. `PI_CHECK_TIMEOUT=600`
 waits longer on a slow network.
 
+### Raspberry Pi: never the desktop
+
+The browser's window lies over the app's full-screen window, which stays underneath all the time: opening the
+browser, going Home and opening it again never uncover anything else. Checked in the Pi box with Raspberry Pi OS's
+compositor (labwc 0.8.4 from archive.raspberrypi.com, XWayland, `docker/pi-kiosk`): the screen captured with `grim`
+about 30 times a second, a magenta background standing in for the desktop, with and without Pi OS's panel
+(`wf-panel-pi`), and with the app started by `run_pi.sh` from the kiosk autostart of docs/raspberry-pi.md: in about
+2900 frames over 10 openings and closings no frame showed the background or the panel once the app was on screen
+(they show only before the app's first window, i.e. while the Pi boots). The browser's first frame
+on a page still loading is its bar over a dark page.
+
+What would show the desktop: the app's restart after the first download of the engine (avoided by
+`run_pi.sh --install-browser` at set-up) and the boot itself; the kiosk session of docs/raspberry-pi.md (only the
+app, on a black background) covers both.
+
 ## Saved logins
 
 The browser keeps its own session (cookies in `~/.javachess/jcef-cache`), so you usually log in once. When a
@@ -174,10 +189,27 @@ fails there too, the site distrusts the network (IP address), not the app; when 
   shows, reading problems, the synchronisation) into one `BrowserStatus`: title, sentence, tone, progress, actions.
   The bar above the page (`BrowserBar`, Swing) and the JavaFX browser view show it.
 
+### Starting Chromium (the documented order)
+
+JCEF's own documentation: `CefApp.startup(args)` "must be called at the beginning of the main() method to perform
+platform-specific startup initialization. On Linux this initializes Xlib multithreading and on macOS this dynamically
+loads the CEF framework" ([CefApp.java](https://github.com/chromiumembedded/java-cef/blob/master/java/org/cef/CefApp.java);
+JCEF's sample [MainFrame](https://github.com/chromiumembedded/java-cef/blob/master/java/tests/detailed/MainFrame.java)
+calls it on the first line of `main`). jcefmaven calls it only inside `CefAppBuilder.build()`, i.e. at the first
+opening of the browser, while the app's threads are running. On macOS that is fatal now and then: loading the
+framework makes Chromium's PartitionAlloc the process's default malloc zone, and a `free()` on another thread at that
+moment aborts the process (the crashes of 8 October 2026 in JavaFX's renderer and in the JIT compiler). `App.main`
+now does the documented step first (`JcefRuntime.startup`, about 25 ms, on macOS and Linux); the rest of the
+initialisation is jcefmaven's (`CefAppBuilder.install`, then what `CefInitializer` does minus the second `startup`).
+On macOS the very first download of the engine asks for a restart, so that the step always runs at the start.
+
 ### Shutting Chromium down
 
-On macOS Chromium is **never disposed**: JCEF runs its shutdown on the Swing thread, which closes Cocoa windows
-outside the main thread, and macOS 27 aborts the process for that ("Must only be used from the main thread"). The
+On macOS Chromium is **never disposed**: CEF's shutdown "should be called on the main application thread"
+([cef_app.h](https://bitbucket.org/chromiumembedded/cef/src/master/include/cef_app.h)), but JCEF's `CefApp.dispose()`
+runs it on the Swing thread, which on macOS is not the main thread (the main thread belongs to JavaFX here): it
+closes Cocoa windows outside the main thread, and macOS 27 aborts the process for that ("Must only be used from the
+main thread"). The
 jcefmaven library even registers a JVM shutdown hook that does it, so any process that had opened the browser could
 crash on exit now and then (4 crashes in the test runs of the night of 7-8 October 2026). `JcefRuntime` starts
 Chromium without that hook (`CefInitializer` instead of `CefAppBuilder.build()`) and its own hook only writes the
@@ -281,8 +313,9 @@ translucent "glass" queen read with the wrong colour. The start position is reco
   (`-Dapple.awt.UIElement=true`, or answer the "reopen windows" alert).
 - Saved logins: with `-Djavachess.home` (tests, trials, screenshots) only the file in that folder is used, never the
   Keychain / Secret Service; `-Djavachess.credentials=system|file` overrides it.
-- `-Djavachess.browser.gpu=true|false`: Chromium with or without the GPU (default: without, everywhere). **Never
-  turn it on in the app on macOS**: see the lesson in the third round below.
+- `-Djavachess.browser.gpu=true|false`: Chromium with or without the GPU (default: without, everywhere; WebGL comes
+  from SwiftShader, `-Djavachess.browser.webgl=false` turns it off). `-Djavachess.browser.preload=false` does not
+  load the framework at start-up on macOS (only for experiments: see the lesson in the third round below).
 - `-Djavachess.demo=browser-cycle` (with `javachess.demo.urls`, `javachess.demo.rounds`): opens the browser, goes
   Home, opens it again, as `AppBrowserFullScreenJcefE2E` does in full screen.
 - `-Djavachess.jcef.dir=DIR` uses another engine folder; `-Djavachess.browser.osr=true|false` forces off-screen /
@@ -356,10 +389,14 @@ fine; 2 GB is not enough for chess.com.
 - On macOS a few of Chromium's notices to Java are refused by the JVM (the bare "Exception in thread JavaFX
   Application Thread" lines, same cause as the Linux ones): the end of a page load is now also learned from the
   page's `document.readyState`, or from `CefBrowser.isLoading` on pages the app does not read.
-- **Lesson: Chromium's GPU in the same process as JavaFX crashes on macOS.** Turning the GPU on (for WebGL) passed
-  the JCEF suite and 5 full-screen openings, then the user's app died at its first opening of chess.com: JavaFX's
-  QuantumRenderer thread (Prism ES2, `glDrawElements`) crashed inside Apple's Metal OpenGL layer
-  (`AppleMetalOpenGLRenderer buildPipelineState`) with Chromium's frames on the stack (crash report
-  java-2026-10-08-122745). Both use the system's OpenGL/Metal stack in one process. The GPU is off again by default
-  (1 hour later); any way to WebGL must be proven with many openings and real playing time, not with one test run.
+- **Lesson: on macOS the Chromium framework must be loaded while the process is quiet.** Loading it (its static
+  initialisers) makes PartitionAlloc the process's default malloc zone, and for an instant the system's zone is not
+  registered: a `free()` on any other thread at that instant aborts the process. Loaded at the first opening of the
+  browser, it raced with JavaFX's renderer (user's crash 12:27, which happened with the GPU on and was first blamed on
+  it) and with the JIT compiler (12:36, GPU off). `CefLoadRace` reproduces it (17 crashes in 20 runs, 9 in 10) and
+  shows the fix (framework loaded first: 30 of 30 fine). Now `App.main` loads it on macOS before anything else runs
+  (`JcefRuntime.startup`, about 25 ms) and the first download asks for a restart. A test that passes once
+  proves little for such races: they need many runs with load on purpose.
+- **WebGL without the GPU**: Chromium's software WebGL (SwiftShader, `--enable-unsafe-swiftshader`) runs in its GPU
+  helper process, not in the app's; the GPU itself stays off. Pages see a "SwiftShader" WebGL renderer.
 
