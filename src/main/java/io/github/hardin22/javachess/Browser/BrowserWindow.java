@@ -63,6 +63,7 @@ public final class BrowserWindow {
             public void onLoadEnd(CefBrowser b, CefFrame f, int httpStatus) {
                 if (f != null && f.isMain()) {
                     session.pageLoaded(f.getURL(), httpStatus);
+                    JcefRuntime.flushCookies(); // a login just made survives a quick exit
                 }
             }
 
@@ -125,7 +126,7 @@ public final class BrowserWindow {
     }
 
     /** Linux (Raspberry Pi) renders off-screen: windowed Chromium steals the X11 focus there. */
-    static boolean useOffscreenRendering() {
+    public static boolean useOffscreenRendering() {
         String forced = System.getProperty("javachess.browser.osr");
         if (forced != null) {
             return Boolean.parseBoolean(forced);

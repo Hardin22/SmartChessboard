@@ -181,12 +181,20 @@ class SyncWithRealBoardTest {
         // the LEDs show the opponent's last move to reproduce; the user goes back to the app instead
         assertTrue(sim.awaitFrame(f -> java.util.Arrays.stream(f).anyMatch(v -> v != 0), 2000) != null,
                 "the move to reproduce is lit");
-        sim.clearRecordedFrames();
         onOwner(sync::stop);
         manager.awaitIdle();
-        assertTrue(sim.awaitFrame(f -> java.util.Arrays.stream(f).allMatch(v -> v == 0), 2000) != null,
-                "LEDs off");
-        assertTrue(java.util.Arrays.stream(sim.lastFrame()).allMatch(v -> v == 0), "and they stay off");
+        // the renderer never sends a frame equal to the previous one: when the move was blinking and its last
+        // frame was the dark half, "off" is already on the board and no new frame comes, so the board's current
+        // frame is what counts (and it must not light up again, e.g. a blink still running)
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (!allOff(sim.lastFrame()) && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        assertTrue(allOff(sim.lastFrame()), "LEDs off");
+        int framesWhenOff = sim.frameCount();
+        Thread.sleep(1200); // longer than a blink period
+        assertTrue(allOff(sim.lastFrame()), "and they stay off");
+        assertEquals(framesWhenOff, sim.frameCount(), "nothing lights up again");
 
         assertEquals(1, archived.size(), "the game read so far is archived");
         ArchivedGame saved = archived.get(0);
@@ -218,5 +226,9 @@ class SyncWithRealBoardTest {
         hand("e7e8q");
         waitFor(() -> site.played.contains("e7e8q"), "promoted to a queen on the page");
         assertEquals(List.of("e7", "e8", "e8"), site.clickedSquares());
+    }
+
+    private static boolean allOff(int[] frame) {
+        return java.util.Arrays.stream(frame).allMatch(v -> v == 0);
     }
 }

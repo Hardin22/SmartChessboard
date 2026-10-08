@@ -29,6 +29,9 @@ public class App extends Application {
     @Override
     public void start(Stage primaryStage) {
         long startAt = StartupMetrics.uptimeMs();
+        // macOS asks the app to quit through Chromium while the browser runs (Cmd+Q, log out): quit the app's way
+        io.github.hardin22.javachess.Browser.JcefRuntime.setQuitHandler(
+                () -> javafx.application.Platform.runLater(javafx.application.Platform::exit));
         try {
             var resource = App.class.getResource("/UI/MainLayout.fxml");
             if (resource == null) {
@@ -115,7 +118,7 @@ public class App extends Application {
             Hardware.shutdown(); // LEDs off, serial port closed
         }
         AppExecutors.shutdown(); // pending archive writes are completed first
-        io.github.hardin22.javachess.Browser.JcefRuntime.disposeIfStarted();
+        io.github.hardin22.javachess.Browser.JcefRuntime.shutdown();
         io.github.hardin22.javachess.Engine.EngineManager.shutdownIfStarted(); // engines get "quit" before the kill below
         stopChildProcesses();
         logLingeringThreads();
@@ -181,7 +184,7 @@ public class App extends Application {
                 Hardware.shutdown();
             }
             AppExecutors.shutdown(); // finish pending archive / puzzle progress writes
-            io.github.hardin22.javachess.Browser.JcefRuntime.disposeIfStarted();
+            io.github.hardin22.javachess.Browser.JcefRuntime.shutdown();
         }, "shutdown-hook"));
 
         launch(args);

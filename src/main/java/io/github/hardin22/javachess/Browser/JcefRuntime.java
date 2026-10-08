@@ -7,8 +7,10 @@ import me.friwi.jcefmaven.EnumProgress;
 import me.friwi.jcefmaven.MavenCefAppHandlerAdapter;
 import me.friwi.jcefmaven.UnsupportedPlatformException;
 import me.friwi.jcefmaven.impl.step.check.CefInstallationChecker;
+import me.friwi.jcefmaven.impl.step.init.CefInitializer;
 import org.cef.CefApp;
 import org.cef.CefSettings;
+import org.cef.network.CefCookieManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,6 +25,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -141,25 +145,121 @@ public final class JcefRuntime {
             public void stateHasChanged(CefApp.CefAppState state) {
                 log.info("JCEF state: {}", state);
             }
+
+            @Override
+            public boolean onBeforeTerminate() {
+                // JCEF would dispose itself here (on the Swing thread: an abort on macOS); the app quits its own
+                // way instead, and shutdown() decides what is safe
+                log.info("The system asked to quit");
+                Runnable handler = quitHandler;
+                if (handler != null) {
+                    handler.run();
+                }
+                return true;
+            }
         });
-        CefApp built = builder.build();
+        // CefAppBuilder.build() is install() + CefInitializer.initialize() + a JVM shutdown hook that disposes
+        // the engine; on macOS that dispose aborts the process now and then (see shutdown()), so the engine is
+        // started here without that hook and ours decides what is safe
+        builder.install();
+        CefApp built = CefInitializer.initialize(dir.toFile(), builder.getJcefArgs(), settings);
+        Runtime.getRuntime().addShutdownHook(new Thread(JcefRuntime::shutdown, "jcef-shutdown"));
         log.info("Integrated browser ready (Chromium {})", cefVersion());
         return built;
     }
 
-    /** Disposes the engine if this process started it (never initialises JCEF just to dispose it). */
-    public static synchronized void disposeIfStarted() {
-        CefApp a = app;
+    /**
+     * Ends the engine if this process started it (never initialises JCEF just to end it). Idempotent: App.stop()
+     * and the shutdown hook both call this.
+     *
+     * <p>The cookies are written to disk first (logins survive the restart). Then, where it is safe, Chromium is
+     * shut down ({@link CefApp#dispose()}); on macOS it is not: JCEF runs the shutdown on the Swing thread, which
+     * closes Cocoa windows outside the main thread, and macOS 27 aborts the process for that ("Must only be used
+     * from the main thread", seen in tests on 2026-10-08). There the engine simply ends with the process, and its
+     * helper processes with it.</p>
+     */
+    public static void shutdown() {
+        CefApp a;
+        synchronized (JcefRuntime.class) {
+            a = app;
+            app = null;
+        }
         if (a == null) {
             return;
         }
-        app = null; // idempotent: App.stop() and the shutdown hook both call this
+        flushCookies(1500);
+        if (!disposeIsSafe()) {
+            log.info("JCEF left to end with the process (disposing it aborts on macOS)");
+            return;
+        }
         try {
             a.dispose();
             log.info("JCEF disposed");
         } catch (Throwable t) {
             log.warn("JCEF dispose failed: {}", t.toString());
         }
+    }
+
+    /** False on macOS, see {@link #shutdown()}. */
+    static boolean disposeIsSafe() {
+        return !isMac();
+    }
+
+    static boolean isMac() {
+        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac");
+    }
+
+    /**
+     * Writes Chromium's cookies (login sessions) to disk; Chromium does it by itself only every ~30 s. Called when
+     * the user leaves the browser and after each page load (so a login is on disk before the app can be closed),
+     * and at shutdown.
+     */
+    public static void flushCookies() {
+        flushCookies(0);
+    }
+
+    /**
+     * Waits at most {@code timeoutMs} for the flush, but never on the thread that has to deliver its completion:
+     * Chromium's UI thread is the macOS main thread, which is also the JavaFX thread there, and the Swing thread
+     * runs Chromium's message loop on Linux. Those threads only start the flush.
+     */
+    private static void flushCookies(long timeoutMs) {
+        try {
+            if (app() == null && timeoutMs == 0) {
+                return;
+            }
+            CefCookieManager cookies = CefCookieManager.getGlobalManager();
+            if (cookies == null) {
+                return;
+            }
+            CountDownLatch done = new CountDownLatch(1);
+            boolean started = cookies.flushStore(done::countDown);
+            if (started && timeoutMs > 0 && canWaitForChromium()
+                    && !done.await(timeoutMs, TimeUnit.MILLISECONDS)) {
+                log.info("Cookie flush still running after {} ms", timeoutMs);
+            }
+        } catch (Throwable t) {
+            log.debug("Cookie flush failed: {}", t.toString());
+        }
+    }
+
+    private static boolean canWaitForChromium() {
+        if (javax.swing.SwingUtilities.isEventDispatchThread()) {
+            return false;
+        }
+        try {
+            return !(isMac() && javafx.application.Platform.isFxApplicationThread());
+        } catch (Throwable t) {
+            return true; // no JavaFX (tools, tests)
+        }
+    }
+
+    /** Called instead of JCEF's own shutdown when the system asks the app to quit (macOS: Cmd+Q, log out). */
+    private static volatile Runnable quitHandler;
+
+    /** What to do when the system asks to quit while Chromium runs (the app: its orderly exit). */
+    public static void setQuitHandler(Runnable handler) {
+        quitHandler = handler;
     }
 
     // ------------------------------------------------------------------ install location
