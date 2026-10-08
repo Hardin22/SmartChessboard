@@ -314,8 +314,8 @@ Field trials of this round (Pi box, 4 CPUs, 6 GB, only the sites' computer oppon
 Chromium's page process, which now shows *La pagina si è interrotta* and reopens it). A Pi 5 with 4 or 8 GB is
 fine; 2 GB is not enough for chess.com.
 
-**Tests**: 687 unit and integration tests, 0 failures (`./mvnw test -DskipE2E=true`); real Chromium suite
-(`*JcefE2E`, 13 tests) 7 times on macOS, 0 crashes.
+**Tests**: 691 unit and integration tests, 0 failures (`./mvnw test -DskipE2E=true`, after merging origin/main 5e7e5d5); real Chromium suite
+(`*JcefE2E`, 13 tests, plus QA's `AppBrowserJcefE2E`) 8 times on macOS, 0 crashes.
 
 **Open items**
 
