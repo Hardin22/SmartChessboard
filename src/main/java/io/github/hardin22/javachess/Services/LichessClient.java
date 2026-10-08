@@ -49,7 +49,9 @@ public class LichessClient {
     private final Supplier<String> tokenSupplier;
 
     public LichessClient() {
-        this(DEFAULT_BASE_URL, () -> ConfigManager.getProperty(ConfigManager.LICHESS_TOKEN));
+        // -Djavachess.lichess.url: a local fake Lichess for the end-to-end tests
+        this(System.getProperty("javachess.lichess.url", DEFAULT_BASE_URL),
+                () -> ConfigManager.getProperty(ConfigManager.LICHESS_TOKEN));
     }
 
     public LichessClient(String baseUrl, Supplier<String> tokenSupplier) {

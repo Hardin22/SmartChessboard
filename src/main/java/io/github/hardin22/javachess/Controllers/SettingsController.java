@@ -190,7 +190,7 @@ public class SettingsController implements Screen {
         lichessRow.getStyleClass().add("row");
         VBox accounts = group(lichessRow, accountFields,
                 navRow(I18n.t("settings.lichess.api"), I18n.t("settings.lichess.api.description"),
-                        () -> mainController.navigateTo("LICHESS_SETUP")));
+                        () -> mainController.openLichess())); // a game left on Lichess is resumed, else the setup
 
         VBox body = new VBox(14,
                 Ui.sectionLabel(I18n.t("settings.analysis")), analysis,
