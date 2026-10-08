@@ -216,6 +216,41 @@ class SimBoardEndToEndTest {
     }
 
     @Test
+    @Order(8)
+    void theRematchSwapsTheColoursAndKeepsTheLevel() throws Exception {
+        app.bot("e7e5", "e2e4");
+        io.github.hardin22.javachess.Play.BotLevels.Level level = io.github.hardin22.javachess.Play.BotLevels.byId(
+                io.github.hardin22.javachess.Play.BotLevels.DEFAULT_ID).orElseThrow();
+        ActiveGameController game = fx(() -> {
+            ActiveGameController g = (ActiveGameController) app.main.getController("GAME");
+            app.main.navigateTo("GAME");
+            g.startPvC(level, true, io.github.hardin22.javachess.Play.TimeControl.UNLIMITED);
+            return g;
+        });
+        waitFor("game ready", () -> fxGet(() -> game(game) != null));
+        arrangeAs(io.github.hardin22.javachess.Analysis.AnalysisTree.START_FEN);
+        playOnBoard(game, "e2e4", 2);
+        reproduceLastMove(game);
+        fx(() -> invoke(game, "requestResign"));
+        app.fireButton(I18n.t("game.resign.confirm.ok"));
+        waitFor("game over", () -> !fxGet(() -> game(game).isRunning()));
+
+        Object first = fxGet(() -> game(game));
+        app.fireButton(I18n.t("duel.rematch"));
+        waitFor("rematch started", () -> fxGet(() -> game(game) != first && game(game).isRunning()));
+        io.github.hardin22.javachess.Oggetti.PvcGame rematch =
+                (io.github.hardin22.javachess.Oggetti.PvcGame) fxGet(() -> game(game));
+        assertEquals(level, fxGet(rematch::getLevel));
+        assertFalse((Boolean) fxGet(() -> field(game, "humanWhite")), "the player now has Black");
+        arrangeAsLogical();
+        waitFor("the computer opens with White", () -> plies(game) == 1);
+        fx(() -> {
+            app.main.navigateTo("HOME");
+            return null;
+        });
+    }
+
+    @Test
     @Order(9)
     void pvpDrawByAgreement() throws Exception {
         int before = archive().size();
