@@ -117,6 +117,7 @@ Specifiche per design: [04 guida LED e aperture](specs/04-board-guide-and-openin
 | P11 | **Partite con vantaggio** (senza pedone f, Cavallo, Torre, Donna, Donna e Torre) per entrambi i colori | fatto · UI | `Play.OddsPresets` |
 | P9 | Rivincita a colori invertiti | fatto **da design** (`ActiveGameController.rematchPvc`), verificato con un E2E | spec 06 §4 |
 | P10 | **Ritiro con i pezzi** (stile DGT) contro il computer: rimettere indietro la risposta del computer e poi la propria mossa annulla come il pulsante; mentre il computer pensa basta la propria | fatto, attivo | `BoardStateManager.setTakebackGesture`, `PvcGame.updateTakebackGesture` |
+| Z4 | **Puzzle del giorno offline** con serie di giorni consecutivi (stesso puzzle per tutti in quel giorno, dal database locale) | fatto · UI (spec 06 §5) | `PuzzleService.dailyPuzzle`, `Play.DailyPuzzle` |
 | H7 | La scacchiera ricorda quali pezzi ha sopra anche quando la partita cambia posizione prima della disposizione (partita da posizione): guida e pezzi sbagliati funzionano anche lì; durante la disposizione lo schermo disegna i pezzi veri | fatto, attivo | `BoardStateManager` (posizione mostrata) |
 
 Verifiche: test unitari per ogni classe nuova (con la scacchiera simulata e il gestore vero per guida, ritiro,
@@ -127,6 +128,16 @@ case rosse (26), poi il Re bianco in g1 · passo 1 di 6". Un test instabile trov
 (`CoordinateTrainerTest`) era una vera corsa di ordinamento: le proprietà ora pubblicano contatori e stato per
 ultimi (20/20 da solo, 15/15 sotto carico).
 
-Non fatto: **Chess960**:
-richiede arrocchi 960 nel riconoscitore di mosse e nel motore, lavoro da pianificare a parte. **Puzzle del giorno
-offline**: esiste quello online (`PuzzleService.fetchDailyPuzzle`, non collegato).
+Non fatto: **Chess960**. chesslib 1.3.3 lo supporta solo in parte (le case dell'arrocco vanno configurate a mano
+per ogni posizione di partenza) e servirebbe in tutta l'app: riconoscitore di mosse (arrocco "Re prende Torre"),
+motore (`UCI_Chess960`), PGN e archivio (tag `Variant`), revisione (congelata). La disposizione guidata renderebbe
+facile preparare la posizione di partenza: è il pezzo che manca. Da pianificare come progetto a parte.
+
+## Chiusura della seconda ondata
+
+Integrato su `origin/main` fino a `40c6264`; in attesa: `bd70eb7` (corsa del LED nel trainer delle coordinate,
+riprodotta con un test) e `9c75287` (puzzle del giorno). Suite completa con E2E headless: 731 test; l'unico
+fallimento intermittente visto (`AppEndToEndTest.withoutABoardTheGameIsPlayedByTappingTheScreen`, "bot reply")
+viene dal motore finto degli E2E che resta bloccato dopo i test di crash/blocco ("ignored stop", "bot returned no
+move"): segnalato a QA, che lo segue. Schermate collegate da design: hub Allenamento, prova della scacchiera, QR,
+vantaggi, rivincita.
