@@ -34,6 +34,7 @@ Gravità: **alta** (vicolo cieco, perdita di dati, partita bloccata), **media** 
 | QA-026 | bassa | logica | Ripresa rifiutata dopo uno spegnimento: la partita non finisce in archivio | fatto da features (discard archivia come interrotta) |
 | QA-027 | media | logica | E2E dipendenti dall'ordine: salvataggi asincroni del test precedente contati nel successivo | corretto |
 | QA-028 | media | test/memoria | Pipeline software (Pi): heap dopo GC 130→512 MB in 20 partite; verificato che sono cache soft di JavaFX, non una perdita | verificato; test adeguato |
+| QA-029 | media | logica (Home) | Tornando in Home la carta "Riprendi" della visita precedente resta attiva finché i dati non sono ricaricati: si riprendeva la partita sbagliata | corretto (design informato) |
 
 ---
 
@@ -189,3 +190,12 @@ Istogramma e JFR (OldObjectSample): `int[]` di `SWRTTexture` creati da `CacheFil
 rendering di JavaFX tenute con SoftReference). Con `-Xmx256m` 30 partite girano e l'heap scende a 84 MB; con i flag
 di `run_pi.sh` (512 MB, SerialGC, ExitOnOutOfMemoryError) 30 partite senza OOM. Non è una perdita: il test ora libera
 le SoftReference prima di misurare (headless 70→72 MB) e, con i flag del Pi, controlla solo che non ci sia OOM.
+
+## QA-029 · Carta "Riprendi" vecchia in Home (media)
+**Passi** (E2E `gameLeftByARestartIsResumedFromHomeOnTheBoard`, prima della correzione fallito ~1 volta su 3):
+partita A interrotta (snapshot A) → nuova partita B → uscita in Home → tocco immediato su "Riprendi". Finché
+`HomeController.refresh()` non finiva di leggere archivio, statistiche e snapshot sul thread io, la carta mostrata era
+quella della visita precedente (A, "Mossa 2"): la ripresa ricreava A e la partita B appena lasciata non veniva
+offerta. Inoltre più refresh in volo potevano applicarsi fuori ordine.
+**Correzione**: la carta si nasconde all'inizio di ogni refresh e si applica solo il risultato dell'ultimo. Il test
+ora verifica anche che le mosse riprese siano quelle di B (10 esecuzioni su 10 verdi).
