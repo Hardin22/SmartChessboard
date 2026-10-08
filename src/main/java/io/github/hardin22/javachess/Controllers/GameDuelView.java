@@ -155,6 +155,12 @@ final class GameDuelView extends StackPane {
         far.material.setPosition(fen);
     }
 
+    /** The game's starting position (captures are counted against it). */
+    void setStartPosition(String fen) {
+        near.material.setStart(fen);
+        far.material.setStart(fen);
+    }
+
     /** One player's half. Content top to bottom in its own orientation: centre of the screen -> player's edge. */
     final class Half extends VBox {
 

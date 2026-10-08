@@ -100,6 +100,29 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
     private boolean ended;
     private String endMessage = "";
     private String opponentElo;
+    /** Position the next game starts from (null = the standard one); used once. */
+    private String nextStartFen;
+
+    /** The next game started from the setup screens begins from this position (null = standard). */
+    public void setNextStartPosition(String fen) {
+        nextStartFen = fen;
+    }
+
+    /** Captured material counts against the position the game began from. */
+    private void markStartPosition() {
+        String fen = currentGame.getInitialFen();
+        solo.row(true).setStartPosition(fen);
+        solo.row(false).setStartPosition(fen);
+        duel.setStartPosition(fen);
+    }
+
+    private void applyStartPosition() {
+        String fen = nextStartFen;
+        nextStartFen = null;
+        if (fen != null && !fen.isBlank()) {
+            currentGame.setStartPosition(fen);
+        }
+    }
 
     public ActiveGameController() {
         solo = new GameSoloView(this, soloEvalBar);
@@ -200,7 +223,9 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         }
         applyOrientation();
         updateStockfishState();
+        applyStartPosition();
         currentGame.startGame();
+        markStartPosition();
         refreshAll();
     }
 
@@ -220,6 +245,7 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
 
     /** A game interrupted by a restart or a power cut (Home, "Partita interrotta"). */
     public void resumeSnapshot(GameSnapshot snapshot) {
+        nextStartFen = null; // the saved game knows its own starting position
         setupBoard();
         if (snapshot.mode() == GameSnapshot.Mode.PVP) {
             TimeControl tc = snapshot.timeControl();
@@ -260,7 +286,9 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         }
         applyOrientation();
         updateStockfishState();
+        applyStartPosition();
         currentGame.startGame();
+        markStartPosition();
         refreshAll();
     }
 
@@ -414,6 +442,7 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         setupGameCallbacks();
         applyOrientation();
         currentGame.startGame();
+        markStartPosition();
         refreshAll();
     }
 

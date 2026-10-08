@@ -1712,3 +1712,24 @@
     -fx-background-color: -c-danger-soft;
     -fx-text-fill: -c-danger;
 }
+
+/* ---------------------------------------------------------------- position editor */
+
+.palette-piece {
+    -fx-background-color: -c-s2;
+    -fx-background-radius: 14px;
+    -fx-border-color: transparent;
+    -fx-border-width: 3px;
+    -fx-border-radius: 14px;
+    -fx-min-width: 80px;
+    -fx-min-height: 80px;
+    -fx-pref-width: 80px;
+    -fx-pref-height: 80px;
+    -fx-alignment: center;
+    -fx-cursor: hand;
+}
+
+.palette-piece:selected {
+    -fx-border-color: -c-accent;
+    -fx-background-color: -c-accent-soft;
+}

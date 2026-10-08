@@ -105,6 +105,10 @@ final class DevDemos {
                     main.navigateTo("ARCHIVE");
                     later(1.2, () -> lookupFire(main, "archive-row"));
                 }
+                case "position-editor" -> {
+                    main.navigateTo("PVC_SETUP");
+                    later(1, () -> lookupFire(main, "setup-position"));
+                }
                 case "archive-transfer" -> {
                     main.navigateTo("ARCHIVE");
                     later(1.2, () -> lookupFire(main, "archive-transfer"));
@@ -202,6 +206,9 @@ final class DevDemos {
     private static void pvc(MainController main, boolean white, java.util.function.Consumer<ActiveGameController> then) {
         ActiveGameController game = (ActiveGameController) main.getController("GAME");
         main.navigateTo("GAME");
+        if (System.getProperty("javachess.demo.fen") != null) {
+            game.setNextStartPosition(System.getProperty("javachess.demo.fen").replace('_', ' '));
+        }
         if (Integer.getInteger("javachess.demo.level") != null) {
             game.startPvC(Integer.getInteger("javachess.demo.level"), white, EngineService.EngineType.STOCKFISH);
         } else {

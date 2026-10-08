@@ -28,6 +28,7 @@ public class PvpSetupController implements Screen {
     private static final int[] INCREMENTS = { 0, 1, 2, 3, 5, 10, 15, 20, 30 };
 
     private MainController mainController;
+    private final StartPositionRow startPosition = new StartPositionRow(() -> mainController);
     private final BorderPane root = new BorderPane();
     private final ToggleGroup presets = new ToggleGroup();
     private final Stepper minutes = new Stepper(MINUTES, 10);
@@ -93,7 +94,8 @@ public class PvpSetupController implements Screen {
         VBox body = new VBox(16,
                 Ui.sectionLabel(I18n.t("pvp.timecontrol")), grid,
                 Ui.gap(8), Ui.sectionLabel(I18n.t("pvp.custom")), custom,
-                Ui.gap(8), Ui.wrap(I18n.t("pvp.hint"), "t-small", "t-muted"));
+                Ui.gap(8), Ui.wrap(I18n.t("pvp.hint"), "t-small", "t-muted"),
+                Ui.gap(8), startPosition.node());
         body.getStyleClass().add("screen-body");
 
         Button play = Ui.wide(I18n.t("common.play"), "fth-play", "btn-primary", "btn-lg");
@@ -144,6 +146,7 @@ public class PvpSetupController implements Screen {
         Prefs.setAll(Map.of("game.default.duration", String.valueOf(m), "game.default.increment", String.valueOf(inc)));
         ActiveGameController game = (ActiveGameController) mainController.getController("GAME");
         mainController.navigateTo("GAME");
+        game.setNextStartPosition(startPosition.fen());
         game.startPvP(m, inc);
     }
 }

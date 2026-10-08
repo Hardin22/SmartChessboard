@@ -48,6 +48,7 @@ public class PvcSetupController implements Screen {
             { "expert", "pvc.quick.expert" }, { "max", "pvc.quick.max" } };
 
     private MainController mainController;
+    private final StartPositionRow startPosition = new StartPositionRow(() -> mainController);
     private final BorderPane root = new BorderPane();
     private final ToggleGroup colorGroup = new ToggleGroup();
     private final ToggleGroup timeGroup = new ToggleGroup();
@@ -142,7 +143,8 @@ public class PvcSetupController implements Screen {
                 Ui.wrap(I18n.t("pvc.level.help"), "t-small", "t-muted"),
                 Ui.gap(8), Ui.sectionLabel(I18n.t("pvc.timecontrol")), times,
                 Ui.gap(8), Ui.sectionLabel(I18n.t("pvc.color")), colors,
-                Ui.wrap(I18n.t("pvc.color.hint"), "t-small", "t-muted"));
+                Ui.wrap(I18n.t("pvc.color.hint"), "t-small", "t-muted"),
+                Ui.gap(8), startPosition.node());
         body.getStyleClass().add("screen-body");
 
         Button play = Ui.wide(I18n.t("common.play"), "fth-play", "btn-primary", "btn-lg");
@@ -280,6 +282,7 @@ public class PvcSetupController implements Screen {
         };
         ActiveGameController game = (ActiveGameController) mainController.getController("GAME");
         mainController.navigateTo("GAME");
+        game.setNextStartPosition(startPosition.fen());
         game.startPvC(level, isWhite, time);
     }
 }

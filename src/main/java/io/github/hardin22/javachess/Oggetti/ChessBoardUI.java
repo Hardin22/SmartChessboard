@@ -896,7 +896,25 @@ public class ChessBoardUI extends StackPane {
         }
     }
 
+    private java.util.function.Consumer<Square> squareTapHandler;
+
+    /** A tap on a square is reported as is (position editor); takes precedence over tap-to-move. */
+    public void setOnSquareTapped(java.util.function.Consumer<Square> handler) {
+        this.squareTapHandler = handler;
+        if (handler != null && getOnMouseClicked() == null) {
+            setOnMouseClicked(e -> onTap(e.getX(), e.getY()));
+        }
+    }
+
     private void onTap(double x, double y) {
+        if (squareTapHandler != null && TILE_SIZE > 0) {
+            int dc = (int) (x / TILE_SIZE);
+            int dr = (int) (y / TILE_SIZE);
+            if (dc >= 0 && dc <= 7 && dr >= 0 && dr <= 7) {
+                squareTapHandler.accept(Square.squareAt((flipped ? dr : 7 - dr) * 8 + (flipped ? 7 - dc : dc)));
+            }
+            return;
+        }
         if (moveInput == null || !moveInput.enabled() || TILE_SIZE <= 0) {
             clearSelection();
             return;

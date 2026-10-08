@@ -66,6 +66,11 @@ public class PlayerRow extends HBox {
         material.setPosition(fen);
     }
 
+    /** The game's starting position (captures are counted against it). */
+    public void setStartPosition(String fen) {
+        material.setStart(fen);
+    }
+
     /** Glyph in the colour tile (e.g. an engine icon for the computer). */
     public void setIcon(String iconLiteral) {
         avatarBox.getChildren().setAll(avatar);
