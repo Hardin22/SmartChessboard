@@ -611,6 +611,19 @@ class AppEndToEndTest {
         });
         waitFor("not connected message", () -> fxGet(() -> labelShown("Scacchiera non collegata")));
 
+        // free analysis of a position: no game, the moves tried build a variation
+        fx(() -> {
+            main.navigateTo("TRAINING");
+            io.github.hardin22.javachess.Controllers.ReviewController.openPosition(main,
+                    "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3");
+            return null;
+        });
+        waitFor("analysis screen", () -> fxGet(() -> labelShown(I18n.t("analysis.free.title"))));
+        Object session = fxGet(() -> field(main.getController("REVIEW"), "session"));
+        assertTrue(fx(() -> (Boolean) session.getClass().getMethod("play", String.class).invoke(session, "f8c5")),
+                "a move is tried on the analysis board");
+        waitFor("one half-move", () -> fxGet(() -> labelShown(I18n.t("analysis.free.ply", 1))));
+
         // odds: the start position sheet offers them and the row shows the choice
         showView("PVC_SETUP");
         fx(() -> {
