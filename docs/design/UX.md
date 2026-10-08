@@ -153,6 +153,23 @@ Senza scacchiera collegata si può muovere toccando lo schermo (pezzo → punti 
   **Salta** / **Termina**; a fine serie «Tempo scaduto: 14 puzzle risolti · nuovo record!» con Ancora / Esci. La
   serie non cambia il punteggio.
 
+### Allenamento
+- Hub con tre righe grandi (icona, cosa si allena, a che punto sei): **Aperture** («20 aperture · 3 sicure»),
+  **Finali** («10 posizioni · 4 risolte»), **Coordinate** (il record). Tutto senza rete e, con la scacchiera
+  collegata, con i pezzi veri: le risposte del computer si eseguono sulla scacchiera guidate dai LED.
+- **Aperture**: Con il Bianco / Con il Nero; righe con nome, mosse (in accento), idea e un'etichetta di
+  padronanza (Mai provata · Da ripassare · Quasi · Sicura). L'allenamento ha lo schema di «Rigioca i tuoi errori»:
+  scacchiera a tutta larghezza dal lato di chi si allena, carta di stato («Gioca la prima mossa…», «Giusto: 2. Cf3»,
+  «3. a4 non è la mossa della Partita Italiana: riprova»), barra della linea con gli errori, le mosse fin qui, e
+  le **mosse di teoria** come barre proporzionali quando servono (dopo due errori, dopo un suggerimento, a fine
+  linea). Strumenti: Suggerimento · Ricomincia · Scacchiera.
+- **Finali**: per categoria (Matti di base, Finali di pedoni, Finali di torre) con miniatura, compito, difficoltà
+  a puntini, stato e stelle; l'esercizio mostra un contatore grande delle mosse rimaste e l'**Idea** dietro un
+  pulsante (non regalata). Fine: Prossimo / Ricomincia.
+- **Coordinate**: Dal Bianco / Dal Nero e due riquadri (Trova la casa · Nomina la casa) con il record; la scacchiera
+  è disegnata **senza coordinate**, come quella vera; il nome da trovare è enorme (140 px), le quattro risposte sono
+  pulsanti da 112 px.
+
 ### Statistiche
 - Periodo (Sempre · 30 giorni · 7 giorni) e, in carte: **Risultati** (percentuale dei punti enorme, barra
   vinte/patte/perse, con il Bianco e con il Nero), **Ultime partite** (dieci pallini V/P/S, la più recente a
@@ -181,7 +198,8 @@ Senza scacchiera collegata si può muovere toccando lo schermo (pezzo → punti 
   miniatura della posizione finale, titolo (avversario/modalità), ora · mosse · cadenza, apertura, tessera del
   risultato (Vinta / Persa / Patta / 1-0 / 0-1 / —).
 - Tocco su una riga → foglio di anteprima (scacchiera grande, giocatori, esito, apertura) con **Rivedi**,
-  **Esporta PGN**, **Elimina** (con conferma).
+  **Esporta PGN**, **Sul telefono** (codice QR che apre la partita sulla scacchiera d'analisi di lichess.org: le
+  mosse sono nel link, niente da caricare), **Elimina** (con conferma).
 - **Importa ed esporta** (pulsante in intestazione): le ultime 20/50/100 partite da Lichess o Chess.com con il
   nome utente (tastiera a schermo, solo dati pubblici, niente doppioni), oppure la chiavetta USB (esporta tutto,
   importa un PGN; sopra 500 partite propone «le prime 500»).
@@ -192,8 +210,18 @@ Senza scacchiera collegata si può muovere toccando lo schermo (pezzo → punti 
 Sezioni a righe grandi: Aspetto (tema, scacchiera e pezzi), Schermo (monitor capovolto, orientamento automatico),
 Partita (valutazione, mossa migliore sempre visibile contro il computer, suggerimenti a due giocatori, orologio
 fermo mentre si esegue la mossa del computer, animazione di fine partita), Computer (tempo per mossa),
-Orologio (cadenza predefinita), Scacchiera e LED (stato, luminosità), Motore, Account Lichess, Avanzate,
-Versione. Ogni modifica si salva subito.
+Orologio (cadenza predefinita), **Gioco online** (accessi salvati di Chess.com e Lichess, lettura della
+scacchiera), Scacchiera e LED (stato, luminosità, disposizione guidata pezzo per pezzo, **Prova la scacchiera**),
+Motore, Avanzate (profondità, account Lichess via API), Versione. Ogni modifica si salva subito.
+
+- **Accessi salvati**: per sito «Salvato: nome» con **Rimuovi** (conferma), oppure **Salva**, che apre un foglio:
+  prima dice dove resta l'accesso (Portachiavi di macOS / portachiavi del sistema / file protetto) e quando viene
+  scritto (solo sulla pagina di accesso del sito, a sessione scaduta), poi nome e password con la tastiera a schermo
+  (password a puntini, occhio per mostrarla, tasti per tutti i simboli). In orizzontale il modulo sta a fianco della
+  tastiera. Le prove (cartella dati temporanea, demo, screenshot) non toccano mai il portachiavi vero.
+- **Lettura della scacchiera**: Pagina (consigliata) · Visione · Solo visione, con una frase per ciascuna.
+- **Prova la scacchiera**: LED (quattro colori, poi una casa alla volta con il nome enorme: controlla l'ordine dei
+  collegamenti) e sensori (le case provate diventano verdi sulla scacchiera disegnata, «37 case su 64»).
 
 ## 6. Orientamento: le regole
 

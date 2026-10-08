@@ -290,6 +290,8 @@ public class ReviewController implements Screen, GameNavigationListener {
     /** Portrait: everything in one column. Wide: board | card, lines, graph, navigation | moves and summary. */
     @Override
     public void setWide(boolean wide) {
+        this.wideLayout = wide;
+        refreshGraphVisibility();
         body.getChildren().clear();
         // Portrait: the board never shrinks below its full width. Wide: it fits the height instead.
         boardFrame.setMinHeight(wide ? 64 : Region.USE_PREF_SIZE);
@@ -472,6 +474,7 @@ public class ReviewController implements Screen, GameNavigationListener {
         currentAnalysis = null;
         currentReview = null;
         evaluationGraph.setData(null);
+        graphData = false;
         evaluationGraph.setVisible(false);
         showSummary(analyzeBox);
         analyzeButton.setDisable(false);
@@ -513,6 +516,7 @@ public class ReviewController implements Screen, GameNavigationListener {
             }
         });
         listen(s.positionProperty(), (obs, o, n) -> onPosition(o, n));
+        listen(s.fenProperty(), (obs, o, n) -> refreshLines()); // the popular moves follow the position
         listen(s.insightProperty(), (obs, o, n) -> {
             refreshMoveCard();
             drawArrows();
@@ -597,8 +601,9 @@ public class ReviewController implements Screen, GameNavigationListener {
                 }), partial -> Platform.runLater(() -> {
                     if (generation == analysisGeneration.get()) {
                         currentAnalysis = partial;
-                        evaluationGraph.setVisible(true);
+                        graphData = true;
                         evaluationGraph.setData(partial, totalMoves);
+                        refreshGraphVisibility();
                         moveList.refresh();
                         refreshMoveCard();
                     }
@@ -645,8 +650,9 @@ public class ReviewController implements Screen, GameNavigationListener {
         blackAccuracyLabel.setText(accuracyText(blackAccuracy));
         showSummary(accuracyWrapper);
         countClassifications(analysis);
-        evaluationGraph.setVisible(true);
+        graphData = true;
         evaluationGraph.setData(analysis);
+        refreshGraphVisibility();
         analyzeButton.setDisable(false);
         if (session != null && review != null) {
             session.attachReview(review);
@@ -866,6 +872,12 @@ public class ReviewController implements Screen, GameNavigationListener {
             follow.setOnAction(e -> session.setBoardFollowing(follow.isSelected()));
             content.getChildren().add(switchRow(I18n.t("analysis.board.follow"),
                     I18n.t("analysis.board.follow.description"), follow));
+        }
+        if (!uciMoves.isEmpty()) {
+            Button phone = Ui.wide(I18n.t("phone.title"), "fth-smartphone", "btn-outline");
+            phone.setId("review-phone");
+            phone.setOnAction(e -> PhoneLinkSheet.show(mainController, currentInitialFen, uciMoves));
+            content.getChildren().add(phone);
         }
         if (session.hasVariationsProperty().get()) {
             Button export = Ui.wide(I18n.t("analysis.export.variations"), "fth-download", "btn-outline");
@@ -1143,9 +1155,13 @@ public class ReviewController implements Screen, GameNavigationListener {
                 MoveClassification c = insight.label();
                 moveBadge.getChildren().setAll(ReviewLabels.tile(c, 56));
                 // with a button beside it the sentence would not fit on one line: move and label instead
-                moveTitle.setText(insight.showBest() ? insight.moveText() + " · " + ReviewLabels.name(c).toLowerCase(
-                        Locale.ITALIAN) : ReviewLabels.sentence(c, insight.moveText()));
-                if (insight.book() && !opening.isEmpty()) {
+                // with a button beside it the sentence would not fit on one line: the label as title, the move below
+                moveTitle.setText(insight.showBest() ? ReviewLabels.name(c) : ReviewLabels.sentence(c,
+                        insight.moveText()));
+                if (insight.showBest()) {
+                    moveSub.setText(insight.bestText().isEmpty() ? insight.moveText()
+                            : I18n.t("analysis.best.was.move", insight.moveText(), insight.bestText()));
+                } else if (insight.book() && !opening.isEmpty()) {
                     moveSub.setText(opening);
                 } else if (!insight.bestText().isEmpty() && ReviewLabels.bad(c)) {
                     moveSub.setText(I18n.t("analysis.best.was", insight.bestText()));
@@ -1181,6 +1197,7 @@ public class ReviewController implements Screen, GameNavigationListener {
             placeholder.getStyleClass().add("coach-line");
             placeholder.setMinHeight(64);
             linesBox.getChildren().add(placeholder);
+            addPopularMoves();
             return;
         }
         for (int i = 0; i < list.size(); i++) {
@@ -1201,6 +1218,51 @@ public class ReviewController implements Screen, GameNavigationListener {
             row.setOnMouseClicked(e -> session.playLine(index));
             linesBox.getChildren().add(row);
         }
+        addPopularMoves();
+    }
+
+    private boolean graphData;
+    private boolean popularShown;
+    private boolean wideLayout;
+
+    /**
+     * The graph appears once there is an analysis. In portrait, while the opening's popular moves are shown, it makes
+     * room for them (in the first moves the graph says little, and the column has no more height to give).
+     */
+    private void refreshGraphVisibility() {
+        evaluationGraph.setVisible(graphData && (wideLayout || !popularShown));
+    }
+
+    /**
+     * In the opening, the moves most played by club players (offline sample, 1600+) as chips under the computer
+     * lines; a tap tries the move as a variation. Hidden when the position is not in the sample.
+     */
+    private void addPopularMoves() {
+        popularShown = false;
+        String fen = session.fenProperty().get();
+        if (fen == null) {
+            refreshGraphVisibility();
+            return;
+        }
+        List<io.github.hardin22.javachess.Training.OpeningExplorer.Candidate> moves =
+                io.github.hardin22.javachess.Training.OpeningExplorer.standard().moves(fen,
+                        io.github.hardin22.javachess.Training.OpeningExplorer.Rating.CLUB);
+        if (moves.isEmpty()) {
+            refreshGraphVisibility();
+            return;
+        }
+        popularShown = true;
+        refreshGraphVisibility();
+        HBox row = new HBox(10, Ui.label(I18n.t("analysis.popular"), "t-small", "t-muted"));
+        row.setAlignment(Pos.CENTER_LEFT);
+        row.getStyleClass().add("coach-line");
+        row.setMinHeight(64);
+        for (var c : moves.subList(0, Math.min(3, moves.size()))) {
+            Button chip = Ui.button(c.san() + "  " + c.percent(), null, "chip", "popular-chip");
+            chip.setOnAction(e -> session.play(c.uci()));
+            row.getChildren().add(chip);
+        }
+        linesBox.getChildren().add(row);
     }
 
     private void refreshFollow() {

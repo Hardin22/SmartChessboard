@@ -45,7 +45,8 @@ public class ChessBoardUI extends StackPane {
 
     private static final int BOARD_SIZE = 8;
     private static final String START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-    private static final Color LAST_MOVE = Color.rgb(82, 168, 255, 0.34);
+    /** Last move: warm yellow, the colour players read as "last move" on any wood or green board (blue turned grey). */
+    private static final Color LAST_MOVE = Color.rgb(247, 214, 72, 0.5);
     private static final Color ERROR = Color.rgb(255, 72, 72, 0.6);
 
     private int TILE_SIZE;
@@ -280,7 +281,7 @@ public class ChessBoardUI extends StackPane {
             }
         }
         if (showCoordinates && TILE_SIZE >= 32) {
-            gc.setFont(Font.font("Geist Mono SemiBold", Math.max(10, TILE_SIZE * 0.17)));
+            gc.setFont(Font.font("Geist SemiBold", Math.max(10, TILE_SIZE * 0.19)));
             double pad = Math.max(2, TILE_SIZE * 0.06);
             for (int i = 0; i < BOARD_SIZE; i++) {
                 // Ranks on the left edge, files on the bottom edge, in the colour of the opposite square.
@@ -288,7 +289,8 @@ public class ChessBoardUI extends StackPane {
                 String file = String.valueOf((char) (flipped ? 'h' - i : 'a' + i));
                 gc.setFill(i % 2 == 0 ? colors.dark() : colors.light());
                 coordinate(gc, rank, pad, i * TILE_SIZE + pad, TextAlignment.LEFT, VPos.TOP);
-                gc.setFill(i % 2 == 0 ? colors.dark() : colors.light());
+                // bottom rank: the square in column i is dark for even i (a1 is dark in both orientations)
+                gc.setFill(i % 2 == 0 ? colors.light() : colors.dark());
                 coordinate(gc, file, (i + 1) * TILE_SIZE - pad, height - pad, TextAlignment.RIGHT, VPos.BOTTOM);
             }
         }
@@ -302,7 +304,7 @@ public class ChessBoardUI extends StackPane {
             gc.fillText(text, x, y);
             return;
         }
-        double size = TILE_SIZE * 0.17;
+        double size = TILE_SIZE * 0.19;
         double cx = align == TextAlignment.LEFT ? x + size * 0.3 : x - size * 0.3;
         double cy = baseline == VPos.TOP ? y + size * 0.5 : y - size * 0.5;
         gc.save();
