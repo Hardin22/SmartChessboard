@@ -102,4 +102,26 @@ class PgnTransferTest {
     void noDrives() {
         assertTrue(new PgnTransfer(List.of(tmp.resolve("nothing"))).drives().isEmpty());
     }
+
+    @Test
+    void usbRootsPropertyReplacesTheDrivesOfThisComputer() throws Exception {
+        // trial runs and E2E tests must never list (and export onto) the drives mounted in /Volumes or /media
+        Path a = Files.createDirectories(tmp.resolve("a"));
+        Path b = Files.createDirectories(tmp.resolve("b"));
+        Files.createDirectories(b.resolve("PENNA"));
+        String old = System.getProperty("javachess.usbRoots");
+        System.setProperty("javachess.usbRoots", a + java.io.File.pathSeparator + b);
+        try {
+            assertEquals(List.of(a, b), PgnTransfer.defaultMountRoots());
+            List<PgnTransfer.Drive> drives = new PgnTransfer().drives();
+            assertEquals(1, drives.size());
+            assertEquals("PENNA", drives.get(0).label());
+        } finally {
+            if (old == null) {
+                System.clearProperty("javachess.usbRoots");
+            } else {
+                System.setProperty("javachess.usbRoots", old);
+            }
+        }
+    }
 }
