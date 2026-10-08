@@ -165,8 +165,8 @@ class LichessApiEndToEndTest {
                 && o.getBoard().getBackup().size() == 4));
 
         // Resign (enabled for online games now), confirmed: sent to Lichess, the end comes from the stream
-        assertFalse(fxGet(() -> ((javafx.scene.control.Button) field(field(game, "solo"), "resignButton"))
-                .isDisabled()), "Resign is available in an online game");
+        waitFor("Resign available in an online game", () -> !fxGet(() -> ((javafx.scene.control.Button)
+                field(field(game, "solo"), "resignButton")).isDisabled()));
         fx(() -> invoke(game, "requestResign"));
         app.fireButton(I18n.t("game.resign.confirm.ok"));
         waitFor("resignation sent", () -> commands.contains("/api/board/game/g1/resign"));
