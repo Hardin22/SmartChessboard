@@ -92,7 +92,7 @@ e cosa è cambiato nel codice.
   modalità. Le etichette e la precisione della revisione sono calcolate dal classificatore reale.
 - Prestazioni con `-Dprism.order=sw` (Mac, scena della partita a due con l'orologio che scorre, Home): CPU dell'app
   1–3% a riposo; nessuna animazione continua.
-- Test: `./mvnw test` → 454 test (6 E2E), 0 falliti, 10 saltati (test di motore/dati opzionali). Gli E2E non sono
+- Test: `./mvnw test` → 538 test (22 E2E in 4 classi), 0 falliti, 10 saltati (test di motore/dati opzionali). Gli E2E non sono
   stati indeboliti: stessi scenari e controlli (partita fino al matto archiviata, cambio motore, tempo scaduto,
   puzzle, revisione con precisione, archivio apri/esporta/elimina).
 
