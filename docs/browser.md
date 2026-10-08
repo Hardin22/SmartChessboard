@@ -39,6 +39,7 @@ when useful, a **button** (Collega, Scollega, Risincronizza, Ricarica, Mostra sc
 | Apro Chess.com… / Il sito è lento | The page is loading. | Wait, or tap **Ricarica**. |
 | Nessuna connessione | No network. | Check the Wi-Fi or the cable, then **Ricarica**. |
 | Chess.com non risponde | The site is down or not reachable now. | Try again later (**Ricarica**). |
+| La pagina si è interrotta | Chromium had to close the page (out of memory, a crash). The page is reopened by itself once; if it happens again within a minute the message stays. | Tap **Ricarica**. |
 | Verifica di sicurezza | The site wants to check you are a person (CAPTCHA). | Tick the box on the page yourself; the app continues by itself. |
 | Accedi a Chess.com | The login page. | Log in on the page (once). |
 | Inserisco le credenziali salvate… | The saved login is being typed for you. | Wait. |
@@ -267,3 +268,25 @@ translucent "glass" queen read with the wrong colour. The start position is reco
   Keychain / Secret Service; `-Djavachess.credentials=system|file` overrides it.
 - `-Djavachess.jcef.dir=DIR` uses another engine folder; `-Djavachess.browser.osr=true|false` forces off-screen /
   windowed rendering.
+
+## Second round (8 October 2026, morning): summary
+
+What changed and why:
+
+- **No more JVM crashes on macOS** (4 crashes of test JVMs in the night, also possible when closing the app):
+  jcefmaven's start-up registers a shutdown hook that disposes Chromium, which on macOS 27 aborts the process.
+  Chromium now starts without it and is never disposed on macOS (see [Shutting Chromium down](#shutting-chromium-down)).
+  Test JVMs run with `-Dapple.awt.UIElement=true` so that the macOS alert after an old crash cannot hang them.
+- **Vision delays of 5-7 s on lichess**: a race in JCEF's DevTools client lost answers that arrived before the
+  message id, and the call waited for its 5 s timeout (found with the new lag trace of `BoardWatcher`). DevTools
+  calls now go through `DevToolsAccess` + `DevToolsReplies`, which keep early answers.
+- **Linux off-screen "Exception in thread AWT-EventQueue-0" lines**: they are `StackOverflowError`s thrown by the
+  JVM when Chromium, on the Swing thread, calls back into Java with too little stack left during the first frames
+  of the page (the JVM cannot even print their stack, hence the bare lines). See the open items.
+- **Clear messages**: a page whose process ended (out of memory, crash) says *La pagina si è interrotta* and is
+  reopened once by itself, instead of "<site> non risponde"; the expected "no network" start-up failure is no
+  longer logged as an error with a stack trace.
+- **Fixes reported by QA**: the browser window no longer appears over a game started while Chromium was still
+  starting; tests, trials and screenshots (`-Djavachess.home`) never read or remove the real saved logins (only
+  the file in their folder); the flaky LED test reads the board's current frame.
+- **Real Pi 5 check**: `scripts/pi-check-browser.sh` (see [Checking it on a Raspberry Pi](#checking-it-on-a-raspberry-pi)).
