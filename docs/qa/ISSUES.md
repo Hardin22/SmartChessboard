@@ -22,7 +22,7 @@ Gravità: **alta** (vicolo cieco, perdita di dati, partita bloccata), **media** 
 | QA-014 | bassa | logica | Nome dell'apertura solo online (explorer Lichess, che ora chiede un token): offline non compare | fatto da features (libro offline prima dell'explorer) |
 | QA-015 | media | UI | Revisione: dopo "Analizza partita" la scacchiera si rimpicciolisce e le etichette si troncano | risolto da design (scacchiera a tutta larghezza nel ridisegno) |
 | QA-016 | media | UI | Motore che fallisce in PvC: manca un "Riprova" accanto al messaggio | corretto da design (carta "Il computer non risponde" + Riprova; coperto dall'E2E) |
-| QA-017 | bassa | UI+logica | Home: il riquadro "Partita in corso / Riprendi" non compare mai (uscire da GAME termina la partita) | assegnato a design + features |
+| QA-017 | bassa | UI+logica | Home: il riquadro "Partita in corso / Riprendi" non compare mai (uscire da GAME termina la partita) | risolto in pratica: uscire archivia come interrotta e la Home offre "Partita interrotta · Riprendi" (snapshot); il ramo "Partita in corso" resta codice inerte |
 | QA-018 | media | logica | Revisione: l'analisi completa continua (6 processi Stockfish, analisi live sospesa) dopo aver lasciato la schermata o aperto un'altra partita | corretto |
 | QA-019 | media | logica | Import PGN lentissimo (1000 partite: 9,6 s su Mac, minuti sul Pi) | corretto |
 | QA-020 | media | logica | Re sollevato subito dopo una spinta di due case: eccezione nel listener della scacchiera, schermo non aggiornato | corretto |
