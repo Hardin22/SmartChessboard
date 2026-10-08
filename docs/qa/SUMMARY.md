@@ -12,7 +12,7 @@ con gravità, passi, area e stato).
 | | |
 |---|---|
 | Problemi trovati | 32 (QA-001 … QA-032) |
-| Corretti da QA (logica, con test) | 19: QA-001 (parte logica), 002, 003, 004, 007, 008 (parte logica), 010, 018, 019, 020, 021, 025, 027, 028, 029, 030, 031, 032 + resync per l'annulla mossa |
+| Corretti da QA (logica, con test) | 18: QA-001 (parte logica), 002, 003, 004, 007, 008 (parte logica), 010, 018, 019, 020, 021, 025, 027, 028, 029, 030, 031, 032 + resync per l'annulla mossa |
 | Assegnati e già risolti | design: 005, 006, 008 (UI), 009, 015, 016, 022, 023, 024; features: 012, 013, 014, 026 |
 | Ancora aperti / in corso | browser: 011 (da verificare con browser/v2) |
 | Test | unit 516 (10 skip senza motori), E2E 31 (6 classi), tutti verdi con e senza finestra; nel "Pi in scatola" (Docker linux/arm64, 4 CPU, 2 GB, senza Stockfish) unit 495 (29 skip) ed E2E 28/28 senza finestra |
