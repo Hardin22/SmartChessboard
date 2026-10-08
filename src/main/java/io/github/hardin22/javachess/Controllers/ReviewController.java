@@ -1143,9 +1143,13 @@ public class ReviewController implements Screen, GameNavigationListener {
                 MoveClassification c = insight.label();
                 moveBadge.getChildren().setAll(ReviewLabels.tile(c, 56));
                 // with a button beside it the sentence would not fit on one line: move and label instead
-                moveTitle.setText(insight.showBest() ? insight.moveText() + " · " + ReviewLabels.name(c).toLowerCase(
-                        Locale.ITALIAN) : ReviewLabels.sentence(c, insight.moveText()));
-                if (insight.book() && !opening.isEmpty()) {
+                // with a button beside it the sentence would not fit on one line: the label as title, the move below
+                moveTitle.setText(insight.showBest() ? ReviewLabels.name(c) : ReviewLabels.sentence(c,
+                        insight.moveText()));
+                if (insight.showBest()) {
+                    moveSub.setText(insight.bestText().isEmpty() ? insight.moveText()
+                            : I18n.t("analysis.best.was.move", insight.moveText(), insight.bestText()));
+                } else if (insight.book() && !opening.isEmpty()) {
                     moveSub.setText(opening);
                 } else if (!insight.bestText().isEmpty() && ReviewLabels.bad(c)) {
                     moveSub.setText(I18n.t("analysis.best.was", insight.bestText()));

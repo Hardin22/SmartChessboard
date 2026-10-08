@@ -62,6 +62,11 @@ public final class BoardThemes {
             return "";
         }
         String name = id.replace(".png", "");
-        return "Marghiacciato".equals(name) ? "Mare ghiacciato" : name;
+        return switch (name) {
+            case "Marghiacciato" -> "Mare ghiacciato";
+            case "Checkers" -> "Dama";
+            case "Bubblegum" -> "Confetto";
+            default -> name;
+        };
     }
 }

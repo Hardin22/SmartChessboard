@@ -175,6 +175,7 @@ public class HomeController implements Screen {
     private Button smallTile(String icon, String title, Label value, String caption, Runnable action) {
         HBox top = new HBox(Icons.of(icon, 32), Ui.hgrow());
         top.setAlignment(Pos.CENTER_LEFT);
+        top.setMinHeight(64); // same height with or without the number: titles line up across the row
         if (value != null) {
             top.getChildren().add(value);
         }

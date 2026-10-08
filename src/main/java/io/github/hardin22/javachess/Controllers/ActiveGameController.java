@@ -772,7 +772,20 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         review.setOnAction(e -> reviewGame());
         Button again = Ui.button(I18n.t("game.end.again"), "fth-repeat", "btn-outline", "btn-md");
         again.setOnAction(e -> mainController.navigateTo(mode == Mode.PVP ? "PVP_SETUP" : "PVC_SETUP"));
-        List<Node> buttons = mode == Mode.ONLINE ? List.of(review) : List.of(review, again);
+        List<Node> buttons;
+        if (mode == Mode.ONLINE) {
+            buttons = List.of(review);
+        } else if (mode == Mode.PVC && currentGame instanceof PvcGame pvc && pvc.getLevel() != null) {
+            // against the computer: the same opponent again with the colours swapped, in one tap
+            Button rematch = Ui.button(I18n.t("duel.rematch"), "fth-refresh-cw", "btn-outline", "btn-md");
+            rematch.setId("game-rematch");
+            rematch.setOnAction(e -> rematchPvc(pvc));
+            again.setText(I18n.t("game.end.other"));
+            again.setGraphic(null);
+            buttons = List.of(review, rematch, again);
+        } else {
+            buttons = List.of(review, again);
+        }
         String detail = capitalize(reason);
         String move = null;
         if (status.kind() == GameStatus.Kind.REPLICATE) {
@@ -1017,6 +1030,13 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
     @Override
     public void rematch() {
         startPvPSeconds(pvpSeconds, pvpIncrement);
+    }
+
+    /** Rematch against the computer: same level, clock and starting position, the other colour. */
+    private void rematchPvc(PvcGame finished) {
+        String fen = finished.getInitialFen();
+        nextStartFen = samePosition(fen, START_FEN) ? null : fen;
+        startPvC(finished.getLevel(), !humanWhite, finished.getTimeControl());
     }
 
     @Override

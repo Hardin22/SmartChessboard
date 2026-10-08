@@ -842,6 +842,11 @@ public class ArchiveController implements Screen {
         if (label.startsWith("Player") || label.startsWith("Plaver") || label.startsWith("Online")) {
             return describeType(label);
         }
+        if (game.mode() == ArchivedGame.GameMode.BROWSER) {
+            // the browser stores the site ("Chess.com", "Lichess (browser)"): the site is the useful title
+            String site = label.replace("(browser)", "").trim();
+            return site.isEmpty() ? I18n.t("archive.mode.browser") : I18n.t("archive.mode.site", site);
+        }
         return switch (game.mode()) {
             case PVC -> label.isEmpty() ? I18n.t("pvc.title") : label.replace(" livello", " · livello");
             case PVP -> I18n.t("pvp.title");

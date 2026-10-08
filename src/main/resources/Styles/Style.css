@@ -1861,8 +1861,9 @@
 
 /* ---------------------------------------------------------------- position editor */
 
+/* Pieces sit on a light wooden square, like on the board, so that black pieces read on the dark theme too. */
 .palette-piece {
-    -fx-background-color: -c-s2;
+    -fx-background-color: #EBDDC2;
     -fx-background-radius: 14px;
     -fx-border-color: transparent;
     -fx-border-width: 3px;
@@ -1877,5 +1878,13 @@
 
 .palette-piece:selected {
     -fx-border-color: -c-accent;
+    -fx-background-color: #D8C29A;
+}
+
+.palette-tool {
+    -fx-background-color: -c-s2;
+}
+
+.palette-tool:selected {
     -fx-background-color: -c-accent-soft;
 }
