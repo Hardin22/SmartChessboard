@@ -193,11 +193,15 @@ independently.
 | lichess live games, default theme (140) | 100% / 100% | 98.6% / 99.98% |
 | lichess, 14 board themes, both orientations (84) | 100% / 100% | 90.5% / 97.8% |
 | chess.com bot theme, live games (42) | 100% / 100% | 0% / 69.7% |
-| chess.com image renderer, 27 themes x 27 piece sets (108) | 88.0% / 99.3% (89.8% fused with the model) | 44.4% / 95.3% |
+| chess.com image renderer, 26 board themes x 26 piece sets, both orientations (104) | 95.2% / 99.9% (97.1% fused with the model) | 44.2% / 95.4% |
 | Moves between consecutive real pictures (181) | 181 right, 0 wrong | 139 right |
 
-The remaining errors are extreme renderer themes (black pieces on dark stone, pale pawns on newspaper print). The
-start position is recognised by occupancy alone in 71 of 75 pictures, with no false start in 433 others.
+Squares never seen empty since the calibration (the back ranks, at first) are judged on every pixel against the
+learned pieces, so pieces that barely stand out from a textured square (black on dark stone, pale on newspaper
+hatching) are found too. The 5 remaining errors are extreme renderer themes: a piece in a corner of "metal" (under
+its vignette), a pale "gothic" king on newspaper hatching on a board turned the other way from the calibration, a
+translucent "glass" queen read with the wrong colour. The start position is recognised by occupancy alone in 74 of
+78 pictures, with no false start in 435 others.
 
 ## Testing
 

@@ -20,7 +20,10 @@ import java.util.Map;
  * <p><b>Reading</b> ({@link #read}): every square is compared with every example by shape (overlap of the piece
  * pixels) and colour (on the overlap). The background of each square is measured on its border, so the coloured
  * highlights the sites draw <i>under</i> the pieces (last move, check, selection) do not matter; the coordinates
- * drawn in the corners are outside the compared area. Scores become probabilities for {@link PositionResolver}.</p>
+ * drawn in the corners are outside the compared area. A square never seen empty (the back ranks, after a
+ * calibration on the start position) is also weighed on every pixel against the learned pieces ({@link Evidence}),
+ * which finds pieces that barely stand out from a textured square. Scores become probabilities for
+ * {@link PositionResolver}.</p>
  *
  * <p>Pictures must be cropped to the board (the page gives its rectangle). Not thread-safe.</p>
  */
@@ -32,6 +35,13 @@ public final class TemplateReader {
     private static final double MARGIN = 0.06;
     /** Colour distance (sum of |dR|+|dG|+|dB|) above which a pixel belongs to a piece. */
     private static final int PIECE_THRESHOLD = 70;
+    /** Lowest threshold tried when learning a piece known to be on a square where it barely stands out. */
+    private static final int LOW_CONTRAST_THRESHOLD = 40;
+    /** {@link Evidence#gain} above which a square never seen empty holds a piece, below which it is empty. */
+    private static final double OCCUPIED_GAIN = 0.2;
+    private static final double EMPTY_GAIN = -0.05;
+    /** Scale of {@link Evidence#symbolError} (mean colour error per pixel) to the shape scores. */
+    private static final double ERROR_SCALE = 20;
     /** Examples kept per symbol and square colour. */
     private static final int MAX_EXAMPLES = 3;
     /** Softness of the score -> probability conversion. */
@@ -39,8 +49,18 @@ public final class TemplateReader {
 
     private enum Parity { LIGHT, DARK }
 
-    /** One example of a piece: its pixels and shape. */
-    record Example(int[] rgb, boolean[] mask, int area) {
+    /** One example of a piece: its pixels, its shape and how much they stand out from the square (colour mass). */
+    record Example(int[] rgb, boolean[] mask, int area, long contrast) {
+        static Example of(int[] rgb, boolean[] mask, int area) {
+            int bg = background(rgb);
+            long contrast = 0;
+            for (int i = 0; i < rgb.length; i++) {
+                if (mask[i]) {
+                    contrast += distance(rgb[i], bg);
+                }
+            }
+            return new Example(rgb, mask, area, contrast);
+        }
     }
 
     private final Map<Parity, List<Example>>[] examples;
@@ -118,13 +138,30 @@ public final class TemplateReader {
                     continue;
                 }
                 int s = BoardReading.SYMBOLS.indexOf(symbol);
-                boolean[] mask = keepBlobs(pieceMask(rgb, threshold(parity(file, rank))));
+                int threshold = threshold(parity(file, rank));
+                boolean[] mask = keepBlobs(pieceMask(rgb, threshold));
                 int area = count(mask);
+                // the piece is known to be there: when it barely stands out from a textured square (black on dark
+                // stone) look closer, as long as the texture does not flood the square
+                for (int t : new int[] {PIECE_THRESHOLD, LOW_CONTRAST_THRESHOLD}) {
+                    if (area >= N * N / 25) {
+                        break;
+                    }
+                    if (t >= threshold) {
+                        continue;
+                    }
+                    boolean[] closer = keepBlobs(pieceMask(rgb, t));
+                    int closerArea = count(closer);
+                    if (closerArea <= N * N * 0.7) {
+                        mask = closer;
+                        area = closerArea;
+                    }
+                }
                 if (area < N * N / 25) {
                     continue; // nothing visible there (covered, or a bad crop): not a useful example
                 }
                 List<Example> list = examples[s].computeIfAbsent(parity(file, rank), p -> new ArrayList<>());
-                list.add(new Example(rgb, mask, area));
+                list.add(Example.of(rgb, mask, area));
                 if (list.size() > MAX_EXAMPLES) {
                     list.remove(0); // keep the most recent look (themes can change)
                 }
@@ -178,6 +215,22 @@ public final class TemplateReader {
                 }
                 // empty: few piece pixels (compared with the square's own empty look when known: more reliable)
                 double emptyScore = Math.min(3, (empty != null ? 6.0 : 4.0) * area / (N * N));
+                if (empty == null) {
+                    // the square was never seen empty: weigh every pixel against the learned pieces
+                    Evidence ev = evidence(rgb);
+                    if (ev.gain() > OCCUPIED_GAIN) {
+                        if (area < N * N / 25) { // no shape to compare: which piece explains the pixels best
+                            best = Double.MAX_VALUE;
+                            for (int s = 0; s < n - 1; s++) {
+                                score[s] = ev.symbolError()[s];
+                                best = Math.min(best, score[s]);
+                            }
+                        }
+                        emptyScore = Math.max(emptyScore, best + 0.25);
+                    } else if (ev.gain() < EMPTY_GAIN) {
+                        emptyScore = Math.min(emptyScore, Math.max(0, best - 0.25));
+                    }
+                }
                 score[n - 1] = emptyScore;
                 best = Math.min(best, emptyScore);
                 qualitySum += best;
@@ -359,6 +412,50 @@ public final class TemplateReader {
             }
         }
         return n == 0 ? 0 : sum / n;
+    }
+
+    /**
+     * What every pixel of a square says about the learned pieces. {@code gain}: how much better the best example
+     * explains the square than its background does, over that example's own contrast (about 1 when the piece is
+     * there, 0 or below when the square is empty); summing all the pixels, not only those above a threshold, lets a
+     * piece that barely stands out (pale on hatching, black on dark stone) add up. {@code symbolError}: per symbol, the
+     * mean error of "the example's piece pixels, the background elsewhere", scaled like the shape scores. Without
+     * examples the gain is NaN (no decision).
+     */
+    record Evidence(double gain, double[] symbolError) {
+    }
+
+    private Evidence evidence(int[] rgb) {
+        int bg = background(rgb);
+        int[] toBg = new int[rgb.length];
+        long emptyError = 0;
+        for (int i = 0; i < rgb.length; i++) {
+            toBg[i] = distance(rgb[i], bg);
+            emptyError += toBg[i];
+        }
+        double bestGain = Double.NaN;
+        double[] symbolError = new double[examples.length];
+        for (int s = 0; s < examples.length; s++) {
+            long bestError = Long.MAX_VALUE;
+            for (List<Example> list : examples[s].values()) {
+                for (Example e : list) {
+                    long gain = 0;
+                    for (int i = 0; i < rgb.length; i++) {
+                        if (e.mask[i]) {
+                            gain += toBg[i] - distance(rgb[i], e.rgb[i]);
+                        }
+                    }
+                    if (e.contrast > 0) {
+                        double g = gain / (double) e.contrast;
+                        bestGain = Double.isNaN(bestGain) ? g : Math.max(bestGain, g);
+                    }
+                    bestError = Math.min(bestError, emptyError - gain);
+                }
+            }
+            symbolError[s] = bestError == Long.MAX_VALUE ? 3
+                    : Math.min(3, ERROR_SCALE * bestError / (rgb.length * 765.0));
+        }
+        return new Evidence(bestGain, symbolError);
     }
 
     /** Dissimilarity of a square with an example: shape (1 - overlap) plus colour difference on the overlap. */

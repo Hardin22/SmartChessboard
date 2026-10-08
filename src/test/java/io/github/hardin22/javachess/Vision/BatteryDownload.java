@@ -46,8 +46,7 @@ public final class BatteryDownload {
             "cooke", "monarchy", "governor", "dubrovny", "icpieces", "mpchess", "kiwen-suwi", "horsey", "anarcandy");
     static final List<String> CHESSCOM_BOARDS = List.of("green", "brown", "blue", "bubblegum", "dash", "glass",
             "graffiti", "icy_sea", "light", "lolz", "marble", "metal", "neon", "newspaper", "orange", "overlay",
-            "parchment", "purple", "red", "sand", "sky", "stone", "tan", "tournament", "translucent", "walnut",
-            "wood");
+            "parchment", "purple", "red", "sand", "sky", "stone", "tan", "tournament", "translucent", "walnut");
     static final List<String> CHESSCOM_PIECES = List.of("neo", "classic", "wood", "glass", "gothic", "alpha",
             "bases", "book", "bubblegum", "cases", "club", "condal", "dash", "game_room", "graffiti", "icy_sea",
             "light", "lolz", "marble", "maya", "metal", "nature", "neon", "newspaper", "ocean", "sky", "space",
@@ -88,7 +87,7 @@ public final class BatteryDownload {
                 String url = "https://www.chess.com/dynboard?fen=" + enc(fen) + "&board=" + board + "&piece=" + pieces
                         + "&size=3" + (black ? "&flip=true" : "");
                 String name = String.format("chesscom-%02d-%s-%s", n++, board, pieces);
-                if (fetch(http, url, dir.resolve(name + ".png"))) {
+                if (fetchRender(http, url, dir.resolve(name + ".png"))) {
                     manifest.put(entry(name + ".png", "chesscom", board, pieces, fen, black, "theme"));
                 }
             }
@@ -116,7 +115,7 @@ public final class BatteryDownload {
                 String url = "https://www.chess.com/dynboard?fen=" + enc(fen) + "&board=" + board + "&piece=" + pieces
                         + "&size=3" + (black ? "&flip=true" : "");
                 String name = String.format("cal-%03d-%s-%s-%d", n++, board, pieces, k);
-                if (fetch(http, url, dir.resolve(name + ".png"))) {
+                if (fetchRender(http, url, dir.resolve(name + ".png"))) {
                     JSONObject e = entry(name + ".png", "chesscom", board, pieces, fen, black, "calibrated");
                     e.put("group", group).put("calibration", k == 0);
                     manifest.put(e);
@@ -134,6 +133,23 @@ public final class BatteryDownload {
         return new JSONObject().put("file", file).put("site", site).put("theme", theme).put("pieces", pieces)
                 .put("placement", fen.split(" ")[0]).put("flipped", black).put("category", category)
                 .put("source", site.equals("lichess") ? "lichess export renderer" : "chess.com dynboard renderer");
+    }
+
+    /**
+     * A chess.com render: an unknown board or piece name silently gives the default board (480 px, not flipped), whose
+     * labels would be wrong; those are dropped. {@code size=3} renders 720 px.
+     */
+    private static boolean fetchRender(HttpClient http, String url, Path out) throws java.io.IOException {
+        if (!fetch(http, url, out)) {
+            return false;
+        }
+        java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(out.toFile());
+        if (img != null && img.getWidth() == 720) {
+            return true;
+        }
+        System.out.println("Dropped (default board instead of the one asked): " + url);
+        Files.deleteIfExists(out);
+        return false;
     }
 
     private static boolean fetch(HttpClient http, String url, Path out) {
