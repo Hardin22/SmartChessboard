@@ -117,6 +117,64 @@ class BoardStateManagerTest {
         return leds.composeNow()[Squares.parse(square)];
     }
 
+    // --- take-back with the pieces ----------------------------------------------------------------------------
+
+    static final String AFTER_E4 = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1";
+    static final String AFTER_E4_E5 = "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2";
+
+    private static Board at(String fen) {
+        Board b = new Board();
+        b.loadFromFen(fen);
+        return b;
+    }
+
+    @Test
+    void puttingTheAnswerAndThenTheOwnMoveBackTakesThemBack() throws InterruptedException {
+        play(AFTER_E4_E5);
+        manager.setPhysicalMoveSide(Side.WHITE);
+        manager.setTakebackSettleMs(30);
+        manager.setTakebackGesture(List.of(at(AFTER_E4), new Board()), () -> events.add("takeback"));
+        sim.lift("e5");
+        sim.place("e7"); // the computer's answer goes back first: not a stray piece
+        settle(ERROR_SETTLE * 2);
+        assertFalse(events.stream().anyMatch(e -> e.startsWith("error")), events.toString());
+        assertFalse(events.contains("takeback"));
+        sim.lift("e4");
+        sim.place("e2");
+        settle(100);
+        assertEquals(List.of("takeback"), events.stream().filter(e -> !e.startsWith("error")).toList());
+        assertTrue(moves().isEmpty());
+    }
+
+    @Test
+    void takingBackTheOwnMoveWhileTheAnswerIsStillToReproduce() throws InterruptedException {
+        play(AFTER_E4);
+        manager.setLogicalBoard(at(AFTER_E4_E5));
+        manager.startBotMoveReplication("E7", "E5");
+        manager.setTakebackSettleMs(30);
+        manager.setTakebackGesture(List.of(at(AFTER_E4), new Board()), () -> events.add("takeback"));
+        settle();
+        sim.lift("e4");
+        sim.place("e2");
+        settle(100);
+        assertTrue(events.contains("takeback"), events.toString());
+        assertFalse(events.contains("replicated"));
+    }
+
+    @Test
+    void aNewLogicalPositionForgetsTheTakeback() throws InterruptedException {
+        play(AFTER_E4_E5);
+        manager.setTakebackSettleMs(30);
+        manager.setTakebackGesture(List.of(at(AFTER_E4), new Board()), () -> events.add("takeback"));
+        manager.setLogicalBoard(at(AFTER_E4_E5));
+        sim.lift("e5");
+        sim.place("e7");
+        sim.lift("e4");
+        sim.place("e2");
+        settle(100);
+        assertFalse(events.contains("takeback"));
+    }
+
     // --- setup ---------------------------------------------------------------------------------------------
 
     @Test

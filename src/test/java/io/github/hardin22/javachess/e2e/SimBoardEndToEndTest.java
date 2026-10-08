@@ -257,6 +257,33 @@ class SimBoardEndToEndTest {
     }
 
     @Test
+    @Order(10)
+    void takeBackMadeWithThePiecesLikeOnADgtBoard() throws Exception {
+        app.bot("e7e5"); // the scripted bot answers e7-e5 whenever it is legal
+        ActiveGameController game = app.startPvc(true);
+        playOnBoard(game, "e2e4", 2);
+        reproduceLastMove(game);
+        waitForMode(BoardStateManager.Mode.PLAY);
+        // the computer's answer back, then the player's own move back: no button
+        sim().lift("E5");
+        sim().place("E7");
+        sim().lift("E4");
+        sim().place("E2");
+        waitFor("take-back with the pieces", () -> plies(game) == 0);
+        waitForMode(BoardStateManager.Mode.PLAY);
+        assertTrue(fxGet(() -> game(game).isAwaitingHumanMove()));
+        assertEquals(1, fxGet(() -> ((io.github.hardin22.javachess.Oggetti.PvcGame) game(game)).getTakebacks()));
+        playOnBoard(game, "d2d4", 2);
+        reproduceLastMove(game);
+        assertEquals(List.of("d2d4", "e7e5"), fxGet(() -> game(game).getBoard().getBackup().stream()
+                .map(b -> b.getMove().toString()).toList()));
+        fx(() -> {
+            app.main.navigateTo("HOME");
+            return null;
+        });
+    }
+
+    @Test
     @Order(11)
     void gameLeftByARestartIsResumedFromHomeOnTheBoard() throws Exception {
         app.bot("d7d5", "g8f6", "e7e6"); // an opening no other test plays: its archived copies are told apart
