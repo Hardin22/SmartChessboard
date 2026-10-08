@@ -7,6 +7,25 @@ quelli del browser a browser, e costruire una rete di sicurezza E2E che giri in 
 Documenti: [FLOWS.md](FLOWS.md) (mappa dei flussi e come sono stati percorsi), [ISSUES.md](ISSUES.md) (ogni problema
 con gravità, passi, area e stato).
 
+## Stato finale (8 ottobre, origin/main 2bbc266 + qa)
+
+| | |
+|---|---|
+| Problemi trovati | 36 (QA-001 … QA-036), tutti chiusi |
+| Corretti da QA (logica, con test) | 22: QA-001 (logica), 002, 003, 004, 007, 008 (logica), 010, 011, 018, 019, 020, 021, 025, 027, 028, 029, 030, 031, 032, 033, 035, 036 + resync dell'annulla mossa |
+| Risolti dai proprietari su segnalazione | design 005, 006, 008 (UI), 009, 015, 016, 022, 023, 024; features 012, 013, 014, 026; browser 034 |
+| Suite sul Mac (senza finestra) | 757 test, 0 falliti, 12 saltati, 40 E2E in 11 classi |
+| Chromium vero (opt-in) | `BrowserJcefE2E` 9, `JcefShutdownJcefE2E` 4, `AppBrowserJcefE2E` 2: verdi, nessun crash di macOS |
+| Pi in scatola (Docker arm64, 4 CPU, 2 GB, senza Stockfish) | 722 test, 0 falliti, 31 saltati, 38 E2E; long run thread 33→34, processi 2→2, heap 178→187 MB, thread FX max 22 ms |
+| Monkey | monkey dei tocchi 4 semi × 1500 + simulata 3 × 1000 sulle schermate nuove (allenamento, coordinate, finali, aperture, test della scacchiera): nessun errore |
+| Long run | 20 partite + giro di tutte le schermate: thread 37→38, processi 2→2, heap 181→189 MB, thread FX max 56 ms |
+
+Rete di sicurezza in breve: E2E con la scacchiera simulata per ogni modalità fino alla fine, monkey a livello di API
+(`RandomWalk`, `SimRandomWalk`) e di tocchi (`TapWalk`, `SimTapWalk`) che raggiungono da soli le schermate nuove,
+long run con giro delle schermate, Lichess API contro un server finto, app intera con Chromium vero (opt-in), tutto
+eseguibile senza finestra e nel Pi in scatola. Gli E2E reggono una macchina carica (passi fino a 90 s, limiti scalati
+col carico, diagnosi automatica allo scadere) e girano solo nella loro JVM.
+
 ## Verifica dopo l'integrazione (8 ottobre, mattina)
 
 main ha ricevuto browser/v2 (browser integrato riscritto), design/v2 (UI completa) e le nuove funzioni di features.
@@ -63,7 +82,7 @@ Rifatto il giro sull'app integrata:
 - Test instabili sotto carico segnalati ai proprietari: `CoordinateTrainerTest` (features, già corretto),
   `SyncWithRealBoardTest` (browser).
 
-## Numeri (primo giro, 7-8 ottobre notte)
+## Numeri del primo giro (7-8 ottobre notte)
 
 | | |
 |---|---|
