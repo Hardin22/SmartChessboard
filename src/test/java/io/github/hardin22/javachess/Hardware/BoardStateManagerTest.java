@@ -138,7 +138,8 @@ class BoardStateManagerTest {
         sim.place("e4"); // a stray piece is shown in red while the guide goes on
         settle();
         assertEquals(LedColors.WRONG, ledAt("e4"));
-        assertTrue(events.stream().anyMatch(e -> e.endsWith("togli i pezzi sulle case rosse (1)")), events.toString());
+        assertTrue(events.contains("progress Posiziona i pezzi: togli quelli sulle case rosse (1), poi il Re nero in d8"
+                + " · passo 2 di 5"), events.toString());
         sim.lift("e4");
 
         for (String square : new String[]{"d8", "c1", "a2", "b7"}) {
@@ -147,6 +148,52 @@ class BoardStateManagerTest {
         settle();
         assertTrue(events.contains("setup complete"));
         assertEquals(null, manager.setupStep());
+    }
+
+    @Test
+    void piecesKnownToBeWrongAreTakenAwayFirst() throws InterruptedException {
+        // the board shows the starting position; the puzzle wants kings on g1/g8 (knights there now) and a rook on
+        // d1 (the queen there now): same occupancy, other pieces
+        manager.setSetupTargetFen("6k1/5ppp/r7/8/8/8/5PPP/3R2K1 w - - 0 1");
+        manager.startSetupMode();
+        settle();
+        assertEquals(LedColors.WRONG, ledAt("g1"), "a knight stands where the white king goes");
+        assertEquals(LedColors.WRONG, ledAt("d1"));
+        assertEquals(LedColors.WRONG, ledAt("g8"));
+        assertEquals(0, ledAt("f2"), "the right piece is already there");
+        assertTrue(events.contains("progress Posiziona i pezzi: togli quelli sulle case rosse (26), poi il Re bianco "
+                + "in g1 · passo 1 di 6"), events.toString());
+
+        sim.lift("g1"); // the knight goes
+        settle();
+        assertEquals(LedColors.MISSING, ledAt("g1"), "now the king can go there");
+        sim.place("g1");
+        settle();
+        assertTrue(events.stream().anyMatch(e -> e.endsWith("poi il Re nero in g8 · passo 2 di 6")),
+                events.toString());
+        assertFalse(events.contains("setup complete"));
+
+        for (String sq : new String[]{"a1", "b1", "c1", "e1", "f1", "h1", "a2", "b2", "c2", "d2", "e2", "a7", "b7",
+                "c7", "d7", "e7", "a8", "b8", "c8", "d8", "e8", "f8", "h8"}) {
+            sim.lift(sq);
+        }
+        sim.lift("g8");
+        sim.place("g8");
+        sim.lift("d1");
+        sim.place("d1");
+        sim.place("a6");
+        settle();
+        assertTrue(events.contains("setup complete"), events.toString());
+    }
+
+    @Test
+    void anUnknownBoardIsJudgedByOccupancyOnly() throws InterruptedException {
+        sim.setOccupancy(BoardStateManager.occupancy(new Board()) & ~Squares.bit(Squares.parse("e2")));
+        manager.setSetupTargetFen("6k1/5ppp/r7/8/8/8/5PPP/3R2K1 w - - 0 1");
+        manager.startSetupMode();
+        settle();
+        assertEquals(LedColors.WRONG, ledAt("a1"));
+        assertEquals(0, ledAt("g1"), "the sensors do not match the last position: g1 may hold anything");
     }
 
     @Test

@@ -13,7 +13,11 @@ Pedoni) e il messaggio di disposizione, quello che già mostrate, diventa ad ese
 
 - "Posiziona il Re bianco in g1 · passo 1 di 9"
 - "Posiziona le Torri nere: a8, f8 · passo 4 di 9"
-- "Posiziona i Pedoni bianchi: a2, b2, f2 · passo 9 di 9, togli i pezzi sulle case rosse (1)"
+- "Posiziona i pezzi: togli quelli sulle case rosse (26), poi il Re bianco in g1 · passo 1 di 6"
+
+Quando la scacchiera mostra ancora la posizione precedente (ad esempio quella iniziale prima di un puzzle), anche
+le case occupate dal pezzo sbagliato (un Cavallo dove va il Re) diventano rosse: prima si toglie il pezzo, poi la
+guida chiede quello giusto.
 
 Il testo inizia sempre con "Posiziona", quindi `GameStatus` lo classifica già come `SETUP`.
 
