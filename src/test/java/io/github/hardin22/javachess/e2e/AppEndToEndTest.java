@@ -389,7 +389,16 @@ class AppEndToEndTest {
         int before = archive().size();
         ActiveGameController game = startPvc(true);
         waitFor("screen moves accepted", () -> fxGet(() -> currentGame(game).isAwaitingHumanMove()));
-        tapMove(game, "f2f3");
+        // the board is resized between the two taps (the layout changes as the status card changes): the piece chosen
+        // stays chosen (it used to be dropped, so the move was lost and the bot never answered)
+        tapSquare(game, "f2");
+        fx(() -> {
+            io.github.hardin22.javachess.Oggetti.ChessBoardUI board =
+                    (io.github.hardin22.javachess.Oggetti.ChessBoardUI) field(game, "chessBoard");
+            board.setTileSize((int) field(board, "TILE_SIZE") + 3);
+            return null;
+        });
+        tapSquare(game, "f3");
         waitFor("bot reply", () -> fxGet(() -> currentGame(game).getBoard().getHistory().size() - 1) >= 2);
         tapMove(game, "g2g4");
         waitFor("bot reply 2", () -> fxGet(() -> currentGame(game).getBoard().getHistory().size() - 1) >= 4);
