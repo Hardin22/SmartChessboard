@@ -883,6 +883,11 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         return query(() -> logical.getFen());
     }
 
+    /** Position the set-up waits for (diagnostics, simulator autoplay). */
+    public String setupTargetFen() {
+        return query(() -> setupTarget.getFen());
+    }
+
     private <T> T query(java.util.concurrent.Callable<T> callable) {
         try {
             return events.submit(callable).get(5, TimeUnit.SECONDS);

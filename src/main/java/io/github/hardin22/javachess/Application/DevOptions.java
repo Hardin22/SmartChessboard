@@ -45,7 +45,8 @@ import java.util.function.Consumer;
  *   <li>{@code -Djavachess.devgame=pvp} start a player-vs-player game with one-minute clocks</li>
  *   <li>{@code -Djavachess.devgame=pvc} start a game against the bot (player white, lowest level) right away</li>
  *   <li>{@code -Djavachess.board=sim} software chessboard; with {@code -Djavachess.simulator.window=true} its
- *       debug window, with {@code -Djavachess.sim.autoplay=N} N moves played on it automatically</li>
+ *       debug window, with {@code -Djavachess.sim.autoplay=N} N moves played on it automatically
+ *       ({@code -Djavachess.sim.autoplay.side=white|black|both}, set-up and opponent moves done too)</li>
  *   <li>{@code -Djavachess.reviewGame=latest|ID} open an archived game in the review screen</li>
  * </ul>
  */
@@ -121,7 +122,9 @@ public final class DevOptions {
             }
             int autoplay = Integer.getInteger("javachess.sim.autoplay", 0);
             if (autoplay > 0) {
-                new SimulatorAutoplay(simulator, Hardware.boardState(), Side.WHITE, autoplay).start();
+                String side = System.getProperty("javachess.sim.autoplay.side", "white").toLowerCase();
+                new SimulatorAutoplay(simulator, Hardware.boardState(),
+                        side.equals("both") ? null : side.equals("black") ? Side.BLACK : Side.WHITE, autoplay).start();
             }
         }
         String review = System.getProperty("javachess.reviewGame");

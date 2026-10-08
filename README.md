@@ -238,7 +238,9 @@ skipped. QA notes: [docs/qa](docs/qa/SUMMARY.md).
 | `-Djavachess.home=DIR` | Use another data folder (handy to test the first-start migration) |
 | `-Djavachess.log.level=DEBUG` | More logging |
 | `-Djavachess.vision.debug=true` | Write annotated vision frames to `~/.javachess/vision-debug/` |
-| `-Djavachess.board=sim` | Simulated sensor board (add `-Djavachess.simulator.window=true` to show it) |
+| `-Djavachess.board=sim` | Simulated sensor board (add `-Djavachess.simulator.window=true` to show it, with a cable unplug button) |
+| `-Djavachess.sim.autoplay=N` | On the simulated board: set up the pieces, play N random moves (`-Djavachess.sim.autoplay.side=white\|black\|both`), reproduce the opponent's moves |
+| `-Djavachess.exitAfterMs=N` | Quit normally after N ms (a game in progress is archived as interrupted and kept for resuming) |
 | `-Djavachess.dev.pvc=e2e4,g1f3,...` | Scripted game against the bot without a board (see `DevScenario`) |
 | `-Djavachess.reviewGame=latest` | Open the newest archived game in the review screen |
 | `-Djavachess.metrics=true` | Log frame times and heap every 5 s |

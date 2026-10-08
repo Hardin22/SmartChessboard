@@ -13,9 +13,10 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * Development helper that plays on the software board like a person would: it makes {@code moves} moves for
- * {@code side} and reproduces the opponent's moves when the app asks for it. Used to test a whole game against
- * the bot without hardware ({@code -Djavachess.sim.autoplay=N}).
+ * Development helper that plays on the software board like a person would: it sets the pieces up when asked, makes
+ * {@code moves} moves for {@code side} (both sides when {@code side} is null, e.g. a two-player game) and
+ * reproduces the opponent's moves or puts pieces back when the app asks for it. Used to test whole games without
+ * hardware ({@code -Djavachess.sim.autoplay=N}, {@code -Djavachess.sim.autoplay.side=white|black|both}).
  */
 public final class SimulatorAutoplay {
 
@@ -47,9 +48,16 @@ public final class SimulatorAutoplay {
                 BoardStateManager.Mode mode = manager.mode();
                 Board logical = new Board();
                 logical.loadFromFen(manager.logicalFen());
-                if (mode == BoardStateManager.Mode.REPLICATE || mode == BoardStateManager.Mode.RESYNC) {
+                if (mode == BoardStateManager.Mode.SETUP) {
+                    Board target = new Board();
+                    target.loadFromFen(manager.setupTargetFen());
+                    if (BoardStateManager.occupancy(target) != sim.occupancy()) {
+                        sim.setOccupancy(BoardStateManager.occupancy(target));
+                        log.info("Autoplay: pieces set up");
+                    }
+                } else if (mode == BoardStateManager.Mode.REPLICATE || mode == BoardStateManager.Mode.RESYNC) {
                     replicate(lastSeen, logical);
-                } else if (mode == BoardStateManager.Mode.PLAY && logical.getSideToMove() == side
+                } else if (mode == BoardStateManager.Mode.PLAY && (side == null || logical.getSideToMove() == side)
                         && BoardStateManager.occupancy(logical) == sim.occupancy()) {
                     List<Move> legal = logical.legalMoves();
                     if (legal.isEmpty()) {
