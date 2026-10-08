@@ -55,6 +55,13 @@ public final class BrowserSession {
          * the app keeps its hands off them, so that the site's bot check sees only the user.
          */
         void pageAccess(boolean allowed);
+
+        /**
+         * The board watcher reports the current position again at its next reading. It reports only changes, so a
+         * synchronisation that starts again on an unchanged board (another address of the same page, Scollega and
+         * Collega, back and forward) would otherwise wait for good ("Leggo la scacchiera...", 8 October 2026).
+         */
+        void readPositionAgain();
     }
 
     /** Why the app keeps its hands off the page; see {@link Commands#pageAccess}. */
@@ -418,6 +425,7 @@ public final class BrowserSession {
         OnlineGameSync.Mode mode = info.kind() == PageInfo.Kind.ANALYSIS ? OnlineGameSync.Mode.ANALYSIS
                 : OnlineGameSync.Mode.PLAY;
         sync.start(mode, info);
+        commands.readPositionAgain();
     }
 
     // ------------------------------------------------------------------ actions

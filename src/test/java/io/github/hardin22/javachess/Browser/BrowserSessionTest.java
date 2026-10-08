@@ -65,6 +65,10 @@ class BrowserSessionTest {
             public void pageAccess(boolean allowed) {
                 commands.add("access:" + allowed);
             }
+
+            @Override
+            public void readPositionAgain() {
+            }
         }, clock::get);
         session.addListener(shown::add);
     }
