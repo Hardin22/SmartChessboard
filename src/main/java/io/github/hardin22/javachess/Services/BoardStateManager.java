@@ -121,6 +121,12 @@ public class BoardStateManager implements BoardHardware.SensorListener {
     private long physical;
     private Board logical = new Board();
     private Board setupTarget = new Board();
+    /**
+     * The position the pieces on the board form, as last known for sure (a set-up completed, a move read or
+     * reproduced, the board back in step): it tells which piece stands on each square, which the sensors cannot.
+     * Games change the logical position before the board follows, so this is kept apart from it.
+     */
+    private Board shown = new Board();
     /** Piece-by-piece guide of the current set-up, or null when all the squares are shown together. */
     private SetupGuide setupGuide;
     /**
@@ -130,6 +136,11 @@ public class BoardStateManager implements BoardHardware.SensorListener {
     private long mustClear;
     /** Copy of {@link #mustClear} readable from any thread. */
     private volatile long setupWrong;
+    /** Positions the board may go back through to take moves back (oldest last), and what to do then. */
+    private List<Board> takebackPath = List.of();
+    private Runnable takebackAction;
+    private ScheduledFuture<?> pendingTakeback;
+    private volatile long takebackSettleMs = 700;
     private Side physicalMoveSide;
     private long touched;
     private int liftedSquare = -1;
@@ -219,6 +230,33 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         return setupStep;
     }
 
+    /**
+     * Take-back made with the pieces (as on a DGT board): when the board shows the last of {@code positions} (the
+     * position before the moves to take back) and no legal move explains it, {@code onTakeback} runs on the
+     * callbacks thread, once. {@code positions} are the positions the board passes through, most recent first (e.g.
+     * before the computer's answer, then before the player's move): on the way, a piece out of place is not flagged.
+     * Cleared by every {@link #setLogicalBoard} and by the end of the game; an empty list turns it off.
+     */
+    public void setTakebackGesture(List<Board> positions, Runnable onTakeback) {
+        List<Board> copies = new ArrayList<>();
+        for (Board b : positions) {
+            copies.add(b.clone());
+        }
+        post(() -> {
+            clearTakeback();
+            if (!copies.isEmpty() && onTakeback != null) {
+                takebackPath = List.copyOf(copies);
+                takebackAction = onTakeback;
+                refresh();
+            }
+        });
+    }
+
+    /** Tests: how long the board must show the earlier position before the take-back counts. */
+    public void setTakebackSettleMs(long ms) {
+        takebackSettleMs = ms;
+    }
+
     /** Receives every sensor change (on the callbacks thread); null to stop. Independent of the move listener. */
     public void setSquareListener(SquareListener listener) {
         squareListener = listener;
@@ -254,6 +292,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         Board copy = board.clone();
         post(() -> {
             logical = copy;
+            clearTakeback(); // the game says again which take-back is possible for this position
             touched = 0;
             liftedSquare = -1;
             cancel(pendingCommit);
@@ -309,6 +348,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
             setupStep = null;
             mustClear = 0;
             setupWrong = mustClear;
+            clearTakeback();
             cancel(pendingCommit);
             cancel(pendingCheck);
             cancel(snapshotTimeout);
@@ -546,6 +586,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         pendingCheck = schedule(() -> {
             if (mode == Mode.RESYNC && physical == snapshot) {
                 log.info("Board back in sync with the game");
+                shown = logical.clone();
                 mode = Mode.PLAY;
                 touched = 0;
                 replicationRequired = 0;
@@ -564,7 +605,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
      * ({@link SetupGuide}); the starting position and small changes show every square together.
      */
     private void chooseSetupGuide() {
-        mustClear = hardwareConnected ? wrongPieces(logical, setupTarget, physical) : 0;
+        mustClear = hardwareConnected ? wrongPieces(shown, setupTarget, physical) : 0;
         setupWrong = mustClear;
         long seen = physical & ~mustClear;
         setupGuide = guidedSetupEnabled && hardwareConnected && SetupGuide.worthGuiding(setupTarget, seen)
@@ -598,10 +639,10 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         SetupGuide.Step step = setupGuide != null && hardwareConnected ? setupGuide.step(physical & ~mustClear)
                 : null;
         setupStep = step;
-        long shown = step != null ? step.missing() : missing;
+        long lit = step != null ? step.missing() : missing;
         Map<Integer, Integer> base = new HashMap<>();
         if (hardwareConnected) {
-            forEachSquare(shown, sq -> base.put(sq, LedColors.MISSING));
+            forEachSquare(lit, sq -> base.put(sq, LedColors.MISSING));
             forEachSquare(wrong, sq -> base.put(sq, LedColors.WRONG));
         }
         leds.replace(LedRenderer.Layer.BASE, base);
@@ -631,6 +672,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
                 mustClear = 0;
                 setupWrong = mustClear;
                 logical = setupTarget.clone(); // what the board shows now
+                shown = setupTarget.clone();
                 leds.clear(LedRenderer.Layer.BASE);
                 log.info("Board setup complete");
                 notifyListener(BoardMoveListener::onBoardSetupComplete);
@@ -647,6 +689,10 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         updateBaseLayer(0, 0);
 
         if (!hardwareConnected || (missing == 0 && extra == 0)) {
+            cancel(pendingTakeback);
+            if (hardwareConnected) {
+                shown = logical.clone(); // in step: the pieces are the game's (a take-back with the pieces, too)
+            }
             if (liftedSquare >= 0) {
                 hints.hintsCleared();
                 liftedSquare = -1;
@@ -673,7 +719,11 @@ public class BoardStateManager implements BoardHardware.SensorListener {
                         commit(move);
                     }
                 }, delay);
+            } else if (matches.isEmpty()) {
+                checkTakeback();
             }
+        } else {
+            checkTakeback(); // the player's own move put back while the opponent thinks
         }
         publish(displayFen(logicalOcc), null);
         pendingCheck = schedule(this::checkForStrayPieces, errorSettleMs);
@@ -730,6 +780,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
     private void commit(Move move) {
         log.info("Move detected on the board: {}", move);
         logical.doMove(move);
+        shown = logical.clone();
         touched = 0;
         liftedSquare = -1;
         hints.hintsCleared();
@@ -751,7 +802,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
             return;
         }
         long stray = physical & ~occupancy(logical);
-        if (stray == 0) {
+        if (stray == 0 || onTakebackPath()) {
             leds.clear(LedRenderer.Layer.ALERT);
             return;
         }
@@ -774,6 +825,9 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         publish(displayFen(logicalOcc), stray != 0 ? Squares.name(Long.numberOfTrailingZeros(stray)) : null);
 
         boolean done = !hardwareConnected || (wrongSquares == 0 && untouched == 0);
+        if (!done && checkTakeback()) {
+            return; // the player is taking the move back instead of reproducing the answer
+        }
         if (!done) {
             StringBuilder message = new StringBuilder("Muovi l'avversario: ");
             if ((physical & Squares.bit(replicationFrom)) != 0) {
@@ -787,6 +841,7 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         pendingCheck = schedule(() -> {
             if (mode == Mode.REPLICATE && physical == snapshot) {
                 log.info("Opponent move replicated on the board");
+                shown = logical.clone();
                 mode = Mode.PLAY;
                 touched = 0;
                 replicationRequired = 0;
@@ -805,6 +860,45 @@ public class BoardStateManager implements BoardHardware.SensorListener {
         forEachSquare(replicate, sq -> base.put(sq, LedColors.REPLICATE));
         forEachSquare(stray, sq -> base.put(sq, LedColors.WRONG));
         leds.replace(LedRenderer.Layer.BASE, base);
+    }
+
+    /** Starts (or keeps) the take-back countdown when the board shows the take-back position. Events thread. */
+    private boolean checkTakeback() {
+        if (takebackAction == null || takebackPath.isEmpty() || !hardwareConnected) {
+            return false;
+        }
+        Board target = takebackPath.get(takebackPath.size() - 1);
+        if (physical != occupancy(target)) {
+            cancel(pendingTakeback);
+            return false;
+        }
+        long snapshot = physical;
+        cancel(pendingTakeback);
+        pendingTakeback = schedule(() -> {
+            Runnable action = takebackAction;
+            if (action != null && physical == snapshot && (mode == Mode.PLAY || mode == Mode.REPLICATE)) {
+                log.info("Take-back made with the pieces");
+                clearTakeback();
+                callbacks.execute(action);
+            }
+        }, takebackSettleMs);
+        return true;
+    }
+
+    /** True when the board shows one of the take-back positions (no stray-piece alarm on the way). */
+    private boolean onTakebackPath() {
+        for (Board b : takebackPath) {
+            if (physical == occupancy(b)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void clearTakeback() {
+        takebackPath = List.of();
+        takebackAction = null;
+        cancel(pendingTakeback);
     }
 
     // --- helpers -------------------------------------------------------------------------------------------
@@ -901,6 +995,9 @@ public class BoardStateManager implements BoardHardware.SensorListener {
 
     /** FEN of the physical board during setup, with the pieces the target position has on those squares. */
     private String setupFen() {
+        // the pieces of the last known position are trusted only while no square has been emptied or filled since
+        // the set-up started on the squares that matter here (removed ones are not drawn anyway)
+        boolean knownShown = (physical & ~occupancy(shown)) == 0;
         StringBuilder fen = new StringBuilder();
         for (int rank = 7; rank >= 0; rank--) {
             int empty = 0;
@@ -911,8 +1008,14 @@ public class BoardStateManager implements BoardHardware.SensorListener {
                         fen.append(empty);
                         empty = 0;
                     }
-                    Piece target = setupTarget.getPiece(Square.squareAt(square));
-                    fen.append(target != Piece.NONE ? target.getFenSymbol() : "P");
+                    Square sq = Square.squareAt(square);
+                    Piece target = setupTarget.getPiece(sq);
+                    // a piece still to take away is drawn as the one standing there, when known (a knight where
+                    // the king goes); a piece in place as the target's
+                    Piece standing = knownShown && (target == Piece.NONE || (mustClear & Squares.bit(square)) != 0)
+                            ? shown.getPiece(sq) : Piece.NONE;
+                    Piece drawn = standing != Piece.NONE ? standing : target;
+                    fen.append(drawn != Piece.NONE ? drawn.getFenSymbol() : "P");
                 } else {
                     empty++;
                 }

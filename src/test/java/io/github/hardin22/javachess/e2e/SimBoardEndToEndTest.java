@@ -216,6 +216,41 @@ class SimBoardEndToEndTest {
     }
 
     @Test
+    @Order(8)
+    void theRematchSwapsTheColoursAndKeepsTheLevel() throws Exception {
+        app.bot("e7e5", "e2e4");
+        io.github.hardin22.javachess.Play.BotLevels.Level level = io.github.hardin22.javachess.Play.BotLevels.byId(
+                io.github.hardin22.javachess.Play.BotLevels.DEFAULT_ID).orElseThrow();
+        ActiveGameController game = fx(() -> {
+            ActiveGameController g = (ActiveGameController) app.main.getController("GAME");
+            app.main.navigateTo("GAME");
+            g.startPvC(level, true, io.github.hardin22.javachess.Play.TimeControl.UNLIMITED);
+            return g;
+        });
+        waitFor("game ready", () -> fxGet(() -> game(game) != null));
+        arrangeAs(io.github.hardin22.javachess.Analysis.AnalysisTree.START_FEN);
+        playOnBoard(game, "e2e4", 2);
+        reproduceLastMove(game);
+        fx(() -> invoke(game, "requestResign"));
+        app.fireButton(I18n.t("game.resign.confirm.ok"));
+        waitFor("game over", () -> !fxGet(() -> game(game).isRunning()));
+
+        Object first = fxGet(() -> game(game));
+        app.fireButton(I18n.t("duel.rematch"));
+        waitFor("rematch started", () -> fxGet(() -> game(game) != first && game(game).isRunning()));
+        io.github.hardin22.javachess.Oggetti.PvcGame rematch =
+                (io.github.hardin22.javachess.Oggetti.PvcGame) fxGet(() -> game(game));
+        assertEquals(level, fxGet(rematch::getLevel));
+        assertFalse((Boolean) fxGet(() -> field(game, "humanWhite")), "the player now has Black");
+        arrangeAsLogical();
+        waitFor("the computer opens with White", () -> plies(game) == 1);
+        fx(() -> {
+            app.main.navigateTo("HOME");
+            return null;
+        });
+    }
+
+    @Test
     @Order(9)
     void pvpDrawByAgreement() throws Exception {
         int before = archive().size();
@@ -246,6 +281,33 @@ class SimBoardEndToEndTest {
         arrangeAsLogical();
         waitForMode(BoardStateManager.Mode.PLAY);
         assertTrue(fxGet(pvc::isAwaitingHumanMove));
+        playOnBoard(game, "d2d4", 2);
+        reproduceLastMove(game);
+        assertEquals(List.of("d2d4", "e7e5"), fxGet(() -> game(game).getBoard().getBackup().stream()
+                .map(b -> b.getMove().toString()).toList()));
+        fx(() -> {
+            app.main.navigateTo("HOME");
+            return null;
+        });
+    }
+
+    @Test
+    @Order(10)
+    void takeBackMadeWithThePiecesLikeOnADgtBoard() throws Exception {
+        app.bot("e7e5"); // the scripted bot answers e7-e5 whenever it is legal
+        ActiveGameController game = app.startPvc(true);
+        playOnBoard(game, "e2e4", 2);
+        reproduceLastMove(game);
+        waitForMode(BoardStateManager.Mode.PLAY);
+        // the computer's answer back, then the player's own move back: no button
+        sim().lift("E5");
+        sim().place("E7");
+        sim().lift("E4");
+        sim().place("E2");
+        waitFor("take-back with the pieces", () -> plies(game) == 0);
+        waitForMode(BoardStateManager.Mode.PLAY);
+        assertTrue(fxGet(() -> game(game).isAwaitingHumanMove()));
+        assertEquals(1, fxGet(() -> ((io.github.hardin22.javachess.Oggetti.PvcGame) game(game)).getTakebacks()));
         playOnBoard(game, "d2d4", 2);
         reproduceLastMove(game);
         assertEquals(List.of("d2d4", "e7e5"), fxGet(() -> game(game).getBoard().getBackup().stream()
