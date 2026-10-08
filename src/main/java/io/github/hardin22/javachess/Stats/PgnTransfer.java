@@ -55,6 +55,16 @@ public final class PgnTransfer {
 
     static List<Path> defaultMountRoots() {
         List<Path> roots = new ArrayList<>();
+        // tests and trial runs with a temporary data folder never touch the drives plugged into this computer
+        String override = System.getProperty("javachess.usbRoots");
+        if (override != null) {
+            for (String part : override.split(java.io.File.pathSeparator)) {
+                if (!part.isBlank()) {
+                    roots.add(Path.of(part.trim()));
+                }
+            }
+            return roots;
+        }
         String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
         if (os.contains("mac")) {
             roots.add(Path.of("/Volumes"));

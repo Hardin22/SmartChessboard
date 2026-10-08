@@ -120,6 +120,48 @@ class BoardStateManagerTest {
     // --- setup ---------------------------------------------------------------------------------------------
 
     @Test
+    void aPositionIsSetUpOneKindOfPieceAtATime() throws InterruptedException {
+        sim.setOccupancy(0);
+        manager.setSetupTargetFen("1K1k4/1P6/8/8/8/8/r7/2R5 w - - 0 1");
+        manager.startSetupMode();
+        settle();
+        assertEquals(LedColors.MISSING, ledAt("b8"), "white king first");
+        assertEquals(0, ledAt("d8"), "the black king waits for its turn");
+        assertTrue(events.contains("progress Posiziona il Re bianco in b8 · passo 1 di 5"), events.toString());
+        assertEquals(1, manager.setupStep().index());
+
+        sim.place("b8");
+        settle();
+        assertEquals(LedColors.MISSING, ledAt("d8"));
+        assertTrue(events.contains("progress Posiziona il Re nero in d8 · passo 2 di 5"));
+
+        sim.place("e4"); // a stray piece is shown in red while the guide goes on
+        settle();
+        assertEquals(LedColors.WRONG, ledAt("e4"));
+        assertTrue(events.stream().anyMatch(e -> e.endsWith("togli i pezzi sulle case rosse (1)")), events.toString());
+        sim.lift("e4");
+
+        for (String square : new String[]{"d8", "c1", "a2", "b7"}) {
+            sim.place(square);
+        }
+        settle();
+        assertTrue(events.contains("setup complete"));
+        assertEquals(null, manager.setupStep());
+    }
+
+    @Test
+    void guidedSetupCanBeTurnedOff() throws InterruptedException {
+        manager.setGuidedSetup(false);
+        sim.setOccupancy(0);
+        manager.setSetupTargetFen("1K1k4/1P6/8/8/8/8/r7/2R5 w - - 0 1");
+        manager.startSetupMode();
+        settle();
+        assertEquals(LedColors.MISSING, ledAt("d8"));
+        assertTrue(events.contains("progress Posiziona i pezzi: mancano 5"), events.toString());
+    }
+
+
+    @Test
     void setupCompletesWhenEveryPieceIsInPlace() throws InterruptedException {
         sim.setOccupancy(0);
         manager.setSetupTargetFen(new Board().getFen());

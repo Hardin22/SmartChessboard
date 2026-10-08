@@ -122,17 +122,56 @@ class BoardFollowerTest {
     }
 
     @Test
-    void goingBackIsAPositionToSetUp() throws InterruptedException {
+    void oneMoveBackIsTheMoveMadeBackwards() throws InterruptedException {
         session.goToPly(1);
         setUpPieces(session.fenProperty().get());
         session.setBoardFollowing(true);
         await(() -> follower.stateProperty().get() == BoardFollower.State.FOLLOWING);
 
-        session.previous(); // back to the start: the e-pawn must go back
+        session.previous(); // back to the start: the e-pawn goes back from e4 to e2
+        assertEquals(BoardFollower.State.REPLICATING, follower.stateProperty().get());
+        assertEquals("Riporta indietro sulla scacchiera: 1. e4, da e4 a e2", follower.messageProperty().get());
+        await(() -> ledAt("E2") == LedColors.REPLICATE && ledAt("E4") == LedColors.REPLICATE);
+        sim.lift("E4");
+        sim.place("E2");
+        await(() -> follower.stateProperty().get() == BoardFollower.State.FOLLOWING);
+        assertEquals(0, session.plyProperty().get());
+    }
+
+    @Test
+    void takingBackACaptureBringsTheCapturedPieceBack() throws InterruptedException {
+        session.close();
+        EngineLines lines = new EngineLines(new EngineLinesTest.FakeSource(), Runnable::run, null, 0);
+        session = new AnalysisSession(null, List.of("e2e4", "d7d5", "e4d5"), lines, follower, OpeningBook.NONE);
+        session.goToPly(3);
+        setUpPieces(session.fenProperty().get());
+        session.setBoardFollowing(true);
+        await(() -> follower.stateProperty().get() == BoardFollower.State.FOLLOWING);
+
+        session.previous();
+        assertEquals("Riporta indietro sulla scacchiera: 2. exd5, da d5 a e4, poi rimetti il Pedone nero in d5",
+                follower.messageProperty().get());
+        await(() -> ledAt("E4") == LedColors.REPLICATE && ledAt("D5") == LedColors.REPLICATE);
+        sim.lift("D5");
+        sim.place("E4");
+        sim.place("D5");
+        await(() -> follower.stateProperty().get() == BoardFollower.State.FOLLOWING);
+    }
+
+    @Test
+    void jumpingBackIsAPositionToSetUp() throws InterruptedException {
+        session.goToPly(2);
+        setUpPieces(session.fenProperty().get());
+        session.setBoardFollowing(true);
+        await(() -> follower.stateProperty().get() == BoardFollower.State.FOLLOWING);
+
+        session.goToPly(0); // two moves back at once
         assertEquals(BoardFollower.State.PLACING, follower.stateProperty().get());
         await(() -> ledAt("E2") == LedColors.MISSING && ledAt("E4") == LedColors.WRONG);
         sim.lift("E4");
         sim.place("E2");
+        sim.lift("E5");
+        sim.place("E7");
         await(() -> follower.stateProperty().get() == BoardFollower.State.FOLLOWING);
     }
 
