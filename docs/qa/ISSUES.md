@@ -34,6 +34,7 @@ Gravità: **alta** (vicolo cieco, perdita di dati, partita bloccata), **media** 
 | QA-026 | bassa | logica | Ripresa rifiutata dopo uno spegnimento: la partita non finisce in archivio | fatto da features (discard archivia come interrotta) |
 | QA-027 | media | logica | E2E dipendenti dall'ordine: salvataggi asincroni del test precedente contati nel successivo | corretto |
 | QA-028 | media | test/memoria | Pipeline software (Pi): heap dopo GC 130→512 MB in 20 partite; verificato che sono cache soft di JavaFX, non una perdita | verificato; test adeguato |
+| QA-030 | bassa | logica | PvP in pausa: una mossa sulla scacchiera veniva accettata e faceva ripartire gli orologi | corretto |
 | QA-029 | media | logica (Home) | Tornando in Home la carta "Riprendi" della visita precedente resta attiva finché i dati non sono ricaricati: si riprendeva la partita sbagliata | corretto (design informato) |
 
 ---
@@ -199,3 +200,10 @@ quella della visita precedente (A, "Mossa 2"): la ripresa ricreava A e la partit
 offerta. Inoltre più refresh in volo potevano applicarsi fuori ordine.
 **Correzione**: la carta si nasconde all'inizio di ogni refresh e si applica solo il risultato dell'ultimo. Il test
 ora verifica anche che le mosse riprese siano quelle di B (10 esecuzioni su 10 verdi).
+
+## QA-030 · Mossa durante la pausa (bassa, logica)
+**Passi**: Due giocatori → 1.e4 → Pausa → il Nero muove e7-e5 sulla scacchiera. La mossa veniva giocata e
+`handleMoveInput` faceva ripartire l'orologio del Bianco: la pausa finiva in silenzio (lo schermo dalla UI di design
+non accetta mosse in pausa, la scacchiera sì). **Correzione**: in pausa la mossa è rifiutata e la scacchiera va in
+`RESYNC` ("Partita in pausa: rimetti il pezzo dov'era"). Test E2E
+`aMoveOnTheBoardDuringAPauseIsTakenBackAndTheClocksStayStopped`.

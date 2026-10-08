@@ -99,6 +99,17 @@ public class PvpGame extends AbstractGame {
     public void handleMoveInput(String moveInput) {
         if (!gameRunning)
             return;
+        if (isClockPaused()) {
+            // A paused game is frozen: a piece moved on the board meanwhile goes back (the LEDs show where);
+            // otherwise the move would silently restart the clocks.
+            log.info("Move {} ignored: the game is paused", moveInput);
+            io.github.hardin22.javachess.Services.BoardStateManager manager =
+                    io.github.hardin22.javachess.Controllers.ArduinoController.getInstance().getBoardStateManager();
+            manager.setLogicalBoard(board);
+            manager.resyncToLogical();
+            updateStatus("Partita in pausa: rimetti il pezzo dov'era");
+            return;
+        }
 
         try {
             Move move = withAutoQueen(parseMoveInput(moveInput));

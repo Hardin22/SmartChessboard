@@ -305,6 +305,35 @@ class SimBoardEndToEndTest {
 
     @Test
     @Order(12)
+    void aMoveOnTheBoardDuringAPauseIsTakenBackAndTheClocksStayStopped() throws Exception {
+        ActiveGameController game = app.startPvp(300, 0);
+        playOnBoard(game, "e2e4", 1); // Black's clock runs
+        fx(() -> {
+            game.togglePause();
+            return null;
+        });
+        io.github.hardin22.javachess.Oggetti.PvpGame pvp = (io.github.hardin22.javachess.Oggetti.PvpGame) game(game);
+        assertTrue(fxGet(pvp::isClockPaused));
+        physicalMove("e7e5");
+        waitForMode(BoardStateManager.Mode.RESYNC); // the paused game does not take it: the pawn goes back
+        assertEquals(1, plies(game));
+        assertTrue(fxGet(pvp::isClockPaused), "the move did not restart the clocks");
+        arrangeAsLogical();
+        waitForMode(BoardStateManager.Mode.PLAY);
+        fx(() -> {
+            game.togglePause();
+            return null;
+        });
+        assertFalse(fxGet(pvp::isClockPaused));
+        playOnBoard(game, "e7e5", 2);
+        fx(() -> {
+            app.main.navigateTo("HOME");
+            return null;
+        });
+    }
+
+    @Test
+    @Order(13)
     void puzzleSetUpAndSolvedOnTheBoard() throws Exception {
         PuzzleController puzzles = fx(() -> {
             PuzzleController c = (PuzzleController) app.main.getController("PUZZLE_GAME");
