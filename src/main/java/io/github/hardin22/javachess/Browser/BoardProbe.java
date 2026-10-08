@@ -42,7 +42,7 @@ public final class BoardProbe {
                     o.optString("page", ""), o.optString("title", ""), o.optBoolean("challenge"),
                     o.optBoolean("login"), o.isNull("loggedIn") || !o.has("loggedIn") ? null : o.optBoolean("loggedIn"),
                     vp == null ? 0 : vp.optDouble("w", 0), vp == null ? 0 : vp.optDouble("h", 0),
-                    o.optDouble("dpr", 1), board);
+                    o.optDouble("dpr", 1), board, o.optBoolean("ready", true));
         } catch (JSONException e) {
             throw new IllegalArgumentException("Unexpected probe answer: " + abbreviate(json), e);
         }

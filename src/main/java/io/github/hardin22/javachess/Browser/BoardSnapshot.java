@@ -11,10 +11,18 @@ import java.util.List;
  * @param challenge true while the site shows a bot verification ("Verify you are human")
  * @param loginForm true when a password field is visible
  * @param loggedIn  true/false when the page tells, null when unknown
+ * @param ready     the document finished loading ({@code document.readyState}); true when the probe does not say
  */
 public record BoardSnapshot(String url, ChessSite site, String pageHint, String title, boolean challenge,
                             boolean loginForm, Boolean loggedIn, double viewportWidth, double viewportHeight,
-                            double devicePixelRatio, BoardView board) {
+                            double devicePixelRatio, BoardView board, boolean ready) {
+
+    public BoardSnapshot(String url, ChessSite site, String pageHint, String title, boolean challenge,
+                         boolean loginForm, Boolean loggedIn, double viewportWidth, double viewportHeight,
+                         double devicePixelRatio, BoardView board) {
+        this(url, site, pageHint, title, challenge, loginForm, loggedIn, viewportWidth, viewportHeight,
+                devicePixelRatio, board, true);
+    }
 
     /** Rectangle in CSS pixels. */
     public record Rect(double x, double y, double w, double h) {

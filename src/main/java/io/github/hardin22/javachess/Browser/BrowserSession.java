@@ -49,6 +49,20 @@ public final class BrowserSession {
         void backHome();
 
         void showBoard();
+
+        /**
+         * Whether the app may read the page (probe, scripts, DevTools). False on login and verification pages:
+         * the app keeps its hands off them, so that the site's bot check sees only the user.
+         */
+        void pageAccess(boolean allowed);
+    }
+
+    /** Why the app keeps its hands off the page; see {@link Commands#pageAccess}. */
+    public enum HandsOff {
+        /** A login page of a known site (from its address). */
+        LOGIN,
+        /** A bot verification (Cloudflare "Just a moment...", Turnstile), from the title or one reading. */
+        VERIFICATION
     }
 
     /** Errors meaning there is no connection at all (Chromium net error names). */
@@ -56,7 +70,11 @@ public final class BrowserSession {
             "ERR_NAME_RESOLUTION_FAILED", "ERR_ADDRESS_UNREACHABLE", "ERR_NETWORK_CHANGED",
             "ERR_NETWORK_ACCESS_DENIED", "ERR_PROXY_CONNECTION_FAILED");
     static final long SLOW_LOAD_MS = 15_000;
+    /** On a verification page whose end was not noticed, the page is read once again after this long. */
+    static final long VERIFICATION_RECHECK_MS = 30_000;
     static final long CRASH_RELOAD_EVERY_MS = 60_000;
+    /** How long after a load started a complete document counts as loaded without Chromium's notice. */
+    static final long LOAD_END_GRACE_MS = 2_000;
     /** A board narrower than this share of the page (or than 240 px) is a thumbnail, not the game. */
     private static final double MIN_BOARD_SHARE = 0.45;
 
@@ -75,6 +93,7 @@ public final class BrowserSession {
     private String url = "";
     private boolean loading;
     private long loadingSince;
+    private String loadingUrl = "";
     private long lastCrashReload = Long.MIN_VALUE;
     private String loadError;
     private BoardSnapshot snapshot;
@@ -83,6 +102,11 @@ public final class BrowserSession {
     private boolean pausedOnPage;
     private boolean visible;
     private LoginAssistant login;
+    private String title = "";
+    private boolean verificationSeen;
+    private boolean loginFormSeen;
+    private long verificationSince;
+    private HandsOff handsOff;
 
     public BrowserSession(Executor executor, PhysicalBoard board, OnlineGameSync.MoveSender sender,
                           Consumer<ArchivedGame> archive, Commands commands, LongSupplier clock) {
@@ -164,7 +188,10 @@ public final class BrowserSession {
         post(() -> {
             loading = true;
             loadingSince = clock.getAsLong();
+            loadingUrl = newUrl == null ? "" : newUrl;
             loadError = null;
+            verificationSeen = false; // the verification passed (the site reloads) or the user reloaded
+            loginFormSeen = false;
             onUrl(newUrl);
         });
     }
@@ -176,6 +203,16 @@ public final class BrowserSession {
                 loadError = "HTTP_" + httpStatus;
             }
             onUrl(newUrl);
+        });
+    }
+
+    /** Chromium says it is no longer loading {@code currentUrl}: ends a load whose end notice was lost. */
+    public void pageLoadedIfLoading(String currentUrl) {
+        post(() -> {
+            if (loading && clock.getAsLong() - loadingSince >= LOAD_END_GRACE_MS) {
+                log.info("Page loaded (Chromium is idle): {}", currentUrl);
+                loading = false;
+            }
         });
     }
 
@@ -226,8 +263,71 @@ public final class BrowserSession {
             snapshot = null;
             problem = null;
         }
+        if (!newUrl.equals(url)) {
+            verificationSeen = false;
+            loginFormSeen = false;
+        }
         url = newUrl;
         page = next;
+        updateHandsOff();
+    }
+
+    /** The page's title changed (Chromium's notice). Cloudflare's verification has a recognisable title. */
+    public void titleChanged(String newTitle) {
+        post(() -> {
+            String t = newTitle == null ? "" : newTitle;
+            if (t.equals(title)) {
+                return;
+            }
+            title = t;
+            if (isVerificationTitle(t)) {
+                seeVerification();
+            } else {
+                verificationSeen = false;
+            }
+            updateHandsOff();
+        });
+    }
+
+    /** True when the app keeps its hands off this address from the start (login pages of the known sites). */
+    public static boolean handsOffAddress(String address) {
+        PageInfo p = PageInfo.of(address == null ? "" : address);
+        return p.kind() == PageInfo.Kind.LOGIN && p.site() != ChessSite.OTHER;
+    }
+
+    /** Titles of Cloudflare's verification page in the languages a board's owner may use. */
+    static boolean isVerificationTitle(String title) {
+        String t = title == null ? "" : title.toLowerCase(Locale.ROOT);
+        return t.contains("just a moment") || t.contains("un momento") || t.contains("attention required")
+                || t.contains("one more step") || t.contains("un instant") || t.contains("nur einen moment")
+                || t.contains("cloudflare");
+    }
+
+    private void seeVerification() {
+        if (!verificationSeen) {
+            verificationSeen = true;
+            verificationSince = clock.getAsLong();
+        }
+    }
+
+    /** What the app may do with the page now; tells the controller when it changes. */
+    private void updateHandsOff() {
+        HandsOff next = verificationSeen ? HandsOff.VERIFICATION
+                : loginFormSeen || handsOffAddress(page.url()) ? HandsOff.LOGIN : null;
+        if (next == handsOff) {
+            return;
+        }
+        log.info(next == null ? "Reading the page again" : "Hands off the page: {}", next);
+        handsOff = next;
+        if (next == HandsOff.LOGIN && login != null) {
+            login.onLoginPage(page.site());
+        }
+        commands.pageAccess(next == null);
+    }
+
+    /** Why the app does not read the page now, or null. */
+    public HandsOff handsOff() {
+        return handsOff;
     }
 
     // ------------------------------------------------------------------ what the page shows
@@ -237,9 +337,26 @@ public final class BrowserSession {
             if (!s.url().isBlank()) {
                 onUrl(s.url());
             }
+            if (loading && s.ready() && clock.getAsLong() - loadingSince >= LOAD_END_GRACE_MS
+                    && s.url().equals(loadingUrl)) {
+                // Chromium's "load finished" never came (on macOS some of its notices to Java are lost): the page
+                // says it is complete
+                log.info("Page loaded (seen by the probe): {}", s.url());
+                loading = false;
+            }
             snapshot = s;
             PageInfo info = s.page();
             page = info;
+            if (s.challenge()) {
+                seeVerification(); // read once: from now on the app keeps its hands off this page
+            } else if (s.loginForm() && s.site() != ChessSite.OTHER && !loginFormSeen) {
+                loginFormSeen = true; // a login form inside another page (e.g. a pop-up)
+                verificationSince = clock.getAsLong();
+            }
+            updateHandsOff();
+            if (handsOff != null) {
+                return;
+            }
             if (login != null) {
                 login.onSnapshot(s);
             }
@@ -260,7 +377,22 @@ public final class BrowserSession {
 
     /** Periodic: pending moves, slow pages. */
     public void tick() {
-        post(sync::tick);
+        post(() -> {
+            sync.tick();
+            if ((handsOff == HandsOff.VERIFICATION || loginFormSeen)
+                    && clock.getAsLong() - verificationSince >= VERIFICATION_RECHECK_MS
+                    && (login == null || login.state() != LoginAssistant.State.FILLING)) {
+                // no sign of the verification (or of the pop-up login) ending, whose notices can be lost: read the
+                // page once more
+                verificationSeen = false;
+                loginFormSeen = false;
+                snapshot = null;
+                updateHandsOff();
+            }
+            if (login != null) {
+                login.tick(url);
+            }
+        });
     }
 
     /** The helper that types saved logins and offers to save typed ones (set once the page exists). */
@@ -309,6 +441,12 @@ public final class BrowserSession {
                 case DISMISS -> {
                     if (login != null) {
                         login.dismiss();
+                    }
+                }
+                case USE_SAVED_LOGIN -> {
+                    if (login != null && handsOff == HandsOff.LOGIN) {
+                        // the user asked for it: the page is touched only to type the saved login
+                        login.fillSaved(page.site(), url, () -> commands.pageAccess(handsOff == null));
                     }
                 }
                 case FORGET_LOGIN -> {
@@ -405,13 +543,25 @@ public final class BrowserSession {
             return BrowserStatus.of(offline ? BrowserStatus.State.OFFLINE : BrowserStatus.State.SITE_UNREACHABLE,
                     BrowserStatus.NO_PROGRESS, reload, siteName());
         }
-        if (snapshot != null && snapshot.challenge()) {
+        LoginAssistant.State loginNow = login == null ? LoginAssistant.State.IDLE : login.state();
+        if (handsOff == HandsOff.VERIFICATION) {
             return BrowserStatus.of(BrowserStatus.State.VERIFY, BrowserStatus.NO_PROGRESS, reload);
         }
-        if (loading && (snapshot == null || snapshot.board() == null)) {
+        if (loading && (handsOff != null || snapshot == null || snapshot.board() == null)) {
             boolean slow = clock.getAsLong() - loadingSince >= SLOW_LOAD_MS;
             BrowserStatus s = BrowserStatus.of(BrowserStatus.State.LOADING, -1, slow ? reload : List.of(), siteName());
             return slow ? s.withDetail(I18n.t("browser.status.loading.slow")) : s;
+        }
+        if (handsOff == HandsOff.LOGIN) {
+            if (loginNow == LoginAssistant.State.FAILED) {
+                return BrowserStatus.of(BrowserStatus.State.LOGIN_FAILED, BrowserStatus.NO_PROGRESS,
+                        List.of(BrowserStatus.Action.FORGET_LOGIN, BrowserStatus.Action.DISMISS));
+            }
+            boolean saved = login != null && login.hasSaved(page.site()).orElse(false);
+            BrowserStatus s = BrowserStatus.of(BrowserStatus.State.LOGIN, BrowserStatus.NO_PROGRESS,
+                    saved && loginNow != LoginAssistant.State.FILLING
+                            ? List.of(BrowserStatus.Action.USE_SAVED_LOGIN) : List.of(), siteName());
+            return loginNow == LoginAssistant.State.FILLING ? s.withDetail(I18n.t("browser.status.login.saved")) : s;
         }
         if (snapshot == null) {
             return BrowserStatus.of(BrowserStatus.State.LOADING, -1, List.of(), siteName());

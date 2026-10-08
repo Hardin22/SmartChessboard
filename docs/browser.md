@@ -40,11 +40,10 @@ when useful, a **button** (Collega, Scollega, Risincronizza, Ricarica, Mostra sc
 | Nessuna connessione | No network. | Check the Wi-Fi or the cable, then **Ricarica**. |
 | Chess.com non risponde | The site is down or not reachable now. | Try again later (**Ricarica**). |
 | La pagina si è interrotta | Chromium had to close the page (out of memory, a crash). The page is reopened by itself once; if it happens again within a minute the message stays. | Tap **Ricarica**. |
-| Verifica di sicurezza | The site wants to check you are a person (CAPTCHA). | Tick the box on the page yourself; the app continues by itself. |
-| Accedi a Chess.com | The login page. | Log in on the page (once). |
-| Inserisco le credenziali salvate… | The saved login is being typed for you. | Wait. |
+| Verifica di sicurezza | The site wants to check you are a person (Cloudflare). The app does not touch the page meanwhile. | Tick the box on the page yourself; the app continues by itself. |
+| Accedi a Chess.com | The login page. The app does not touch the page meanwhile. | Log in on the page (once), or tap **Usa l'accesso salvato** if you saved one in the settings. |
+| Inserisco le credenziali salvate… | The saved login is being typed for you (you tapped the button). | Wait. |
 | Accesso non riuscito | The saved login was refused (password changed?). | Log in by hand; tap **Dimentica l'accesso** to remove the old one. |
-| Ricordare l'accesso? | You logged in by hand. | **Ricorda** saves it on this device; **No, grazie** forgets it. |
 | Apri una partita | No game on this page. | Start or open a game on the site. |
 | Scacchiera trovata | A board that is not a game (puzzle, TV...). | **Collega** to follow it with the physical board. |
 | Leggo la scacchiera… | Reading the position on the page. | Keep the board visible. |
@@ -99,14 +98,27 @@ waits longer on a slow network.
 ## Saved logins
 
 The browser keeps its own session (cookies in `~/.javachess/jcef-cache`), so you usually log in once. When a
-session expires the login page comes back; the app can then type the login for you:
+session expires the login page comes back. A login saved in the settings can be typed for you:
 
-- it is saved **only after you agree** (*Ricordare l'accesso?* after a login typed by hand);
+- only when you tap **Usa l'accesso salvato** on the login page (never by itself: see
+  [Login and verification pages](#login-and-verification-pages));
 - it is kept in the **macOS Keychain**, in the **Linux keyring** (Secret Service, e.g. GNOME Keyring) when there is
   one, otherwise in `~/.javachess/credentials`, readable only by your user (mode 600);
 - it is never written in `config.properties`, in the logs or on a command line, and it is typed only on the real
-  chess.com / lichess.org login pages over https, once per page: if the site refuses it the app stops and tells you;
+  chess.com / lichess.org login pages over https: if the site refuses it the app tells you;
 - **Dimentica l'accesso** (on the failure message) or the settings remove it.
+
+### Login and verification pages
+
+Sites protect their login with bot checks (chess.com uses Cloudflare Turnstile: the "Verify you are human" box).
+On those pages the app **keeps its hands off**: no reading of the page, no script, no DevTools session, so the
+check sees only you. The app knows them without touching the page: login pages from their address, Cloudflare's
+verification from its title ("Just a moment…", "Solo un momento…") or from a single reading; it starts reading again
+when the address changes, a new load starts, the title changes, or (on a verification it did not see end) after
+30 s. Saving a login typed on the page is therefore no longer offered: logins are saved from the settings.
+
+If the box still says something is wrong, try the same page in Safari or Chrome **on the same network**: when it
+fails there too, the site distrusts the network (IP address), not the app; when it works there, tell us.
 
 ## Settings
 
@@ -114,7 +126,7 @@ session expires the login page comes back; the app can then type the login for y
 
 | Key | Values | Meaning |
 |---|---|---|
-| `browser.reader` | `page` (default), `vision`, `vision-only` | Where the position is read from, see below. |
+| `browser.reader` | `page` (default), `vision`, `vision-only` | Where the position is read from, see below. Applies from the next opening of the browser. |
 
 ## How it works
 
@@ -269,6 +281,10 @@ translucent "glass" queen read with the wrong colour. The start position is reco
   (`-Dapple.awt.UIElement=true`, or answer the "reopen windows" alert).
 - Saved logins: with `-Djavachess.home` (tests, trials, screenshots) only the file in that folder is used, never the
   Keychain / Secret Service; `-Djavachess.credentials=system|file` overrides it.
+- `-Djavachess.browser.gpu=true|false`: Chromium with or without the GPU (default: with it on macOS, without on
+  Linux). Without the GPU Chromium 146 has no WebGL at all, which bot checks distrust.
+- `-Djavachess.demo=browser-cycle` (with `javachess.demo.urls`, `javachess.demo.rounds`): opens the browser, goes
+  Home, opens it again, as `AppBrowserFullScreenJcefE2E` does in full screen.
 - `-Djavachess.jcef.dir=DIR` uses another engine folder; `-Djavachess.browser.osr=true|false` forces off-screen /
   windowed rendering.
 
@@ -324,3 +340,21 @@ fine; 2 GB is not enough for chess.com.
 - Vision on the most extreme chess.com renderer themes: 5 of 375 battery pictures keep one misread square
   ("metal" and "glass" corners under the vignette, a pale "gothic" king on "newspaper"); during a game the rules
   of chess absorb a single misread square, and the page markup is the default reader anyway.
+
+## Third round (8 October 2026, midday)
+
+- **Crash when opening the browser again over the app in full screen (macOS)**: AWT's exclusive full screen
+  (`GraphicsDevice.setFullScreenWindow`) over the app's JavaFX full-screen window made AppKit raise exceptions on the
+  main thread (`-[NSWindow setStyleMask:]` on the user's Mac at the second opening, an unknown selector here at the
+  first), which end the process and cannot be caught. The browser window no longer uses it: on macOS the app's
+  window leaves full screen while the browser is shown (and gets it back on Home), and the browser window covers the
+  screen minus the menu bar. `AppBrowserFullScreenJcefE2E` runs the real app full screen on the last screen and opens
+  the browser 5 times; also checked by hand with chess.com/login and lichess.org.
+- **Cloudflare's box failing on chess.com**: the app's Chromium had no WebGL (GPU disabled since JCEF 141) and the
+  app read the login page every 300 ms. Now the GPU is used on macOS, and login and verification pages are left
+  alone (see above): measured on the real chess.com login, 0 DevTools calls while it is shown. Whether the network's
+  reputation also plays a part can only be told by trying the box in Safari/Chrome on the same network.
+- On macOS a few of Chromium's notices to Java are refused by the JVM (the bare "Exception in thread JavaFX
+  Application Thread" lines, same cause as the Linux ones): the end of a page load is now also learned from the
+  page's `document.readyState`, or from `CefBrowser.isLoading` on pages the app does not read.
+

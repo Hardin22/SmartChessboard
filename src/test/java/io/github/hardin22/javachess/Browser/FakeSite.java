@@ -36,6 +36,7 @@ public final class FakeSite implements PageDriver {
     volatile boolean animating;
     volatile boolean challenge;
     volatile boolean loginForm;
+    volatile boolean documentReady = true;
     volatile boolean unreachable;
     volatile String result;
     volatile boolean acceptsClicks = true;
@@ -89,6 +90,7 @@ public final class FakeSite implements PageDriver {
 
     @Override
     public CompletableFuture<String> evaluate(String expression) {
+        evaluations++;
         if (unreachable) {
             return CompletableFuture.failedFuture(new IllegalStateException("page not answering"));
         }
@@ -135,6 +137,8 @@ public final class FakeSite implements PageDriver {
     }
 
     final List<String> typed = new CopyOnWriteArrayList<>();
+    /** Scripts run in the page (the probe included). */
+    volatile int evaluations;
 
     @Override
     public CompletableFuture<Void> typeText(String text) {
@@ -212,7 +216,8 @@ public final class FakeSite implements PageDriver {
         JSONObject o = new JSONObject();
         o.put("v", 1).put("url", url).put("title", "test").put("site", siteId).put("page", pageHint)
                 .put("viewport", new JSONObject().put("w", viewportWidth).put("h", viewportHeight)).put("dpr", 1)
-                .put("challenge", challenge).put("login", loginForm).put("loggedIn", JSONObject.NULL);
+                .put("challenge", challenge).put("login", loginForm).put("loggedIn", JSONObject.NULL)
+                .put("ready", documentReady);
         if (!boardShown) {
             o.put("board", JSONObject.NULL);
             return o.toString();

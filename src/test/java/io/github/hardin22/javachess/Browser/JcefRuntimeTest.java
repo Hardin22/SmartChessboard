@@ -64,4 +64,15 @@ class JcefRuntimeTest {
                 new UnsatisfiedLinkError("libcef.so: cannot allocate memory in static TLS block"))));
         assertFalse(JcefRuntime.isRestartRequired(new RuntimeException("other")));
     }
+
+    @Test
+    void theGpuIsUsedOnMacOsAndSoftwareRenderingOnLinux() {
+        assertTrue(JcefRuntime.useGpu(null, true));
+        assertFalse(JcefRuntime.useGpu(null, false));
+        assertFalse(JcefRuntime.useGpu("false", true));
+        assertTrue(JcefRuntime.useGpu("true", false));
+        assertFalse(JcefRuntime.chromiumArgs(true).contains("--disable-gpu"), "WebGL needs the GPU");
+        assertTrue(JcefRuntime.chromiumArgs(false).containsAll(List.of("--disable-gpu", "--disable-gpu-compositing")));
+        assertTrue(JcefRuntime.chromiumArgs(true).contains("--no-sandbox"));
+    }
 }

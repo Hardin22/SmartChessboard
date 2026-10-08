@@ -20,7 +20,9 @@ import javax.swing.WindowConstants;
 import java.awt.BorderLayout;
 import java.awt.GraphicsDevice;
 import java.awt.GraphicsEnvironment;
+import java.awt.Insets;
 import java.awt.Rectangle;
+import java.awt.Toolkit;
 import java.util.Locale;
 import java.util.function.Consumer;
 
@@ -42,7 +44,6 @@ public final class BrowserWindow {
     private final BrowserBar bar;
     private final CdpPageDriver driver;
     private final boolean offscreen;
-    private GraphicsDevice fullScreenDevice;
 
     /**
      * Creates the window (hidden) and the browser on {@code url}. Must run on the Swing thread; throws when
@@ -85,6 +86,11 @@ public final class BrowserWindow {
                 if (f == null || f.isMain()) {
                     session.addressChanged(address); // pages that change URL without a load (chess.com games)
                 }
+            }
+
+            @Override
+            public void onTitleChange(CefBrowser b, String title) {
+                session.titleChanged(title); // Cloudflare's verification page is known by its title
             }
         });
         client.addLifeSpanHandler(new CefLifeSpanHandlerAdapter() {
@@ -146,6 +152,11 @@ public final class BrowserWindow {
         return browser;
     }
 
+    /** Chromium's own loading state (it does not touch the page). */
+    public boolean isLoading() {
+        return browser.isLoading();
+    }
+
     public boolean isShowing() {
         return frame.isVisible();
     }
@@ -169,46 +180,39 @@ public final class BrowserWindow {
     }
 
     /**
-     * Shows the window over the app's window. With {@code fullScreen} the frame takes the whole screen of
-     * {@code bounds} (macOS full-screen apps live in their own space, so a plain window would open elsewhere).
+     * Shows the window over the app's window. With {@code coverScreen} it covers the whole screen of {@code bounds}
+     * (the app's window was full screen), minus what the system keeps for itself there (the macOS menu bar).
+     *
+     * <p>Never AWT's exclusive full screen ({@code GraphicsDevice.setFullScreenWindow}): on macOS, over the app's
+     * JavaFX window in full screen, AppKit raises exceptions in it ({@code -[NSWindow setStyleMask:]}, unknown
+     * selectors) on the main thread, which end the process (the app crashed when the browser was opened again,
+     * 8 October 2026). On macOS the caller takes the app's window out of full screen first.</p>
      */
-    public void show(Rectangle bounds, boolean fullScreen) {
+    public void show(Rectangle bounds, boolean coverScreen) {
         GraphicsDevice device = deviceAt(bounds);
-        boolean exclusive = fullScreen && isMac() && device != null && device.isFullScreenSupported();
-        if (exclusive) {
-            frame.setBounds(device.getDefaultConfiguration().getBounds());
-            frame.setVisible(true);
-            try {
-                device.setFullScreenWindow(frame);
-                fullScreenDevice = device;
-            } catch (RuntimeException e) {
-                log.warn("Full screen browser window failed, using a plain window: {}", e.toString());
-                fullScreenDevice = null;
-                frame.setBounds(bounds);
-            }
-        } else {
-            frame.setBounds(bounds);
-            frame.setAlwaysOnTop(!isMac()); // kiosk window manager: stay above the app's full-screen window
-            frame.setVisible(true);
-        }
+        Rectangle screen = device.getDefaultConfiguration().getBounds();
+        Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(device.getDefaultConfiguration());
+        frame.setBounds(windowBounds(bounds, coverScreen, screen, insets));
+        frame.setAlwaysOnTop(!isMac()); // kiosk window manager: stay above the app's full-screen window
+        frame.setVisible(true);
         frame.toFront();
         frame.requestFocus();
         browser.setFocus(true);
-        log.info("Browser window shown at {} on {}{}", frame.getBounds(),
-                device == null ? "?" : device.getIDstring(), exclusive ? " (full screen)" : "");
+        log.info("Browser window shown at {} on {}{}", frame.getBounds(), device.getIDstring(),
+                coverScreen ? " (whole screen)" : "");
+    }
+
+    /** Where the window goes: the app's bounds, or its whole screen without the system's insets. */
+    static Rectangle windowBounds(Rectangle appBounds, boolean coverScreen, Rectangle screen, Insets insets) {
+        if (!coverScreen) {
+            return new Rectangle(appBounds);
+        }
+        Insets i = insets == null ? new Insets(0, 0, 0, 0) : insets;
+        return new Rectangle(screen.x + i.left, screen.y + i.top, Math.max(1, screen.width - i.left - i.right),
+                Math.max(1, screen.height - i.top - i.bottom));
     }
 
     public void hide() {
-        if (fullScreenDevice != null) {
-            try {
-                if (fullScreenDevice.getFullScreenWindow() == frame) {
-                    fullScreenDevice.setFullScreenWindow(null);
-                }
-            } catch (RuntimeException e) {
-                log.debug("Leaving full screen failed: {}", e.toString());
-            }
-            fullScreenDevice = null;
-        }
         frame.setAlwaysOnTop(false);
         frame.setVisible(false);
     }

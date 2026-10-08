@@ -12,16 +12,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 
 /**
- * Logs in with the saved login when chess.com or lichess shows its login form, and offers to save the login the
- * user typed by hand once it worked.
+ * Types the saved login into chess.com's or lichess's login page when the user asks for it ("Usa l'accesso
+ * salvato"). Login pages are otherwise left alone: the app does not read or script them, so that the sites' bot
+ * checks (Cloudflare Turnstile is on chess.com's login) see only the user. Logins are saved from the settings.
  *
  * <ul>
  *   <li>Only on the real sites over https (never on another site that looks like them).</li>
  *   <li>The fields are filled like a person does (a click, then typed text: the sites' scripts see real input) and
- *       the form is sent once per page; if the form comes back the saved login is not tried again and the user is
- *       told.</li>
- *   <li>What the user types is read from the form only while it is on screen and kept in memory until the user
- *       says whether to save it; it is never logged.</li>
+ *       the form is sent once; if the login page is still there a few seconds later the user is told.</li>
  * </ul>
  * Methods run on the owner's thread (the browser session); page and keyring work completes asynchronously.
  */
@@ -104,6 +102,19 @@ public final class LoginAssistant {
         return site;
     }
 
+    /** True when {@code url} is a page of {@code site} (chess.com or lichess) over https. */
+    static boolean trusted(String url, ChessSite site) {
+        if (site == ChessSite.OTHER || url == null) {
+            return false;
+        }
+        try {
+            URI u = URI.create(url);
+            return "https".equalsIgnoreCase(u.getScheme()) && ChessSite.of(url) == site;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
     /** True when the page is one where logins may be typed: chess.com or lichess, over https. */
     static boolean trusted(BoardSnapshot s) {
         if (s.site() == ChessSite.OTHER) {
@@ -117,46 +128,69 @@ public final class LoginAssistant {
         }
     }
 
-    /** Every poll of the page. */
+    /**
+     * Every poll of a page that is not a login page (on login pages the app keeps its hands off and nothing is
+     * read: see {@link BrowserSession.HandsOff}). A saved login that was typed is settled here: the site moved on.
+     */
     public void onSnapshot(BoardSnapshot s) {
-        boolean loginPage = s.loginForm() && trusted(s);
-        if (loginPage) {
-            site = s.site();
-            checkSaved(site);
-            if (state == State.FILLING) {
-                return;
-            }
-            if (s.url().equals(triedUrl)) {
-                if (state != State.FAILED && clock.getAsLong() - sentAt > FORM_BACK_MS) {
-                    log.info("The saved {} login was not accepted", site.displayName());
-                    set(State.FAILED);
-                }
-                return;
-            }
-            if (saved[site.ordinal()]) {
-                fill(s);
-                return;
-            }
-            remember(s);
-            return;
-        }
-        // the login form is gone: if the user had typed a login by hand and the site now shows them logged in, offer
-        // to save it (a failed login keeps the form)
-        if (typed != null && typedOnLoginPage && trusted(s) && s.site() == typedSite
-                && !Boolean.FALSE.equals(s.loggedIn())) {
-            typedOnLoginPage = false;
-            if (!saved[typedSite.ordinal()]) {
-                site = typedSite;
-                set(State.OFFER_SAVE);
-            } else {
-                typed = null;
-            }
+        if (s.loginForm() && trusted(s)) {
+            return; // a login form: the session keeps its hands off it
         }
         if (trusted(s)) {
             triedUrl = null; // a later login form (session expired) may be filled again
         }
         if (state == State.FILLING || state == State.FAILED) {
             set(State.IDLE); // logged in (or moved on)
+        }
+    }
+
+    /** The browser shows a login page of {@code s}: find out whether a login is saved for it (to offer it). */
+    public void onLoginPage(ChessSite s) {
+        site = s;
+        checkSaved(s);
+    }
+
+    /**
+     * Types the saved login of {@code where} into the login page at {@code pageUrl}, because the user asked for
+     * it ("Usa l'accesso salvato"); {@code done} runs on the owner's thread when the typing is over.
+     */
+    public void fillSaved(ChessSite where, String pageUrl, Runnable done) {
+        if (state == State.FILLING) {
+            return;
+        }
+        if (!trusted(pageUrl, where)) {
+            log.warn("Saved login not typed: the page is not {} over https", where.displayName());
+            done.run();
+            return;
+        }
+        site = where;
+        triedUrl = pageUrl;
+        set(State.FILLING);
+        CompletableFuture.supplyAsync(() -> store.load(where), io).thenCompose(login -> {
+            if (login.isEmpty()) {
+                return CompletableFuture.failedFuture(new IllegalStateException("no saved login"));
+            }
+            return typeInto(login.get());
+        }).orTimeout(20, TimeUnit.SECONDS).whenComplete((v, error) -> owner.execute(() -> {
+            sentAt = clock.getAsLong();
+            if (error != null) {
+                log.warn("Could not type the saved {} login: {}", where.displayName(), error.getClass().getSimpleName());
+                set(State.FAILED);
+            } else {
+                log.info("Saved {} login sent", where.displayName());
+                set(State.IDLE);
+            }
+            done.run();
+        }));
+    }
+
+    /** Periodic, with the page's address: a login page still there a while after the login was sent refused it. */
+    public void tick(String currentUrl) {
+        if (state == State.IDLE && triedUrl != null && triedUrl.equals(currentUrl)
+                && clock.getAsLong() - sentAt > FORM_BACK_MS) {
+            log.info("The saved {} login was not accepted", site.displayName());
+            triedUrl = null;
+            set(State.FAILED);
         }
     }
 
@@ -211,52 +245,9 @@ public final class LoginAssistant {
                 known[s.ordinal()] = true;
                 saved[s.ordinal()] = has;
                 busy = false;
+                changed.run(); // the offer to use it can be shown
             });
         });
-    }
-
-    /** Keeps what the user is typing in the form (in memory only). */
-    private void remember(BoardSnapshot s) {
-        if (busy) {
-            return;
-        }
-        busy = true;
-        page.evaluate(FORM_SCRIPT).whenComplete((json, error) -> owner.execute(() -> {
-            busy = false;
-            if (error != null || json == null || json.equals("null")) {
-                return;
-            }
-            JSONObject f = new JSONObject(json);
-            String u = f.optString("userValue", "");
-            String p = f.optString("passValue", "");
-            if (!u.isBlank() && !p.isEmpty()) {
-                typed = new CredentialStore.Login(u.trim(), p);
-                typedSite = s.site();
-                typedOnLoginPage = true;
-            }
-        }));
-    }
-
-    /** Clicks the name field, types, clicks the password field, types, clicks the submit button. */
-    private void fill(BoardSnapshot s) {
-        ChessSite where = s.site();
-        triedUrl = s.url();
-        set(State.FILLING);
-        CompletableFuture.supplyAsync(() -> store.load(where), io).thenCompose(login -> {
-            if (login.isEmpty()) {
-                return CompletableFuture.failedFuture(new IllegalStateException("no saved login"));
-            }
-            return typeInto(login.get());
-        }).orTimeout(20, TimeUnit.SECONDS).whenComplete((v, error) -> owner.execute(() -> {
-            sentAt = clock.getAsLong();
-            if (error != null) {
-                log.warn("Could not type the saved {} login: {}", where.displayName(), error.getClass().getSimpleName());
-                set(State.FAILED);
-            } else {
-                log.info("Saved {} login sent", where.displayName());
-                set(State.IDLE);
-            }
-        }));
     }
 
     /** Fills and sends the login form shown by the page (tests call it on a local page). */

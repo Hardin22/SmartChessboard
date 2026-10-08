@@ -60,6 +60,11 @@ class BrowserSessionTest {
             public void showBoard() {
                 commands.add("show");
             }
+
+            @Override
+            public void pageAccess(boolean allowed) {
+                commands.add("access:" + allowed);
+            }
         }, clock::get);
         session.addListener(shown::add);
     }
@@ -111,6 +116,34 @@ class BrowserSessionTest {
     }
 
     @Test
+    void aLoadWhoseEndNoticeIsLostEndsWhenThePageIsComplete() {
+        // on macOS some of Chromium's notices to Java are lost (the JVM refuses calls from the main thread's
+        // native stack): the probe's document.readyState stands in for "load finished"
+        ready();
+        site.url = "https://lichess.org/";
+        site.pageHint = "home";
+        site.boardShown = false;
+        site.documentReady = false;
+        session.pageLoading(site.url);
+        session.onSnapshot(BoardProbe.parse(site.json()));
+        assertEquals(BrowserStatus.State.LOADING, state(), "still loading");
+        site.documentReady = true;
+        session.onSnapshot(BoardProbe.parse(site.json()));
+        assertEquals(BrowserStatus.State.LOADING, state(), "a moment to let Chromium say it");
+        clock.addAndGet(BrowserSession.LOAD_END_GRACE_MS);
+        session.onSnapshot(BoardProbe.parse(site.json()));
+        assertEquals(BrowserStatus.State.NO_GAME, state());
+
+        // on a page the app does not read (login), Chromium's own state says the load is over
+        site.url = "https://www.chess.com/login";
+        session.pageLoading(site.url);
+        assertEquals(BrowserStatus.State.LOADING, state());
+        clock.addAndGet(BrowserSession.LOAD_END_GRACE_MS);
+        session.pageLoadedIfLoading(site.url);
+        assertEquals(BrowserStatus.State.LOGIN, state());
+    }
+
+    @Test
     void aPageWhoseProcessEndedIsReopenedOnceThenOffered() {
         ready();
         session.pageLoading("https://lichess.org/analysis");
@@ -159,20 +192,86 @@ class BrowserSessionTest {
     }
 
     @Test
-    void verificationAndLogin() {
+    void aVerificationSeenOnceIsLeftAloneUntilTheSiteReloads() {
+        ready();
+        site.url = "https://www.chess.com/play/online";
+        site.siteId = "chesscom";
+        site.pageHint = "";
+        site.boardShown = false;
+        site.challenge = true;
+        showPage();
+        assertEquals(BrowserStatus.State.VERIFY, state());
+        assertEquals(BrowserSession.HandsOff.VERIFICATION, session.handsOff());
+        assertEquals(List.of("access:false"), commands, "no probe, no script, no DevTools on the check");
+        session.tick();
+        assertEquals(BrowserStatus.State.VERIFY, state());
+        // the user ticks the box, Cloudflare reloads the page
+        site.challenge = false;
+        session.pageLoading(site.url);
+        assertEquals(List.of("access:false", "access:true"), commands);
+        assertEquals(null, session.handsOff());
+    }
+
+    @Test
+    void cloudflaresTitleAloneKeepsTheAppOffThePage() {
+        ready();
+        site.url = "https://www.chess.com/";
+        session.pageLoading(site.url);
+        session.titleChanged("Solo un momento...");
+        assertEquals(BrowserStatus.State.VERIFY, state(), "known before any reading of the page");
+        assertEquals(List.of("access:false"), commands);
+        session.titleChanged("Chess.com - Play Chess Online");
+        assertEquals(List.of("access:false", "access:true"), commands);
+        assertTrue(BrowserSession.isVerificationTitle("Just a moment..."));
+        assertFalse(BrowserSession.isVerificationTitle("Lichess.org • Free Online Chess"));
+    }
+
+    @Test
+    void aVerificationThatEndedUnnoticedIsCheckedAgainAfterAWhile() {
+        ready();
+        site.url = "https://www.chess.com/play/online";
+        site.siteId = "chesscom";
+        site.boardShown = false;
+        site.challenge = true;
+        showPage();
+        clock.addAndGet(BrowserSession.VERIFICATION_RECHECK_MS);
+        session.tick();
+        assertEquals(List.of("access:false", "access:true"), commands, "one more reading");
+    }
+
+    @Test
+    void theLoginPageIsLeftToTheUserAndTheSavedLoginTypedOnlyOnRequest(@org.junit.jupiter.api.io.TempDir
+                                                                        java.nio.file.Path dir) throws Exception {
+        CredentialStore store = new CredentialStore(List.of(new CredentialStore.OwnerOnlyFile(dir.resolve("c"))));
+        store.save(ChessSite.CHESS_COM, new CredentialStore.Login("player", "pw123"));
+        session.setLoginAssistant(new LoginAssistant(site, store, Runnable::run, Runnable::run, () -> { },
+                clock::get));
         ready();
         site.url = "https://www.chess.com/login";
         site.siteId = "chesscom";
         site.pageHint = "login";
         site.boardShown = false;
-        site.challenge = true;
-        showPage();
-        assertEquals(BrowserStatus.State.VERIFY, state());
-        site.challenge = false;
         site.loginForm = true;
-        showPage();
-        assertEquals(BrowserStatus.State.LOGIN, state());
+        session.pageLoading(site.url);
+        assertEquals(BrowserStatus.State.LOADING, state());
+        session.pageLoaded(site.url, 200);
+        assertEquals(BrowserStatus.State.LOGIN, state(), "known from the address");
         assertEquals("Accedi a Chess.com", session.status().title());
+        assertEquals(List.of("access:false"), commands);
+        assertEquals(List.of(BrowserStatus.Action.USE_SAVED_LOGIN), session.status().actions());
+        assertTrue(site.typed.isEmpty(), "nothing typed by itself");
+
+        session.perform(BrowserStatus.Action.USE_SAVED_LOGIN);
+        assertEquals(List.of("player", "pw123"), site.typed);
+        assertEquals(List.of("access:false", "access:false"), commands, "hands off again after typing");
+
+        site.loginForm = false;
+        site.url = "https://www.chess.com/home";
+        site.pageHint = "home";
+        session.addressChanged(site.url);
+        assertEquals(List.of("access:false", "access:false", "access:true"), commands);
+        showPage();
+        assertEquals(BrowserStatus.State.NO_GAME, state());
     }
 
     @Test

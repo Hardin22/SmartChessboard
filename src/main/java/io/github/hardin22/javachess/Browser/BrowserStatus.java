@@ -41,6 +41,7 @@ public record BrowserStatus(State state, String title, String detail, Tone tone,
         SHOW_BOARD,
         /** Save the login the user typed, to log in by itself next time. */
         SAVE_LOGIN,
+        USE_SAVED_LOGIN,
         /** Do not save the login / close the message. */
         DISMISS,
         /** Remove the saved login (it no longer works). */
