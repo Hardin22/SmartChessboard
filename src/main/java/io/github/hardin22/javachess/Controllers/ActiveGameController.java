@@ -102,8 +102,6 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
     private String opponentElo;
     /** Position the next game starts from (null = the standard one); used once. */
     private String nextStartFen;
-    /** Settings of the last game against a level of the ladder, for the rematch with the colours swapped. */
-    private io.github.hardin22.javachess.Play.PvcRematch lastPvc;
 
     /** The next game started from the setup screens begins from this position (null = standard). */
     public void setNextStartPosition(String fen) {
@@ -233,7 +231,6 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
 
     /** Old-style game against Stockfish skill 0..20 or a Maia network (kept for scripts and tests). */
     public void startPvC(int difficulty, boolean isPlayerWhite, EngineService.EngineType botType) {
-        lastPvc = null; // no ladder level: no rematch offered
         setupBoard();
         beginPvc(new PvcGame(chessBoard, soloEvalBar, openingNameLabel, isPlayerWhite, difficulty, botType),
                 isPlayerWhite, botName(botType, difficulty), null, botType != null && botType.name().startsWith("MAIA"));
@@ -241,7 +238,6 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
 
     /** Game against a level of the ladder (approximate Elo), with a clock or without. */
     public void startPvC(BotLevels.Level level, boolean isPlayerWhite, TimeControl timeControl) {
-        lastPvc = new io.github.hardin22.javachess.Play.PvcRematch(level, isPlayerWhite, timeControl, nextStartFen);
         setupBoard();
         beginPvc(new PvcGame(chessBoard, soloEvalBar, openingNameLabel, isPlayerWhite, level, timeControl),
                 isPlayerWhite, level.name(), level.eloText(), level.isMaia());
@@ -259,8 +255,6 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         }
         PvcGame game = PvcGame.fromSnapshot(snapshot, chessBoard, soloEvalBar, openingNameLabel);
         BotLevels.Level level = game.getLevel();
-        lastPvc = level == null ? null : new io.github.hardin22.javachess.Play.PvcRematch(level,
-                snapshot.humanWhite(), snapshot.timeControl(), snapshot.initialFen());
         beginPvc(game, snapshot.humanWhite(), level != null ? level.name() : I18n.t("game.computer"),
                 level != null ? level.eloText() : null, level != null && level.isMaia());
     }
@@ -781,21 +775,21 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         review.setOnAction(e -> reviewGame());
         Button again = Ui.button(I18n.t("game.end.again"), "fth-repeat", "btn-outline", "btn-md");
         again.setOnAction(e -> mainController.navigateTo(mode == Mode.PVP ? "PVP_SETUP" : "PVC_SETUP"));
-        List<Node> buttons = mode == Mode.ONLINE ? List.of(review) : List.of(review, again);
-        io.github.hardin22.javachess.Play.PvcRematch next = mode == Mode.PVC && lastPvc != null ? lastPvc.swapped() : null;
-        if (next != null) {
-            // rematch with the colours swapped, same level, clock and starting position (a new game: from Home)
-            Button rematch = Ui.button(I18n.t("duel.rematch"), "fth-repeat", "btn-outline", "btn-md");
-            rematch.setOnAction(e -> {
-                setNextStartPosition(next.startFen());
-                startPvC(next.level(), next.humanWhite(), next.timeControl());
-            });
-            buttons = List.of(review, rematch);
+        List<Node> buttons;
+        if (mode == Mode.ONLINE) {
+            buttons = List.of(review);
+        } else if (mode == Mode.PVC && currentGame instanceof PvcGame pvc && pvc.getLevel() != null) {
+            // against the computer: the same opponent again with the colours swapped, in one tap
+            Button rematch = Ui.button(I18n.t("duel.rematch"), "fth-refresh-cw", "btn-outline", "btn-md");
+            rematch.setId("game-rematch");
+            rematch.setOnAction(e -> rematchPvc(pvc));
+            again.setText(I18n.t("game.end.other"));
+            again.setGraphic(null);
+            buttons = List.of(review, rematch, again);
+        } else {
+            buttons = List.of(review, again);
         }
         String detail = capitalize(reason);
-        if (next != null) {
-            detail = (detail == null || detail.isEmpty() ? "" : detail + ". ") + next.colourText();
-        }
         String move = null;
         if (status.kind() == GameStatus.Kind.REPLICATE) {
             // the bot's last move still has to be made on the physical board (the LEDs show it)
@@ -1041,6 +1035,13 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         startPvPSeconds(pvpSeconds, pvpIncrement);
     }
 
+    /** Rematch against the computer: same level, clock and starting position, the other colour. */
+    private void rematchPvc(PvcGame finished) {
+        String fen = finished.getInitialFen();
+        nextStartFen = samePosition(fen, START_FEN) ? null : fen;
+        startPvC(finished.getLevel(), !humanWhite, finished.getTimeControl());
+    }
+
     @Override
     public void leaveToHome() {
         leaveGame();
@@ -1057,7 +1058,9 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
     }
 
     private void confirmLeave(boolean far) {
-        Label detail = Ui.wrap(I18n.t("game.leave.detail"), "t-body", "t-muted");
+        // a Lichess game is not stopped by leaving: it stays open there with the clock running
+        Label detail = Ui.wrap(I18n.t(mode == Mode.ONLINE ? "game.leave.detail.online" : "game.leave.detail"),
+                "t-body", "t-muted");
         Button stay = Ui.wide(I18n.t("game.leave.stay"), null, "btn-outline", "btn-lg");
         stay.setOnAction(e -> mainController.closeSheet());
         Button leave = Ui.wide(I18n.t("game.leave"), "fth-log-out", "btn-danger-solid", "btn-lg");

@@ -155,13 +155,14 @@ public class StatsController implements Screen, NavigationAware {
             accuracyCard = card(Ui.label(I18n.t("stats.accuracy"), "row-title"),
                     Ui.wrap(I18n.t("stats.accuracy.none"), "t-body", "t-muted"));
         } else {
-            Label value = Ui.label(s.accuracyText(), "stats-big");
+            // same form as the review ("81,4%"): a number without the sign reads as a score
+            Label value = Ui.label(s.accuracyText() + "%", "stats-big");
             value.setMinWidth(Region.USE_PREF_SIZE);
             VBox texts = new VBox(4, Ui.wrap(s.reviewed() == 1 ? I18n.t("stats.accuracy.of.one")
                     : I18n.t("stats.accuracy.of", s.reviewed()), "t-body"));
             if (!Double.isNaN(s.recentAccuracy())) {
                 HBox recent = new HBox(10, Ui.label(I18n.t("stats.accuracy.recent",
-                        String.format(java.util.Locale.ITALIAN, "%.1f", s.recentAccuracy())), "t-small", "t-muted"));
+                        String.format(java.util.Locale.ITALIAN, "%.1f%%", s.recentAccuracy())), "t-small", "t-muted"));
                 String trend = s.trendText();
                 if (!trend.isEmpty()) {
                     recent.getChildren().add(Ui.label(trend, "t-small", s.accuracyTrend() >= 0 ? "t-ok" : "t-danger"));

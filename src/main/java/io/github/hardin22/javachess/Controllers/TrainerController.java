@@ -102,7 +102,8 @@ public class TrainerController implements Screen {
         }
         VBox.setVgrow(boardFrame, Priority.ALWAYS);
         VBox boardBox = new VBox(boardFrame);
-        VBox panel = new VBox(header, lower, Ui.vgrow(), tools);
+        // 720 px of height: the card and the extras scroll, the tools stay at the bottom
+        VBox panel = new VBox(header, Ui.scroll(lower), tools);
         panel.setPrefWidth(Ui.COLUMN);
         panel.setMinWidth(560);
         HBox.setHgrow(boardBox, Priority.ALWAYS);

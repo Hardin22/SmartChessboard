@@ -14,7 +14,8 @@ import io.github.hardin22.javachess.Oggetti.EvalBar;
  */
 public class BoardFrame extends Region {
 
-    private static final double STRIP = 26;
+    /** Strip under the board: a thin band, no number (the score is written in the card below it). */
+    private static final double STRIP = 16;
     private static final double SIDE_BAR = 30;
     private static final double GAP = 12;
 

@@ -105,9 +105,12 @@ final class DevDemos {
                     main.navigateTo("ARCHIVE");
                     later(1.2, () -> lookupFire(main, "archive-row"));
                 }
-                case "position-editor" -> {
+                case "position-editor", "position-odds" -> {
                     main.navigateTo("PVC_SETUP");
                     later(1, () -> lookupFire(main, "setup-position"));
+                    if (demo.equals("position-editor")) {
+                        later(1.6, () -> lookupFire(main, "setup-position-editor"));
+                    }
                 }
                 case "archive-transfer" -> {
                     main.navigateTo("ARCHIVE");
@@ -121,6 +124,36 @@ final class DevDemos {
                 case "archive-search" -> {
                     main.navigateTo("ARCHIVE");
                     later(1.2, () -> lookupFire(main, "archive-search"));
+                }
+                case "opening" -> {
+                    var opening = io.github.hardin22.javachess.Training.OpeningCatalog.byId(
+                            System.getProperty("javachess.demo.opening", "italian")).orElse(
+                            io.github.hardin22.javachess.Training.OpeningCatalog.all().get(0));
+                    main.navigateTo("OPENINGS");
+                    later(0.5, () -> io.github.hardin22.javachess.Controllers.OpeningTrainerController.open(main,
+                            opening));
+                    String moves = System.getProperty("javachess.demo.moves.training", "");
+                    if (!moves.isBlank()) {
+                        later(1.5, () -> lookupPlay(main, "OPENING_TRAINER", moves));
+                    }
+                    if (Boolean.getBoolean("javachess.demo.hint")) {
+                        later(2.2, () -> lookupFire(main, "opening-hint"));
+                    }
+                }
+                case "drill" -> {
+                    var drill = io.github.hardin22.javachess.Training.EndgameDrills.byId(
+                            System.getProperty("javachess.demo.drill", "")).orElse(
+                            io.github.hardin22.javachess.Training.EndgameDrills.all().get(0));
+                    main.navigateTo("ENDGAMES");
+                    later(0.5, () -> io.github.hardin22.javachess.Controllers.DrillController.open(main, drill));
+                }
+                case "coordinates-find", "coordinates-name" -> {
+                    main.navigateTo("COORDINATES");
+                    later(0.6, () -> lookupFire(main, demo.equals("coordinates-find") ? "coordinates-find"
+                            : "coordinates-name"));
+                    if (Boolean.getBoolean("javachess.demo.go")) {
+                        later(1.2, () -> fireText(main, "Via!"));
+                    }
                 }
                 case "browser" -> {
                     // the start-up view of the integrated browser in a given state, without starting Chromium
@@ -170,6 +203,47 @@ final class DevDemos {
         PauseTransition pause = new PauseTransition(Duration.seconds(seconds));
         pause.setOnFinished(e -> action.run());
         pause.play();
+    }
+
+    /** Plays UCI moves (space separated) through a training screen's play method, one every 0.4 s. */
+    private static void lookupPlay(MainController main, String view, String moves) {
+        Object controller = main.getController(view);
+        String[] list = moves.trim().split("[\\s_]+");
+        for (int i = 0; i < list.length; i++) {
+            String uci = list[i];
+            later(0.4 * i, () -> {
+                try {
+                    java.lang.reflect.Field f = controller.getClass().getDeclaredField("trainer");
+                    f.setAccessible(true);
+                    Object t = f.get(controller);
+                    t.getClass().getMethod("play", String.class).invoke(t, uci);
+                } catch (ReflectiveOperationException e) {
+                    LOG.warn("demo move {} failed: {}", uci, e.toString());
+                }
+            });
+        }
+    }
+
+    /** Fires the first visible button with this text. */
+    private static void fireText(MainController main, String text) {
+        List<Button> found = new ArrayList<>();
+        collectButtons(main.getMainContainer().getScene().getRoot(), text, found);
+        if (!found.isEmpty()) {
+            found.get(found.size() - 1).fire();
+        } else {
+            LOG.warn("No button '{}' for the demo", text);
+        }
+    }
+
+    private static void collectButtons(Node node, String text, List<Button> out) {
+        if (node instanceof Button b && text.equals(b.getText()) && b.isVisible()) {
+            out.add(b);
+        }
+        if (node instanceof javafx.scene.Parent p) {
+            for (Node child : p.getChildrenUnmodifiable()) {
+                collectButtons(child, text, out);
+            }
+        }
     }
 
     /** Scrolls the enclosing scroll pane so that the node is near the top (screenshots of long pages). */

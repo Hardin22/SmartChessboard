@@ -646,7 +646,11 @@ public class ArchiveController implements Screen {
         });
         Button delete = Ui.wide(I18n.t("archive.delete"), "fth-trash-2", "btn-danger");
         delete.setOnAction(e -> confirmDelete(row));
-        VBox content = new VBox(18, top, Ui.gap(4), open, Ui.equalRow(12, export, delete));
+        Button phone = Ui.wide(I18n.t("phone.short"), "fth-smartphone", "btn-outline");
+        phone.setId("archive-phone");
+        phone.setDisable(game.movesUci() == null || game.movesUci().isEmpty());
+        phone.setOnAction(e -> PhoneLinkSheet.show(mainController, game.initialFen(), game.movesUci()));
+        VBox content = new VBox(18, top, Ui.gap(4), open, Ui.equalRow(12, export, phone), delete);
         mainController.showSheet(I18n.t("archive.game"), content);
     }
 
@@ -841,6 +845,11 @@ public class ArchiveController implements Screen {
         String label = game.label();
         if (label.startsWith("Player") || label.startsWith("Plaver") || label.startsWith("Online")) {
             return describeType(label);
+        }
+        if (game.mode() == ArchivedGame.GameMode.BROWSER) {
+            // the browser stores the site ("Chess.com", "Lichess (browser)"): the site is the useful title
+            String site = label.replace("(browser)", "").trim();
+            return site.isEmpty() ? I18n.t("archive.mode.browser") : I18n.t("archive.mode.site", site);
         }
         return switch (game.mode()) {
             case PVC -> label.isEmpty() ? I18n.t("pvc.title") : label.replace(" livello", " · livello");
