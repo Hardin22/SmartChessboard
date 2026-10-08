@@ -38,6 +38,8 @@ Gravità: **alta** (vicolo cieco, perdita di dati, partita bloccata), **media** 
 | QA-031 | bassa | logica | PvC con orologio: la cadenza non veniva salvata nell'archivio (né nel PGN) | corretto |
 | QA-032 | bassa | logica | Impostazione cambiata e partita avviata subito dopo: poteva valere ancora il valore vecchio (scrittura in coda dietro all'archivio) | corretto |
 | QA-033 | media | test/sicurezza dati | Prove e E2E con cartella dati temporanea: l'export "su chiavetta" vedeva (e scriveva su) ogni disco montato in /Volumes del Mac | corretto (`-Djavachess.usbRoots`, usato dagli E2E) |
+| QA-034 | media | browser | Tornando alla Home durante l'avvio di Chromium, a fine avvio la finestra del browser compare sopra l'app (anche su una partita PvC) e la sessione può prendersi la scacchiera | assegnato a browser |
+| QA-035 | bassa | logica | Partita Lichess via API col Nero: la scheda di fine diceva vinto/perso dal lato del Bianco | corretto |
 | QA-029 | media | logica (Home) | Tornando in Home la carta "Riprendi" della visita precedente resta attiva finché i dati non sono ricaricati: si riprendeva la partita sbagliata | corretto (design informato) |
 
 ---
@@ -237,3 +239,16 @@ temporanea (E2E, prove, snapshot): un test o un monkey che tocca "Esporta su chi
 `javachess-partite-<data>.pgn` su un disco vero del Mac. Ora `-Djavachess.usbRoots=<cartelle>` sostituisce i punti di
 montaggio; l'harness E2E usa `<home>/usb` (e una cartella JCEF vuota, così i test non caricano mai il Chromium del
 computer). Test `PgnTransferTest.usbRootsPropertyReplacesTheDrivesOfThisComputer`.
+
+## QA-034 · Il browser compare dopo che l'utente è uscito (media, browser)
+**Passi**: Home → Online → Chess.com → durante "Avvio del browser…" (secondi sul Mac, minuti al primo download sul Pi)
+→ Indietro → Contro il computer → Inizia. A fine avvio `BrowserController.createWindow` chiama sempre
+`showWindow(null)`: la finestra Swing copre la partita, `session.setVisible(true)` e `watcher.start()`; se la pagina
+mostra una partita, `OnlineGameSync` fa `reset()` e `setListener` sul `BoardStateManager` e la partita PvC perde la
+scacchiera. **Atteso**: il motore resta pronto ma la finestra si mostra solo al prossimo "Online". Trovato leggendo
+il codice; inviato a browser.
+
+## QA-035 · Lato sbagliato nella fine della partita Lichess (bassa, logica)
+`ActiveGameController.startOnlineGame` fissava `humanWhite = true`: giocando col Nero la scheda di fine diceva
+"Hai vinto" a chi aveva perso. Ora il colore viene da `OnlineGame.isPlayingWhite()` (noto quando Lichess manda la
+partita). Test E2E `LichessApiEndToEndTest` (Lichess finto locale).
