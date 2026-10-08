@@ -105,6 +105,18 @@ class ConfigManagerTest {
     }
 
     @Test
+    void aValueSetInMemoryIsReadAtOnceAndWrittenOnFlush() throws Exception {
+        ConfigManager.reload();
+        ConfigManager.setProperty("game.depth", "16");
+        assertTrue(ConfigManager.setPropertiesInMemory(java.util.Map.of("game.depth", "20")));
+        assertEquals(20, ConfigManager.getIntProperty("game.depth", 0), "every read sees the new value at once");
+        assertEquals("16", stored().getProperty("game.depth"), "the disk is written later");
+        assertFalse(ConfigManager.setPropertiesInMemory(java.util.Map.of("game.depth", "20")), "nothing changed");
+        ConfigManager.flush();
+        assertEquals("20", stored().getProperty("game.depth"));
+    }
+
+    @Test
     void blankValueRemovesTheKey() throws Exception {
         ConfigManager.reload();
         ConfigManager.setProperty("lichess.username", "someone");

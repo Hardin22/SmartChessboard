@@ -196,6 +196,18 @@ public final class ConfigManager {
 
     /** Stores several values with a single atomic write. Null or blank values remove the key. */
     public static synchronized void setProperties(Map<String, String> values) {
+        if (setPropertiesInMemory(values)) {
+            save();
+        }
+    }
+
+    /**
+     * Stores values in memory only: every read sees them at once. {@link #flush()} writes them (the UI writes on its
+     * storage thread, so a setting changed just before starting a game is never read with its old value).
+     *
+     * @return true when something changed
+     */
+    public static synchronized boolean setPropertiesInMemory(Map<String, String> values) {
         boolean changed = false;
         for (Map.Entry<String, String> e : values.entrySet()) {
             String key = e.getKey();
@@ -214,9 +226,12 @@ public final class ConfigManager {
                 changed = true;
             }
         }
-        if (changed) {
-            save();
-        }
+        return changed;
+    }
+
+    /** Writes the settings held in memory (see {@link #setPropertiesInMemory}). */
+    public static synchronized void flush() {
+        save();
     }
 
     /** Snapshot of the effective settings (defaults overridden by user values); secrets are masked. */

@@ -6,8 +6,9 @@ import io.github.hardin22.javachess.Utils.ConfigManager;
 import java.util.Map;
 
 /**
- * UI preferences. Reads go straight to {@link ConfigManager} (cached); writes happen on the storage thread so a
- * tap never waits for the disk. Screenshot and demo runs never write the user's settings.
+ * UI preferences. Reads go straight to {@link ConfigManager} (cached); a change is visible to every read at once and
+ * written to disk on the storage thread, so a tap never waits for the disk (and a game started right after a change
+ * already uses it). Screenshot and demo runs never write the user's settings.
  */
 public final class Prefs {
 
@@ -23,15 +24,18 @@ public final class Prefs {
             return;
         }
         String text = String.valueOf(value);
-        AppExecutors.storage().execute(() -> ConfigManager.setProperty(key, text));
+        if (ConfigManager.setPropertiesInMemory(java.util.Collections.singletonMap(key, text))) {
+            AppExecutors.storage().execute(ConfigManager::flush);
+        }
     }
 
     public static void setAll(Map<String, String> values) {
         if (readOnly()) {
             return;
         }
-        Map<String, String> copy = Map.copyOf(values);
-        AppExecutors.storage().execute(() -> ConfigManager.setProperties(copy));
+        if (ConfigManager.setPropertiesInMemory(values)) {
+            AppExecutors.storage().execute(ConfigManager::flush);
+        }
     }
 
     public static boolean bool(String key, boolean fallback) {

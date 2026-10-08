@@ -36,6 +36,7 @@ Gravità: **alta** (vicolo cieco, perdita di dati, partita bloccata), **media** 
 | QA-028 | media | test/memoria | Pipeline software (Pi): heap dopo GC 130→512 MB in 20 partite; verificato che sono cache soft di JavaFX, non una perdita | verificato; test adeguato |
 | QA-030 | bassa | logica | PvP in pausa: una mossa sulla scacchiera veniva accettata e faceva ripartire gli orologi | corretto |
 | QA-031 | bassa | logica | PvC con orologio: la cadenza non veniva salvata nell'archivio (né nel PGN) | corretto |
+| QA-032 | bassa | logica | Impostazione cambiata e partita avviata subito dopo: poteva valere ancora il valore vecchio (scrittura in coda dietro all'archivio) | corretto |
 | QA-029 | media | logica (Home) | Tornando in Home la carta "Riprendi" della visita precedente resta attiva finché i dati non sono ricaricati: si riprendeva la partita sbagliata | corretto (design informato) |
 
 ---
@@ -213,3 +214,10 @@ non accetta mosse in pausa, la scacchiera sì). **Correzione**: in pausa la moss
 `PvcGame.endGameWithMessage` archiviava sempre `timeControl=""` anche per le partite con l'orologio di features
 (3+2, 10+5…): archivio e PGN senza `TimeControl`. Ora usa `TimeControl.archiveForm()`. Test E2E
 `aGameAgainstTheBotWithAClockKeepsItsTimeControlInTheArchive` (archivio "3+2", PGN `[TimeControl "180+2"]`).
+
+## QA-032 · Impostazioni lette prima di essere salvate (bassa, logica)
+`Prefs.set` metteva in coda sul thread di storage sia la scrittura su disco sia l'aggiornamento del valore in memoria:
+dietro a un salvataggio lungo dell'archivio (7 MB con 3000 partite, più lento sul Pi) un interruttore appena toccato
+("Suggerimenti", "Valutazione"…) poteva non valere ancora per la partita avviata subito dopo. Ora il valore cambia
+subito in memoria (`ConfigManager.setPropertiesInMemory`) e solo la scrittura va in coda (`flush`). Test
+`ConfigManagerTest.aValueSetInMemoryIsReadAtOnceAndWrittenOnFlush`.
