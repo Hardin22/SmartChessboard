@@ -206,9 +206,10 @@ translucent "glass" queen read with the wrong colour. The start position is reco
 ## Testing
 
 - Unit and integration tests (no browser): `./mvnw test -DskipE2E=true` — page classification, probe answers
-  recorded on the real sites, setup positions, the vision tracker, the watcher with a fake site, the synchronisation
-  in every game situation (also with the real board manager, the simulated sensor board and BotMover), the state
-  machine and its messages (fitting a 720 px screen), saved logins, the start-up logic.
+  recorded on the real sites, setup positions, the vision tracker, the calibrated reader on a drawn stone-like
+  board, the watcher with a fake site, the synchronisation in every game situation (also with the real board
+  manager, the simulated sensor board and BotMover), the state machine and its messages (fitting a 720 px screen),
+  saved logins, the start-up logic.
 - Real Chromium on a local page that imitates both sites' markup and, like them, ignores untrusted events:
   `./mvnw test -DskipE2E=true -DskipJcefE2E=false -Dtest=BrowserJcefE2E` (needs a display; add
   `-Djavachess.jcef.dir=...` to reuse a downloaded engine).
