@@ -122,6 +122,24 @@ final class DevDemos {
                     main.navigateTo("ARCHIVE");
                     later(1.2, () -> lookupFire(main, "archive-search"));
                 }
+                case "browser" -> {
+                    // the start-up view of the integrated browser in a given state, without starting Chromium
+                    main.navigateTo("BROWSER");
+                    var state = io.github.hardin22.javachess.Browser.BrowserStatus.State.valueOf(
+                            System.getProperty("javachess.demo.state", "STARTING"));
+                    double progress = Double.parseDouble(System.getProperty("javachess.demo.progress", "-2"));
+                    List<io.github.hardin22.javachess.Browser.BrowserStatus.Action> actions = new ArrayList<>();
+                    for (String a : System.getProperty("javachess.demo.actions", "").split(",")) {
+                        if (!a.isBlank()) {
+                            actions.add(io.github.hardin22.javachess.Browser.BrowserStatus.Action.valueOf(a.trim()));
+                        }
+                    }
+                    Object[] args = System.getProperty("javachess.demo.args", "").isEmpty() ? new Object[0]
+                            : System.getProperty("javachess.demo.args").split("\\|");
+                    var status = io.github.hardin22.javachess.Browser.BrowserStatus.of(state, progress, actions, args);
+                    later(0.5, () -> ((io.github.hardin22.javachess.Controllers.BrowserController)
+                            main.getController("BROWSER")).devShow(status));
+                }
                 case "settings-online", "settings-login" -> {
                     main.navigateTo("SETTINGS");
                     io.github.hardin22.javachess.Controllers.SettingsController settings =

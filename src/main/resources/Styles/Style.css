@@ -1603,6 +1603,110 @@
     -fx-text-alignment: center;
 }
 
+/* ------------------------------------------------------------------ integrated browser (start-up view) */
+
+.browser-status {
+    -fx-alignment: center;
+    -fx-spacing: 22px;
+    -fx-padding: 40px 40px;
+}
+
+.browser-badge {
+    -fx-min-width: 168px;
+    -fx-min-height: 168px;
+    -fx-max-width: 168px;
+    -fx-max-height: 168px;
+    -fx-background-radius: 999px;
+    -fx-background-color: -c-s2;
+}
+
+.browser-badge .browser-badge-icon {
+    -fx-icon-color: -c-fg2;
+}
+
+.browser-badge.tone-progress, .browser-badge.tone-info {
+    -fx-background-color: -c-accent-soft;
+}
+
+.browser-badge.tone-progress .browser-badge-icon, .browser-badge.tone-info .browser-badge-icon {
+    -fx-icon-color: -c-accent;
+}
+
+.browser-badge.tone-success {
+    -fx-background-color: -c-ok-soft;
+}
+
+.browser-badge.tone-success .browser-badge-icon {
+    -fx-icon-color: -c-ok;
+}
+
+.browser-badge.tone-warning {
+    -fx-background-color: -c-warn-soft;
+}
+
+.browser-badge.tone-warning .browser-badge-icon {
+    -fx-icon-color: -c-warn;
+}
+
+.browser-badge.tone-error {
+    -fx-background-color: -c-danger-soft;
+}
+
+.browser-badge.tone-error .browser-badge-icon {
+    -fx-icon-color: -c-danger;
+}
+
+.browser-title {
+    -fx-font-family: "Geist SemiBold";
+    -fx-font-size: 40px;
+    -fx-text-alignment: center;
+    -fx-padding: 12px 0 0 0;
+}
+
+.browser-detail {
+    -fx-font-size: 25px;
+    -fx-text-fill: -c-fg2;
+    -fx-text-alignment: center;
+    -fx-line-spacing: 4px;
+}
+
+.browser-progress {
+    -fx-min-height: 14px;
+    -fx-pref-height: 14px;
+    -fx-max-width: 520px;
+}
+
+.browser-progress .track {
+    -fx-background-color: -c-s2;
+    -fx-background-radius: 999px;
+    -fx-background-insets: 0;
+}
+
+.browser-progress .bar {
+    -fx-background-color: -c-accent;
+    -fx-background-radius: 999px;
+    -fx-background-insets: 0;
+    -fx-padding: 7px;
+}
+
+.browser-actions .btn .icon {
+    -fx-icon-size: 28;
+}
+
+.browser-actions {
+    -fx-spacing: 14px;
+    -fx-padding: 0 40px 48px 40px;
+    -fx-alignment: center;
+}
+
+.browser-actions .btn {
+    -fx-max-width: 640px;
+    -fx-pref-width: 640px;
+    -fx-min-height: 96px;
+    -fx-pref-height: 96px;
+    -fx-font-size: 26px;
+}
+
 /* ------------------------------------------------------------------ home */
 
 .brand {

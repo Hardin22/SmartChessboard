@@ -305,10 +305,13 @@ public class SettingsController implements Screen {
 
     /**
      * The saved browser logins: the system keyring, or (screenshots, demos) an in-memory one so that those runs never
-     * read or change the real logins. {@code -Djavachess.demo.logins=chess_com,lichess} pre-fills the demo store.
+     * read or change the real logins. Runs with another data folder ({@code -Djavachess.home}: tests, trials) use
+     * it too: a test tapping "Rimuovi" must never delete the user's real login.
+     * {@code -Djavachess.demo.logins=chess_com,lichess} pre-fills the in-memory store.
      */
     private static io.github.hardin22.javachess.Components.LoginVault loginVault() {
-        if (!isRedacted() && System.getProperty("javachess.demo") == null) {
+        if (!isRedacted() && System.getProperty("javachess.demo") == null
+                && System.getProperty("javachess.home") == null) {
             return io.github.hardin22.javachess.Components.LoginVault.system();
         }
         List<io.github.hardin22.javachess.Browser.ChessSite> sites = new java.util.ArrayList<>();
