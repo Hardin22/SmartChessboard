@@ -125,8 +125,8 @@ public final class BoardFollower {
         manager.setLogicalBoard(board(fen));
         manager.setSetupTargetFen(fen);
         manager.startSetupMode();
-        state.set(State.PLACING);
         say("Disponi i pezzi come sullo schermo: i LED indicano le case");
+        state.set(State.PLACING);
     }
 
     private void replicate(String fen, String fromFen, String uci) {
@@ -135,8 +135,8 @@ public final class BoardFollower {
         String from = uci.substring(0, 2).toUpperCase(Locale.ROOT);
         String to = uci.substring(2, 4).toUpperCase(Locale.ROOT);
         manager.startBotMoveReplication(from, to);
-        state.set(State.REPLICATING);
         say("Esegui sulla scacchiera: " + MoveText.numbered(fromFen, uci));
+        state.set(State.REPLICATING);
     }
 
     /** One move back: the piece goes back from → to on the LEDs, a captured piece comes back on its square. */
@@ -148,7 +148,6 @@ public final class BoardFollower {
         String from = undone.substring(2, 4);
         String to = undone.substring(0, 2);
         manager.startBotMoveReplication(from.toUpperCase(Locale.ROOT), to.toUpperCase(Locale.ROOT));
-        state.set(State.REPLICATING);
         StringBuilder text = new StringBuilder("Riporta indietro sulla scacchiera: ")
                 .append(MoveText.numbered(fen, undone)).append(", da ").append(from).append(" a ").append(to);
         // the captured piece has to come back (next to the destination for en passant)
@@ -163,6 +162,7 @@ public final class BoardFollower {
                     .append(" in ").append(Squares.name(captured).toLowerCase(Locale.ROOT));
         }
         say(text.toString());
+        state.set(State.REPLICATING); // after the message: whoever watches the state finds the text ready
     }
 
     /** The legal move that leads from {@code fen} to {@code next}, or null. */
@@ -182,8 +182,8 @@ public final class BoardFollower {
     }
 
     private void following() {
-        state.set(State.FOLLOWING);
         say("Muovi i pezzi per provare una variante");
+        state.set(State.FOLLOWING);
     }
 
     private void say(String text) {
