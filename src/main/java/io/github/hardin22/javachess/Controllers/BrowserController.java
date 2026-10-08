@@ -85,6 +85,8 @@ public class BrowserController implements NavigationAware {
     /** The user is on the browser screen (or opening it): a window that becomes ready may be shown. */
     private volatile boolean wanted;
     private boolean stageWasFullScreen;
+    private static final boolean IS_MAC = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT)
+            .contains("mac");
     private ScheduledFuture<?> ticker;
 
     @Override
@@ -225,11 +227,20 @@ public class BrowserController implements NavigationAware {
                 : new Rectangle((int) Math.round(stage.getX()), (int) Math.round(stage.getY()),
                 (int) Math.round(stage.getWidth()), (int) Math.round(stage.getHeight()));
         boolean fullScreen = stage != null && stage.isFullScreen();
-        stageWasFullScreen = fullScreen;
+        if (fullScreen || !w.isShowing()) {
+            stageWasFullScreen = fullScreen; // (opened again while showing: the stage is already out of it)
+        }
+        boolean coverScreen = stageWasFullScreen;
+        if (fullScreen && IS_MAC) {
+            // a macOS full-screen window lives in its own space, where no other window can safely go (AWT's
+            // exclusive full screen over it crashed the app): leave it while the browser is shown; hideWindow
+            // puts it back
+            stage.setFullScreen(false);
+        }
         BrowserBar.Theme theme = barTheme();
         SwingUtilities.invokeLater(() -> {
             w.bar().applyTheme(theme);
-            w.show(bounds, fullScreen);
+            w.show(bounds, coverScreen);
             if (url != null && shouldLoad(w, url)) {
                 w.load(url);
             }
@@ -360,6 +371,17 @@ public class BrowserController implements NavigationAware {
     /** Screenshots (DevOptions demo): shows a status on the start-up view without starting the engine. */
     public void devShow(BrowserStatus status) {
         showOnView(status);
+    }
+
+    /** Developer demos: an action as if tapped in the bar above the page (e.g. BACK_HOME). */
+    public void devPerform(BrowserStatus.Action action) {
+        session.perform(action);
+    }
+
+    /** Developer demos: the browser window is on screen. */
+    public boolean devWindowShowing() {
+        BrowserWindow w = window;
+        return w != null && w.isShowing();
     }
 
     @FXML

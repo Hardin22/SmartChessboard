@@ -111,6 +111,26 @@ class BrowserSessionTest {
     }
 
     @Test
+    void aLoadWhoseEndNoticeIsLostEndsWhenThePageIsComplete() {
+        // on macOS some of Chromium's notices to Java are lost (the JVM refuses calls from the main thread's
+        // native stack): the probe's document.readyState stands in for "load finished"
+        ready();
+        site.url = "https://www.chess.com/login";
+        site.boardShown = false;
+        site.loginForm = true;
+        site.documentReady = false;
+        session.pageLoading(site.url);
+        session.onSnapshot(BoardProbe.parse(site.json()));
+        assertEquals(BrowserStatus.State.LOADING, state(), "still loading");
+        site.documentReady = true;
+        session.onSnapshot(BoardProbe.parse(site.json()));
+        assertEquals(BrowserStatus.State.LOADING, state(), "a moment to let Chromium say it");
+        clock.addAndGet(BrowserSession.LOAD_END_GRACE_MS);
+        session.onSnapshot(BoardProbe.parse(site.json()));
+        assertEquals(BrowserStatus.State.LOGIN, state());
+    }
+
+    @Test
     void aPageWhoseProcessEndedIsReopenedOnceThenOffered() {
         ready();
         session.pageLoading("https://lichess.org/analysis");

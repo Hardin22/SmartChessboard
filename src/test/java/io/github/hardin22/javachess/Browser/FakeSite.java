@@ -36,6 +36,7 @@ public final class FakeSite implements PageDriver {
     volatile boolean animating;
     volatile boolean challenge;
     volatile boolean loginForm;
+    volatile boolean documentReady = true;
     volatile boolean unreachable;
     volatile String result;
     volatile boolean acceptsClicks = true;
@@ -212,7 +213,8 @@ public final class FakeSite implements PageDriver {
         JSONObject o = new JSONObject();
         o.put("v", 1).put("url", url).put("title", "test").put("site", siteId).put("page", pageHint)
                 .put("viewport", new JSONObject().put("w", viewportWidth).put("h", viewportHeight)).put("dpr", 1)
-                .put("challenge", challenge).put("login", loginForm).put("loggedIn", JSONObject.NULL);
+                .put("challenge", challenge).put("login", loginForm).put("loggedIn", JSONObject.NULL)
+                .put("ready", documentReady);
         if (!boardShown) {
             o.put("board", JSONObject.NULL);
             return o.toString();

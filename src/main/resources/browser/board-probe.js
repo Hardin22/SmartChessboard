@@ -6,6 +6,8 @@
   const out = {
     v: 1,
     url: location.href,
+    // the page finished loading (the app also learns it from Chromium, but that notice can be lost)
+    ready: document.readyState === 'complete',
     title: document.title || '',
     site: 'other',
     page: '',

@@ -97,6 +97,7 @@ final class DevDemos {
                         later(2, () -> lookupFire(main, "rush-stop"));
                     }
                 }
+                case "browser-cycle" -> browserCycle(main);
                 case "online" -> {
                     main.navigateTo("HOME");
                     later(1, () -> lookupFire(main, "home-online"));
@@ -571,5 +572,42 @@ final class DevDemos {
             LOG.warn("Demo game not parsed: {}", e.toString());
             return List.of();
         }
+    }
+
+    /**
+     * {@code -Djavachess.demo=browser-cycle}: opens the integrated browser, goes back Home and opens it again, like a
+     * user switching between the sites ({@code javachess.demo.urls}, comma-separated, used in turn;
+     * {@code javachess.demo.rounds}, default 5). Logs "Browser cycle round N" and "Browser cycle done", then quits
+     * with {@code javachess.snapshot.exit=true}. Used to check the full-screen window on macOS (the app crashed on
+     * the second opening on 8 October 2026).
+     */
+    private static void browserCycle(MainController main) {
+        String[] urls = System.getProperty("javachess.demo.urls", "https://www.chess.com/login,https://lichess.org")
+                .split(",");
+        int rounds = Integer.getInteger("javachess.demo.rounds", 5);
+        double openSeconds = Double.parseDouble(System.getProperty("javachess.demo.openSeconds", "8"));
+        double homeSeconds = Double.parseDouble(System.getProperty("javachess.demo.homeSeconds", "4"));
+        var browser = (io.github.hardin22.javachess.Controllers.BrowserController) main.getController("BROWSER");
+        Runnable[] round = new Runnable[1];
+        int[] n = {0};
+        round[0] = () -> {
+            if (n[0] >= rounds) {
+                LOG.info("Browser cycle done: {} rounds", rounds);
+                if (Boolean.getBoolean("javachess.snapshot.exit")) {
+                    later(1, Platform::exit);
+                }
+                return;
+            }
+            String url = urls[n[0] % urls.length].trim();
+            n[0]++;
+            LOG.info("Browser cycle round {}: {}", n[0], url);
+            main.openBrowser(url);
+            later(openSeconds, () -> {
+                LOG.info("Browser cycle round {}: window showing {}, back Home", n[0], browser.devWindowShowing());
+                browser.devPerform(io.github.hardin22.javachess.Browser.BrowserStatus.Action.BACK_HOME);
+                later(homeSeconds, round[0]);
+            });
+        };
+        later(2, round[0]);
     }
 }

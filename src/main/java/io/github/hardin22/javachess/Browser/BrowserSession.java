@@ -57,6 +57,8 @@ public final class BrowserSession {
             "ERR_NETWORK_ACCESS_DENIED", "ERR_PROXY_CONNECTION_FAILED");
     static final long SLOW_LOAD_MS = 15_000;
     static final long CRASH_RELOAD_EVERY_MS = 60_000;
+    /** How long after a load started a complete document counts as loaded without Chromium's notice. */
+    static final long LOAD_END_GRACE_MS = 2_000;
     /** A board narrower than this share of the page (or than 240 px) is a thumbnail, not the game. */
     private static final double MIN_BOARD_SHARE = 0.45;
 
@@ -75,6 +77,7 @@ public final class BrowserSession {
     private String url = "";
     private boolean loading;
     private long loadingSince;
+    private String loadingUrl = "";
     private long lastCrashReload = Long.MIN_VALUE;
     private String loadError;
     private BoardSnapshot snapshot;
@@ -164,6 +167,7 @@ public final class BrowserSession {
         post(() -> {
             loading = true;
             loadingSince = clock.getAsLong();
+            loadingUrl = newUrl == null ? "" : newUrl;
             loadError = null;
             onUrl(newUrl);
         });
@@ -236,6 +240,13 @@ public final class BrowserSession {
         post(() -> {
             if (!s.url().isBlank()) {
                 onUrl(s.url());
+            }
+            if (loading && s.ready() && clock.getAsLong() - loadingSince >= LOAD_END_GRACE_MS
+                    && s.url().equals(loadingUrl)) {
+                // Chromium's "load finished" never came (on macOS some of its notices to Java are lost): the page
+                // says it is complete
+                log.info("Page loaded (seen by the probe): {}", s.url());
+                loading = false;
             }
             snapshot = s;
             PageInfo info = s.page();
