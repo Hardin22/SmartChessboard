@@ -13,7 +13,7 @@ Gravità: **alta** (vicolo cieco, perdita di dati, partita bloccata), **media** 
 | QA-005 | bassa | UI | Impostazioni: "indietro" scarta le modifiche senza avviso (si salvano solo con "Salva") | risolto da design (salvataggio a ogni tocco) |
 | QA-006 | media | UI | Rotazione 180° solo dalle impostazioni e non persistente (persa al riavvio) | risolto da design (↻ in ogni intestazione; "Monitor capovolto" salvato in ui.screen.flipped) |
 | QA-007 | media | logica | Puzzle: una mossa durante la risposta dell'avversario contava come errore; mosse del lato avversario lette dalla scacchiera; mossa sbagliata senza guida LED | corretto |
-| QA-008 | media | logica+UI | Puzzle senza database: "Nessun puzzle trovato con questi filtri" invece di spiegare che mancano i dati | logica corretta (PuzzleService.hasPuzzleData); UI in carico a design |
+| QA-008 | media | logica+UI | Puzzle senza database: "Nessun puzzle trovato con questi filtri" invece di spiegare che mancano i dati | corretto (logica qa + stato vuoto di design) |
 | QA-009 | bassa | UI | Revisione aperta dalla home: "indietro" porta all'archivio | risolto da design (indietro torna alla schermata di provenienza) |
 | QA-010 | bassa | logica | Archivio danneggiato: il dialogo d'errore ricompare a ogni apertura dell'archivio | aperto |
 | QA-011 | media | browser | Partita Lichess (API) lasciata a metà: non archiviata e non abbandonata su Lichess | assegnato a browser |
@@ -21,7 +21,7 @@ Gravità: **alta** (vicolo cieco, perdita di dati, partita bloccata), **media** 
 | QA-013 | media | logica+UI | Nessun abbandono / offerta di patta: "Termina" archivia sempre come interrotta (`*`) | fatto: abbandono e patta nella UI di design, patta col bot (BotDrawPolicy) da features |
 | QA-014 | bassa | logica | Nome dell'apertura solo online (explorer Lichess, che ora chiede un token): offline non compare | fatto da features (libro offline prima dell'explorer) |
 | QA-015 | media | UI | Revisione: dopo "Analizza partita" la scacchiera si rimpicciolisce e le etichette si troncano | risolto da design (scacchiera a tutta larghezza nel ridisegno) |
-| QA-016 | media | UI | Motore che fallisce in PvC: manca un "Riprova" accanto al messaggio | in carico a design |
+| QA-016 | media | UI | Motore che fallisce in PvC: manca un "Riprova" accanto al messaggio | corretto da design (carta "Il computer non risponde" + Riprova; coperto dall'E2E) |
 | QA-017 | bassa | UI+logica | Home: il riquadro "Partita in corso / Riprendi" non compare mai (uscire da GAME termina la partita) | assegnato a design + features |
 | QA-018 | media | logica | Revisione: l'analisi completa continua (6 processi Stockfish, analisi live sospesa) dopo aver lasciato la schermata o aperto un'altra partita | corretto |
 | QA-019 | media | logica | Import PGN lentissimo (1000 partite: 9,6 s su Mac, minuti sul Pi) | corretto |

@@ -326,7 +326,11 @@ class AppEndToEndTest {
                     () -> fxGet(() -> currentGame(game).lastStatus()).startsWith("Motore non disponibile"));
             assertEquals(1, (int) fxGet(() -> currentGame(game).getBoard().getHistory().size() - 1));
             assertFalse(fxGet(() -> currentGame(game).isAwaitingHumanMove()), "still the bot's turn");
+            waitFor("Riprova on screen", () -> fxGet(() -> !buttons(I18n.t("game.engine.retry")).isEmpty()));
             Files.writeString(script, "e7e5\n"); // the engine works again
+            if (failure.equals("!crash")) {
+                fireButton(I18n.t("game.engine.retry")); // the player does not wait for the next automatic retry
+            }
             waitFor("bot move after the retry (" + failure + ")",
                     () -> fxGet(() -> currentGame(game).getBoard().getHistory().size() - 1) >= 2);
             assertTrue(fxGet(() -> currentGame(game).isAwaitingHumanMove()));

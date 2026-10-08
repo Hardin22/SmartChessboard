@@ -13,8 +13,8 @@ con gravità, passi, area e stato).
 |---|---|
 | Problemi trovati | 31 (QA-001 … QA-031) |
 | Corretti da QA (logica, con test) | 18: QA-001 (parte logica), 002, 003, 004, 007, 008 (parte logica), 010, 018, 019, 020, 021, 025, 027, 028, 029, 030, 031 + resync per l'annulla mossa |
-| Assegnati e già risolti | design: 005, 006, 009, 015, 022, 023, 024; features: 012, 013, 014, 026 |
-| Ancora aperti / in corso | design: 008 (schermata senza database), 016 (Riprova), 017 (riquadro partita in corso, con features); browser: 011 |
+| Assegnati e già risolti | design: 005, 006, 008 (UI), 009, 015, 016, 022, 023, 024; features: 012, 013, 014, 026 |
+| Ancora aperti / in corso | browser: 011 (da verificare con browser/v2); 017 (riquadro "Partita in corso": design/features) |
 | Test | unit 515 (10 skip senza motori), E2E 31 (6 classi), tutti verdi con e senza finestra; nel "Pi in scatola" (Docker linux/arm64, 4 CPU, 2 GB, senza Stockfish) unit 495 (29 skip) ed E2E 28/28 senza finestra |
 
 ## Bug di logica corretti (i più importanti)
@@ -81,8 +81,8 @@ con gravità, passi, area e stato).
 
 ## Cosa resta
 
-- UI: QA-008 (stato vuoto senza database puzzle), QA-016 (Riprova), QA-017 (riquadro "Partita in corso" e
-  sospensione invece di terminare all'uscita) — in carico a design/features.
+- UI: QA-017 (riquadro "Partita in corso" e sospensione invece di terminare all'uscita) — in carico a
+  design/features; oggi la ripresa passa dalla carta "Partita interrotta".
 - Browser e Lichess (QA-011): da verificare quando browser/v2 è su main (uscita a partita in corso, archiviazione,
   chiusura con JCEF aperto).
 - Hardware vero: tutto è provato con la scacchiera simulata e l'emulatore del firmware; con il PCB vanno rifatti a
