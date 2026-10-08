@@ -73,14 +73,27 @@ Old bundles of previous versions (`~/.jcef-bundle-v141`, other `~/.jcef-bundle-*
 
 ### Checking it on a Raspberry Pi
 
+`scripts/pi-check-browser.sh` checks the browser on the real Pi 5 step by step and writes a report. Run it from
+the javaChess folder, on the Pi's desktop or over SSH (it uses the Pi's screen):
+
 ```bash
 cd ~/javachess
-JAVACHESS_OPTS="-Djavachess.view=BROWSER -Djavachess.browserUrl=https://lichess.org/analysis" ./run_pi.sh
+scripts/pi-check-browser.sh            # system, engine download + restart, local test board
+scripts/pi-check-browser.sh --sites    # also lichess.org and chess.com analysis boards (no login)
 ```
 
-The first run downloads the engine and asks for the restart; run the same command again: lichess opens, the bar
-says *Tocca a te* (*Scacchiera non collegata...* without the board). `journalctl --user -u javachess` or
-`~/.javachess/logs/` contain the details (`Browser status: ...` lines).
+1. **System**: 64-bit arm, Java 21, free memory (≥ 1.5 GB) and disk (≈ 450 MB for the engine), the screen, the
+   network (Maven Central for the download, lichess, chess.com) and the app's jar.
+2. **Browser engine**: opens the browser on a local test page; the first time the engine is downloaded and the app
+   asks for the restart (expected), then the script starts it again: Chromium must start and show the page.
+3. **Reading the board**: the test page's position must be read, the (simulated) board set up, vision calibrated,
+   pictures of the browser written, and the app must close with status 0.
+4. With `--sites`: the analysis boards of both sites must be read (a CAPTCHA is reported as such).
+
+The app runs with a temporary data folder (your games, settings and saved logins are never touched), never logs in
+and never moves on a site. It prints PASS/FAIL lines, the peak memory of the app and Chromium together, and the
+folder with `report.txt`, the logs and the pictures: send `report.txt` when something fails. `PI_CHECK_TIMEOUT=600`
+waits longer on a slow network.
 
 ## Saved logins
 

@@ -56,6 +56,7 @@ public final class BrowserSession {
             "ERR_NAME_RESOLUTION_FAILED", "ERR_ADDRESS_UNREACHABLE", "ERR_NETWORK_CHANGED",
             "ERR_NETWORK_ACCESS_DENIED", "ERR_PROXY_CONNECTION_FAILED");
     static final long SLOW_LOAD_MS = 15_000;
+    static final long CRASH_RELOAD_EVERY_MS = 60_000;
     /** A board narrower than this share of the page (or than 240 px) is a thumbnail, not the game. */
     private static final double MIN_BOARD_SHARE = 0.45;
 
@@ -74,6 +75,7 @@ public final class BrowserSession {
     private String url = "";
     private boolean loading;
     private long loadingSince;
+    private long lastCrashReload = Long.MIN_VALUE;
     private String loadError;
     private BoardSnapshot snapshot;
     private BoardWatcher.Problem problem;
@@ -192,7 +194,22 @@ public final class BrowserSession {
             loading = false;
             loadError = errorCode;
             onUrl(failedUrl);
+            if (isPageCrash(errorCode)) {
+                // Chromium closed the page's process (out of memory, crash): open it again once by itself;
+                // if it happens again within a minute the user decides (Ricarica)
+                long now = clock.getAsLong();
+                if (lastCrashReload == Long.MIN_VALUE || now - lastCrashReload >= CRASH_RELOAD_EVERY_MS) {
+                    lastCrashReload = now;
+                    log.info("Reloading the page after its process ended");
+                    commands.reload();
+                }
+            }
         });
+    }
+
+    /** The page's process ended (see BrowserWindow: "RENDERER_" + Chromium's termination status). */
+    static boolean isPageCrash(String errorCode) {
+        return errorCode != null && errorCode.startsWith("RENDERER_");
     }
 
     private void onUrl(String newUrl) {
@@ -380,6 +397,9 @@ public final class BrowserSession {
             }
         }
         List<BrowserStatus.Action> reload = List.of(BrowserStatus.Action.RELOAD);
+        if (loadError != null && isPageCrash(loadError)) {
+            return BrowserStatus.of(BrowserStatus.State.PAGE_CRASHED, BrowserStatus.NO_PROGRESS, reload);
+        }
         if (loadError != null) {
             boolean offline = OFFLINE_ERRORS.contains(loadError);
             return BrowserStatus.of(offline ? BrowserStatus.State.OFFLINE : BrowserStatus.State.SITE_UNREACHABLE,
