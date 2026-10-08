@@ -112,6 +112,13 @@ public class HomeController implements Screen {
         Button stats = smallTile("fth-bar-chart-2", I18n.t("home.stats"), statsValue, I18n.t("home.stats.description"),
                 () -> mainController.navigateTo("STATS"));
 
+        pvcTile = pvc;
+        pvpTile = pvp;
+        puzzlesTile = puzzles;
+        trainingTile = training;
+        archiveTile = archive;
+        statsTile = stats;
+        onlineTile = online;
         VBox actions = new VBox(16,
                 Ui.sectionLabel(I18n.t("home.play")),
                 pvc, pvp,
@@ -129,6 +136,7 @@ public class HomeController implements Screen {
         setWide(false);
     }
 
+    private Button pvcTile, pvpTile, puzzlesTile, trainingTile, archiveTile, statsTile, onlineTile;
     private HBox brandRow;
     private HBox statusRow;
     private VBox helloBox;
@@ -138,7 +146,13 @@ public class HomeController implements Screen {
     @Override
     public void setWide(boolean wide) {
         root.getChildren().clear();
+        root.getStyleClass().remove("home-wide");
+        if (wide) {
+            root.getStyleClass().add("home-wide"); // four small tiles in a row: smaller titles
+        }
         if (!wide) {
+            actionsBox.getChildren().setAll(Ui.sectionLabel(I18n.t("home.play")), pvcTile, pvpTile, Ui.gap(4),
+                    Ui.equalRow(16, puzzlesTile, trainingTile), Ui.equalRow(16, archiveTile, statsTile), onlineTile);
             actionsBox.setMaxWidth(Double.MAX_VALUE);
             root.getChildren().addAll(brandRow, statusRow, Ui.vgrow(), helloBox, Ui.gap(40), resumeSlot, Ui.vgrow(),
                     actionsBox);
@@ -146,8 +160,13 @@ public class HomeController implements Screen {
         }
         VBox left = new VBox(0, brandRow, statusRow, Ui.vgrow(), helloBox, Ui.gap(32), resumeSlot, Ui.vgrow());
         left.setMaxWidth(680);
-        actionsBox.setMaxWidth(680);
-        VBox right = new VBox(Ui.vgrow(), actionsBox, Ui.vgrow());
+        // 720 px of height: the two games side by side, the four small tiles in one row
+        VBox wideActions = new VBox(16, Ui.sectionLabel(I18n.t("home.play")),
+                Ui.equalRow(16, pvcTile, pvpTile),
+                Ui.equalRow(16, puzzlesTile, trainingTile, archiveTile, statsTile),
+                onlineTile);
+        wideActions.setMaxWidth(1080);
+        VBox right = new VBox(Ui.vgrow(), wideActions, Ui.vgrow());
         HBox.setHgrow(left, javafx.scene.layout.Priority.ALWAYS);
         HBox.setHgrow(right, javafx.scene.layout.Priority.ALWAYS);
         HBox columns = new HBox(64, left, right);

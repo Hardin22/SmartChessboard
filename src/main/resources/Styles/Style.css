@@ -2011,3 +2011,11 @@
     -fx-background-radius: 24px;
     -fx-padding: 20px;
 }
+
+.home-wide .tile-title {
+    -fx-font-size: 25px;
+}
+
+.home-wide .tile-sub {
+    -fx-font-size: 19px;
+}
