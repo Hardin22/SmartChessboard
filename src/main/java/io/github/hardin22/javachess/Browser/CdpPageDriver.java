@@ -117,7 +117,8 @@ public final class CdpPageDriver implements PageDriver {
         return new JSONObject().put("type", type).put("x", x).put("y", y);
     }
 
-    private CompletableFuture<String> call(String method, JSONObject params) {
+    /** A DevTools method (package-private for the tests). */
+    CompletableFuture<String> call(String method, JSONObject params) {
         DevToolsReplies r;
         try {
             r = session();

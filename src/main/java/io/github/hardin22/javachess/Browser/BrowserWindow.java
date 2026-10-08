@@ -4,7 +4,14 @@ import org.cef.CefApp;
 import org.cef.CefClient;
 import org.cef.browser.CefBrowser;
 import org.cef.browser.CefFrame;
+import org.cef.callback.CefContextMenuParams;
+import org.cef.callback.CefMenuModel;
+import org.cef.handler.CefContextMenuHandlerAdapter;
 import org.cef.handler.CefDisplayHandlerAdapter;
+import org.cef.handler.CefKeyboardHandler.CefKeyEvent;
+import org.cef.handler.CefKeyboardHandlerAdapter;
+import org.cef.misc.BoolRef;
+import org.cef.misc.EventFlags;
 import org.cef.handler.CefLifeSpanHandlerAdapter;
 import org.cef.handler.CefLoadHandler;
 import org.cef.handler.CefLoadHandlerAdapter;
@@ -111,8 +118,12 @@ public final class BrowserWindow {
                 session.pageLoadFailed(b.getURL(), "RENDERER_" + status);
             }
         });
+        installStandardHandlers(client);
         browser = client.createBrowser(url, offscreen, false);
         driver = new CdpPageDriver(browser);
+        if (offscreen) {
+            EditShortcuts.installForOffscreen(browser);
+        }
 
         bar = new BrowserBar(onNav, session::perform);
         frame = new JFrame("javaChess - browser");
@@ -132,6 +143,39 @@ public final class BrowserWindow {
     }
 
     /** Linux (Raspberry Pi) renders off-screen: windowed Chromium steals the X11 focus there. */
+    /**
+     * Handlers every browser of the app needs (the tests install them too): no native context menu, and on macOS
+     * the Cmd shortcuts of text fields (see {@link EditShortcuts}).
+     */
+    public static void installStandardHandlers(CefClient client) {
+        client.addContextMenuHandler(new CefContextMenuHandlerAdapter() {
+            @Override
+            public void onBeforeContextMenu(CefBrowser b, CefFrame f, CefContextMenuParams params, CefMenuModel model) {
+                // no native context menu on a touch board (JCEF: the model "can be cleared to show no context menu");
+                // on macOS it opened a modal NSMenu, possibly off screen, and the app waited in it
+                log.debug("Context menu of {} items not shown", model.getCount());
+                model.clear();
+            }
+        });
+        if (EditShortcuts.nativeKeys()) {
+            client.addKeyboardHandler(new CefKeyboardHandlerAdapter() {
+                @Override
+                public boolean onPreKeyEvent(CefBrowser b, CefKeyEvent e, BoolRef isKeyboardShortcut) {
+                    EditShortcuts.Command c = EditShortcuts.commandFor(
+                            e.type == CefKeyEvent.EventType.KEYEVENT_RAWKEYDOWN,
+                            (e.modifiers & EditShortcuts.commandFlag()) != 0,
+                            (e.modifiers & EventFlags.EVENTFLAG_SHIFT_DOWN) != 0, e.windows_key_code);
+                    CefFrame frame = c == null ? null : b.getFocusedFrame();
+                    if (frame == null) {
+                        return false;
+                    }
+                    EditShortcuts.run(c, frame);
+                    return true;
+                }
+            });
+        }
+    }
+
     public static boolean useOffscreenRendering() {
         String forced = System.getProperty("javachess.browser.osr");
         if (forced != null) {
