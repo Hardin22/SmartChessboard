@@ -145,4 +145,25 @@ class SessionWithWatcherTest {
         poll(4);
         assertEquals(BrowserStatus.State.SETUP, state(), "Collega works with an unchanged board");
     }
+
+    @Test
+    void aReadingThatDoesNotConcludeIsRetriedThenExplained() throws Exception {
+        site.placementReadable = false; // the page shows a board but not its position
+        session.pageLoading(site.url);
+        session.pageLoaded(site.url, 200);
+        poll(3);
+        assertEquals(BrowserStatus.State.READING, state());
+        commands.clear();
+        poll(10); // 3 s
+        assertEquals(List.of("again", "show"), commands.subList(0, 2), "asked again and the board shown");
+        poll(20); // 9 s in all
+        assertEquals(BrowserStatus.State.READING, state());
+        org.junit.jupiter.api.Assertions.assertTrue(session.status().detail().contains("non mostra la posizione"),
+                session.status().detail());
+        assertEquals(List.of(BrowserStatus.Action.RESYNC, BrowserStatus.Action.RELOAD), session.status().actions());
+
+        site.placementReadable = true; // the page shows it again: the game goes on by itself
+        poll(3);
+        assertEquals(BrowserStatus.State.SETUP, state());
+    }
 }
