@@ -84,6 +84,9 @@ public class BrowserController implements NavigationAware {
     private volatile String pendingUrl;
     /** The user is on the browser screen (or opening it): a window that becomes ready may be shown. */
     private volatile boolean wanted;
+    /** The session keeps the app's hands off the page (login, verification): no probe, no DevTools. */
+    private volatile boolean handsOff;
+    private volatile String lastSeenUrl = "";
     private boolean stageWasFullScreen;
     private static final boolean IS_MAC = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT)
             .contains("mac");
@@ -247,7 +250,17 @@ public class BrowserController implements NavigationAware {
         });
         session.setVisible(true);
         watcher.setReadMode(readModeSetting()); // a change in the settings applies from the next opening
-        watcher.start();
+        String target = url != null ? url : w.page().url();
+        if (target == null || target.isBlank()) {
+            target = pendingUrl;
+        }
+        if (BrowserSession.handsOffAddress(target)) {
+            handsOff = true; // not even one reading before the session hears of the address
+            session.addressChanged(target);
+        }
+        if (!handsOff) {
+            watcher.start();
+        }
         startTicker();
     }
 
@@ -293,7 +306,22 @@ public class BrowserController implements NavigationAware {
 
     private synchronized void startTicker() {
         if (ticker == null) {
-            ticker = sessionThread.scheduleAtFixedRate(session::tick, 500, 500, TimeUnit.MILLISECONDS);
+            ticker = sessionThread.scheduleAtFixedRate(() -> {
+                session.tick();
+                BrowserWindow w = window;
+                if (handsOff && w != null) {
+                    // nothing reads the page now: its address (from Chromium, not from the page) tells when the
+                    // user leaves the login or verification page, also if Chromium's notice of it was lost
+                    String u = w.page().url();
+                    if (!u.equals(lastSeenUrl)) {
+                        lastSeenUrl = u;
+                        session.addressChanged(u);
+                    }
+                    if (!w.isLoading()) {
+                        session.pageLoadedIfLoading(u); // the load-end notice may have been lost
+                    }
+                }
+            }, 500, 500, TimeUnit.MILLISECONDS);
         }
     }
 
@@ -450,6 +478,24 @@ public class BrowserController implements NavigationAware {
         @Override
         public void backHome() {
             hideWindow();
+        }
+
+        @Override
+        public void pageAccess(boolean allowed) {
+            handsOff = !allowed;
+            BoardWatcher wt = watcher;
+            BrowserWindow w = window;
+            if (!allowed) {
+                if (wt != null) {
+                    wt.stop();
+                }
+                if (w != null && w.page() instanceof io.github.hardin22.javachess.Browser.CdpPageDriver cdp) {
+                    cdp.close(); // no DevTools session while the user is on the page
+                }
+                lastSeenUrl = w == null ? "" : w.page().url();
+            } else if (wt != null && w != null && w.isShowing()) {
+                wt.start();
+            }
         }
 
         @Override

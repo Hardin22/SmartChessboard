@@ -124,6 +124,7 @@ public final class CdpPageDriver implements PageDriver {
         } catch (RuntimeException e) {
             return CompletableFuture.failedFuture(e);
         }
+        log.debug("DevTools {}", method); // tests check that nothing reaches login and verification pages
         CompletableFuture<String> answer = new CompletableFuture<>();
         int[] sentId = {0};
         try {

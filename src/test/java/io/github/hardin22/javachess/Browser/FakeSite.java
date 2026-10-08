@@ -90,6 +90,7 @@ public final class FakeSite implements PageDriver {
 
     @Override
     public CompletableFuture<String> evaluate(String expression) {
+        evaluations++;
         if (unreachable) {
             return CompletableFuture.failedFuture(new IllegalStateException("page not answering"));
         }
@@ -136,6 +137,8 @@ public final class FakeSite implements PageDriver {
     }
 
     final List<String> typed = new CopyOnWriteArrayList<>();
+    /** Scripts run in the page (the probe included). */
+    volatile int evaluations;
 
     @Override
     public CompletableFuture<Void> typeText(String text) {

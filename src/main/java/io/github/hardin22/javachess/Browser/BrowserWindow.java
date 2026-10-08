@@ -87,6 +87,11 @@ public final class BrowserWindow {
                     session.addressChanged(address); // pages that change URL without a load (chess.com games)
                 }
             }
+
+            @Override
+            public void onTitleChange(CefBrowser b, String title) {
+                session.titleChanged(title); // Cloudflare's verification page is known by its title
+            }
         });
         client.addLifeSpanHandler(new CefLifeSpanHandlerAdapter() {
             @Override
@@ -145,6 +150,11 @@ public final class BrowserWindow {
 
     public CefBrowser browser() {
         return browser;
+    }
+
+    /** Chromium's own loading state (it does not touch the page). */
+    public boolean isLoading() {
+        return browser.isLoading();
     }
 
     public boolean isShowing() {

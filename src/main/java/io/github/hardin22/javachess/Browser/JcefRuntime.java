@@ -127,10 +127,9 @@ public final class JcefRuntime {
                         + (preloaded == null ? " (nothing preloaded)" : " (preloaded: " + preloaded + ")"));
             }
         }
-        // stability on macOS and on the Pi (software rendering), see docs/browser.md
-        builder.addJcefArgs("--disable-gpu", "--disable-gpu-compositing", "--disable-gpu-rasterization",
-                "--no-sandbox", "--no-zygote", "--disable-dev-shm-usage", "--disable-gpu-shader-disk-cache",
-                "--disable-site-isolation-trials", "--disable-features=VizDisplayCompositor");
+        boolean gpu = useGpu(System.getProperty("javachess.browser.gpu"), isMac());
+        builder.addJcefArgs(chromiumArgs(gpu).toArray(new String[0]));
+        log.info("Chromium graphics: {}", gpu ? "GPU" : "software (no GPU, no WebGL)");
         CefSettings settings = builder.getCefSettings();
         Path cache = AppPaths.resolve("jcef-cache"); // login sessions survive restarts
         Files.createDirectories(cache);
@@ -198,6 +197,30 @@ public final class JcefRuntime {
         } catch (Throwable t) {
             log.warn("JCEF dispose failed: {}", t.toString());
         }
+    }
+
+    /**
+     * Chromium's command line. Without the GPU Chromium 146 has no WebGL at all (no software fallback any more),
+     * which sites' bot checks (Cloudflare Turnstile) take as a sign of an automated browser: on macOS the GPU is
+     * used (the old reason to disable it, stability with JCEF 141, no longer holds with 146: see docs/browser.md);
+     * on Linux (Raspberry Pi, off-screen rendering) software rendering stays the default.
+     */
+    static java.util.List<String> chromiumArgs(boolean gpu) {
+        java.util.List<String> args = new java.util.ArrayList<>(java.util.List.of("--no-sandbox", "--no-zygote",
+                "--disable-dev-shm-usage", "--disable-site-isolation-trials"));
+        if (!gpu) {
+            args.addAll(java.util.List.of("--disable-gpu", "--disable-gpu-compositing", "--disable-gpu-rasterization",
+                    "--disable-gpu-shader-disk-cache", "--disable-features=VizDisplayCompositor"));
+        }
+        return args;
+    }
+
+    /** {@code -Djavachess.browser.gpu=true|false}; by default the GPU only on macOS. */
+    static boolean useGpu(String setting, boolean mac) {
+        if (setting != null && !setting.isBlank()) {
+            return Boolean.parseBoolean(setting.trim());
+        }
+        return mac;
     }
 
     /** False on macOS, see {@link #shutdown()}. */

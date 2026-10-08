@@ -44,7 +44,7 @@ final class BrowserStatusLook {
             case SYNC_STOP -> "fth-x-circle";
             case RESYNC -> "fth-refresh-cw";
             case SHOW_BOARD -> "fth-maximize";
-            case SAVE_LOGIN -> "fth-key";
+            case SAVE_LOGIN, USE_SAVED_LOGIN -> "fth-key";
             case FORGET_LOGIN -> "fth-trash-2";
             case BACK_HOME -> "fth-home";
             case DISMISS -> null;
