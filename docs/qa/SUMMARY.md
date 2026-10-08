@@ -56,6 +56,10 @@ Rifatto il giro sull'app integrata:
   classi cresciute; i worker dei pool sono contati a parte; il giro tocca tutte le schermate registrate. Istogramma
   prima/dopo 20 partite: +4,6 MB di texture del rendering software e cache del testo, nessuna perdita. Suite completa
   con 12 processi che occupano le CPU: 753 test, 0 falliti, 40 E2E.
+- Con `-Dtest=...` Surefire faceva girare le classi E2E anche nella JVM dei test unitari, tutte insieme (scacchiera
+  spenta e simulata e motori in conflitto: 3 timeout su 13 nel comando dell'orchestratore): ora si saltano fuori
+  dalla loro JVM (`e2e.ownJvm`, da IDE `-De2e.ownJvm=true`). Su qa 6cd056f: Mac 756 test, 0 falliti, 40 E2E; Pi in
+  scatola 721 test, 0 falliti, 38 E2E, long run thread 33→34, processi 2→2, heap 178→188 MB.
 - Test instabili sotto carico segnalati ai proprietari: `CoordinateTrainerTest` (features, già corretto),
   `SyncWithRealBoardTest` (browser).
 
