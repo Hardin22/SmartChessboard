@@ -95,7 +95,7 @@ e cosa è cambiato nel codice.
   modalità. Le etichette e la precisione della revisione sono calcolate dal classificatore reale.
 - Prestazioni con `-Dprism.order=sw` (Mac, scena della partita a due con l'orologio che scorre, Home): CPU dell'app
   1–3% a riposo; nessuna animazione continua.
-- Test: `./mvnw test` → 538 test (24 E2E in 4 classi), 0 falliti, 10 saltati (test di motore/dati opzionali). Gli E2E non sono
+- Test (giro 1): `./mvnw test` → 538 test (24 E2E in 4 classi), 0 falliti, 10 saltati (test di motore/dati opzionali). Gli E2E non sono
   stati indeboliti: stessi scenari e controlli (partita fino al matto archiviata, cambio motore, tempo scaduto,
   puzzle, revisione con precisione, archivio apri/esporta/elimina).
 
@@ -121,10 +121,28 @@ e cosa è cambiato nel codice.
   posizione iniziale; rivincita contro il computer; **analisi libera** di una posizione (R7 della spec 01:
   `ReviewController.openPosition`, ingresso dall'hub Allenamento tramite l'editor); carta della disposizione guidata
   (spec 04 §1: «Posiziona le Torri nere» e le case in grande, `SetupText`).
-- Test: scenario E2E delle Impostazioni (salva/rimuovi accesso, lettura) e dell'Allenamento (apertura giocata e
-  mossa fuori linea, coordinata giusta, prova scacchiera senza hardware, vantaggio scelto).
+- **Disposizione della scacchiera** (features blocchi 4–5): la carta dice una cosa per volta — «Prepara la scacchiera
+  · passo 4 di 9 / Posiziona le Torri nere / a8, f8» con **Salta guida**; «Togli 2 pezzi dalle case rosse» (con
+  «Poi il Re bianco in g1» quando serve); «Mancano 6 pezzi / Togli 2 pezzi dalle case rosse» senza guida. Il ritiro
+  fatto rimettendo indietro i pezzi contro il computer mostra «Mossa annullata / Tocca a te».
+- **Orizzontale 1920×720**: Home con le due partite affiancate e i quattro riquadri in una riga; nei pannelli
+  laterali (allenamenti, rigioca gli errori) carta ed extra scorrono sopra gli strumenti fissi; in revisione
+  «Vedi la migliore» è un pulsante con l'occhio nella colonna stretta.
+- **Browser**: `browser.reader` vale dalla prossima apertura del browser (la sessione browser lo rilegge a ogni
+  apertura); stato PAGE_CRASHED con l'icona di avviso.
+- **Documentazione**: `docs/screenshots` rigenerati con l'aspetto finale (archivio dimostrativo di partite storiche,
+  cartella dati temporanea, nessun account reale), README con l'Allenamento e il QR.
+- Test: scenari E2E delle Impostazioni (salva/rimuovi accesso, lettura), dell'Allenamento (apertura giocata e mossa
+  fuori linea, coordinata giusta, prova scacchiera senza hardware, vantaggio scelto) e dell'analisi libera;
+  `SetupTextTest` per tutte le forme del messaggio di disposizione. Suite completa con E2E headless: verde
+  (fino a 738 test su origin/main dopo l'integrazione).
 
 ## Aperti
 - Due giocatori in orizzontale: le metà stanno diritte ai lati della scacchiera (in un montaggio orizzontale i
   giocatori non siedono alle due estremità); ruotarle di ±90° è possibile ma non è stato necessario.
-- La schermata del browser (segnaposto mentre JCEF parte) andrà ricontrollata dopo il merge della sessione browser.
+- Durante la disposizione la scacchiera dello schermo potrebbe evidenziare le case da riempire e quelle da svuotare
+  (`setupStep().missing()`, `setupWrongSquares()`); oggi lo dicono i LED e le case in grande sulla carta.
+- Puzzle senza database: la schermata mostra il comando per installarlo, utile a chi sviluppa ma non dal touch
+  screen (servirebbe uno scaricamento dentro l'app).
+- Anteprima dell'archivio: la scacchiera è sempre disegnata dal lato del Bianco, anche per le partite giocate col
+  Nero.
