@@ -125,6 +125,42 @@ public class PuzzleService {
     }
 
     /**
+     * The puzzle of the day, offline: the same for everybody on {@code date} (chosen from the date among popular
+     * puzzles rated {@code 1300-1900} with a short solution). Null without a puzzle database. Blocking.
+     */
+    public Puzzle dailyPuzzle(java.time.LocalDate date) {
+        return dailyFrom(database(), date);
+    }
+
+    static Puzzle dailyFrom(PuzzleDatabase db, java.time.LocalDate date) {
+        if (db == null || db.size() == 0) {
+            return null;
+        }
+        int[] window = db.ratingRange(1300, 1900);
+        int lo = window[0];
+        int span = window[1] - window[0];
+        if (span <= 0) {
+            lo = 0;
+            span = db.size();
+        }
+        // a fixed scramble of the day number, so consecutive days are far apart in the file
+        long seed = date.toEpochDay() * 0x9E3779B97F4A7C15L;
+        Puzzle fallback = null;
+        for (int probe = 0; probe < 400; probe++) {
+            long mixed = seed + probe * 0xBF58476D1CE4E5B9L;
+            mixed ^= mixed >>> 31;
+            Puzzle p = db.read(lo + (int) Math.floorMod(mixed, (long) span));
+            if (fallback == null) {
+                fallback = p;
+            }
+            if (p.getPopularity() >= 80 && p.getMoves().size() >= 2 && p.getMoves().size() <= 6) {
+                return p;
+            }
+        }
+        return fallback;
+    }
+
+    /**
      * A random puzzle rated targetRating±range with any of {@code themes} ("Tutti" or empty = any), widening
      * the rating window if nothing matches. Null when nothing is found. Blocking.
      */

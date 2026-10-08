@@ -38,6 +38,7 @@ class CoordinateTrainerTest {
     LedRenderer leds;
     BoardStateManager manager;
     GameClock clock;
+    ScheduledExecutorService boardEvents;
 
     @BeforeEach
     void setUp() {
@@ -61,8 +62,8 @@ class CoordinateTrainerTest {
             public void hintsCleared() {
             }
         };
-        manager = new BoardStateManager(leds, new MoveLeds(leds), Runnable::run, noHints,
-                Executors.newSingleThreadScheduledExecutor());
+        boardEvents = Executors.newSingleThreadScheduledExecutor();
+        manager = new BoardStateManager(leds, new MoveLeds(leds), Runnable::run, noHints, boardEvents);
         sim.start(manager);
         sim.setOccupancy(0); // training on an empty board
         manager.awaitIdle();
@@ -133,6 +134,26 @@ class CoordinateTrainerTest {
         sim.place("H1"); // the board is free again
         manager.awaitIdle();
         assertEquals(2, t.scoreProperty().get());
+    }
+
+    @Test
+    void theFirstSquareStaysLitWhenTheBoardThreadIsSlow() throws Exception {
+        // a slow board thread (a Raspberry Pi under load): the board's "LEDs off" must not land after the first LED
+        boardEvents.submit(() -> {
+            try {
+                Thread.sleep(300);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        CoordinateTrainer t = trainer(CoordinateTrainer.Mode.NAME);
+        t.start();
+        int asked = Squares.parse(t.targetProperty().get());
+        assertEquals(LedColors.BEST, leds.composeNow()[asked]);
+        manager.awaitIdle();
+        Thread.sleep(50);
+        assertEquals(LedColors.BEST, leds.composeNow()[asked], "still lit after the board thread caught up");
+        t.close();
     }
 
     @Test

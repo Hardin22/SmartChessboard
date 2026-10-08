@@ -52,3 +52,18 @@ disposizione guidata indica quali pezzi lasciare fuori.
 
 A fine partita contro il computer, **Rivincita** dovrebbe riproporre le stesse impostazioni (livello, cadenza,
 posizione/vantaggio) con i **colori invertiti**; in PvP lo fa già.
+
+## 5. Puzzle del giorno (offline) — `Play.DailyPuzzle`
+
+Una carta nella dashboard dei puzzle (o nella Home): **Puzzle del giorno** con lo stato `statusText()` ("Da
+risolvere · serie di 3 giorni", "Risolto · 4 giorni di fila", "Non risolto · domani un altro").
+
+```java
+DailyPuzzle daily = new DailyPuzzle();
+daily.load().thenAccept(p -> runFx(() -> { if (p != null) apriNelPuzzle(p); }));   // null: nessun database
+// alla fine del puzzle (risolto o no), una volta sola al giorno:
+daily.recordResult(solved);
+```
+
+Stesso puzzle per tutto il giorno (scelto dalla data tra i puzzle popolari 1300–1900 con soluzione breve), funziona
+senza rete. Se il database dei puzzle manca, la carta non va mostrata.
