@@ -28,6 +28,9 @@ e cosa è cambiato nel codice.
 | **Contro il computer come si gioca davvero**: avversario in Elo indicativi (scala di 12 gradini con Maia), cadenza facoltativa con l'orologio nelle righe dei giocatori, barra Annulla · Suggerimento · Patta · Abbandona; frecce della mossa migliore spente di default. | Le funzioni sono in ordine di valore per chi gioca: un livello comprensibile, poter riprendere una svista, un aiuto a richiesta (prima il pezzo, poi la mossa) invece di una soluzione sempre accesa che toglie il gioco. |
 | **Riprendere sempre**: una partita interrotta (riavvio, corrente) torna in Home con Riprendi / Ignora. | Su un dispositivo sempre acceso la partita non deve andare persa. |
 | **Allenarsi sui propri errori**: «Rigioca i tuoi errori» dalla revisione, serie a tempo e ripasso nei puzzle, statistiche personali. | Il valore della revisione è imparare; le statistiche dicono dove. |
+| **Allenamento in un hub** (tessera in Home): Aperture, Finali, Coordinate, con lo stesso schema di «Rigioca i tuoi errori» (scacchiera a tutta larghezza, carta di stato, tre-quattro strumenti in basso). | Sono esercizi da fare alla scacchiera senza rete: un solo ingresso, lo schema già noto, nessuna curva di apprendimento. La teoria (mosse più giocate) compare solo quando serve, per non suggerire la risposta. |
+| **Accessi salvati con consenso esplicito**: il foglio «Salva» dice prima dove resta l'accesso e quando viene scritto, poi chiede nome e password. | Una password non si salva senza che l'utente sappia dove va; le prove non toccano mai il portachiavi vero. |
+| **Rivincita in un tocco** anche contro il computer (stesso livello, cadenza e posizione, colori invertiti) e **partite con vantaggio** nella posizione iniziale. | È il flusso naturale dopo una partita; il vantaggio rende giocabile una partita tra un esperto e un principiante. |
 | **Mosse dallo schermo** (tocco sul pezzo → punti sulle case possibili → tocco sulla destinazione) solo senza scacchiera collegata; in revisione creano varianti. | Senza scacchiera (o se si scollega) la partita non deve essere un vicolo cieco; con la scacchiera collegata una mossa sullo schermo disallineerebbe i sensori. |
 
 ## Architettura UI
@@ -96,10 +99,30 @@ e cosa è cambiato nel codice.
   stati indeboliti: stessi scenari e controlli (partita fino al matto archiviata, cambio motore, tempo scaduto,
   puzzle, revisione con precisione, archivio apri/esporta/elimina).
 
-## Aperti
+## Ottobre (giro 3): accessi, browser, rifinitura, allenamento
 
-- Impostazioni → accessi salvati del browser (`Browser.CredentialStore`) e «Lettura della scacchiera»
-  (`browser.reader`): da aggiungere quando il branch browser/v2 arriva su main.
+- **Impostazioni → Gioco online**: accessi salvati (`Components/LoginVault` sopra `Browser.CredentialStore`, letto
+  fuori dal thread FX; in memoria con `-Djavachess.home`/demo/snapshot/redact) e `browser.reader`. **Scacchiera e
+  LED**: «Disposizione guidata pezzo per pezzo» (`board.setup.guided`) e «Prova la scacchiera»
+  (`BoardTestController` su `Hardware.BoardDiagnostics`). `TouchKeyboard`: modalità password, terza pagina di
+  simboli, tasto di conferma configurabile.
+- **Browser**: la vista mostrata durante avvio/download/errore ha un'icona per tipo di situazione in un tondo del
+  colore del tono, la barra di avanzamento e le azioni grandi in basso (`BrowserStatusLook`).
+- **Rifinitura sul monitor reale**: lettere delle colonne invisibili sulla traversa bassa (colore uguale alla
+  casa), ultima mossa gialla invece di blu (diventava grigia sul legno), striscia di valutazione sottile senza il
+  numerino illeggibile, carta della mossa in revisione non più troncata, tavolozza dell'editor leggibile in scuro
+  (pezzi neri su fondo legno chiaro) con Gira e Incolla FEN, titoli delle partite del browser per sito, «Punteggio»
+  al posto di «Rating», nomi italiani dei temi, precisione con «%» nelle statistiche, testo corretto all'uscita da
+  una partita Lichess via API.
+- **Features spec 04–06**: hub `TrainingController` → `OpeningsController`/`OpeningTrainerController`,
+  `EndgamesController`/`DrillController`, `CoordinatesController` (base comune `BoardScreen`); «Più giocate» in
+  revisione (in verticale il grafico cede loro il posto nelle prime mosse); «Apri sul telefono» (QR,
+  `PhoneLinkSheet`) in revisione e nell'anteprima dell'archivio; vantaggio (`Play.OddsPresets`) nel foglio della
+  posizione iniziale; rivincita contro il computer.
+- Test: scenario E2E delle Impostazioni (salva/rimuovi accesso, lettura) e dell'Allenamento (apertura giocata e
+  mossa fuori linea, coordinata giusta, prova scacchiera senza hardware, vantaggio scelto).
+
+## Aperti
 - Due giocatori in orizzontale: le metà stanno diritte ai lati della scacchiera (in un montaggio orizzontale i
   giocatori non siedono alle due estremità); ruotarle di ±90° è possibile ma non è stato necessario.
 - La schermata del browser (segnaposto mentre JCEF parte) andrà ricontrollata dopo il merge della sessione browser.

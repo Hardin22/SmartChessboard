@@ -76,6 +76,13 @@ public class MainController {
         VIEWS.put("REVIEW", new ViewSpec(null, ReviewController::new));
         VIEWS.put("TRAINER", new ViewSpec(null, TrainerController::new));
         VIEWS.put("STATS", new ViewSpec(null, StatsController::new));
+        VIEWS.put("TRAINING", new ViewSpec(null, TrainingController::new));
+        VIEWS.put("OPENINGS", new ViewSpec(null, OpeningsController::new));
+        VIEWS.put("OPENING_TRAINER", new ViewSpec(null, OpeningTrainerController::new));
+        VIEWS.put("ENDGAMES", new ViewSpec(null, EndgamesController::new));
+        VIEWS.put("DRILL", new ViewSpec(null, DrillController::new));
+        VIEWS.put("COORDINATES", new ViewSpec(null, CoordinatesController::new));
+        VIEWS.put("BOARD_TEST", new ViewSpec(null, BoardTestController::new));
         VIEWS.put("PUZZLE_DASHBOARD", new ViewSpec(null, PuzzleDashboardController::new));
         VIEWS.put("PUZZLE_GAME", new ViewSpec(null, PuzzleController::new));
         VIEWS.put("THEME", new ViewSpec(null, ThemeController::new));

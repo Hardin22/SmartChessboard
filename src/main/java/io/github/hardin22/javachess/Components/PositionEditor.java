@@ -47,6 +47,7 @@ public class PositionEditor extends VBox {
     private final VBox editor;
     private final TouchKeyboard keyboard = new TouchKeyboard(I18n.t("setup.position.fen.prompt"));
     private final VBox fenBox;
+    private Button pasteButton;
     private PositionSetup.Result result;
 
     /** @param onUse receives the checked FEN when the player taps "Usa questa posizione" */
@@ -77,7 +78,7 @@ public class PositionEditor extends VBox {
         }
         ToggleButton eraser = new ToggleButton();
         eraser.setGraphic(Icons.of("fth-delete", 30));
-        eraser.getStyleClass().setAll("palette-piece");
+        eraser.getStyleClass().setAll("palette-piece", "palette-tool");
         eraser.setUserData(Piece.NONE);
         eraser.setToggleGroup(paletteGroup);
         blacks.getChildren().add(eraser);
@@ -100,16 +101,19 @@ public class PositionEditor extends VBox {
             }
         });
 
-        Button clear = Ui.button(I18n.t("setup.position.clear"), "fth-trash-2", "btn-outline", "btn-md");
-        clear.setOnAction(e -> {
+        Button clear = Ui.toolButton(I18n.t("setup.position.clear"), "fth-trash-2", () -> {
             java.util.Arrays.fill(pieces, Piece.NONE);
             refresh();
         });
-        Button initial = Ui.button(I18n.t("setup.position.initial"), "fth-rotate-ccw", "btn-outline", "btn-md");
-        initial.setOnAction(e -> load(START_FEN));
-        Button fenButton = Ui.button(I18n.t("setup.position.fen"), "fth-type", "btn-outline", "btn-md");
-        fenButton.setOnAction(e -> showFen(true));
-        HBox tools = new HBox(12, clear, initial, fenButton);
+        Button initial = Ui.toolButton(I18n.t("setup.position.initial"), "fth-rotate-ccw", () -> load(START_FEN));
+        // set up a position seen from Black's side of the real board
+        Button flip = Ui.toolButton(I18n.t("setup.position.flip"), "fth-repeat", () -> {
+            board.setFlipped(!board.isFlipped());
+            board.setCoordinatesFlipped(false);
+        });
+        flip.setId("editor-flip");
+        Button fenButton = Ui.toolButton(I18n.t("setup.position.fen"), "fth-type", () -> showFen(true));
+        HBox tools = Ui.equalRow(12, clear, initial, flip, fenButton);
 
         use = Ui.wide(I18n.t("setup.position.use"), "fth-check", "btn-primary", "btn-lg");
         use.setOnAction(e -> {
@@ -129,7 +133,17 @@ public class PositionEditor extends VBox {
         });
         Button back = Ui.button(I18n.t("common.back"), "fth-arrow-left", "btn-ghost", "btn-md");
         back.setOnAction(e -> showFen(false));
-        fenBox = new VBox(14, Ui.wrap(I18n.t("setup.position.fen.hint"), "t-small", "t-muted"), keyboard, back);
+        // desktop: a FEN copied from a site or a book can be pasted instead of typed
+        Button paste = Ui.button(I18n.t("setup.position.paste"), "fth-clipboard", "btn-outline", "btn-md");
+        paste.setOnAction(e -> {
+            String text = javafx.scene.input.Clipboard.getSystemClipboard().getString();
+            if (text != null) {
+                keyboard.textProperty().set(text.trim().replaceAll("\\s+", " "));
+            }
+        });
+        pasteButton = paste;
+        fenBox = new VBox(14, Ui.wrap(I18n.t("setup.position.fen.hint"), "t-small", "t-muted"), keyboard,
+                new HBox(12, back, paste));
         getChildren().addAll(editor, use);
         setPadding(new Insets(0, 0, 8, 0));
         load(fen == null || fen.isBlank() ? START_FEN : fen);
@@ -138,6 +152,9 @@ public class PositionEditor extends VBox {
     private void showFen(boolean on) {
         if (on) {
             keyboard.textProperty().set(result != null && result.fen() != null ? result.fen() : "");
+            boolean clip = javafx.scene.input.Clipboard.getSystemClipboard().hasString();
+            pasteButton.setVisible(clip);
+            pasteButton.setManaged(clip);
             getChildren().setAll(fenBox);
         } else {
             getChildren().setAll(editor, use);

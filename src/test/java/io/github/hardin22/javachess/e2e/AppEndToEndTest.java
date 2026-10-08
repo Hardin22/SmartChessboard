@@ -560,6 +560,89 @@ class AppEndToEndTest {
         assertEquals("page", ConfigManager.getProperty("browser.reader"));
     }
 
+    @Test
+    @Order(13)
+    void trainingScreensPlayAnOpeningNameASquareAndTestTheBoard() throws Exception {
+        // openings: the first move of the Italian is accepted and the computer answers from the theory
+        io.github.hardin22.javachess.Training.OpeningCatalog.Opening italian =
+                io.github.hardin22.javachess.Training.OpeningCatalog.byId("italiana").orElseThrow();
+        fx(() -> {
+            main.navigateTo("TRAINING");
+            io.github.hardin22.javachess.Controllers.OpeningTrainerController.open(main, italian);
+            return null;
+        });
+        Object trainer = fxGet(() -> field(main.getController("OPENING_TRAINER"), "trainer"));
+        assertNotNull(trainer, "the trainer starts");
+        boolean accepted = fx(() -> (Boolean) trainer.getClass().getMethod("play", String.class).invoke(trainer,
+                "e2e4"));
+        assertTrue(accepted, "1. e4 is the move of the Italian");
+        waitFor("computer reply in the opening", () -> fxGet(() -> {
+            Object fen = ((javafx.beans.value.ObservableValue<?>) trainer.getClass().getMethod("fenProperty")
+                    .invoke(trainer)).getValue();
+            return String.valueOf(fen).contains(" w "); // White to move again: the reply came
+        }));
+        boolean wrong = fx(() -> (Boolean) trainer.getClass().getMethod("play", String.class).invoke(trainer,
+                "a2a4"));
+        assertFalse(wrong, "a move out of the line is refused");
+        assertTrue(fxGet(() -> labelShown(I18n.t("training.wrong"))), "the card says to try again");
+
+        // coordinates: name the lit square
+        showView("COORDINATES");
+        fx(() -> {
+            Node tile = stage.getScene().lookup("#coordinates-name");
+            tile.fireEvent(new javafx.scene.input.MouseEvent(javafx.scene.input.MouseEvent.MOUSE_CLICKED, 0, 0, 0, 0,
+                    javafx.scene.input.MouseButton.PRIMARY, 1, false, false, false, false, true, false, false, true,
+                    false, false, null));
+            return null;
+        });
+        fireButton(I18n.t("training.coordinates.go"));
+        Object coords = fxGet(() -> field(main.getController("COORDINATES"), "trainer"));
+        String square = fxGet(() -> String.valueOf(((javafx.beans.value.ObservableValue<?>) coords.getClass()
+                .getMethod("targetProperty").invoke(coords)).getValue()));
+        fireButton(square);
+        waitFor("one right answer", () -> fxGet(() -> (Integer) ((javafx.beans.value.ObservableValue<?>) coords
+                .getClass().getMethod("scoreProperty").invoke(coords)).getValue() == 1));
+
+        // board test without a board: a clear message, nothing stuck
+        showView("BOARD_TEST");
+        fx(() -> {
+            ((Button) stage.getScene().lookup("#boardtest-sensors")).fire();
+            return null;
+        });
+        waitFor("not connected message", () -> fxGet(() -> labelShown("Scacchiera non collegata")));
+
+        // odds: the start position sheet offers them and the row shows the choice
+        showView("PVC_SETUP");
+        fx(() -> {
+            ((Button) stage.getScene().lookup("#setup-position")).fire();
+            return null;
+        });
+        // the choices sit in a scroll pane: they are in the scene after its first layout
+        waitFor("odds choices", () -> fxGet(() -> stage.getScene().lookup("#odds-queen") != null));
+        fx(() -> {
+            stage.getScene().lookup("#odds-queen").fireEvent(new javafx.scene.input.MouseEvent(
+                    javafx.scene.input.MouseEvent.MOUSE_CLICKED, 0, 0, 0, 0, javafx.scene.input.MouseButton.PRIMARY, 1,
+                    false, false, false, false, true, false, false, true, false, false, null));
+            return null;
+        });
+        assertTrue(fxGet(() -> labelShown("Senza Donna")), "the setup row names the odds");
+        fx(() -> {
+            main.navigateTo("HOME");
+            return null;
+        });
+    }
+
+    /** Navigates and waits until the screen is the current one and in the scene. */
+    private static void showView(String view) throws Exception {
+        fx(() -> {
+            main.navigateTo(view);
+            return null;
+        });
+        waitFor(view, () -> view.equals(fxGet(main::getCurrentViewName))
+                && fxGet(() -> main.getController(view) instanceof io.github.hardin22.javachess.Controllers.Screen sc
+                && sc.getRoot().getScene() != null));
+    }
+
     private static boolean labelShown(String text) {
         List<Label> out = new ArrayList<>();
         collectLabels(stage.getScene().getRoot(), out);

@@ -103,18 +103,29 @@ public class HomeController implements Screen {
                 () -> mainController.navigateTo("PUZZLE_DASHBOARD"));
         Button archive = smallTile("fth-archive", I18n.t("home.archive"), gamesValue, I18n.t("home.stats.games"),
                 () -> mainController.navigateTo("ARCHIVE"));
-        Button online = smallTile("fth-globe", I18n.t("home.online.title"), null, I18n.t("home.online.description"),
-                this::showOnline);
+        Button online = heroTile("fth-globe", I18n.t("home.online.title"),
+                Ui.label(I18n.t("home.online.description"), "tile-sub"), false, this::showOnline);
         online.setId("home-online");
+        Button training = smallTile("fth-book-open", I18n.t("home.training"), null, I18n.t("home.training.description"),
+                () -> mainController.navigateTo("TRAINING"));
+        training.setId("home-training");
         Button stats = smallTile("fth-bar-chart-2", I18n.t("home.stats"), statsValue, I18n.t("home.stats.description"),
                 () -> mainController.navigateTo("STATS"));
 
+        pvcTile = pvc;
+        pvpTile = pvp;
+        puzzlesTile = puzzles;
+        trainingTile = training;
+        archiveTile = archive;
+        statsTile = stats;
+        onlineTile = online;
         VBox actions = new VBox(16,
                 Ui.sectionLabel(I18n.t("home.play")),
                 pvc, pvp,
                 Ui.gap(4),
-                Ui.equalRow(16, puzzles, archive),
-                Ui.equalRow(16, online, stats));
+                Ui.equalRow(16, puzzles, training),
+                Ui.equalRow(16, archive, stats),
+                online);
 
         resumeSlot.managedProperty().bind(resumeSlot.visibleProperty());
 
@@ -125,6 +136,7 @@ public class HomeController implements Screen {
         setWide(false);
     }
 
+    private Button pvcTile, pvpTile, puzzlesTile, trainingTile, archiveTile, statsTile, onlineTile;
     private HBox brandRow;
     private HBox statusRow;
     private VBox helloBox;
@@ -134,7 +146,13 @@ public class HomeController implements Screen {
     @Override
     public void setWide(boolean wide) {
         root.getChildren().clear();
+        root.getStyleClass().remove("home-wide");
+        if (wide) {
+            root.getStyleClass().add("home-wide"); // four small tiles in a row: smaller titles
+        }
         if (!wide) {
+            actionsBox.getChildren().setAll(Ui.sectionLabel(I18n.t("home.play")), pvcTile, pvpTile, Ui.gap(4),
+                    Ui.equalRow(16, puzzlesTile, trainingTile), Ui.equalRow(16, archiveTile, statsTile), onlineTile);
             actionsBox.setMaxWidth(Double.MAX_VALUE);
             root.getChildren().addAll(brandRow, statusRow, Ui.vgrow(), helloBox, Ui.gap(40), resumeSlot, Ui.vgrow(),
                     actionsBox);
@@ -142,8 +160,13 @@ public class HomeController implements Screen {
         }
         VBox left = new VBox(0, brandRow, statusRow, Ui.vgrow(), helloBox, Ui.gap(32), resumeSlot, Ui.vgrow());
         left.setMaxWidth(680);
-        actionsBox.setMaxWidth(680);
-        VBox right = new VBox(Ui.vgrow(), actionsBox, Ui.vgrow());
+        // 720 px of height: the two games side by side, the four small tiles in one row
+        VBox wideActions = new VBox(16, Ui.sectionLabel(I18n.t("home.play")),
+                Ui.equalRow(16, pvcTile, pvpTile),
+                Ui.equalRow(16, puzzlesTile, trainingTile, archiveTile, statsTile),
+                onlineTile);
+        wideActions.setMaxWidth(1080);
+        VBox right = new VBox(Ui.vgrow(), wideActions, Ui.vgrow());
         HBox.setHgrow(left, javafx.scene.layout.Priority.ALWAYS);
         HBox.setHgrow(right, javafx.scene.layout.Priority.ALWAYS);
         HBox columns = new HBox(64, left, right);
@@ -175,6 +198,7 @@ public class HomeController implements Screen {
     private Button smallTile(String icon, String title, Label value, String caption, Runnable action) {
         HBox top = new HBox(Icons.of(icon, 32), Ui.hgrow());
         top.setAlignment(Pos.CENTER_LEFT);
+        top.setMinHeight(64); // same height with or without the number: titles line up across the row
         if (value != null) {
             top.getChildren().add(value);
         }

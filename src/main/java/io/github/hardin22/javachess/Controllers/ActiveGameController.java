@@ -775,7 +775,20 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         review.setOnAction(e -> reviewGame());
         Button again = Ui.button(I18n.t("game.end.again"), "fth-repeat", "btn-outline", "btn-md");
         again.setOnAction(e -> mainController.navigateTo(mode == Mode.PVP ? "PVP_SETUP" : "PVC_SETUP"));
-        List<Node> buttons = mode == Mode.ONLINE ? List.of(review) : List.of(review, again);
+        List<Node> buttons;
+        if (mode == Mode.ONLINE) {
+            buttons = List.of(review);
+        } else if (mode == Mode.PVC && currentGame instanceof PvcGame pvc && pvc.getLevel() != null) {
+            // against the computer: the same opponent again with the colours swapped, in one tap
+            Button rematch = Ui.button(I18n.t("duel.rematch"), "fth-refresh-cw", "btn-outline", "btn-md");
+            rematch.setId("game-rematch");
+            rematch.setOnAction(e -> rematchPvc(pvc));
+            again.setText(I18n.t("game.end.other"));
+            again.setGraphic(null);
+            buttons = List.of(review, rematch, again);
+        } else {
+            buttons = List.of(review, again);
+        }
         String detail = capitalize(reason);
         String move = null;
         if (status.kind() == GameStatus.Kind.REPLICATE) {
@@ -1022,6 +1035,13 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         startPvPSeconds(pvpSeconds, pvpIncrement);
     }
 
+    /** Rematch against the computer: same level, clock and starting position, the other colour. */
+    private void rematchPvc(PvcGame finished) {
+        String fen = finished.getInitialFen();
+        nextStartFen = samePosition(fen, START_FEN) ? null : fen;
+        startPvC(finished.getLevel(), !humanWhite, finished.getTimeControl());
+    }
+
     @Override
     public void leaveToHome() {
         leaveGame();
@@ -1038,7 +1058,9 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
     }
 
     private void confirmLeave(boolean far) {
-        Label detail = Ui.wrap(I18n.t("game.leave.detail"), "t-body", "t-muted");
+        // a Lichess game is not stopped by leaving: it stays open there with the clock running
+        Label detail = Ui.wrap(I18n.t(mode == Mode.ONLINE ? "game.leave.detail.online" : "game.leave.detail"),
+                "t-body", "t-muted");
         Button stay = Ui.wide(I18n.t("game.leave.stay"), null, "btn-outline", "btn-lg");
         stay.setOnAction(e -> mainController.closeSheet());
         Button leave = Ui.wide(I18n.t("game.leave"), "fth-log-out", "btn-danger-solid", "btn-lg");

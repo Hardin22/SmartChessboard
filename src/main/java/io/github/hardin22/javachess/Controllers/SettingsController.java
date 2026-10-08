@@ -141,9 +141,19 @@ public class SettingsController implements Screen {
             Prefs.set("hardware.led.brightness", n.intValue());
             io.github.hardin22.javachess.Hardware.Hardware.leds().setBrightnessPercent(n.intValue());
         });
+        ToggleButton guided = Ui.toggleSwitch(Prefs.bool("board.setup.guided", true));
+        guided.setOnAction(e -> {
+            Prefs.set("board.setup.guided", guided.isSelected());
+            io.github.hardin22.javachess.Hardware.Hardware.boardState().setGuidedSetup(guided.isSelected());
+        });
+        HBox boardTest = navRow(I18n.t("settings.boardtest"), I18n.t("settings.boardtest.description"),
+                () -> mainController.navigateTo("BOARD_TEST"));
+        boardTest.setId("settings-boardtest");
         VBox hardware = group(
                 row(I18n.t("settings.boardstatus"), I18n.t("settings.boardstatus.description"), boardStatus),
-                stepperBlock(I18n.t("settings.brightness"), I18n.t("settings.brightness.description"), brightness));
+                stepperBlock(I18n.t("settings.brightness"), I18n.t("settings.brightness.description"), brightness),
+                row(I18n.t("settings.guided"), I18n.t("settings.guided.description"), guided),
+                boardTest);
 
         // engine
         VBox engine = new VBox(12, Ui.wrap(I18n.t("settings.engine.description"), "t-small", "t-muted"),

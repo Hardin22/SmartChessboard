@@ -45,6 +45,11 @@ public final class SetupGuide {
      * @param message Italian instruction, starting with "Posiziona" like the other set-up messages
      */
     public record Step(int index, int total, Piece piece, long missing, String message) {
+        /** The instruction without the step count: "Posiziona le Torri bianche: a1, f1". */
+        public String instruction() {
+            int cut = message.lastIndexOf(" · passo ");
+            return cut < 0 ? message : message.substring(0, cut);
+        }
     }
 
     private final List<Group> groups;
