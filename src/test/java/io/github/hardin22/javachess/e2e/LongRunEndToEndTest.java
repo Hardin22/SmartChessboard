@@ -93,12 +93,14 @@ class LongRunEndToEndTest {
         app.bot(); // empty script: the scripted engine plays the best one-ply material move
         int archivedBefore = archive().size();
         Usage baseline = null;
+        FxLatencyProbe probe = new FxLatencyProbe();
         int finished = 0;
         long start = System.currentTimeMillis();
         for (int g = 0; g < games; g++) {
             if (g == 2) {
                 baseline = Usage.now(); // after the first games: views, engines and pools are warm
                 histogram("baseline");
+                probe.start();
             }
             sim().setOccupancy(0xFFFF_0000_0000_FFFFL);
             ActiveGameController game = app.startPvc(g % 2 == 0);
@@ -112,20 +114,73 @@ class LongRunEndToEndTest {
             waitForMode(BoardStateManager.Mode.IDLE);
         }
         long seconds = (System.currentTimeMillis() - start) / 1000;
+        probe.stop();
         waitFor("every game archived", () -> archive().size() == archivedBefore + games);
         Usage after = Usage.now();
         histogram("after");
         String report = String.format("%d games (%d finished) in %d s; threads %d -> %d, non-daemon %d -> %d, "
-                        + "child processes %d -> %d, heap after GC %d MB -> %d MB%nthreads before %s%nthreads after  %s",
+                        + "child processes %d -> %d, heap after GC %d MB -> %d MB; FX thread latency %s%n"
+                        + "threads before %s%nthreads after  %s",
                 games, finished, seconds, baseline.threads(), after.threads(), baseline.nonDaemon(), after.nonDaemon(),
-                baseline.processes(), after.processes(), baseline.heapMb(), after.heapMb(), baseline.byName(),
-                after.byName());
+                baseline.processes(), after.processes(), baseline.heapMb(), after.heapMb(), probe.summary(),
+                baseline.byName(), after.byName());
         System.out.println("[long run] " + report);
         assertTrue(after.threads() - baseline.threads() <= 6, "threads grow: " + report);
         assertTrue(after.nonDaemon() <= baseline.nonDaemon(), "non-daemon threads grow: " + report);
         assertTrue(after.processes() <= baseline.processes(), "engine processes pile up: " + report);
+        assertTrue(probe.maxMillis() < 2000, "the FX thread froze: " + report);
         if (canClearSoftReferences()) {
             assertTrue(after.heapMb() - baseline.heapMb() <= 48, "heap grows: " + report);
+        }
+    }
+
+    /**
+     * How long a task posted to the FX thread waits before it runs, sampled every 50 ms while games are played: a
+     * long wait is a frozen screen (I/O, an engine call or heavy work on the FX thread).
+     */
+    private static final class FxLatencyProbe {
+        private final List<Long> samples = new java.util.concurrent.CopyOnWriteArrayList<>();
+        private volatile boolean running;
+        private Thread thread;
+
+        void start() {
+            running = true;
+            thread = Thread.ofPlatform().daemon().name("fx-latency-probe").start(() -> {
+                while (running) {
+                    long posted = System.nanoTime();
+                    java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+                    javafx.application.Platform.runLater(() -> {
+                        samples.add((System.nanoTime() - posted) / 1_000_000);
+                        done.countDown();
+                    });
+                    try {
+                        done.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                        Thread.sleep(50);
+                    } catch (InterruptedException e) {
+                        return;
+                    }
+                }
+            });
+        }
+
+        void stop() throws InterruptedException {
+            running = false;
+            if (thread != null) {
+                thread.join(11_000);
+            }
+        }
+
+        long maxMillis() {
+            return samples.stream().mapToLong(Long::longValue).max().orElse(0);
+        }
+
+        String summary() {
+            List<Long> sorted = samples.stream().sorted().toList();
+            if (sorted.isEmpty()) {
+                return "n/a";
+            }
+            return "max " + sorted.get(sorted.size() - 1) + " ms, p99 " + sorted.get((int) (sorted.size() * 0.99))
+                    + " ms, median " + sorted.get(sorted.size() / 2) + " ms (" + sorted.size() + " samples)";
         }
     }
 
