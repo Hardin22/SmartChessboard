@@ -13,9 +13,19 @@ Pedoni) e il messaggio di disposizione, quello che già mostrate, diventa ad ese
 
 - "Posiziona il Re bianco in g1 · passo 1 di 9"
 - "Posiziona le Torri nere: a8, f8 · passo 4 di 9"
-- "Posiziona i Pedoni bianchi: a2, b2, f2 · passo 9 di 9, togli i pezzi sulle case rosse (1)"
+- "Posiziona i pezzi: togli quelli sulle case rosse (26), poi il Re bianco in g1 · passo 1 di 6"
+
+Quando la scacchiera mostra ancora la posizione precedente (ad esempio quella iniziale prima di un puzzle), anche
+le case occupate dal pezzo sbagliato (un Cavallo dove va il Re) diventano rosse: prima si toglie il pezzo, poi la
+guida chiede quello giusto.
 
 Il testo inizia sempre con "Posiziona", quindi `GameStatus` lo classifica già come `SETUP`.
+
+**Carta di disposizione su due righe** (come concordato): quando `Hardware.boardState().setupStep()` non è `null`,
+titolo = `step.instruction()` ("Posiziona le Torri nere: a8, f8"), riga = "Passo " + `step.index()` + " di " +
+`step.total()`; pulsante **Salta guida** → `Hardware.boardState().skipSetupGuide()` (tutte le case insieme, solo per
+questa disposizione). Rileggi `setupStep()` a ogni messaggio di disposizione (`onSetupProgress`): cambia sempre
+insieme al testo. Se c'è anche da togliere pezzi, il testo completo è nel messaggio (vedi sopra).
 
 **Facoltativo**: per una presentazione più ricca, `Hardware.boardState().setupStep()` (può essere `null`)
 restituisce `SetupGuide.Step`: `piece()` (pezzo chesslib, per disegnarne l'icona), `missing()` (case da riempire,
@@ -113,3 +123,22 @@ Al massimo 4 righe "Cf3 · 45%" con barra; tocco su una riga = gioca la mossa co
 Tutti i testi dinamici arrivano già in italiano dai view-model. Testi fissi proposti: "Allenamento",
 "Aperture", "Con il Bianco", "Con il Nero", "Suggerimento", "Ricomincia", "Altra apertura", "Usa la scacchiera",
 "Mosse di teoria", "Mosse più giocate", "Errori".
+
+## Allineamento al modello "trainer" (TrainerController)
+
+I tre allenamenti (aperture, finali, coordinate) hanno la stessa forma del `MistakeTrainer`, per riusare
+ScreenHeader · BoardFrame · StatusCard · riga contestuale · barra di 3 pulsanti:
+
+| Modello trainer | OpeningTrainer | DrillSession |
+|---|---|---|
+| stato ASK/RIGHT/WRONG/DONE | `YOUR_MOVE` / (messaggio "Giusto…", "Bene…") / `WRONG` / `DONE` | `YOUR_MOVE` (+`THINKING`) / `SUCCESS` / `FAILED` |
+| posizione + orientamento | `fenProperty()`, lato fisso `opening().white()` | `fenProperty()`, lato fisso `drill().white()` |
+| titolo StatusCard | dallo stato: "Tocca a te" / "Fuori teoria" / "Linea completata" | "Tocca a te" / "Il computer pensa" / "Ce l'hai fatta" / "Non riuscito" |
+| dettaglio | `messageProperty()` | `messageProperty()` |
+| evidenziazioni | `lastMoveProperty()`, freccia `shownMoveProperty()` | idem |
+| avanzamento | `pliesProperty()` di `maxPlies()` | `movesLeftProperty()` |
+| riga contestuale | `openingNameProperty()` | `drill().task()` |
+| mossa dallo schermo | `play(uci)` | `play(uci)` |
+| barra (3 pulsanti) | Suggerimento · Ricomincia · Scacchiera | Suggerimento · Ricomincia · Scacchiera (+ Idea nel menu) |
+| scacchiera fisica | `useBoard(boolean)` | `useBoard(boolean)` |
+
