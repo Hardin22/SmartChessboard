@@ -160,8 +160,7 @@ class RandomWalkEndToEndTest {
                 yield "pvp " + seconds + "+" + inc;
             }
             case 3 -> {
-                List<String> views = List.of("HOME", "PVC_SETUP", "PVP_SETUP", "ARCHIVE", "PUZZLE_DASHBOARD", "THEME",
-                        "SETTINGS", "LICHESS_SETUP");
+                List<String> views = registeredScreens();
                 String target = views.get(random.nextInt(views.size()));
                 fx(() -> {
                     app.main.navigateTo(target);
@@ -318,6 +317,15 @@ class RandomWalkEndToEndTest {
             return null;
         });
         return "puzzle solution";
+    }
+
+    /** Every screen of the app except the integrated browser (JCEF), also screens added later. */
+    private static List<String> registeredScreens() throws Exception {
+        java.lang.reflect.Field registry = io.github.hardin22.javachess.Controllers.MainController.class
+                .getDeclaredField("VIEWS");
+        registry.setAccessible(true);
+        return ((java.util.Map<?, ?>) registry.get(null)).keySet().stream().map(String::valueOf)
+                .filter(v -> !v.equals("BROWSER")).toList();
     }
 
     /** A random legal move in UCI, with a random promotion piece when it promotes; null when there is none. */
