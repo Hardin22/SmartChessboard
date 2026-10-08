@@ -146,6 +146,10 @@ final class DevDemos {
                             System.getProperty("javachess.demo.fen",
                                     "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3")));
                 }
+                case "puzzle-daily" -> {
+                    main.navigateTo("PUZZLE_DASHBOARD");
+                    later(2.0, () -> lookupFire(main, "puzzle-daily"));
+                }
                 case "drill" -> {
                     var drill = io.github.hardin22.javachess.Training.EndgameDrills.byId(
                             System.getProperty("javachess.demo.drill", "")).orElse(

@@ -125,6 +125,9 @@ e cosa è cambiato nel codice.
   · passo 4 di 9 / Posiziona le Torri nere / a8, f8» con **Salta guida**; «Togli 2 pezzi dalle case rosse» (con
   «Poi il Re bianco in g1» quando serve); «Mancano 6 pezzi / Togli 2 pezzi dalle case rosse» senza guida. Il ritiro
   fatto rimettendo indietro i pezzi contro il computer mostra «Mossa annullata / Tocca a te».
+- **Puzzle del giorno** (spec 06 §5, `Play.DailyPuzzle`): carta in cima alla dashboard dei puzzle (solo se il
+  database c'è), il puzzle si apre con il sottotitolo «Puzzle del giorno · Elo 1784» e il risultato conta una volta
+  sola per la serie di giorni.
 - **Orizzontale 1920×720**: Home con le due partite affiancate e i quattro riquadri in una riga; nei pannelli
   laterali (allenamenti, rigioca gli errori) carta ed extra scorrono sopra gli strumenti fissi; in revisione
   «Vedi la migliore» è un pulsante con l'occhio nella colonna stretta.

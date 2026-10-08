@@ -144,7 +144,9 @@ Senza scacchiera collegata si può muovere toccando lo schermo (pezzo → punti 
   Rivedi, Nuova partita, Home.
 
 ### Puzzle
-- Pannello: punteggio, serie e risolti; **Serie a tempo** (tre tessere: 3 minuti, 5 minuti, Sopravvivenza, con il
+- Pannello: punteggio, serie e risolti; **Puzzle del giorno** (lo stesso per tutta la giornata, senza rete, con la
+  serie di giorni: «Da risolvere · serie di 3 giorni» → Risolvi, «Risolto · 4 giorni di fila» → Riprova; nascosto
+  senza database); **Serie a tempo** (tre tessere: 3 minuti, 5 minuti, Sopravvivenza, con il
   record); **Ripasso** («7 puzzle sbagliati da rifare» → Ripassa) e **Punti deboli** (i temi con la percentuale più
   bassa: un tocco allena quel tema) quando ci sono; difficoltà con − / + a passi di 50; temi a chip; **Inizia**.
 - Puzzle: orientato verso chi muove; scacchiera, carta di stato grande (trova la mossa / giusto / sbagliato),
