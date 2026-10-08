@@ -47,6 +47,7 @@ when useful, a **button** (Collega, Scollega, Risincronizza, Ricarica, Mostra sc
 | Apri una partita | No game on this page. | Start or open a game on the site. |
 | Scacchiera trovata | A board that is not a game (puzzle, TV...). | **Collega** to follow it with the physical board. |
 | Leggo la scacchiera… | Reading the position on the page. | Keep the board visible. |
+| Leggo la scacchiera… Non riesco a leggerla: … | After 8 s the reading has still not concluded; the sentence says why (board too small, moving, not found, page not readable...). The app has already read it again twice and scrolled the board into view. | Tap **Risincronizza**, or **Ricarica**. |
 | Sistema i pezzi | The physical board must match the screen. | Place the pieces as the LEDs show. |
 | Tocca a te | Your move. | Move on the physical board. |
 | Gioco e4… | Your move is being played on the page. | Wait (under a second). |
@@ -322,6 +323,15 @@ translucent "glass" queen read with the wrong colour. The start position is reco
   sites' own board renders in many themes and piece sets, kept out of the repository) or captured in the trials.
 - Field trials against the sites' computer opponents (never people), as an anonymous guest:
   `BotGameTrial` (test sources), e.g. in the arm64 box.
+- The user's whole flow on the real sites (opt-in, meant for the Pi box with a 720x1920 screen):
+  `AppOnlineBotJcefE2E` runs the whole app with the simulated board, opens chess.com Play > Computer, waits for
+  the board to be read, picks a bot (`-De2e.bot`, default Martin, so the address becomes
+  `/play/computer/<bot>-BOT`), starts the game and plays it to the end: the user's moves by a weak Stockfish on the
+  simulated board, the bot's moves reproduced as the LEDs ask. `-De2e.site=lichess` plays "against the computer"
+  on lichess. It fails when the app does not move on for 45 s. Command: `./mvnw test -DskipE2E=true
+  -DskipJcefE2E=false -Dsurefire.failIfNoSpecifiedTests=false -Dtest=AppOnlineBotJcefE2E -De2e.site=chesscom
+  -De2e.stockfish=/usr/games/stockfish` (with `DISPLAY` on a 720x1920 Xvfb and, on Linux, `LD_PRELOAD` of the
+  bundle's `libcef.so`). The page's readings at each step land in `target/e2e-online/`.
 
 ## Troubleshooting for developers
 
@@ -421,4 +431,26 @@ fine; 2 GB is not enough for chess.com.
   proves little for such races: they need many runs with load on purpose.
 - **WebGL without the GPU**: Chromium's software WebGL (SwiftShader, `--enable-unsafe-swiftshader`) runs in its GPU
   helper process, not in the app's; the GPU itself stays off. Pages see a "SwiftShader" WebGL renderer.
+
+## Fourth round (8 October 2026, afternoon): "Leggo la scacchiera…" for good
+
+- **Symptom** (user, chess.com, vertical 720 px screen): Play > Computer, then a bot picked from the list, and the
+  app stayed on "Leggo la scacchiera… Tieni ben visibile la scacchiera" for good.
+- **Cause**: picking a bot changes the address (`/play/computer` → `/play/computer/<bot>-BOT`) on the same page, so
+  the session restarts the synchronisation, which waits for the first reading of the board. `BoardWatcher` only
+  publishes readings that *change*, and the board (the starting position) had not changed: the new synchronisation
+  never received a reading. The same happened after **Scollega/Collega** on an unchanged board.
+  `SessionWithWatcherTest` (the real watcher on a fake chess.com page) reproduces it and failed before the fix.
+- **Fix**: every start of the synchronisation asks the watcher to report the current position again
+  (`readPositionAgain` → `BoardWatcher.forgetReported`).
+- **Never stuck silently**: if the reading has still not concluded after 3 s and 6 s the app reads it again and
+  scrolls the board into view (logged at INFO with the reason); after 8 s the message says why (board not found, too
+  small, moving, page not readable...) and offers **Risincronizza** and **Ricarica** (WARN in the log).
+- **Board out of view**: on chess.com's /play/computer at 720 px the page scrolls the board 645 px above the visible
+  area (recorded in the user's flow, fixture `chesscom-play-computer-720.json`). While a board is followed and
+  mostly out of view, the app scrolls it back into view by itself (at most every 3 s).
+- **Proof, the user's real flow** in the Pi box (720x1920 screen, the whole app, real sites, anonymous guest, only
+  the sites' computer opponents): chess.com with Martin picked: 47, 51 and (after the keep-in-view change) 71 plies,
+  each game played to the end (1-0), READING lasting under 3 s; lichess against the computer: 119 and 57 plies, to the
+  end, no stall.
 
