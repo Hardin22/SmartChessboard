@@ -7,7 +7,38 @@ quelli del browser a browser, e costruire una rete di sicurezza E2E che giri in 
 Documenti: [FLOWS.md](FLOWS.md) (mappa dei flussi e come sono stati percorsi), [ISSUES.md](ISSUES.md) (ogni problema
 con gravità, passi, area e stato).
 
-## Numeri
+## Verifica dopo l'integrazione (8 ottobre, mattina)
+
+main ha ricevuto browser/v2 (browser integrato riscritto), design/v2 (UI completa) e le nuove funzioni di features.
+Rifatto il giro sull'app integrata:
+
+- **QA-011 verificato e chiuso**: Lichess si gioca nel browser integrato (uscendo, la partita seguita va in archivio
+  come interrotta). Il vecchio flusso via API è rimasto in Impostazioni → Avanzate: lì "Abbandona" era disabilitato
+  e la partita lasciata restava aperta su Lichess senza modo di tornarci. Ora "Abbandona" invia l'abbandono (o
+  l'annullamento prima che abbiano mosso entrambi), la partita lasciata si riprende dalla stessa voce, e la scheda di
+  fine dice vinto/perso dal lato giusto anche col Nero (QA-035). E2E `LichessApiEndToEndTest` contro un Lichess finto
+  locale (nessun account reale, nessuna rete).
+- **Prove e test isolati dal computer** (QA-033): l'export "su chiavetta" vedeva ogni disco montato in `/Volumes`
+  anche con una cartella dati temporanea; ora `-Djavachess.usbRoots`, e gli E2E non caricano mai il Chromium del
+  computer. Il Portachiavi delle credenziali del browser ha lo stesso problema: segnalato a browser.
+- **Browser** (QA-034, a browser): tornando alla Home mentre Chromium si avvia, a fine avvio la finestra del browser
+  compare sopra l'app e può prendersi la scacchiera. Il team browser ha trovato anche un crash della JVM su macOS
+  alla chiusura dell'app dopo aver aperto il browser (`CefApp.dispose`), in correzione.
+- **Monkey dei tocchi** (`TapWalkEndToEndTest`, `SimTapWalkEndToEndTest`): a ogni passo tocca un pulsante, una riga o
+  una casa a caso fra quelli visibili e attivi (solo il foglio aperto, se c'è), raggiungendo ogni schermata con i
+  pulsanti dell'app, anche quelle aggiunte in futuro; la rete esterna è tagliata (l'app deve cavarsela offline),
+  Chromium non c'è (il browser mostra "non disponibile" con Riprova/Home), c'è una "chiavetta" con un PGN e qualche
+  puzzle. Fallisce su errori nel log, eccezioni non gestite, thread FX bloccato o schermata senza nulla da toccare.
+  Nella variante con la scacchiera simulata un "giocatore" sistema i pezzi, replica le mosse e muove sui sensori.
+  4 semi × 1500 tocchi e le due varianti nella suite: nessun errore. Ha trovato subito un NPE introdotto da me
+  nelle Impostazioni, prima del commit.
+- **Long run esteso**: dopo ognuna delle 20 partite apre la revisione e avvia l'analisi completa abbandonandola a
+  metà, poi statistiche, archivio, allenatore errori, puzzle, impostazioni, temi: thread 48→47, processi 2→2, heap
+  dopo GC 127→135 MB, thread FX al massimo 141 ms.
+- Test instabili sotto carico segnalati ai proprietari: `CoordinateTrainerTest` (features, già corretto),
+  `SyncWithRealBoardTest` (browser).
+
+## Numeri (primo giro, 7-8 ottobre notte)
 
 | | |
 |---|---|
@@ -81,7 +112,7 @@ con gravità, passi, area e stato).
 
 ## Cosa resta
 
-- Browser e Lichess (QA-011): da verificare quando browser/v2 è su main (uscita a partita in corso, archiviazione,
-  chiusura con JCEF aperto).
+- Browser con Chromium vero sul Mac (navigazione Home ↔ browser con la scacchiera simulata, chiusura con JCEF
+  aperto): da rifare quando il fix del crash di chiusura di browser è su main; QA-034 in carico a browser.
 - Hardware vero: tutto è provato con la scacchiera simulata e l'emulatore del firmware; con il PCB vanno rifatti a
   mano i casi di cavo staccato/riattaccato e i tempi di assestamento dei sensori.
