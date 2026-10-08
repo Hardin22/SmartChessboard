@@ -67,14 +67,14 @@ final class DevDemos {
                 case "pvc-status" -> pvc(main, true, game -> game.devStatus(System.getProperty("javachess.demo.status", "")));
                 case "pvp-status" -> pvp(main, game -> game.devStatus(System.getProperty("javachess.demo.status", "")));
                 case "pvc-menu" -> pvc(main, true, game -> lookupFire(main, "game-menu"));
-                case "pvc-hint" -> pvc(main, true, game -> {
-                    lookupFire(main, "game-hint");
+                case "pvc-hint" -> pvc(main, true, game -> fireWhenEnabled(main, "game-hint", 60, () -> {
                     if (Boolean.getBoolean("javachess.demo.hintMove")) {
-                        later(2.5, () -> lookupFire(main, "game-hint"));
+                        later(0.5, () -> fireWhenEnabled(main, "game-hint", 150, null));
                     }
-                });
-                case "pvc-draw" -> pvc(main, true, game -> lookupFire(main, "game-draw"));
-                case "pvc-undo" -> pvc(main, true, game -> lookupFire(main, "game-undo"));
+                }));
+                case "pvc-end" -> pvc(main, true, game -> game.devResign(com.github.bhlangonijr.chesslib.Side.BLACK));
+                case "pvc-draw" -> pvc(main, true, game -> fireWhenEnabled(main, "game-draw", 60, null));
+                case "pvc-undo" -> pvc(main, true, game -> fireWhenEnabled(main, "game-undo", 60, null));
                 case "home-resume" -> {
                     GameSnapshotStore.get().save(demoSnapshot());
                     later(0.8, () -> main.navigateTo("HOME"));
@@ -82,6 +82,21 @@ final class DevDemos {
                 case "pvc-select" -> pvc(main, true, game -> tapSquare(main, System.getProperty("javachess.demo.square", "f1")));
                 case "review" -> review(main);
                 case "puzzle" -> puzzle(main);
+                case "puzzle-rush" -> {
+                    // A series on the fixed demo puzzle (no puzzle database needed)
+                    Puzzle puzzle = demoPuzzle();
+                    PuzzleController controller = (PuzzleController) main.getController("PUZZLE_GAME");
+                    main.navigateTo("PUZZLE_GAME");
+                    controller.startRush(new io.github.hardin22.javachess.Play.PuzzleRush(
+                            io.github.hardin22.javachess.Play.PuzzleRush.Mode.valueOf(
+                                    System.getProperty("javachess.demo.rush", "THREE_MINUTES")), 1500,
+                            target -> java.util.concurrent.CompletableFuture.completedFuture(puzzle),
+                            () -> new io.github.hardin22.javachess.Play.GameClock(TimeControl.minutes(3, 0)),
+                            Platform::runLater));
+                    if (Boolean.getBoolean("javachess.demo.rushEnd")) {
+                        later(2, () -> lookupFire(main, "rush-stop"));
+                    }
+                }
                 case "online" -> {
                     main.navigateTo("HOME");
                     later(1, () -> lookupFire(main, "home-online"));
@@ -89,6 +104,19 @@ final class DevDemos {
                 case "archive-preview" -> {
                     main.navigateTo("ARCHIVE");
                     later(1.2, () -> lookupFire(main, "archive-row"));
+                }
+                case "position-editor" -> {
+                    main.navigateTo("PVC_SETUP");
+                    later(1, () -> lookupFire(main, "setup-position"));
+                }
+                case "archive-transfer" -> {
+                    main.navigateTo("ARCHIVE");
+                    later(1.2, () -> lookupFire(main, "archive-transfer"));
+                }
+                case "archive-import" -> {
+                    main.navigateTo("ARCHIVE");
+                    later(1.2, () -> ((io.github.hardin22.javachess.Controllers.ArchiveController)
+                            main.getController("ARCHIVE")).devOpenImport());
                 }
                 case "archive-search" -> {
                     main.navigateTo("ARCHIVE");
@@ -123,6 +151,22 @@ final class DevDemos {
                     false, false, null));
         } else {
             LOG.warn("No node #{} for the demo", id);
+        }
+    }
+
+    /** Taps a button as soon as it is enabled (the computer may still be thinking), then runs {@code then}. */
+    private static void fireWhenEnabled(MainController main, String id, int tries, Runnable then) {
+        Node node = main.getMainContainer().getScene().lookup("#" + id);
+        if (node instanceof Button b && !b.isDisabled()) {
+            LOG.info("demo: tapping #{}", id);
+            b.fire();
+            if (then != null) {
+                then.run();
+            }
+        } else if (tries > 0) {
+            later(0.3, () -> fireWhenEnabled(main, id, tries - 1, then));
+        } else {
+            LOG.warn("Button #{} never enabled for the demo", id);
         }
     }
 
@@ -162,6 +206,9 @@ final class DevDemos {
     private static void pvc(MainController main, boolean white, java.util.function.Consumer<ActiveGameController> then) {
         ActiveGameController game = (ActiveGameController) main.getController("GAME");
         main.navigateTo("GAME");
+        if (System.getProperty("javachess.demo.fen") != null) {
+            game.setNextStartPosition(System.getProperty("javachess.demo.fen").replace('_', ' '));
+        }
         if (Integer.getInteger("javachess.demo.level") != null) {
             game.startPvC(Integer.getInteger("javachess.demo.level"), white, EngineService.EngineType.STOCKFISH);
         } else {
@@ -203,7 +250,17 @@ final class DevDemos {
         ReviewController review = (ReviewController) main.getController("REVIEW");
         review.goTo(Integer.getInteger("javachess.demo.ply", 20));
         if (Boolean.getBoolean("javachess.demo.analyze")) {
-            review.analyze();
+            later(1.5, () -> {
+                if (!review.hasReview()) { // a saved review opens already analysed
+                    review.analyze();
+                }
+            });
+        }
+        if (Boolean.getBoolean("javachess.demo.summary")) {
+            later(2, review::devShowSummary);
+        }
+        if (Boolean.getBoolean("javachess.demo.trainer")) {
+            openTrainerWhenReady(review, 240);
         }
         double variationAfter = Double.parseDouble(System.getProperty("javachess.demo.variationAfter", "0"));
         if (variationAfter > 0) {
@@ -211,11 +268,29 @@ final class DevDemos {
         }
     }
 
+    private static void openTrainerWhenReady(ReviewController review, int tries) {
+        later(1, () -> {
+            if (review.devOpenTrainer()) {
+                String attempt = System.getProperty("javachess.demo.trainerTry");
+                if (attempt != null) {
+                    later(1, () -> ((io.github.hardin22.javachess.Controllers.TrainerController)
+                            review.mainControllerForDemo().getController("TRAINER")).devAttempt(attempt));
+                }
+            } else if (tries > 0) {
+                openTrainerWhenReady(review, tries - 1);
+            }
+        });
+    }
+
+    private static Puzzle demoPuzzle() {
+        return new Puzzle("demo", "6k1/r4ppp/8/8/8/8/5PPP/3R2K1 b - - 0 1", List.of("a7a6", "d1d8"),
+                1520, 80, 90, 100, List.of("mateIn1", "backRankMate", "short"), "", "");
+    }
+
     private static void puzzle(MainController main) {
         if (!Boolean.getBoolean("javachess.demo.puzzledb")) {
             // A fixed back-rank puzzle when there is no puzzle database (or one is asked for).
-            Puzzle puzzle = new Puzzle("demo", "6k1/r4ppp/8/8/8/8/5PPP/3R2K1 b - - 0 1", List.of("a7a6", "d1d8"),
-                    1520, 80, 90, 100, List.of("mateIn1", "backRankMate", "short"), "", "");
+            Puzzle puzzle = demoPuzzle();
             PuzzleController controller = (PuzzleController) main.getController("PUZZLE_GAME");
             main.navigateTo("PUZZLE_GAME");
             controller.setPuzzle(puzzle, 1500, List.of("Tutti"));

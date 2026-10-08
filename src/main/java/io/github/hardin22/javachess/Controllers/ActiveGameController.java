@@ -100,6 +100,29 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
     private boolean ended;
     private String endMessage = "";
     private String opponentElo;
+    /** Position the next game starts from (null = the standard one); used once. */
+    private String nextStartFen;
+
+    /** The next game started from the setup screens begins from this position (null = standard). */
+    public void setNextStartPosition(String fen) {
+        nextStartFen = fen;
+    }
+
+    /** Captured material counts against the position the game began from. */
+    private void markStartPosition() {
+        String fen = currentGame.getInitialFen();
+        solo.row(true).setStartPosition(fen);
+        solo.row(false).setStartPosition(fen);
+        duel.setStartPosition(fen);
+    }
+
+    private void applyStartPosition() {
+        String fen = nextStartFen;
+        nextStartFen = null;
+        if (fen != null && !fen.isBlank()) {
+            currentGame.setStartPosition(fen);
+        }
+    }
 
     public ActiveGameController() {
         solo = new GameSoloView(this, soloEvalBar);
@@ -177,6 +200,10 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
     private void beginPvp(PvpGame game, int seconds, int increment) {
         mode = Mode.PVP;
         unbindPvcExtras();
+        // Between two people the best move is not shown unless asked for in the settings (arrows and LED verdicts)
+        showBestMoves = Prefs.bool(SettingsController.PVP_SUGGESTIONS_KEY, false);
+        arduino().getBoardStateManager().setEvaluationEnabled(showBestMoves);
+        MoveCoach.get().setEnabled(showBestMoves);
         pvpSeconds = seconds;
         pvpIncrement = increment;
         int minutes = Math.max(1, seconds / 60);
@@ -196,7 +223,9 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         }
         applyOrientation();
         updateStockfishState();
+        applyStartPosition();
         currentGame.startGame();
+        markStartPosition();
         refreshAll();
     }
 
@@ -216,6 +245,7 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
 
     /** A game interrupted by a restart or a power cut (Home, "Partita interrotta"). */
     public void resumeSnapshot(GameSnapshot snapshot) {
+        nextStartFen = null; // the saved game knows its own starting position
         setupBoard();
         if (snapshot.mode() == GameSnapshot.Mode.PVP) {
             TimeControl tc = snapshot.timeControl();
@@ -231,6 +261,10 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
 
     private void beginPvc(PvcGame game, boolean isPlayerWhite, String name, String elo, boolean maia) {
         mode = Mode.PVC;
+        // The Hint button gives the move on request; arrows always on only if chosen in the settings (or in ⋯)
+        showBestMoves = Prefs.bool(SettingsController.PVC_SUGGESTIONS_KEY, false);
+        arduino().getBoardStateManager().setEvaluationEnabled(showBestMoves);
+        MoveCoach.get().setEnabled(showBestMoves);
         humanWhite = isPlayerWhite;
         opponentName = name;
         opponentElo = elo;
@@ -252,7 +286,9 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         }
         applyOrientation();
         updateStockfishState();
+        applyStartPosition();
         currentGame.startGame();
+        markStartPosition();
         refreshAll();
     }
 
@@ -324,6 +360,11 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         refreshPvcButtons();
     }
 
+    /** A hint asked for owns the coach line until the player moves. */
+    private boolean hintShown() {
+        return currentGame instanceof PvcGame pvc && pvc.hints().levelProperty().get() != HintAdvisor.Level.NONE;
+    }
+
     private static final javafx.scene.paint.Color HINT_SQUARE = javafx.scene.paint.Color.rgb(79, 157, 255, 0.45);
     private static final javafx.scene.paint.Color HINT_ARROW = javafx.scene.paint.Color.rgb(79, 157, 255, 0.85);
 
@@ -334,13 +375,15 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
                 b.setDisable(true);
             }
             solo.resignButton.setDisable(mode == Mode.ONLINE || ended);
+            solo.setToolsVisible(!ended && currentGame != null && currentGame.isRunning());
             return;
         }
         boolean running = pvc.isRunning() && !ended;
+        solo.setToolsVisible(running);
         solo.undoButton.setDisable(!running || !pvc.canTakeBack());
         HintAdvisor hints = pvc.hints();
         HintAdvisor.Level level = hints.levelProperty().get();
-        solo.hintButton.setText(I18n.t(level == HintAdvisor.Level.PIECE ? "game.hint.more" : "game.hint"));
+        solo.hintButton.setText(I18n.t(level == HintAdvisor.Level.PIECE ? "game.hint.more.short" : "game.hint"));
         solo.hintButton.setDisable(!running || !pvc.isAwaitingHumanMove() || level == HintAdvisor.Level.THINKING
                 || !hints.canAskMoreProperty().get());
         solo.drawButton.setDisable(!running || !pvc.canOfferDraw());
@@ -399,6 +442,7 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         setupGameCallbacks();
         applyOrientation();
         currentGame.startGame();
+        markStartPosition();
         refreshAll();
     }
 
@@ -519,14 +563,32 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
             if (arduinoController != null) {
                 arduinoController.getBoardStateManager().setBestMove(best);
             }
-            if (mode != Mode.PVP) {
+            if (mode != Mode.PVP && !hintShown() && !ended && currentGame.isRunning()) {
                 boolean humanToMove = whiteToMove == humanWhite;
                 boolean blackAhead = eval.startsWith("−") || eval.startsWith("-");
-                String text = showBestMoves && humanToMove ? line : showBestMoves ? I18n.t("game.coach.wait") : "";
-                solo.setCoach(showEvaluation || showBestMoves, showEvaluation ? eval : null, blackAhead,
-                        showBestMoves ? text : I18n.t("game.coach.eval"));
+                if (showBestMoves) {
+                    solo.setCoach(true, showEvaluation ? eval : null, blackAhead,
+                            humanToMove ? line : I18n.t("game.coach.wait"));
+                } else {
+                    solo.setCoach(showEvaluation, I18n.t("game.coach.eval.caption"), eval, blackAhead,
+                            describeEvaluation(score, eval));
+                }
             }
         });
+    }
+
+    /** "Posizione equilibrata", "Il Nero sta meglio", "Matto in 3 per il Bianco": the bar in words. */
+    static String describeEvaluation(double whitePawns, String evalText) {
+        String side = I18n.t(whitePawns >= 0 ? "common.white" : "common.black");
+        if (evalText != null && evalText.contains("M")) {
+            String n = evalText.replaceAll("[^0-9]", "");
+            return n.isEmpty() || "0".equals(n) ? I18n.t("game.eval.mate.done")
+                    : I18n.t("game.eval.mate", n, side);
+        }
+        double a = Math.abs(whitePawns);
+        String key = a < 0.5 ? "game.eval.equal" : a < 1.5 ? "game.eval.slight" : a < 3 ? "game.eval.better"
+                : "game.eval.winning";
+        return I18n.t(key, side);
     }
 
     private void onStatus(String message) {
@@ -578,8 +640,8 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
 
     private void onOpeningChanged() {
         if (mode != Mode.PVP) {
-            String opening = openingNameLabel.getText();
-            solo.header.setSubtitle(opening == null || opening.isBlank() ? opponentName : opening);
+            String opening = io.github.hardin22.javachess.Analysis.OpeningNames.italian(openingNameLabel.getText());
+            solo.header.setSubtitle(opening.isBlank() ? title : opening);
         }
     }
 
@@ -633,6 +695,7 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
         StatusCard.Content content;
         if (!running && ended) {
             content = endCard();
+            solo.setCoach(false, null, false, null); // the evaluation of the last position is no longer news
         } else if (status.kind() == GameStatus.Kind.READY && status.text().toLowerCase(Locale.ROOT).contains("allineata")) {
             content = StatusCard.Content.of(Tone.DONE, I18n.t("game.status.resync.kicker"),
                     I18n.t("game.status.aligned"), null);
@@ -916,10 +979,39 @@ public class ActiveGameController implements Screen, GameDuelView.Actions {
             return;
         }
         String initialFen = currentGame == null ? START_FEN : currentGame.getInitialFen();
-        List<String> moves = uciPlayed;
+        List<String> moves = List.copyOf(uciPlayed);
         String reviewTitle = title;
         mainController.closeSheet();
-        ReviewController.openMoves(mainController, String.join(" ", moves), initialFen, reviewTitle);
+        // The archived copy knows the players' ratings and shares its saved review with the archive screen
+        io.github.hardin22.javachess.Utils.AppExecutors.io().execute(() -> {
+            io.github.hardin22.javachess.Oggetti.ArchivedGame match = null;
+            try {
+                match = io.github.hardin22.javachess.Services.GameArchiveService.getInstance().list().stream()
+                        .filter(g -> g.movesUci().equals(moves) && samePosition(g.initialFen(), initialFen))
+                        .findFirst().orElse(null);
+            } catch (RuntimeException e) {
+                LOG.warn("Archive not readable for the review", e);
+            }
+            io.github.hardin22.javachess.Oggetti.ArchivedGame found = match;
+            Platform.runLater(() -> {
+                if (found != null) {
+                    ReviewController.open(mainController, found);
+                } else {
+                    ReviewController.openMoves(mainController, String.join(" ", moves), initialFen, reviewTitle);
+                }
+            });
+        });
+    }
+
+    private static boolean samePosition(String a, String b) {
+        String[] x = (a == null || a.isBlank() ? START_FEN : a).split(" ");
+        String[] y = (b == null || b.isBlank() ? START_FEN : b).split(" ");
+        for (int i = 0; i < Math.min(4, Math.min(x.length, y.length)); i++) {
+            if (!x[i].equals(y[i])) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override

@@ -26,9 +26,16 @@ how most development happens.
 <p align="center">
   <img src="docs/screenshots/home.png" width="19%" alt="Home">
   <img src="docs/screenshots/pvp.png" width="19%" alt="Two players, one half of the screen each">
-  <img src="docs/screenshots/pvc-replicate.png" width="19%" alt="Against the computer: the move to make on the board">
+  <img src="docs/screenshots/pvc.png" width="19%" alt="Against the computer: clock, take back, hint, draw">
   <img src="docs/screenshots/review.png" width="19%" alt="Game review">
   <img src="docs/screenshots/archive.png" width="19%" alt="Archive">
+</p>
+<p align="center">
+  <img src="docs/screenshots/pvc-hint.png" width="19%" alt="Hint on request: the move as an arrow">
+  <img src="docs/screenshots/trainer-wrong.png" width="19%" alt="Replay your mistakes">
+  <img src="docs/screenshots/stats.png" width="19%" alt="Statistics">
+  <img src="docs/screenshots/rush.png" width="19%" alt="Timed puzzle series">
+  <img src="docs/screenshots/position.png" width="19%" alt="Starting position editor">
 </p>
 <p align="center">
   <img src="docs/screenshots/pvp-landscape.png" width="80%" alt="Two players on a 1920x720 landscape display">
@@ -41,19 +48,26 @@ accuracy and move labels are computed by the real review engine. Design principl
 
 ## Features
 
-- **Play the computer**: Stockfish (skill 0–20, adjustable thinking time) or the human-like
-  [Maia](https://maiachess.com) networks (1100, 1500, 1900 Elo) through lc0.
+- **Play the computer**: a ladder of opponents with approximate Elo ratings, from a weakened Stockfish to full
+  strength, including the human-like [Maia](https://maiachess.com) networks (1100, 1500, 1900) through lc0; optional
+  clock, take back, hints on request (first the piece, then the move), draw offers, and games from any position
+  (piece editor or FEN). An interrupted game (restart, power cut) can be resumed from the home screen.
 - **Two players** on the same board: one half of the screen per player, turned towards them, with a tournament
   clock (increments, pause), draw offers and resignation confirmed in the player's own half.
 - **chess.com and lichess in the integrated browser** (JCEF): the screen is read by an on-device vision model, so the
   physical board stays in sync with games played on the website.
 - **Lichess through the [Board API](https://lichess.org/api#tag/Board)** (Settings → Advanced): seek a game and play
   it with the physical pieces; the opponent's moves light up on the board for you to replicate.
-- **Puzzles** from the Lichess puzzle database, filtered by theme and rating.
+- **Puzzles** from the Lichess puzzle database, filtered by theme and rating, with timed series (3 and 5 minutes,
+  survival) and records, a review of the failed ones and the weakest themes.
 - **Game review**: accuracy for both sides, move labels (Geniale, Grande, Migliore … Errore grave) drawn as the app's
-  own tiles, evaluation graph with the notable moves, best-move arrows, big step-through buttons and board drags.
+  own tiles, evaluation graph with the notable moves, engine lines and variations, accuracy by phase and key
+  moments, big step-through buttons and board drags. Reviews are saved; **Replay your mistakes** turns the
+  positions where you went wrong into exercises.
+- **Statistics**: results with White and Black, recent form, average accuracy and its trend, opponents, openings.
 - **Archive** of every game, grouped by day, with search (on-screen keyboard), filters by mode, result and period,
-  and a preview to review, export (PGN) or delete a game.
+  and a preview to review, export (PGN) or delete a game; import your recent games from Lichess or Chess.com by
+  username, or PGN files from a USB drive.
 - **Touch-first interface**: large type and 80 px+ targets, a rotate button in every screen (and a two-finger twist),
   automatic orientation towards the player, moves on the screen when no board is connected.
 - **LED coaching**: legal moves when a piece is lifted, quality of the destination squares, check and mate effects.

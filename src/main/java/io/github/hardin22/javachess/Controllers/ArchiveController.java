@@ -9,12 +9,15 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.control.ToggleGroup;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import io.github.hardin22.javachess.Analysis.OpeningNames;
 import io.github.hardin22.javachess.Components.BoardThemes;
 import io.github.hardin22.javachess.Components.I18n;
 import io.github.hardin22.javachess.Components.Icons;
@@ -25,6 +28,9 @@ import io.github.hardin22.javachess.Components.Ui;
 import io.github.hardin22.javachess.Oggetti.ArchivedGame;
 import io.github.hardin22.javachess.Oggetti.ChessBoardUI;
 import io.github.hardin22.javachess.Services.GameArchiveService;
+import io.github.hardin22.javachess.Stats.OnlineImport;
+import io.github.hardin22.javachess.Stats.PgnTransfer;
+import io.github.hardin22.javachess.Utils.AppExecutors;
 import io.github.hardin22.javachess.Utils.ErrorReporter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -85,6 +91,9 @@ public class ArchiveController implements Screen {
 
     public ArchiveController() {
         header = new ScreenHeader(I18n.t("archive.title"), () -> mainController.navigateTo("HOME"));
+        Button transfer = Ui.iconButton("fth-download", I18n.t("transfer.title"), this::openTransfer);
+        transfer.setId("archive-transfer");
+        header.setActions(transfer);
         build();
     }
 
@@ -256,6 +265,204 @@ public class ArchiveController implements Screen {
         mainController.showSheet(title, options);
     }
 
+    // ================================================================== import / export
+
+    /** "Importa ed esporta": recent games from Lichess or Chess.com, PGN files on a USB drive. */
+    private void openTransfer() {
+        VBox content = new VBox(12);
+        for (OnlineImport.Source source : OnlineImport.Source.values()) {
+            content.getChildren().add(transferOption("fth-globe", I18n.t("transfer.online", source.label()),
+                    I18n.t("transfer.online.description"), () -> openOnlineImport(source, 50)));
+        }
+        content.getChildren().add(transferOption("fth-hard-drive", I18n.t("transfer.usb"),
+                I18n.t("transfer.usb.description"), this::openUsb));
+        mainController.showSheet(I18n.t("transfer.title"), content);
+    }
+
+    private static Button transferOption(String icon, String title, String description, Runnable action) {
+        Label t = Ui.label(title, "row-title");
+        Label d = Ui.wrap(description, "row-sub");
+        VBox texts = new VBox(4, t, d);
+        texts.setMinWidth(0);
+        HBox.setHgrow(texts, Priority.ALWAYS);
+        HBox row = new HBox(18, Icons.of(icon, 30), texts,
+                Icons.of("fth-chevron-right", 26));
+        row.setAlignment(Pos.CENTER_LEFT);
+        Button b = new Button();
+        b.setGraphic(row);
+        b.getStyleClass().setAll("option");
+        b.setMaxWidth(Double.MAX_VALUE);
+        b.setMinHeight(104);
+        b.setOnAction(e -> action.run());
+        return b;
+    }
+
+    /** Username (on-screen keyboard), how many games, Import; then the result in the same sheet. */
+    private void openOnlineImport(OnlineImport.Source source, int count) {
+        TouchKeyboard keyboard = new TouchKeyboard(I18n.t("transfer.username", source.label()));
+        keyboard.textProperty().set(OnlineImport.lastUsername(source));
+        ToggleGroup counts = new ToggleGroup();
+        List<ToggleButton> segments = new ArrayList<>();
+        for (int n : new int[] { 20, 50, 100 }) {
+            ToggleButton seg = new ToggleButton(I18n.t("transfer.count", n));
+            seg.setUserData(n);
+            seg.setSelected(n == count);
+            segments.add(seg);
+        }
+        HBox countBar = Ui.segmented(counts, segments);
+        Ui.keepOneSelected(counts);
+        Button start = Ui.wide(I18n.t("transfer.start"), "fth-download", "btn-primary", "btn-lg");
+        Runnable go = () -> {
+            int max = counts.getSelectedToggle() == null ? 50 : (int) counts.getSelectedToggle().getUserData();
+            runOnlineImport(source, keyboard.textProperty().get(), max);
+        };
+        start.setOnAction(e -> go.run());
+        keyboard.setOnDone(go);
+        start.disableProperty().bind(keyboard.textProperty().isEmpty());
+        VBox content = new VBox(16, keyboard, Ui.label(I18n.t("transfer.count.title"), "row-title"), countBar,
+                Ui.wrap(I18n.t("transfer.online.note"), "t-small", "t-muted"), start);
+        mainController.showSheet(I18n.t("transfer.online", source.label()), content);
+    }
+
+    private void runOnlineImport(OnlineImport.Source source, String user, int max) {
+        VBox waiting = new VBox(18, Icons.of("fth-download-cloud", 56),
+                Ui.label(I18n.t("transfer.running"), "empty-title"),
+                Ui.wrap(I18n.t("transfer.running.detail", user, source.label()), "empty-sub"));
+        waiting.getStyleClass().add("empty-state");
+        mainController.showSheet(I18n.t("transfer.online", source.label()), waiting);
+        new OnlineImport().importRecent(source, user, max).thenAccept(r -> Platform.runLater(() -> {
+            showTransferResult(source.label(), r.ok(), r.message());
+            if (!r.imported().isEmpty()) {
+                loadArchive();
+            }
+        }));
+    }
+
+    private void showTransferResult(String title, boolean ok, String message) {
+        VBox done = new VBox(18, Icons.of(ok ? "fth-check-circle" : "fth-alert-circle", 56),
+                Ui.wrap(message, "empty-title"));
+        done.getStyleClass().add("empty-state");
+        Button close = Ui.wide(I18n.t("common.done"), null, "btn-inverse", "btn-lg");
+        close.setOnAction(e -> mainController.closeSheet());
+        mainController.showSheet(title, new VBox(16, done, close));
+    }
+
+    /** The drives plugged in, each with "Esporta tutto" and its PGN files to import. */
+    private void openUsb() {
+        PgnTransfer transfer = new PgnTransfer();
+        AppExecutors.io().execute(() -> {
+            List<PgnTransfer.Drive> drives = transfer.drives();
+            java.util.Map<PgnTransfer.Drive, List<PgnTransfer.PgnFile>> files = new java.util.LinkedHashMap<>();
+            for (PgnTransfer.Drive d : drives) {
+                files.put(d, transfer.pgnFiles(d));
+            }
+            Platform.runLater(() -> showDrives(transfer, files));
+        });
+    }
+
+    private void showDrives(PgnTransfer transfer, java.util.Map<PgnTransfer.Drive, List<PgnTransfer.PgnFile>> drives) {
+        VBox content = new VBox(16);
+        if (drives.isEmpty()) {
+            VBox empty = new VBox(18, Icons.of("fth-hard-drive", 56),
+                    Ui.label(I18n.t("transfer.usb.none"), "empty-title"),
+                    Ui.wrap(I18n.t("transfer.usb.none.detail"), "empty-sub"));
+            empty.getStyleClass().add("empty-state");
+            Button retry = Ui.wide(I18n.t("transfer.usb.retry"), "fth-refresh-cw", "btn-outline", "btn-lg");
+            retry.setOnAction(e -> openUsb());
+            content.getChildren().addAll(empty, retry);
+        }
+        drives.forEach((drive, files) -> {
+            Button export = Ui.wide(I18n.t("transfer.usb.export"), "fth-upload", "btn-inverse", "btn-lg");
+            export.setOnAction(e -> AppExecutors.io().execute(() -> {
+                String message;
+                boolean ok;
+                try {
+                    var path = transfer.exportAll(drive, GameArchiveService.getInstance());
+                    message = I18n.t("transfer.usb.exported", path.getFileName());
+                    ok = true;
+                } catch (java.io.IOException | RuntimeException ex) {
+                    message = I18n.t("transfer.usb.failed", ErrorReporter.userMessage(ex));
+                    ok = false;
+                }
+                String m = message;
+                boolean k = ok;
+                Platform.runLater(() -> showTransferResult(drive.label(), k, m));
+            }));
+            VBox card = new VBox(12, Ui.label(drive.label(), "row-title"), export);
+            if (files.isEmpty()) {
+                card.getChildren().add(Ui.wrap(I18n.t("transfer.usb.nofiles"), "t-small", "t-muted"));
+            } else {
+                card.getChildren().add(Ui.label(I18n.t("transfer.usb.files"), "t-small", "t-muted"));
+            }
+            for (PgnTransfer.PgnFile f : files) {
+                card.getChildren().add(transferOption("fth-file-text", f.name(), f.description(),
+                        () -> prepareImport(transfer, f)));
+            }
+            card.getStyleClass().add("card");
+            card.setPadding(new Insets(20));
+            content.getChildren().add(card);
+        });
+        mainController.showSheet(I18n.t("transfer.usb"), content);
+    }
+
+    /** Counts the games first: a big file takes minutes on the Raspberry, so the first 500 can be chosen. */
+    private void prepareImport(PgnTransfer transfer, PgnTransfer.PgnFile file) {
+        AppExecutors.io().execute(() -> {
+            int games = PgnTransfer.countGames(file);
+            Platform.runLater(() -> {
+                if (games <= BIG_IMPORT) {
+                    runFileImport(transfer, file, Integer.MAX_VALUE);
+                    return;
+                }
+                Button first = Ui.wide(I18n.t("transfer.usb.first", BIG_IMPORT), null, "btn-inverse", "btn-lg");
+                first.setOnAction(e -> runFileImport(transfer, file, BIG_IMPORT));
+                Button all = Ui.wide(I18n.t("transfer.usb.all", games), null, "btn-outline", "btn-lg");
+                all.setOnAction(e -> runFileImport(transfer, file, Integer.MAX_VALUE));
+                VBox content = new VBox(16, Ui.wrap(I18n.t("transfer.usb.big", games), "t-body"), first, all);
+                mainController.showSheet(file.name(), content);
+            });
+        });
+    }
+
+    private static final int BIG_IMPORT = 500;
+
+    private void runFileImport(PgnTransfer transfer, PgnTransfer.PgnFile file, int max) {
+        javafx.scene.control.ProgressBar bar = new javafx.scene.control.ProgressBar(0);
+        bar.setMaxWidth(Double.MAX_VALUE);
+        bar.getStyleClass().add("progress-bar");
+        Label percent = Ui.label(I18n.t("transfer.usb.importing", 0), "t-body");
+        VBox waiting = new VBox(18, Icons.of("fth-file-text", 56), Ui.label(file.name(), "empty-title"), bar, percent);
+        waiting.getStyleClass().add("empty-state");
+        mainController.showSheet(I18n.t("transfer.usb"), waiting);
+        AppExecutors.io().execute(() -> {
+            String message;
+            boolean ok;
+            try {
+                var report = transfer.importFile(file, GameArchiveService.getInstance(), max, f -> Platform.runLater(() -> {
+                    bar.setProgress(f);
+                    percent.setText(I18n.t("transfer.usb.importing", Math.round(f * 100)));
+                }));
+                message = PgnTransfer.describe(report) + (report.warnings().isEmpty() ? ""
+                        : "\n" + String.join("\n", report.warnings().subList(0, Math.min(3, report.warnings().size()))));
+                ok = true;
+            } catch (java.io.IOException | RuntimeException ex) {
+                message = I18n.t("transfer.usb.failed", ErrorReporter.userMessage(ex));
+                ok = false;
+            }
+            String m = message;
+            boolean k = ok;
+            Platform.runLater(() -> {
+                showTransferResult(file.name(), k, m);
+                loadArchive();
+            });
+        });
+    }
+
+    /** For demos: the Lichess import sheet. */
+    public void devOpenImport() {
+        openOnlineImport(OnlineImport.Source.LICHESS, 50);
+    }
+
     private void openSearch() {
         TouchKeyboard keyboard = new TouchKeyboard(I18n.t("archive.search.prompt"));
         keyboard.textProperty().set(query);
@@ -420,7 +627,7 @@ public class ArchiveController implements Screen {
         Label outcome = Ui.wrap(outcomeLine(game), "t-body-m");
         Label players = Ui.wrap(I18n.t("archive.players", game.white(), game.black()), "t-small", "t-muted");
         Label moves = Ui.wrap(I18n.t("archive.moves", game.fullMoves())
-                + (game.opening().isBlank() ? "" : " · " + game.opening()), "t-small", "t-muted");
+                + (game.opening().isBlank() ? "" : " · " + OpeningNames.italian(game.opening())), "t-small", "t-muted");
         VBox info = new VBox(8, title, when, outcome, players, moves);
         info.setMinWidth(0);
         HBox.setHgrow(info, Priority.ALWAYS);
@@ -500,13 +707,13 @@ public class ArchiveController implements Screen {
                     appendMeta(meta, game.timeControl().replace("+", " + "));
                 }
                 String openingName = "Opening Name".equals(game.opening()) || "Unknown".equalsIgnoreCase(game.opening())
-                        ? "" : game.opening();
+                        ? "" : OpeningNames.italian(game.opening());
                 String detail = !openingName.isEmpty() ? openingName
                         : !game.termination().isEmpty() ? game.termination() : "";
                 Integer outcome = outcome(game, lichessUser);
                 boolean decisive = "1-0".equals(game.result()) || "0-1".equals(game.result());
                 String search = (describe(game) + " " + game.white() + " " + game.black() + " " + game.label() + " "
-                        + game.opening()).toLowerCase(Locale.ITALIAN);
+                        + game.opening() + " " + openingName).toLowerCase(Locale.ITALIAN);
                 rows.add(new Row(game.id(), describe(game), meta.toString(), detail, resultText(game, outcome),
                         outcome, decisive, game.finalFen().isEmpty() ? START_FEN : game.finalFen(),
                         game.playedAt() == null ? null : game.playedAt().toLocalDate(), game, search));

@@ -21,6 +21,27 @@ public class MaterialView extends HBox {
     private final double size;
     private final Label lead = Ui.label("", "material");
     private String shown = "";
+    /** Opponent's pieces at the start (queen, rooks, bishops, knights, pawns): standard unless set from a FEN. */
+    private int[] start = START.clone();
+
+    /** The game began from {@code fen}: captures are counted against its pieces. */
+    public void setStart(String fen) {
+        int[] counts = new int[5];
+        String board = fen == null || fen.isBlank() ? "" : fen.split(" ")[0];
+        if (board.isEmpty()) {
+            start = START.clone();
+            shown = "";
+            return;
+        }
+        for (char c : board.toCharArray()) {
+            int i = new String(ORDER).indexOf(Character.toLowerCase(c));
+            if (i >= 0 && Character.isUpperCase(c) != white) { // the opponent's pieces
+                counts[i]++;
+            }
+        }
+        start = counts;
+        shown = "";
+    }
 
     /** @param white true for the pieces captured by White (black pieces shown) */
     public MaterialView(boolean white, double size) {
@@ -55,7 +76,7 @@ public class MaterialView extends HBox {
         int[] opponent = white ? blackCount : whiteCount;
         StringBuilder key = new StringBuilder();
         for (int i = 0; i < 5; i++) {
-            key.append(Math.max(0, START[i] - opponent[i])).append(',');
+            key.append(Math.max(0, start[i] - opponent[i])).append(',');
         }
         int diff = white ? whiteMaterial - blackMaterial : blackMaterial - whiteMaterial;
         key.append(diff).append(io.github.hardin22.javachess.Components.BoardThemes.currentPieces());
@@ -67,7 +88,7 @@ public class MaterialView extends HBox {
         String set = BoardThemes.currentPieces();
         String color = white ? "b" : "w";
         for (int i = 0; i < 5; i++) {
-            int captured = Math.max(0, START[i] - opponent[i]);
+            int captured = Math.max(0, start[i] - opponent[i]);
             if (captured == 0) {
                 continue;
             }

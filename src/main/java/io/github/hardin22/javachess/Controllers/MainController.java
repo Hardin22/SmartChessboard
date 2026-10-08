@@ -74,6 +74,8 @@ public class MainController {
         VIEWS.put("GAME", new ViewSpec(null, ActiveGameController::new));
         VIEWS.put("ARCHIVE", new ViewSpec(null, ArchiveController::new));
         VIEWS.put("REVIEW", new ViewSpec(null, ReviewController::new));
+        VIEWS.put("TRAINER", new ViewSpec(null, TrainerController::new));
+        VIEWS.put("STATS", new ViewSpec(null, StatsController::new));
         VIEWS.put("PUZZLE_DASHBOARD", new ViewSpec(null, PuzzleDashboardController::new));
         VIEWS.put("PUZZLE_GAME", new ViewSpec(null, PuzzleController::new));
         VIEWS.put("THEME", new ViewSpec(null, ThemeController::new));

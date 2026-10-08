@@ -97,16 +97,25 @@ titolo e sottotitolo, **Ruota** (80×80) a destra.
 
 ### Home
 - In alto: marchio (logo + «javaChess»), stato della scacchiera e del motore, impostazioni.
-- Al centro: la carta **«Partita in corso → Riprendi»** oppure **«Ultima partita → Rivedi»** con miniatura.
+- Al centro una sola carta con miniatura, in quest'ordine: **«Partita in corso → Riprendi»**, **«Partita
+  interrotta → Riprendi / Ignora»** (dopo un riavvio o una mancanza di corrente: livello, cadenza, «Mossa 14 ·
+  data») oppure **«Ultima partita → Rivedi»**.
 - In basso, vicino alla mano: due grandi riquadri **Contro il computer** (con l'ultima configurazione, es.
-  «Stockfish · livello 10 · Bianco») e **Due giocatori** (ultima cadenza, es. «10 + 5»), poi **Puzzle**
-  (punteggio), **Archivio** (numero di partite), **Online** (Chess.com e Lichess nel browser integrato) e **Temi**.
+  «Circolo · circa 1350 · Bianco») e **Due giocatori** (ultima cadenza, es. «10 + 5»), poi **Puzzle**
+  (punteggio), **Archivio** (numero di partite), **Online** (Chess.com e Lichess nel browser integrato) e
+  **Statistiche** (percentuale dei punti). Scacchiere e pezzi restano in Impostazioni.
 
 ### Preparazione partita
-- **Contro il computer**: avversario (Stockfish, Maia 1100/1500/1900 come carte grandi), livello 1–20 con − / +
-  e chip rapidi, colore (Bianco, Casuale, Nero con il re disegnato), pulsante **Gioca** largo quanto lo schermo.
+- **Contro il computer**: avversario come una carta grande della scala in Elo (nome, «circa 1350», una riga di
+  descrizione, icona «umano» per Maia) con − / + ai lati e chip rapidi Principiante · Circolo · Esperto ·
+  Massimo; cadenza a tessere («Senza tempo» predefinita, 3+2 … 90+30); colore (Bianco, Casuale, Nero con il re
+  disegnato); **Posizione iniziale** (Standard / Da posizione); pulsante **Gioca** largo quanto lo schermo.
 - **Due giocatori**: cadenze come tessere (1+0 … 30+0, con il nome Bullet/Blitz/Rapid/Classica), personalizzata
-  con − / + per minuti e incremento, **Gioca**.
+  con − / + per minuti e incremento, posizione iniziale, **Gioca**.
+- **Posizione iniziale** (foglio): scacchiera dell'editor, tavolozza dei 12 pezzi + gomma (si sceglie un pezzo
+  e si toccano le case; un secondo tocco lo toglie), «Tocca al Bianco / al Nero», Svuota · Iniziale · FEN (tastiera
+  a schermo), gli errori in rosso detti a parole («Manca il re per il Nero») e **Usa questa posizione** attivo solo
+  se la posizione è valida.
 
 ### Partita contro il computer (orientata verso l'umano)
 Dall'alto: intestazione compatta (titolo «Contro il computer», sottotitolo = avversario o apertura) · riga del
@@ -114,7 +123,14 @@ computer (stato «Sta pensando…», materiale catturato) · **scacchiera a tutt
 valutazione come striscia sottile sotto · riga del giocatore ·
 **carta di stato** (la cosa più importante: «Tocca a te», «Muovi per Stockfish: f8 → c5» in grande, istruzioni
 di posizionamento, errori dei sensori) · suggerimento (mossa migliore e valutazione, se attivo) · tutte le mosse
-della partita (a capo, l'ultima evidenziata) · barra azioni: Suggerimenti, Valutazione, Motore, Abbandona.
+della partita (a capo, l'ultima evidenziata) · barra azioni: **Annulla** (la tua mossa e la risposta; i LED dicono
+cosa rimettere), **Suggerimento** (1° tocco: il pezzo da muovere, casa evidenziata; 2° tocco «Vedi mossa»: la
+freccia), **Patta** (il computer risponde con una frase in un avviso), **Abbandona**; le voci di stile
+(valutazione, frecce sempre accese, motore) sono nel menu ⋯. Con una cadenza l'orologio sta nelle righe dei
+giocatori; quello che corre è «acceso». A partita finita la barra sparisce: le azioni sono nella carta del
+risultato (Rivedi, Nuova partita).
+Le frecce della mossa migliore sono spente di default (c'è il pulsante Suggerimento); senza frecce la riga sotto la
+carta dice la valutazione a parole («Posizione equilibrata», «Il Nero sta meglio»).
 Senza scacchiera collegata si può muovere toccando lo schermo (pezzo → punti sulle case possibili → destinazione).
 
 ### Partita a due giocatori
@@ -128,17 +144,34 @@ Senza scacchiera collegata si può muovere toccando lo schermo (pezzo → punti 
   Rivedi, Nuova partita, Home.
 
 ### Puzzle
-- Pannello: punteggio, serie e risolti; difficoltà con − / + a passi di 50; temi a chip; **Inizia**.
+- Pannello: punteggio, serie e risolti; **Serie a tempo** (tre tessere: 3 minuti, 5 minuti, Sopravvivenza, con il
+  record); **Ripasso** («7 puzzle sbagliati da rifare» → Ripassa) e **Punti deboli** (i temi con la percentuale più
+  bassa: un tocco allena quel tema) quando ci sono; difficoltà con − / + a passi di 50; temi a chip; **Inizia**.
 - Puzzle: orientato verso chi muove; scacchiera, carta di stato grande (trova la mossa / giusto / sbagliato),
   temi, **Suggerimento**, **Soluzione**, **Prossimo**.
+- Serie a tempo: sotto la carta il tempo enorme (rosso negli ultimi secondi), i risolti e tre cuori; barra
+  **Salta** / **Termina**; a fine serie «Tempo scaduto: 14 puzzle risolti · nuovo record!» con Ancora / Esci. La
+  serie non cambia il punteggio.
+
+### Statistiche
+- Periodo (Sempre · 30 giorni · 7 giorni) e, in carte: **Risultati** (percentuale dei punti enorme, barra
+  vinte/patte/perse, con il Bianco e con il Nero), **Ultime partite** (dieci pallini V/P/S, la più recente a
+  sinistra, serie in corso e migliore), **Precisione media** (sulle partite analizzate, ultime 10 e tendenza),
+  poi tabelle **Avversari**, **Aperture**, **Per tipo di partita**. Contano solo le partite in cui «tu» sei
+  riconoscibile (contro il computer, online con il tuo nome utente).
 
 ### Revisione
 - Intestazione con giocatori e data. Prima dell'analisi: grande invito **Analizza partita** (con avanzamento).
 - Dopo: precisione dei due giocatori in grande, scacchiera a tutta larghezza, **carta della mossa**
   (tessera dell'etichetta, «Cf3 è la mossa migliore» / «Errore grave · migliore era Dxd5», valutazione),
   grafico tappabile con i punti delle mosse notevoli, schede **Mosse** (lista con tessere) e **Riepilogo**
-  (conteggi per etichetta, Bianco | etichetta | Nero), navigazione |◀ ◀ ▶ ▶| alta 104 px in fondo.
-  Trascinare la scacchiera a sinistra/destra cambia mossa.
+  (**Rigioca i tuoi errori**, conteggi per etichetta Bianco | etichetta | Nero, precisione per fase, momenti
+  chiave), navigazione |◀ ◀ ▶ ▶| alta 104 px in fondo. Trascinare la scacchiera a sinistra/destra cambia mossa.
+- Una partita già analizzata si riapre con etichette e precisione subito (revisione salvata).
+- **Rigioca i tuoi errori**: le posizioni dove il giocatore ha sbagliato, una alla volta: «Trova la mossa migliore
+  per il Bianco», «In partita: 18. Dxb7» con la tessera; tocco sui pezzi (o la scacchiera vera); giusta → verde,
+  Avanti; sbagliata → rosso, Riprova / Soluzione; alla fine «Risolte 3 su 5». In una partita a due chiede di quale
+  giocatore.
 
 ### Archivio
 - Ricerca (tastiera a schermo) e tre pulsanti filtro grandi che aprono un foglio di scelte: modalità (Tutte,
@@ -149,12 +182,16 @@ Senza scacchiera collegata si può muovere toccando lo schermo (pezzo → punti 
   risultato (Vinta / Persa / Patta / 1-0 / 0-1 / —).
 - Tocco su una riga → foglio di anteprima (scacchiera grande, giocatori, esito, apertura) con **Rivedi**,
   **Esporta PGN**, **Elimina** (con conferma).
+- **Importa ed esporta** (pulsante in intestazione): le ultime 20/50/100 partite da Lichess o Chess.com con il
+  nome utente (tastiera a schermo, solo dati pubblici, niente doppioni), oppure la chiavetta USB (esporta tutto,
+  importa un PGN; sopra 500 partite propone «le prime 500»).
 - «Vinte/Perse» sono dal punto di vista del giocatore umano (contro il computer, online); in una partita a due una
   partita decisa è sia vinta che persa (c'è sempre un vincitore seduto alla scacchiera).
 
 ### Impostazioni
 Sezioni a righe grandi: Aspetto (tema, scacchiera e pezzi), Schermo (monitor capovolto, orientamento automatico),
-Partita (suggerimenti, valutazione, animazione di fine partita), Computer (livello, tempo per mossa),
+Partita (valutazione, mossa migliore sempre visibile contro il computer, suggerimenti a due giocatori, orologio
+fermo mentre si esegue la mossa del computer, animazione di fine partita), Computer (tempo per mossa),
 Orologio (cadenza predefinita), Scacchiera e LED (stato, luminosità), Motore, Account Lichess, Avanzate,
 Versione. Ogni modifica si salva subito.
 

@@ -43,6 +43,8 @@ import io.github.hardin22.javachess.Oggetti.EvaluationGraph;
 import io.github.hardin22.javachess.Oggetti.MoveAnalysis;
 import io.github.hardin22.javachess.Oggetti.MoveAnalysis.MoveClassification;
 import io.github.hardin22.javachess.Services.GameAnalyzer;
+import io.github.hardin22.javachess.Analysis.MistakeTrainer;
+import io.github.hardin22.javachess.Stats.ReviewStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -367,6 +369,8 @@ public class ReviewController implements Screen, GameNavigationListener {
         main.navigateTo("REVIEW");
         review.loadGame(game.movesAsUciString(), game.initialFen(), game.whiteRating(), game.blackRating());
         review.setGameInfo(ArchiveController.describe(game), ArchiveController.outcomeLine(game));
+        review.archivedGame = game;
+        review.restoreSavedReview();
     }
 
     /** Opens moves just played (end of a game). */
@@ -376,6 +380,41 @@ public class ReviewController implements Screen, GameNavigationListener {
         main.navigateTo("REVIEW");
         review.loadGame(uciMoves, initialFen);
         review.setGameInfo(title, "");
+        review.restoreSavedReview();
+    }
+
+    /** The archived game shown, or null for moves just played that are not (yet) in the archive. */
+    private ArchivedGame archivedGame;
+
+    private String reviewKey() {
+        return archivedGame != null ? ReviewStore.key(archivedGame)
+                : ReviewStore.key(currentInitialFen, uciMoves, currentWhiteRating, currentBlackRating);
+    }
+
+    /** A game already analysed opens with its labels and accuracy at once (read off the FX thread). */
+    private void restoreSavedReview() {
+        int generation = analysisGeneration.get();
+        String key = reviewKey();
+        int plies = uciMoves.size();
+        analyzeButton.setDisable(true);
+        io.github.hardin22.javachess.Utils.AppExecutors.io().execute(() -> {
+            java.util.Optional<GameReview> saved;
+            try {
+                saved = ReviewStore.get().find(key).filter(r -> r.moves().size() == plies);
+            } catch (RuntimeException e) {
+                LOG.warn("Saved review unreadable", e);
+                saved = java.util.Optional.empty();
+            }
+            java.util.Optional<GameReview> found = saved;
+            Platform.runLater(() -> {
+                if (generation != analysisGeneration.get()) {
+                    return; // another game was opened meanwhile
+                }
+                analyzeButton.setDisable(false);
+                found.ifPresent(r -> showAnalysis(GameAnalyzer.toMoveAnalysis(r), r, r.whiteAccuracy(),
+                        r.blackAccuracy()));
+            });
+        });
     }
 
     private void setGameInfo(String title, String detail) {
@@ -429,6 +468,7 @@ public class ReviewController implements Screen, GameNavigationListener {
 
         gameTitle = "";
         gameDetail = "";
+        archivedGame = null;
         currentAnalysis = null;
         currentReview = null;
         evaluationGraph.setData(null);
@@ -539,6 +579,7 @@ public class ReviewController implements Screen, GameNavigationListener {
         percentLabel.setText(I18n.t("review.analyzing", 0));
 
         GameAnalyzer analyzer = new GameAnalyzer();
+        String key = reviewKey();
         String pgn = String.join(" ", uciMoves);
         int generation = analysisGeneration.get();
         String fenToAnalyze = currentInitialFen;
@@ -572,6 +613,9 @@ public class ReviewController implements Screen, GameNavigationListener {
                 double whiteAccuracy = analyzer.calculateAccuracy(analysis, true);
                 double blackAccuracy = analyzer.calculateAccuracy(analysis, false);
                 GameReview review = analyzer.lastReview();
+                if (review != null) {
+                    ReviewStore.get().save(key, review); // next time the game opens already analysed
+                }
                 Platform.runLater(() -> {
                     if (generation == analysisGeneration.get()) {
                         showAnalysis(analysis, review, whiteAccuracy, blackAccuracy);
@@ -597,8 +641,8 @@ public class ReviewController implements Screen, GameNavigationListener {
                               double blackAccuracy) {
         this.currentAnalysis = analysis;
         this.currentReview = review;
-        whiteAccuracyLabel.setText(String.format(Locale.ITALIAN, "%.1f%%", whiteAccuracy));
-        blackAccuracyLabel.setText(String.format(Locale.ITALIAN, "%.1f%%", blackAccuracy));
+        whiteAccuracyLabel.setText(accuracyText(whiteAccuracy));
+        blackAccuracyLabel.setText(accuracyText(blackAccuracy));
         showSummary(accuracyWrapper);
         countClassifications(analysis);
         evaluationGraph.setVisible(true);
@@ -612,6 +656,11 @@ public class ReviewController implements Screen, GameNavigationListener {
         scrollMoveListToCurrent();
         refreshMoveCard();
         drawArrows();
+    }
+
+    /** "87,4%", or a dash for a side that made no counted move. */
+    private static String accuracyText(double accuracy) {
+        return Double.isNaN(accuracy) ? "–" : String.format(Locale.ITALIAN, "%.1f%%", accuracy);
     }
 
     private void countClassifications(List<MoveAnalysis> analysis) {
@@ -639,6 +688,7 @@ public class ReviewController implements Screen, GameNavigationListener {
             breakdown.getChildren().add(Ui.wrap(I18n.t("review.summary.empty"), "t-body", "t-muted"));
             return;
         }
+        addReplayButton();
         GridPane grid = threeColumns();
         grid.add(centered(Ui.label(I18n.t("common.white"), "t-caption", "t-muted")), 0, 0);
         grid.add(centered(Ui.label(I18n.t("common.black"), "t-caption", "t-muted")), 2, 0);
@@ -708,6 +758,55 @@ public class ReviewController implements Screen, GameNavigationListener {
             line.setOnMouseClicked(e -> goTo(m.ply() + 1));
             breakdown.getChildren().add(line);
         }
+    }
+
+    /** "Rigioca i tuoi errori": the positions where the player went wrong, to find the better move. */
+    private void addReplayButton() {
+        java.util.Optional<Boolean> mine = archivedGame == null ? java.util.Optional.empty()
+                : io.github.hardin22.javachess.Stats.PlayerStats.localSide(archivedGame);
+        List<MistakeTrainer.Exercise> white = MistakeTrainer.exercises(currentReview, true, false);
+        List<MistakeTrainer.Exercise> black = MistakeTrainer.exercises(currentReview, false, false);
+        boolean any = mine.map(w -> !(w ? white : black).isEmpty()).orElse(!white.isEmpty() || !black.isEmpty());
+        if (!any) {
+            return;
+        }
+        int count = mine.map(w -> (w ? white : black).size()).orElse(white.size() + black.size());
+        Button replay = Ui.wide(I18n.t("review.retry.mistakes"), "fth-target", "btn-primary", "btn-lg");
+        replay.setOnAction(e -> {
+            if (mine.isPresent()) {
+                openTrainer(mine.get() ? white : black);
+            } else {
+                chooseTrainerSide(white, black);
+            }
+        });
+        Label hint = Ui.wrap(I18n.t("review.retry.mistakes.count", count), "t-small", "t-muted");
+        VBox box = new VBox(8, replay, hint);
+        box.setPadding(new Insets(0, 0, 12, 0));
+        breakdown.getChildren().add(box);
+    }
+
+    /** A game between two people: whose mistakes? */
+    private void chooseTrainerSide(List<MistakeTrainer.Exercise> white, List<MistakeTrainer.Exercise> black) {
+        VBox content = new VBox(14);
+        for (boolean w : new boolean[] { true, false }) {
+            List<MistakeTrainer.Exercise> list = w ? white : black;
+            Button b = Ui.wide(I18n.t(w ? "trainer.side.white" : "trainer.side.black", list.size()), null,
+                    "btn-outline", "btn-lg");
+            b.setDisable(list.isEmpty());
+            b.setOnAction(e -> {
+                mainController.closeSheet();
+                openTrainer(list);
+            });
+            content.getChildren().add(b);
+        }
+        mainController.showSheet(I18n.t("trainer.side.question"), content);
+    }
+
+    private void openTrainer(List<MistakeTrainer.Exercise> exercises) {
+        if (session != null) {
+            session.setBoardFollowing(false); // the trainer guides the board itself
+        }
+        TrainerController.open(mainController, exercises, session == null ? null : session.boardFollower());
     }
 
     private static GridPane threeColumns() {
@@ -894,6 +993,30 @@ public class ReviewController implements Screen, GameNavigationListener {
     }
 
     /** Plays the best line instead of the current move and steps once into it (DevOptions demos). */
+    /** True once the game is analysed (just now or restored from the saved review). */
+    public boolean hasReview() {
+        return currentReview != null;
+    }
+
+    public MainController mainControllerForDemo() {
+        return mainController;
+    }
+
+    /** For demos: the summary tab. */
+    public void devShowSummary() {
+        tabs.getToggles().get(1).setSelected(true);
+    }
+
+    /** For demos: the trainer on White's mistakes (else Black's) once the review is there; false before. */
+    public boolean devOpenTrainer() {
+        if (currentReview == null) {
+            return false;
+        }
+        List<MistakeTrainer.Exercise> white = MistakeTrainer.exercises(currentReview, true, false);
+        openTrainer(white.isEmpty() ? MistakeTrainer.exercises(currentReview, false, false) : white);
+        return true;
+    }
+
     public void devShowBest() {
         if (session != null && session.showBestLine()) {
             session.next();
