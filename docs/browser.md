@@ -47,7 +47,7 @@ when useful, a **button** (Collega, Scollega, Risincronizza, Ricarica, Mostra sc
 | Apri una partita | No game on this page. | Start or open a game on the site. |
 | Scacchiera trovata | A board that is not a game (puzzle, TV...). | **Collega** to follow it with the physical board. |
 | Leggo la scacchiera… | Reading the position on the page. | Keep the board visible. |
-| Leggo la scacchiera… Non riesco a leggerla: … | After 8 s the reading has still not concluded; the sentence says why (board too small, moving, not found, page not readable...). The app has already read it again twice and scrolled the board into view. | Tap **Risincronizza**, or **Ricarica**. |
+| Leggo la scacchiera… Non riesco a leggerla: … | After 5 s the reading has still not concluded; the sentence says why (board too small, moving, not found, page not readable...). The app has already read it again twice and scrolled the board into view. | Tap **Risincronizza**, or **Ricarica**. |
 | Sistema i pezzi | The physical board must match the screen. | Place the pieces as the LEDs show. |
 | Tocca a te | Your move. | Move on the physical board. |
 | Gioco e4… | Your move is being played on the page. | Wait (under a second). |
@@ -331,7 +331,12 @@ translucent "glass" queen read with the wrong colour. The start position is reco
   on lichess. It fails when the app does not move on for 45 s. Command: `./mvnw test -DskipE2E=true
   -DskipJcefE2E=false -Dsurefire.failIfNoSpecifiedTests=false -Dtest=AppOnlineBotJcefE2E -De2e.site=chesscom
   -De2e.stockfish=/usr/games/stockfish` (with `DISPLAY` on a 720x1920 Xvfb and, on Linux, `LD_PRELOAD` of the
-  bundle's `libcef.so`). The page's readings at each step land in `target/e2e-online/`.
+  bundle's `libcef.so`). The page's readings at each step land in `target/e2e-online/`. `-De2e.colour=black`
+  plays Black (the bot moves first). It also fails when the page's area changes size during the game.
+- Page flashes (off-screen, the Pi): `FlashCheck` (test sources) shows a static page under a bar and does one thing
+  every 500 ms per phase (layouts, page reads, pictures of the board, scrolling, an animated page...); recorded with
+  `ffmpeg -f x11grab` on the Xvfb screen, the black or white frames per phase tell what makes the page flash. The
+  real-flow runs above were recorded the same way (10 frames/s) and checked frame by frame.
 
 ## Troubleshooting for developers
 
@@ -443,8 +448,8 @@ fine; 2 GB is not enough for chess.com.
   `SessionWithWatcherTest` (the real watcher on a fake chess.com page) reproduces it and failed before the fix.
 - **Fix**: every start of the synchronisation asks the watcher to report the current position again
   (`readPositionAgain` → `BoardWatcher.forgetReported`).
-- **Never stuck silently**: if the reading has still not concluded after 3 s and 6 s the app reads it again and
-  scrolls the board into view (logged at INFO with the reason); after 8 s the message says why (board not found, too
+- **Never stuck silently**: if the reading has still not concluded after 1.5 s and 3 s the app reads it again and
+  scrolls the board into view (logged at INFO with the reason); after 5 s the message says why (board not found, too
   small, moving, page not readable...) and offers **Risincronizza** and **Ricarica** (WARN in the log).
 - **Board out of view**: on chess.com's /play/computer at 720 px the page scrolls the board 645 px above the visible
   area (recorded in the user's flow, fixture `chesscom-play-computer-720.json`). While a board is followed and
@@ -453,4 +458,51 @@ fine; 2 GB is not enough for chess.com.
   the sites' computer opponents): chess.com with Martin picked: 47, 51 and (after the keep-in-view change) 71 plies,
   each game played to the end (1-0), READING lasting under 3 s; lichess against the computer: 119 and 57 plies, to the
   end, no stall.
+
+## Fifth round (8 October 2026, evening): the start of the game and the flash at every move
+
+The user's report: "Leggo la scacchiera…" at the start of every game, unblocked only by a move on the screen (not on
+the physical board), and the screen going white for an instant at every move, "as if the page reloaded".
+
+- **The start**: the same cause as the fourth round (fix not yet on main when the user tested): while the
+  synchronisation waits for its first reading, moves on the physical board are ignored and the watcher reported
+  nothing until the page changed. Proved again on the real sites in the user's flow, with White (first move made on
+  the simulated board) and with Black (the bot's first move followed and reproduced): READING lasts 0.2-0.3 s, then
+  "Sistema i pezzi" / "Tocca a te". The reading's watchdog is shorter now (read again at 1.5 s and 3 s, explained at
+  5 s).
+- **The flash on macOS (white)**: vision's picture of the board used the `clip` of `Page.captureScreenshot`. For a
+  clip Chromium emulates a viewport on the region and **resizes the page's real view to it** until the picture is
+  taken (`PageHandler::CaptureScreenshot` in content/browser/devtools/protocol/page_handler.cc:
+  `SetDeviceEmulationParams`, then `GetView()->SetSize(clip)`, restored in `ScreenshotCaptured`); on macOS that view
+  is a native NSView (`RenderWidgetHostViewMac::SetSize` → `ns_view_->SetBounds`), so at every picture, i.e. at every
+  move, the page shrank to the board and came back over a white background. The page itself does not notice (its
+  emulated size stays the same). Now the visible page is captured whole, without a clip (no emulation, no resize:
+  a plain copy of the surface), and the board is cut out in Java. A unit test checks that no clip is ever sent.
+- **The flash on the Pi (black)**: measured, not guessed. The real flow on the box, recorded at 10 frames/s, showed
+  the page black for 0.1-1 s 40-73 times per game; `FlashCheck` then isolated two causes, each sufficient:
+  1. `Page.captureScreenshot` off-screen: Chromium draws the page again for the picture and an empty frame reaches the
+     window meanwhile (6 black frames in 30 pictures, 0 with everything else). Off-screen the picture of the board now
+     comes from what the page shows: JCEF hands every frame Chromium paints to `CefRenderHandler.addOnPaintListener`
+     (the whole BGRA frame and its changed rectangles), and `PaintedFrame` keeps a copy of it, so a picture costs
+     a copy of pixels and Chromium is not involved (`CefBrowser.createScreenshot` was tried first: off the Swing
+     thread it releases the GL context inside JOGL's drawing and the page stayed black).
+  2. Laying out the window while the page draws: every status change revalidated the whole window, which gives the
+     page's GLCanvas its bounds again (the same ones); JOGL turns that into a reshape and JCEF into a resize of the
+     page in Chromium; with an animated page that made the page black 10 times in 30 layouts (0 without animation,
+     0 animation alone). The bar is now a Swing validate root: a status change lays out the bar only, and the window
+     is laid out again only when the bar really changes height.
+- **The bar keeps its height**: room for a one-line title, a two-line sentence and the actions' row is always
+  there, the buttons are always in the same place (bottom right); a longer text makes the bar taller once, it does not
+  shrink back while the window is shown. Before, the page was resized at "Leggo", "Sistema i pezzi" and "Tocca a te"
+  (three layouts of the page at the start of every game). `BrowserBarHeightTest` shows a whole game's statuses at
+  720 px with no change of height.
+- **Diagnostics in the log**: every resize of the page's area ("Page area WxH"), the creation, disposal and reshape
+  of the off-screen GL surface, and the page area's hierarchy changes.
+- **Proof** (box, 720x1920, the whole app, real sites as a guest, only the computer, recorded and checked frame by
+  frame; whole games): chess.com White 59 plies (1-0) and Black 80 plies (0-1, the bot's first move followed);
+  lichess White 79 plies (1-0) and Black 92 plies (0-1). In every game: the page's area resized 0 times, 1 GL reshape
+  (when the window appears), 0 white flashes and 0 black frames from the first move to the end. The only dark or
+  white frames left are the first load of the site when the browser opens and the app closing at the end.
+- Open: on lichess in the box the vision cross-check keeps reading the starting position (75-93 "Vision disagrees"
+  per game, before and after these changes); the page's reading decides, so games are not affected.
 

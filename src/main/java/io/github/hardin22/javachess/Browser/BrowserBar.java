@@ -15,6 +15,7 @@ import javax.swing.Timer;
 import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
@@ -37,8 +38,13 @@ import java.util.function.Consumer;
 /**
  * The bar above the page (Swing: the page is a native Chromium view that JavaFX cannot host). Two rows on a
  * 720 px wide screen: navigation (app home, page back, reload), then the status: a coloured title, one sentence
- * that wraps (never truncated) and the actions for the current situation. Touch targets are 80 px tall.
+ * that wraps (never truncated) and the row of the actions for the current situation. Touch targets are 80 px tall.
  * Colours follow the app theme ({@link Theme}), fonts are the app's Geist.
+ *
+ * <p>The bar keeps its height whatever the status says: room for a one-line title, a two-line sentence and the
+ * actions' row is always there, and a longer text makes it taller but it never shrinks back while the window is
+ * shown. A change of height resizes the page below, which Chromium lays out again (a flash at every status
+ * change, i.e. at every move, until 8 October 2026).</p>
  */
 public final class BrowserBar extends JPanel {
 
@@ -90,6 +96,8 @@ public final class BrowserBar extends JPanel {
     private final ProgressStrip progress = new ProgressStrip();
     private final JPanel statusRow;
     private BrowserStatus status;
+    /** The tallest the bar has been since the window was shown (it never shrinks meanwhile). */
+    private int tallest;
 
     public BrowserBar(Consumer<Nav> onNav, Consumer<BrowserStatus.Action> onAction) {
         this.onNav = onNav;
@@ -133,6 +141,8 @@ public final class BrowserBar extends JPanel {
         statusRow.setBorder(BorderFactory.createEmptyBorder(GAP, 0, PAD, 0));
         statusRow.add(text, BorderLayout.CENTER);
         statusRow.add(actions, BorderLayout.SOUTH);
+        title.reserveLines(1);
+        detail.reserveLines(2);
 
         add(nav, BorderLayout.NORTH);
         add(statusRow, BorderLayout.CENTER);
@@ -165,10 +175,8 @@ public final class BrowserBar extends JPanel {
         dot.color = theme.tone(s.tone());
         dot.repaint();
         actions.removeAll();
-        if (s.actions().stream().filter(a -> a != BrowserStatus.Action.BACK_HOME && a != BrowserStatus.Action.RELOAD)
-                .count() != 1) {
-            actions.add(Box.createHorizontalGlue());
-        }
+        actions.add(Box.createRigidArea(new Dimension(0, TOUCH))); // the row is there even without actions
+        actions.add(Box.createHorizontalGlue()); // the buttons on the right, always in the same place
         List<BrowserStatus.Action> list = new ArrayList<>(s.actions());
         list.remove(BrowserStatus.Action.BACK_HOME); // always on the navigation row
         list.remove(BrowserStatus.Action.RELOAD);
@@ -188,17 +196,48 @@ public final class BrowserBar extends JPanel {
             }
             actions.add(b);
         }
-        actions.setVisible(!list.isEmpty());
-        // one button: beside the text (the page keeps more room); more: on their own row
-        statusRow.remove(actions);
-        statusRow.add(actions, list.size() == 1 ? BorderLayout.EAST : BorderLayout.SOUTH);
         boolean errorReload = s.actions().contains(BrowserStatus.Action.RELOAD);
         PillButton reload = navButtons.get(Nav.RELOAD);
         reload.setColors(errorReload ? theme.accent() : theme.surface2(), errorReload ? theme.onAccent() : theme.text(),
                 errorReload ? null : theme.line());
         progress.setMode(s.hasProgress() ? s.progress() : BrowserStatus.NO_PROGRESS);
-        revalidate();
+        revalidate(); // the bar only (a validate root)
         repaint();
+        Container parent = getParent();
+        if (parent != null && getHeight() > 0 && getPreferredSize().height != getHeight()) {
+            parent.revalidate(); // a longer text: the page below gets less room, laid out again
+        }
+    }
+
+    /**
+     * A change of status lays out the bar only, never the page: laying out the window gives the page's component its
+     * bounds again (the same ones), which off-screen JCEF turns into a resize of the page in Chromium; while the page
+     * was drawing (a move, at every change of status) the page went black for an instant (8 October 2026).
+     */
+    @Override
+    public boolean isValidateRoot() {
+        return true;
+    }
+
+    /** The bar's height may start again from the reserved minimum (the window is being shown). */
+    public void resetHeight() {
+        tallest = 0;
+        revalidate();
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+        Dimension d = super.getPreferredSize();
+        if (getWidth() <= 0 || title.getWidth() <= 0 || detail.getWidth() <= 0) {
+            return d; // not laid out yet: the texts' heights are guesses (no width), not kept
+        }
+        if (d.height > tallest) {
+            if (tallest > 0) {
+                log.info("The browser bar grows to {} px (longer text)", d.height);
+            }
+            tallest = d.height;
+        }
+        return new Dimension(d.width, tallest);
     }
 
     public BrowserStatus shown() {
@@ -216,6 +255,7 @@ public final class BrowserBar extends JPanel {
     static final class WrappingText extends JComponent {
         private String text = "";
         private int laidOutWidth = -1;
+        private int reservedLines;
 
         WrappingText() {
             addComponentListener(new java.awt.event.ComponentAdapter() {
@@ -242,6 +282,12 @@ public final class BrowserBar extends JPanel {
             return text;
         }
 
+        /** Height kept for at least this many lines, also when the text is shorter. */
+        void reserveLines(int lines) {
+            reservedLines = lines;
+            revalidate();
+        }
+
         @Override
         public Dimension getPreferredSize() {
             int width = getWidth() > 0 ? getWidth() : (getParent() != null ? getParent().getWidth() : 0);
@@ -249,7 +295,7 @@ public final class BrowserBar extends JPanel {
                 width = 600;
             }
             FontMetrics fm = getFontMetrics(getFont());
-            int lines = text.isEmpty() ? 0 : lines(text, fm, width).size();
+            int lines = Math.max(reservedLines, text.isEmpty() ? 0 : lines(text, fm, width).size());
             return new Dimension(width, lines * fm.getHeight());
         }
 

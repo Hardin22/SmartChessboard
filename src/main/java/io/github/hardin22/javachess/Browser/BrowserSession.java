@@ -80,9 +80,9 @@ public final class BrowserSession {
     /** On a verification page whose end was not noticed, the page is read once again after this long. */
     static final long VERIFICATION_RECHECK_MS = 30_000;
     /** A reading of the board that does not conclude: asked again (and the board shown) every this many ms... */
-    static final long READING_RETRY_MS = 3_000;
+    static final long READING_RETRY_MS = 1_500;
     /** ...and after this long the bar tells why, with what to do. */
-    static final long READING_STUCK_MS = 8_000;
+    static final long READING_STUCK_MS = 5_000;
     static final long CRASH_RELOAD_EVERY_MS = 60_000;
     /** How long after a load started a complete document counts as loaded without Chromium's notice. */
     static final long LOAD_END_GRACE_MS = 2_000;

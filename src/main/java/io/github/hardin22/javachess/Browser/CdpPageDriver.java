@@ -2,6 +2,7 @@ package io.github.hardin22.javachess.Browser;
 
 import org.cef.browser.CefBrowser;
 import org.cef.browser.DevToolsAccess;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,11 +30,20 @@ public final class CdpPageDriver implements PageDriver {
     private static final long TIMEOUT_MS = 5000;
 
     private final CefBrowser browser;
+    /** Off-screen only: what the page shows (see {@link PaintedFrame}); null in windowed mode. */
+    private final PaintedFrame painted;
     private DevToolsReplies replies;
     private AutoCloseable observer;
 
     public CdpPageDriver(CefBrowser browser) {
         this.browser = browser;
+        if (browser instanceof org.cef.handler.CefRenderHandler offscreen) {
+            // off-screen rendering (Linux, Raspberry Pi): pictures of the board from what the page shows
+            painted = new PaintedFrame();
+            offscreen.addOnPaintListener(painted);
+        } else {
+            painted = null;
+        }
     }
 
     @Override
@@ -66,20 +76,60 @@ public final class CdpPageDriver implements PageDriver {
         return JSONObject.valueToString(result.get("value"));
     }
 
+    /**
+     * Off-screen (Linux, Raspberry Pi) the picture is what the page shows, kept from Chromium's own paints
+     * ({@link PaintedFrame}): Page.captureScreenshot makes Chromium draw the page again and, off-screen, an empty
+     * frame was shown meanwhile (the page went black for an instant at every few moves).
+     *
+     * <p>In windowed mode (macOS) the visible page is captured whole and the region is cut out here. Never with the
+     * {@code clip} parameter of
+     * {@code Page.captureScreenshot}: for a clip Chromium emulates a viewport on the region and resizes the page's
+     * real view to it until the picture is taken ({@code PageHandler::CaptureScreenshot} in
+     * content/browser/devtools/protocol/page_handler.cc: {@code SetDeviceEmulationParams} and
+     * {@code GetView()->SetSize(clip)}); on macOS, where the view is a native window, the page flashed white and was
+     * laid out again at every picture of the board, i.e. at every move (8 October 2026). Without a clip nor
+     * emulation it is a plain copy of what is on screen.</p>
+     */
     @Override
     public CompletableFuture<BufferedImage> screenshot(BoardSnapshot.Rect clip) {
+        PaintedFrame shown = painted;
+        CompletableFuture<BufferedImage> whole = shown != null && shown.hasFrame()
+                ? CompletableFuture.supplyAsync(shown::snapshot)
+                : capture(CAPTURE);
         if (clip == null) {
-            return capture(new JSONObject().put("format", "png").put("captureBeyondViewport", false));
+            return whole;
         }
-        // the clip of Page.captureScreenshot is in page coordinates: add how far the page is scrolled
-        return call("Page.getLayoutMetrics", new JSONObject()).thenCompose(metrics -> {
-            JSONObject vv = new JSONObject(metrics).optJSONObject("cssVisualViewport");
-            double sx = vv == null ? 0 : vv.optDouble("pageX", 0);
-            double sy = vv == null ? 0 : vv.optDouble("pageY", 0);
-            return capture(new JSONObject().put("format", "png").put("captureBeyondViewport", false)
-                    .put("clip", new JSONObject().put("x", clip.x() + sx).put("y", clip.y() + sy)
-                            .put("width", clip.w()).put("height", clip.h()).put("scale", 1)));
-        });
+        return evaluate(VIEW_SCALE).thenCombineAsync(whole,
+                (scale, image) -> crop(image, clip, new JSONArray(scale)));
+    }
+
+    /** Parameters of Page.captureScreenshot: the visible page as it is, never a {@code clip} (see above). */
+    static final JSONObject CAPTURE = new JSONObject().put("format", "png").put("captureBeyondViewport", false)
+            .put("optimizeForSpeed", true);
+
+    /** Device pixels per CSS pixel and where the visible part of the viewport starts (pinch zoom). */
+    private static final String VIEW_SCALE = "(() => { const v = window.visualViewport;"
+            + " return [window.devicePixelRatio * (v ? v.scale : 1), v ? v.offsetLeft : 0, v ? v.offsetTop : 0]; })()";
+
+    /** The region (viewport CSS pixels) of a picture of the visible page, at the device's pixel density. */
+    static BufferedImage crop(BufferedImage image, BoardSnapshot.Rect clip, JSONArray view) {
+        double scale = view.optDouble(0, 1);
+        if (!(scale > 0)) {
+            scale = 1;
+        }
+        int x0 = (int) Math.round((clip.x() - view.optDouble(1, 0)) * scale);
+        int y0 = (int) Math.round((clip.y() - view.optDouble(2, 0)) * scale);
+        int w = Math.max(1, (int) Math.round(clip.w() * scale));
+        int h = Math.max(1, (int) Math.round(clip.h() * scale));
+        x0 = Math.max(0, Math.min(x0, image.getWidth() - 1));
+        y0 = Math.max(0, Math.min(y0, image.getHeight() - 1));
+        w = Math.min(w, image.getWidth() - x0);
+        h = Math.min(h, image.getHeight() - y0);
+        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = out.createGraphics();
+        g.drawImage(image, 0, 0, w, h, x0, y0, x0 + w, y0 + h, null);
+        g.dispose();
+        return out;
     }
 
     private CompletableFuture<BufferedImage> capture(JSONObject params) {

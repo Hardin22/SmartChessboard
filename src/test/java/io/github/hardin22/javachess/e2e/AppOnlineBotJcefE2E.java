@@ -136,8 +136,9 @@ class AppOnlineBotJcefE2E {
             Thread.sleep(3000);
             note.run();
         }
-        String startScript = chesscom ? BotGameTrial.CHESSCOM_START.replace("COLOUR", "white")
-                : BotGameTrial.LICHESS_START.replace("COLOUR", "white");
+        String colour = System.getProperty("e2e.colour", "white").toLowerCase(Locale.ROOT);
+        String startScript = chesscom ? BotGameTrial.CHESSCOM_START.replace("COLOUR", colour)
+                : BotGameTrial.LICHESS_START.replace("COLOUR", colour);
         boolean started = false;
         for (int attempt = 0; attempt < 60 && !started; attempt++) {
             String r;
@@ -156,6 +157,8 @@ class AppOnlineBotJcefE2E {
         }
         assertTrue(started, "the game against the computer did not start; states " + states);
         save(page, site + "-game");
+        int resizesAtStart = window().pageResizes();
+        String firstMoveBy = null;
 
         try (BotGameTrial.Engine engine = new BotGameTrial.Engine(System.getProperty("e2e.stockfish"))) {
             int maxPlies = Integer.getInteger("e2e.plies", 300);
@@ -183,10 +186,16 @@ class AppOnlineBotJcefE2E {
                         }
                     }
                     case YOUR_TURN -> {
-                        if (mode == BoardStateManager.Mode.PLAY) {
-                            String fen = boardState().logicalFen();
+                        String fen = boardState().logicalFen();
+                        // as a player: only the own pieces (right after Play the page may not have turned the board
+                        // round yet, and for an instant the app still takes the player for White)
+                        boolean mine = fen.split(" ")[1].equals(colour.startsWith("b") ? "b" : "w");
+                        if (mode == BoardStateManager.Mode.PLAY && mine) {
                             String uci = engine.bestMove(fen);
                             System.out.println("[online] my move " + uci);
+                            if (firstMoveBy == null) {
+                                firstMoveBy = "the simulated board (" + uci + ")";
+                            }
                             physicalMove(uci);
                             waitFor("my move taken", () -> plies() > plies
                                     || session().status().state() != BrowserStatus.State.YOUR_TURN);
@@ -200,6 +209,9 @@ class AppOnlineBotJcefE2E {
                             Board after = new Board();
                             after.loadFromFen(boardState().logicalFen());
                             System.out.println("[online] bot moved " + from + to + ", reproduced on the board");
+                            if (firstMoveBy == null) {
+                                firstMoveBy = "the bot (" + from + to + ")";
+                            }
                             reproduce(new Move(Square.valueOf(from.toUpperCase(Locale.ROOT)),
                                     Square.valueOf(to.toUpperCase(Locale.ROOT))), after);
                             waitFor("reproduced", () -> boardState().mode() != BoardStateManager.Mode.REPLICATE);
@@ -215,8 +227,11 @@ class AppOnlineBotJcefE2E {
                 Thread.sleep(300);
             }
             note.run();
-            System.out.println("[online] RESULT site=" + site + " plies=" + plies() + " final="
-                    + session().status().title() + " states=" + states.size());
+            int resizes = window().pageResizes() - resizesAtStart;
+            System.out.println("[online] RESULT site=" + site + " colour=" + colour + " plies=" + plies() + " final="
+                    + session().status().title() + " states=" + states.size() + " first move by " + firstMoveBy
+                    + " page area resized during the game " + resizes + " times");
+            assertTrue(resizes == 0, "the page area changed size " + resizes + " times during the game (white flash)");
             assertTrue(plies() >= 10, "a real game was played: " + plies() + " plies; states " + states);
             assertTrue(states.stream().noneMatch(s -> s.startsWith("NOT_ACCEPTED")), "moves not accepted: " + states);
         }
