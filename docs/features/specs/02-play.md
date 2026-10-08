@@ -78,7 +78,7 @@ che sta consumando, null = fermo), `whiteLowProperty()` / `blackLowProperty()` (
 - Voce **Proponi patta** (½) nel foglio ⋯ o nella barra; disabilitata se `!canOfferDraw()` (dopo un'offerta bisogna
   fare 3 mosse).
 - `offerDraw()` → `CompletableFuture<Decision>` completato sul thread FX: `accepted()` + `message()` pronto:
-  "Stockfish (1350) accetta la patta" (la partita finisce: risultato ½-½, "Patta d'accordo" in archivio) /
+  "Circolo accetta la patta" (nome del livello; la partita finisce: risultato ½-½, "Patta d'accordo" in archivio) /
   "… rifiuta: è presto per una patta" / "… rifiuta: pensa di stare meglio" / "Hai appena proposto la patta:
   riprova tra qualche mossa" / "La posizione è cambiata: riproponi la patta" (una mossa è arrivata mentre il
   computer valutava). Mostra il messaggio in un toast/carta di stato per 3 s.

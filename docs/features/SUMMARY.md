@@ -25,12 +25,12 @@ collegato da design.
 | R7 | Analisi libera da una posizione | fatto · UI (punto d'ingresso) | `new AnalysisSession(fen, List.of())` |
 | R8 | Revisione salvata: la partita si riapre già analizzata | fatto · UI | `Stats.ReviewStore` |
 | H1/H2 | Analisi e allenamento con i pezzi veri; LED che guidano a qualsiasi posizione | fatto, **in UI** (interruttore in revisione) | `Analysis.BoardFollower` |
-| P1 | Ripresa della partita interrotta (riavvio, crash, blackout), PvC e PvP; risolve anche QA-012 e QA-017 | fatto · UI (carta in Home) | `Play.GameSnapshotStore`, `GameResume`, `PvcGame/PvpGame.fromSnapshot` |
-| P2 | Annulla mossa contro il computer con guida LED | fatto · UI (pulsante) | `PvcGame.takeBack`, `AbstractGame.undoPlies` + `resyncToLogical` di QA |
-| P3 | Orologio contro il computer: cadenze, incremento, tempo del bot adattato | fatto · UI | `Play.TimeControl`, `GameClock`, `PvcGame.getClock` |
-| P5 | Suggerimento a richiesta: prima il pezzo, poi la mossa (con LED) | fatto · UI | `Play.HintAdvisor`, `PvcGame.requestHint` |
-| P6 | Livelli del computer in Elo comprensibili (12 gradini, Stockfish e Maia) | fatto · UI | `Play.BotLevels`, `Engine.BotStrength`, `EngineManager.setBotStrength` |
-| P7 | Patta proposta al computer (risolve QA-013 insieme all'abbandono di design) | fatto · UI | `Play.BotDrawPolicy`, `PvcGame.offerDraw` |
+| P1 | Ripresa della partita interrotta (riavvio, crash, blackout), PvC e PvP; risolve anche QA-012 e QA-017 | fatto, **in UI** (carta in Home) | `Play.GameSnapshotStore`, `GameResume`, `PvcGame/PvpGame.fromSnapshot` |
+| P2 | Annulla mossa contro il computer con guida LED | fatto, **in UI** | `PvcGame.takeBack`, `AbstractGame.undoPlies` + `resyncToLogical` di QA |
+| P3 | Orologio contro il computer: cadenze, incremento, tempo del bot adattato | fatto, **in UI** | `Play.TimeControl`, `GameClock`, `PvcGame.getClock` |
+| P5 | Suggerimento a richiesta: prima il pezzo, poi la mossa (con LED) | fatto, **in UI** | `Play.HintAdvisor`, `PvcGame.requestHint` |
+| P6 | Livelli del computer in Elo comprensibili (12 gradini, Stockfish e Maia) | fatto, **in UI** | `Play.BotLevels`, `Engine.BotStrength`, `EngineManager.setBotStrength` |
+| P7 | Patta proposta al computer (risolve QA-013 insieme all'abbandono di design) | fatto, **in UI** | `Play.BotDrawPolicy`, `PvcGame.offerDraw` |
 | P8 | Partita da posizione (FEN / editor) con validazione | fatto · UI (editor) | `Play.PositionSetup`, `AbstractGame.setStartPosition` |
 | A1 | Importa / esporta PGN da chiavetta USB | fatto · UI | `Stats.PgnTransfer` |
 | A2 | Statistiche personali | fatto · UI | `Stats.PlayerStats` |
@@ -61,7 +61,9 @@ collegato da design.
   da una posizione, tempo scaduto archiviato come sconfitta, suggerimento in due passi — 4/4 verde.
 - Prove sull'app vera sullo schermo 1 (cartelle dati temporanee): partita PvC simulata con `current-game.json`
   scritto a ogni mossa; revisione ridisegnata da design con le linee del motore (segno della 2ª linea verificato
-  con Stockfish da riga di comando).
+  con Stockfish da riga di comando); PvC nella nuova UI con livello "Circolo · circa 1350", orologi 10+5,
+  Annulla / Suggerimento ("Muovi il pedone in e2") / Patta; partita interrotta e, al riavvio, la Home che propone
+  "Partita interrotta · Mossa 4 · Riprendi / Ignora" con la copia interrotta già in archivio.
 - Revisione indipendente del codice (un agente in sola lettura): 12 problemi trovati e corretti, con test di
   regressione — tra cui la perdita possibile di una partita ripresa e poi interrotta da un blackout, partite PvP
   finite che restavano "riprendibili", la patta data per accettata a posizione cambiata, l'esportazione PGN delle
@@ -89,7 +91,8 @@ collegato da design.
 
 ## Aperti
 
-- La UI delle spec 02 e 03 è in carico a design (preparazione PvC con livelli e cadenza, barra con Annulla e
-  Suggerimento, orologi del PvC, carta "Partita interrotta", editor di posizione, Rigioca gli errori,
-  Statistiche, Importa, Ripasso/Serie a tempo dei puzzle).
+- In carico a design: editor di posizione (spec 02 §7) e tutta la spec 03 (Rigioca gli errori, revisione salvata,
+  Statistiche, Importa da Lichess/Chess.com e da chiavetta, Ripasso/Serie a tempo dei puzzle). Segnalato a design:
+  al primo livello del suggerimento la freccia dei "suggerimenti sempre accesi" svela la mossa (proposta: frecce
+  continue spente di default nel PvC) e il testo "Mostra la mossa" troncato nel pulsante.
 - Dopo l'integrazione della UI: un E2E sulle nuove schermate (QA) e una taratura a mano dei livelli Elo.
