@@ -66,6 +66,10 @@ public class BrowserController implements NavigationAware {
     private ProgressBar statusProgress;
     @FXML
     private Pane actionBox;
+    @FXML
+    private javafx.scene.layout.StackPane statusBadge;
+    @FXML
+    private org.kordamp.ikonli.javafx.FontIcon statusIcon;
 
     private MainController mainController;
     private final ScheduledExecutorService sessionThread =
@@ -307,6 +311,9 @@ public class BrowserController implements NavigationAware {
         }
         statusTitle.setText(status.title());
         statusDetail.setText(status.detail());
+        if (statusBadge != null && statusIcon != null) {
+            BrowserStatusLook.apply(status, statusBadge, statusIcon);
+        }
         boolean progress = status.hasProgress();
         statusProgress.setVisible(progress);
         statusProgress.setManaged(progress);
@@ -317,10 +324,19 @@ public class BrowserController implements NavigationAware {
             Button b = new Button(action.label());
             b.getStyleClass().addAll("btn", "btn-lg", first && action != BrowserStatus.Action.BACK_HOME
                     ? "btn-primary" : "btn-outline");
+            String icon = BrowserStatusLook.actionIcon(action);
+            if (icon != null) {
+                b.setGraphic(io.github.hardin22.javachess.Components.Icons.of(icon, 28));
+            }
             b.setOnAction(e -> session.perform(action));
             actionBox.getChildren().add(b);
             first = false;
         }
+    }
+
+    /** Screenshots (DevOptions demo): shows a status on the start-up view without starting the engine. */
+    public void devShow(BrowserStatus status) {
+        showOnView(status);
     }
 
     @FXML
