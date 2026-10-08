@@ -58,6 +58,7 @@ public class HomeController implements Screen {
     private final Label gamesValue = Ui.label("—", "tile-value");
     private final Label statsValue = Ui.label("", "tile-value");
     private ChessBoardUI resumeBoard;
+    private int refreshGeneration;
 
     public HomeController() {
         build();
@@ -238,6 +239,12 @@ public class HomeController implements Screen {
 
         ActiveGameController game = activeGame();
         boolean inProgress = game != null && game.isGameInProgress();
+        // The card is filled from files read on another thread: until then the one of the last visit must not stay
+        // on screen (tapping its "Riprendi" resumed the game saved before the one just left). Refreshes may also
+        // finish out of order: only the newest one is shown.
+        resumeSlot.setVisible(false);
+        resumeSlot.getChildren().clear();
+        int generation = ++refreshGeneration;
         AppExecutors.io().execute(() -> {
             var progress = io.github.hardin22.javachess.Services.PuzzleProgressService.getInstance().getStats();
             var archive = io.github.hardin22.javachess.Services.GameArchiveService.getInstance();
@@ -253,6 +260,9 @@ public class HomeController implements Screen {
             String statsText = percent;
             var interrupted = inProgress ? java.util.Optional.<GameSnapshot>empty() : GameResume.available();
             Platform.runLater(() -> {
+                if (generation != refreshGeneration) {
+                    return;
+                }
                 puzzleValue.setText(String.valueOf(progress.rating()));
                 gamesValue.setText(String.valueOf(games.size()));
                 statsValue.setText(statsText);
