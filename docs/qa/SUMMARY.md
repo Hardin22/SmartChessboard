@@ -39,6 +39,12 @@ Rifatto il giro sull'app integrata:
   (Docker linux/arm64, 4 CPU, 2 GB, senza Stockfish) 682 test, 0 falliti, 31 saltati, 34/34 E2E, long run con giro
   delle schermate thread 39→38, processi 2→2, heap 124→133 MB. Dopo l'unione di main 698da4b (impostazioni del browser
   di design, funzioni di features) i due monkey dei tocchi (1500 + 1000 tocchi, due volte) sono ancora puliti.
+- **Giro su origin/main b3e4552** (con il fix di chiusura di browser): sul Mac i tre test con Chromium vero
+  (`AppBrowserJcefE2E`, `BrowserJcefE2E`, `JcefShutdownJcefE2E`) verdi, ciascuno nella propria JVM; l'app vera
+  avviata col browser su una pagina locale e la scacchiera simulata (mossa sui sensori giocata sulla pagina) e chiusa
+  normalmente: uscita 0, nessun crash report di macOS, nessun processo Chromium rimasto. Pi in scatola: 698 test,
+  35/35 E2E, long run thread 38→38, processi 2→2, heap 125→133 MB; 1 fallimento instabile in `CoordinateTrainerTest`
+  (un secondo assert sui LED letto troppo presto, segnalato a features).
 - Test instabili sotto carico segnalati ai proprietari: `CoordinateTrainerTest` (features, già corretto),
   `SyncWithRealBoardTest` (browser).
 
