@@ -404,6 +404,61 @@ class AppEndToEndTest {
         });
     }
 
+    @Test
+    @Order(10)
+    void everyScreenOpensRotatesAndSwitchesThemeWithoutErrors() throws Exception {
+        List<String> errors = new java.util.concurrent.CopyOnWriteArrayList<>();
+        ch.qos.logback.classic.Logger root = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory
+                .getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+        ch.qos.logback.core.AppenderBase<ch.qos.logback.classic.spi.ILoggingEvent> capture =
+                new ch.qos.logback.core.AppenderBase<>() {
+                    @Override
+                    protected void append(ch.qos.logback.classic.spi.ILoggingEvent e) {
+                        if (e.getLevel().isGreaterOrEqual(ch.qos.logback.classic.Level.ERROR)) {
+                            errors.add(e.getLoggerName() + ": " + e.getFormattedMessage()
+                                    + (e.getThrowableProxy() != null ? " (" + e.getThrowableProxy().getClassName()
+                                    + ": " + e.getThrowableProxy().getMessage() + ")" : ""));
+                        }
+                    }
+                };
+        capture.start();
+        root.addAppender(capture);
+        try {
+            List<String> views = List.of("HOME", "PVC_SETUP", "PVP_SETUP", "LICHESS_SETUP", "ARCHIVE", "REVIEW",
+                    "PUZZLE_DASHBOARD", "PUZZLE_GAME", "THEME", "SETTINGS", "GAME");
+            for (String view : views) {
+                fx(() -> {
+                    main.navigateTo(view);
+                    return null;
+                });
+                waitFor(view, () -> view.equals(fxGet(main::getCurrentViewName)));
+                Thread.sleep(250); // background loads of the screen (archive, statistics...)
+                fx(() -> {
+                    main.rotateScreen();
+                    io.github.hardin22.javachess.Components.ThemeManager.get().setMode(
+                            io.github.hardin22.javachess.Components.ThemeManager.Mode.LIGHT);
+                    return null;
+                });
+                Thread.sleep(150);
+                fx(() -> {
+                    main.rotateScreen();
+                    io.github.hardin22.javachess.Components.ThemeManager.get().setMode(
+                            io.github.hardin22.javachess.Components.ThemeManager.Mode.DARK);
+                    return null;
+                });
+                Thread.sleep(150);
+            }
+            fx(() -> {
+                main.navigateTo("HOME");
+                return null;
+            });
+            Thread.sleep(300);
+        } finally {
+            root.detachAppender(capture);
+        }
+        assertTrue(errors.isEmpty(), "errors while visiting the screens: " + errors);
+    }
+
     /** Taps the from-square then the to-square of {@code uci} on the game board (no physical board). */
     private static void tapMove(ActiveGameController game, String uci) throws Exception {
         tapSquare(game, uci.substring(0, 2));
