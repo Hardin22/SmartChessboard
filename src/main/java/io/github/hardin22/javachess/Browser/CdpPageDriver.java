@@ -1,7 +1,7 @@
 package io.github.hardin22.javachess.Browser;
 
 import org.cef.browser.CefBrowser;
-import org.cef.browser.CefDevToolsClient;
+import org.cef.browser.DevToolsAccess;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +17,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
- * {@link PageDriver} for a JCEF browser, through the Chrome DevTools protocol ({@link CefDevToolsClient}):
+ * {@link PageDriver} for a JCEF browser, through the Chrome DevTools protocol ({@link DevToolsAccess}: JCEF's own
+ * {@code CefDevToolsClient} now and then never delivers an answer, see {@link DevToolsReplies}):
  * {@code Runtime.evaluate} to read the page, {@code Page.captureScreenshot} to picture the board (the page's own
  * pixels, whatever covers the window and without screen-recording permissions), {@code Input.dispatchMouseEvent}
  * for trusted clicks that never move the real mouse pointer.
@@ -28,7 +29,8 @@ public final class CdpPageDriver implements PageDriver {
     private static final long TIMEOUT_MS = 5000;
 
     private final CefBrowser browser;
-    private CefDevToolsClient client;
+    private DevToolsReplies replies;
+    private AutoCloseable observer;
 
     public CdpPageDriver(CefBrowser browser) {
         this.browser = browser;
@@ -116,52 +118,60 @@ public final class CdpPageDriver implements PageDriver {
     }
 
     private CompletableFuture<String> call(String method, JSONObject params) {
-        CefDevToolsClient c;
+        DevToolsReplies r;
         try {
-            c = client();
+            r = session();
         } catch (RuntimeException e) {
             return CompletableFuture.failedFuture(e);
         }
-        CompletableFuture<String> answer;
+        CompletableFuture<String> answer = new CompletableFuture<>();
+        int[] sentId = {0};
         try {
-            answer = c.executeDevToolsMethod(method, params.toString());
+            DevToolsAccess.send(browser, method, params.toString()).whenComplete((id, error) -> {
+                if (error != null || id == null || id <= 0) {
+                    answer.completeExceptionally(error != null ? error
+                            : new IllegalStateException("DevTools did not accept " + method));
+                } else {
+                    sentId[0] = id;
+                    r.await(id, answer);
+                }
+            });
         } catch (RuntimeException e) {
-            reset(c);
             return CompletableFuture.failedFuture(e);
         }
-        return answer.orTimeout(TIMEOUT_MS, TimeUnit.MILLISECONDS).whenComplete((r, error) -> {
+        return answer.orTimeout(TIMEOUT_MS, TimeUnit.MILLISECONDS).whenComplete((v, error) -> {
             if (error instanceof TimeoutException) {
-                log.warn("DevTools {} timed out, reconnecting", method);
-                reset(c); // the next call opens a new DevTools session
+                log.warn("DevTools {} not answered in {} ms", method, TIMEOUT_MS);
+                r.forget(sentId[0]);
             }
         });
     }
 
-    private synchronized CefDevToolsClient client() {
-        if (client == null || client.isClosed()) {
-            client = browser.getDevToolsClient();
-            if (client == null) {
+    private synchronized DevToolsReplies session() {
+        if (replies == null) {
+            if (!DevToolsAccess.supported(browser)) {
                 throw new IllegalStateException("DevTools not available for this browser");
             }
+            DevToolsReplies r = new DevToolsReplies();
+            observer = DevToolsAccess.observe(browser, r::received);
+            replies = r;
         }
-        return client;
-    }
-
-    private synchronized void reset(CefDevToolsClient stale) {
-        if (client == stale) {
-            client = null;
-            try {
-                stale.close();
-            } catch (RuntimeException e) {
-                log.debug("DevTools close failed: {}", e.toString());
-            }
-        }
+        return replies;
     }
 
     /** Closes the DevTools session (the browser itself is not closed). */
     public synchronized void close() {
-        if (client != null) {
-            reset(client);
+        if (replies != null) {
+            replies.close();
+            replies = null;
+        }
+        if (observer != null) {
+            try {
+                observer.close();
+            } catch (Exception e) {
+                log.debug("DevTools observer close failed: {}", e.toString());
+            }
+            observer = null;
         }
     }
 }
