@@ -122,7 +122,7 @@ public final class BoardFollower {
 
     private void place(String fen) {
         target = fen;
-        manager.setLogicalBoard(board(fen));
+        // the manager keeps the position the board shows now: it tells which pieces stand on the wrong squares
         manager.setSetupTargetFen(fen);
         manager.startSetupMode();
         say("Disponi i pezzi come sullo schermo: i LED indicano le case");

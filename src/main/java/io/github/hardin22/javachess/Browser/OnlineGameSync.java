@@ -370,8 +370,13 @@ public final class OnlineGameSync {
                 }
             } else if (update.mode() == BoardWatcher.ReadMode.PAGE) {
                 disagreeSince = -1;
-                log.info("Vision disagrees with the page: vision {} ({}), page {} ({})", outcome(other),
-                        check.placement(), outcome(res), primary.placement());
+                if (other.unchanged() && other.confident()) {
+                    // vision needs a still picture: right after a move it still shows the previous position
+                    log.debug("Vision not there yet: page {} ({})", outcome(res), primary.placement());
+                } else {
+                    log.info("Vision disagrees with the page: vision {} ({}), page {} ({})", outcome(other),
+                            check.placement(), outcome(res), primary.placement());
+                }
             } else {
                 BoardReading page = waitOrPage(check, "vision " + outcome(res) + ", page " + outcome(other));
                 if (page == null) {

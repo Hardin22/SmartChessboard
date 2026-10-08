@@ -35,6 +35,16 @@ Rifatto il giro sull'app integrata:
 - **Long run esteso**: dopo ognuna delle 20 partite apre la revisione e avvia l'analisi completa abbandonandola a
   metà, poi statistiche, archivio, allenatore errori, puzzle, impostazioni, temi: thread 48→47, processi 2→2, heap
   dopo GC 127→135 MB, thread FX al massimo 141 ms.
+- **Suite** su qa/v1 fad7eae (main af5d0cc): 702 test, 0 falliti, 12 saltati, 34 E2E senza finestra; nel Pi in scatola
+  (Docker linux/arm64, 4 CPU, 2 GB, senza Stockfish) 682 test, 0 falliti, 31 saltati, 34/34 E2E, long run con giro
+  delle schermate thread 39→38, processi 2→2, heap 124→133 MB. Dopo l'unione di main 698da4b (impostazioni del browser
+  di design, funzioni di features) i due monkey dei tocchi (1500 + 1000 tocchi, due volte) sono ancora puliti.
+- **Giro su origin/main b3e4552** (con il fix di chiusura di browser): sul Mac i tre test con Chromium vero
+  (`AppBrowserJcefE2E`, `BrowserJcefE2E`, `JcefShutdownJcefE2E`) verdi, ciascuno nella propria JVM; l'app vera
+  avviata col browser su una pagina locale e la scacchiera simulata (mossa sui sensori giocata sulla pagina) e chiusa
+  normalmente: uscita 0, nessun crash report di macOS, nessun processo Chromium rimasto. Pi in scatola: 698 test,
+  35/35 E2E, long run thread 38→38, processi 2→2, heap 125→133 MB; 1 fallimento instabile in `CoordinateTrainerTest`
+  (un secondo assert sui LED letto troppo presto, segnalato a features).
 - Test instabili sotto carico segnalati ai proprietari: `CoordinateTrainerTest` (features, già corretto),
   `SyncWithRealBoardTest` (browser).
 
@@ -112,7 +122,7 @@ Rifatto il giro sull'app integrata:
 
 ## Cosa resta
 
-- Browser con Chromium vero sul Mac (navigazione Home ↔ browser con la scacchiera simulata, chiusura con JCEF
-  aperto): da rifare quando il fix del crash di chiusura di browser è su main; QA-034 in carico a browser.
+- Browser: verificato con Chromium vero sul Mac (`AppBrowserJcefE2E`, opt-in) con il fix di browser f2cede3 (QA-034 e
+  crash di chiusura); restano le prove sul Raspberry Pi vero (team browser).
 - Hardware vero: tutto è provato con la scacchiera simulata e l'emulatore del firmware; con il PCB vanno rifatti a
   mano i casi di cavo staccato/riattaccato e i tempi di assestamento dei sensori.

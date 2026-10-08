@@ -39,6 +39,7 @@ when useful, a **button** (Collega, Scollega, Risincronizza, Ricarica, Mostra sc
 | Apro Chess.com… / Il sito è lento | The page is loading. | Wait, or tap **Ricarica**. |
 | Nessuna connessione | No network. | Check the Wi-Fi or the cable, then **Ricarica**. |
 | Chess.com non risponde | The site is down or not reachable now. | Try again later (**Ricarica**). |
+| La pagina si è interrotta | Chromium had to close the page (out of memory, a crash). The page is reopened by itself once; if it happens again within a minute the message stays. | Tap **Ricarica**. |
 | Verifica di sicurezza | The site wants to check you are a person (CAPTCHA). | Tick the box on the page yourself; the app continues by itself. |
 | Accedi a Chess.com | The login page. | Log in on the page (once). |
 | Inserisco le credenziali salvate… | The saved login is being typed for you. | Wait. |
@@ -73,14 +74,27 @@ Old bundles of previous versions (`~/.jcef-bundle-v141`, other `~/.jcef-bundle-*
 
 ### Checking it on a Raspberry Pi
 
+`scripts/pi-check-browser.sh` checks the browser on the real Pi 5 step by step and writes a report. Run it from
+the javaChess folder, on the Pi's desktop or over SSH (it uses the Pi's screen):
+
 ```bash
 cd ~/javachess
-JAVACHESS_OPTS="-Djavachess.view=BROWSER -Djavachess.browserUrl=https://lichess.org/analysis" ./run_pi.sh
+scripts/pi-check-browser.sh            # system, engine download + restart, local test board
+scripts/pi-check-browser.sh --sites    # also lichess.org and chess.com analysis boards (no login)
 ```
 
-The first run downloads the engine and asks for the restart; run the same command again: lichess opens, the bar
-says *Tocca a te* (*Scacchiera non collegata...* without the board). `journalctl --user -u javachess` or
-`~/.javachess/logs/` contain the details (`Browser status: ...` lines).
+1. **System**: 64-bit arm, Java 21, free memory (≥ 1.5 GB) and disk (≈ 450 MB for the engine), the screen, the
+   network (Maven Central for the download, lichess, chess.com) and the app's jar.
+2. **Browser engine**: opens the browser on a local test page; the first time the engine is downloaded and the app
+   asks for the restart (expected), then the script starts it again: Chromium must start and show the page.
+3. **Reading the board**: the test page's position must be read, the (simulated) board set up, vision calibrated,
+   pictures of the browser written, and the app must close with status 0.
+4. With `--sites`: the analysis boards of both sites must be read (a CAPTCHA is reported as such).
+
+The app runs with a temporary data folder (your games, settings and saved logins are never touched), never logs in
+and never moves on a site. It prints PASS/FAIL lines, the peak memory of the app and Chromium together, and the
+folder with `report.txt`, the logs and the pictures: send `report.txt` when something fails. `PI_CHECK_TIMEOUT=600`
+waits longer on a slow network.
 
 ## Saved logins
 
@@ -189,6 +203,8 @@ independently.
 | lichess, page reading | 3 | 140 | 0 | 0 | 0 | 0.32-0.35 s average |
 | chess.com, page reading | 8 | 341 | 0 | 0 | 0 | 0.48-0.54 s average |
 | lichess, `vision-only`, the app's whole pipeline, White and Black | 6 | 415 | 0 | 0 | 0 (4 times more than 4 s late, then followed) | 1.2-1.6 s seen by vision |
+| lichess, `vision-only`, 8 Oct, before the DevTools fix | 4 | 188 | 0 | 0 | 0 (2 times 5-7 s late: a lost DevTools answer) | |
+| lichess, `vision-only`, 8 Oct, with the DevTools fix | 6 | 413 | 0 | 0 | 0 (vision at most 1.2 s behind the page) | |
 | chess.com, `vision-only`, the app's whole pipeline, White and Black (flipped) | 4 | 188 | 0 | 0 | 0 | |
 | lichess from a position: promotion h8=Q, en passant exd6# | 2 | 7 | 0 | 0 | 0 | |
 | chess.com from a position: promotion g8=Q+, en passant exd6# | 2 | 60 | 0 | 0 | 0 | |
@@ -204,7 +220,8 @@ independently.
   the generic model), each game needed a single setup, and no move was reported twice. The first lichess games ran
   before the confirmation window for vision was raised to 5 s and had one false "not accepted"; none since. Vision
   needs still pictures, so it follows a move about a second after the page; 4 times in 415 lichess plies it took
-  more than 4 s (the cause was not found: the next run, with full logs, had none).
+  more than 4 s. Cause found on 8 October: a DevTools call (the picture of the board) whose answer JCEF lost, see
+  the summary at the end; with the fix vision was never more than 1.2 s behind the page in 413 plies.
 - Every chess.com bot has its own board and piece theme ("forest" for Martin): the generic vision model read 0 of
   42 of those positions, the calibrated reader 42 of 42.
 
@@ -254,3 +271,56 @@ translucent "glass" queen read with the wrong colour. The start position is reco
   Keychain / Secret Service; `-Djavachess.credentials=system|file` overrides it.
 - `-Djavachess.jcef.dir=DIR` uses another engine folder; `-Djavachess.browser.osr=true|false` forces off-screen /
   windowed rendering.
+
+## Second round (8 October 2026, morning): summary
+
+What changed and why:
+
+- **No more JVM crashes on macOS** (4 crashes of test JVMs in the night, also possible when closing the app):
+  jcefmaven's start-up registers a shutdown hook that disposes Chromium, which on macOS 27 aborts the process.
+  Chromium now starts without it and is never disposed on macOS (see [Shutting Chromium down](#shutting-chromium-down)).
+  Test JVMs run with `-Dapple.awt.UIElement=true` so that the macOS alert after an old crash cannot hang them.
+- **Vision delays of 5-7 s on lichess**: a race in JCEF's DevTools client lost answers that arrived before the
+  message id, and the call waited for its 5 s timeout (found with the new lag trace of `BoardWatcher`). DevTools
+  calls now go through `DevToolsAccess` + `DevToolsReplies`, which keep early answers.
+- **Linux off-screen "Exception in thread AWT-EventQueue-0" lines** (1-4 at each start): `-Xlog:exceptions`
+  shows they are `StackOverflowError`s raised by the JVM's stack check when Chromium, on the Swing thread, calls
+  back into Java while running on a native stack the JVM does not recognise, during the page's first frames; the
+  JVM cannot even print their stack trace, hence the bare lines. The thread stack size makes no difference (default,
+  `-Xss4m`, `-Xss8m`: 1-4 lines each, 4 runs each), so nothing can be done from Java; the page always renders and is
+  read (all trials below). Harmless, left as they are.
+- **Clear messages**: a page whose process ended (out of memory, crash) says *La pagina si è interrotta* and is
+  reopened once by itself, instead of "<site> non risponde"; the expected "no network" start-up failure is no
+  longer logged as an error with a stack trace.
+- **Fixes reported by QA**: the browser window no longer appears over a game started while Chromium was still
+  starting; tests, trials and screenshots (`-Djavachess.home`) never read or remove the real saved logins (only
+  the file in their folder); the flaky LED test reads the board's current frame.
+- **Real Pi 5 check**: `scripts/pi-check-browser.sh` (see [Checking it on a Raspberry Pi](#checking-it-on-a-raspberry-pi)),
+  tried in the Pi box as a fresh Pi (engine downloaded in 19 s, restart, local board, both sites' analysis boards
+  read: PASS).
+- `browser.reader` changed in the settings applies from the next opening of the browser (no restart).
+
+Field trials of this round (Pi box, 4 CPUs, 6 GB, only the sites' computer opponents, anonymous guest):
+
+| | Games | Plies | Missed / ghost moves | Wrong positions | Moves not accepted | DevTools calls lost |
+|---|---|---|---|---|---|---|
+| lichess, `vision-only`, before the DevTools fix | 4 | 188 | 0 | 0 (vision 5.4 and 7.1 s late twice) | 0 | 2 |
+| lichess, `vision-only`, with the fix | 6 | 413 | 0 | 0 (vision at most 1.2 s late) | 0 | 0 |
+| chess.com, page reading (default) | 4 | 180 | 0 | 0 | 0 | 0 |
+| chess.com, `vision-only` | 2 | 95 | 0 | 0 (vision at most 1.4 s late) | 0 | 0 |
+
+**Memory** (the app and Chromium together, measured by the check script and in the trials): lichess about
+1.5 GB, chess.com up to 2.3 GB (its pages are heavy; with a 3 GB memory limit the box's kernel once killed
+Chromium's page process, which now shows *La pagina si è interrotta* and reopens it). A Pi 5 with 4 or 8 GB is
+fine; 2 GB is not enough for chess.com.
+
+**Tests**: 691 unit and integration tests, 0 failures (`./mvnw test -DskipE2E=true`, after merging origin/main 5e7e5d5); real Chromium suite
+(`*JcefE2E`, 13 tests, plus QA's `AppBrowserJcefE2E`) 8 times on macOS, 0 crashes.
+
+**Open items**
+
+- Run `scripts/pi-check-browser.sh --sites` on the real Pi 5 (only the box was available).
+- The bare "Exception in thread AWT-EventQueue-0" lines on Linux off-screen rendering (harmless, see above).
+- Vision on the most extreme chess.com renderer themes: 5 of 375 battery pictures keep one misread square
+  ("metal" and "glass" corners under the vignette, a pale "gothic" king on "newspaper"); during a game the rules
+  of chess absorb a single misread square, and the page markup is the default reader anyway.
