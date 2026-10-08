@@ -249,6 +249,8 @@
                         </goals>
                         <configuration>
                             <skip>${skipJcefE2E}</skip>
+                            <!-- one JVM per class: Chromium starts once per process, and AppBrowserJcefE2E checks its start-up -->
+                            <reuseForks>false</reuseForks>
                             <argLine>--add-exports=java.desktop/sun.awt=ALL-UNNAMED --add-opens=java.desktop/sun.awt=ALL-UNNAMED --add-exports=java.desktop/sun.lwawt=ALL-UNNAMED --add-exports=java.desktop/sun.lwawt.macosx=ALL-UNNAMED --add-opens=java.desktop/sun.lwawt=ALL-UNNAMED --add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED</argLine>
                             <systemPropertyVariables combine.children="append">
                                 <java.awt.headless>false</java.awt.headless>
