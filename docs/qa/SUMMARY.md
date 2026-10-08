@@ -116,7 +116,7 @@ Rifatto il giro sull'app integrata:
 
 ## Cosa resta
 
-- Browser con Chromium vero sul Mac (navigazione Home ↔ browser con la scacchiera simulata, chiusura con JCEF
-  aperto): da rifare quando il fix del crash di chiusura di browser è su main; QA-034 in carico a browser.
+- Browser: verificato con Chromium vero sul Mac (`AppBrowserJcefE2E`, opt-in) con il fix di browser f2cede3 (QA-034 e
+  crash di chiusura); restano le prove sul Raspberry Pi vero (team browser).
 - Hardware vero: tutto è provato con la scacchiera simulata e l'emulatore del firmware; con il PCB vanno rifatti a
   mano i casi di cavo staccato/riattaccato e i tempi di assestamento dei sensori.

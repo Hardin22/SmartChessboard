@@ -128,8 +128,10 @@ HOME ─ Online (foglio) ─ Chess.com / Lichess → MainController.openBrowser(
 Verifica: test unitari/integrazione del browser (macchina a stati, sync con BoardStateManager vero e scacchiera
 simulata, pagina finta), prove sul campo del team browser (docs/browser.md); QA: monkey dei tocchi
 (`TapWalkEndToEndTest`, rete esterna tagliata e nessun bundle) entra in BROWSER dalla Home e dalle impostazioni,
-vede "Browser non disponibile", tocca Riprova e Home senza errori. Su macOS chiudere l'app dopo aver aperto il browser
-può far crashare la JVM in `CefApp.dispose` (trovato dal team browser, correzione in corso).
+vede "Browser non disponibile", tocca Riprova e Home senza errori; `AppBrowserJcefE2E` (opt-in, Chromium vero, app
+intera, scacchiera simulata): uscita durante l'avvio (QA-034), pagina seguita con la scacchiera, mossa sui sensori
+giocata sulla pagina, Home, partita PvC, di nuovo il browser. Il crash della JVM su macOS alla chiusura dopo aver aperto
+il browser (`CefApp.dispose` dall'hook di jcefmaven) è corretto da browser (f2cede3, `JcefShutdownJcefE2E`).
 
 ### 3.2 Lichess via API (Impostazioni → Avanzate → "Lichess API")
 ```
