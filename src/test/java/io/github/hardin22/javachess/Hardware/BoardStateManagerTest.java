@@ -187,6 +187,32 @@ class BoardStateManagerTest {
     }
 
     @Test
+    void skippingTheGuideTrustsThePiecesAsTheyStand() throws InterruptedException {
+        manager.setSetupTargetFen("6k1/5ppp/r7/8/8/8/5PPP/3R2K1 w - - 0 1");
+        manager.startSetupMode();
+        settle();
+        assertEquals(Squares.bit(Squares.parse("g1")) | Squares.bit(Squares.parse("d1"))
+                | Squares.bit(Squares.parse("g8")), manager.setupWrongSquares());
+        manager.skipSetupGuide(); // "the pieces are right": the player knows better
+        settle();
+        assertEquals(0, manager.setupWrongSquares());
+        assertEquals(0, ledAt("g1"));
+        for (long bits = BoardStateManager.occupancy(new Board()) & ~BoardStateManager.occupancy(board(
+                "6k1/5ppp/r7/8/8/8/5PPP/3R2K1 w - - 0 1")); bits != 0; bits &= bits - 1) {
+            sim.lift(Long.numberOfTrailingZeros(bits));
+        }
+        sim.place("a6");
+        settle();
+        assertTrue(events.contains("setup complete"), events.toString());
+    }
+
+    private static Board board(String fen) {
+        Board b = new Board();
+        b.loadFromFen(fen);
+        return b;
+    }
+
+    @Test
     void anUnknownBoardIsJudgedByOccupancyOnly() throws InterruptedException {
         sim.setOccupancy(BoardStateManager.occupancy(new Board()) & ~Squares.bit(Squares.parse("e2")));
         manager.setSetupTargetFen("6k1/5ppp/r7/8/8/8/5PPP/3R2K1 w - - 0 1");

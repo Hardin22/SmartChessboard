@@ -24,7 +24,8 @@ Il testo inizia sempre con "Posiziona", quindi `GameStatus` lo classifica già c
 **Carta di disposizione su due righe** (come concordato): quando `Hardware.boardState().setupStep()` non è `null`,
 titolo = `step.instruction()` ("Posiziona le Torri nere: a8, f8"), riga = "Passo " + `step.index()` + " di " +
 `step.total()`; pulsante **Salta guida** → `Hardware.boardState().skipSetupGuide()` (tutte le case insieme, solo per
-questa disposizione). Rileggi `setupStep()` a ogni messaggio di disposizione (`onSetupProgress`): cambia sempre
+questa disposizione; considera anche giusti i pezzi che la guida credeva sbagliati: è la via d'uscita se qualcuno
+ha cambiato i pezzi a mano). Mostralo anche quando `setupStep()` è `null` ma `setupWrongSquares() != 0`. Rileggi `setupStep()` a ogni messaggio di disposizione (`onSetupProgress`): cambia sempre
 insieme al testo. Se c'è anche da togliere pezzi, il testo completo è nel messaggio (vedi sopra).
 
 **Facoltativo**: per una presentazione più ricca, `Hardware.boardState().setupStep()` (può essere `null`)
