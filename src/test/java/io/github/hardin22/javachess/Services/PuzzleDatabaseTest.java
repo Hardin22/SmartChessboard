@@ -50,6 +50,23 @@ class PuzzleDatabaseTest {
     }
 
     @Test
+    void thePuzzleOfTheDayIsTheSameAllDayAndChangesWithTheDate() throws IOException {
+        try (PuzzleDatabase database = PuzzleDatabase.open(db)) {
+            java.time.LocalDate day = java.time.LocalDate.of(2026, 10, 8);
+            Puzzle today = PuzzleService.dailyFrom(database, day);
+            assertEquals(today.getId(), PuzzleService.dailyFrom(database, day).getId());
+            assertTrue(today.getRating() >= 1300 && today.getRating() <= 1900, "rating " + today.getRating());
+            assertTrue(today.getPopularity() >= 80);
+            java.util.Set<String> week = new java.util.HashSet<>();
+            for (int d = 0; d < 7; d++) {
+                week.add(PuzzleService.dailyFrom(database, day.plusDays(d)).getId());
+            }
+            assertTrue(week.size() >= 6, "a different puzzle (almost) every day: " + week);
+            assertEquals(null, PuzzleService.dailyFrom(null, day));
+        }
+    }
+
+    @Test
     void recordsRoundTrip() throws IOException {
         try (PuzzleDatabase database = PuzzleDatabase.open(db)) {
             assertEquals(1000, database.size());
