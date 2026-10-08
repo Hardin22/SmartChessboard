@@ -44,7 +44,7 @@ collegato da design.
 
 - **R9 · codice QR per aprire la partita su lichess**: richiede di caricare la partita su un servizio esterno
   (azione verso l'esterno) e una libreria QR; valore basso rispetto al resto.
-- **P10 · ritiro riconosciuto rimettendo indietro i pezzi veri** (stile DGT): va fatto nel riconoscitore di mosse
+- **P10 · ritiro riconosciuto rimettendo indietro i pezzi veri** (stile DGT) — fatto nella seconda ondata, vedi sotto. Nota originale: va fatto nel riconoscitore di mosse
   (`BoardStateManager`, area QA/hardware); l'annulla con pulsante + guida LED copre il bisogno.
 - **P9 · rivincita a colori invertiti**: è una scelta di flusso della schermata di fine partita (design).
 
