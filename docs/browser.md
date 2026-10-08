@@ -95,6 +95,28 @@ and never moves on a site. It prints PASS/FAIL lines, the peak memory of the app
 folder with `report.txt`, the logs and the pictures: send `report.txt` when something fails. `PI_CHECK_TIMEOUT=600`
 waits longer on a slow network.
 
+### Context menu, copy and paste
+
+- **No native context menu.** A right click (or a long press) asks Chromium for its context menu; on macOS that is a
+  modal `NSMenu`, and with the app's borderless window it could open where nobody saw it while the app waited in it
+  (the user's freeze of 8 October 2026 on chess.com's login). The browser's context menu handler clears the menu, as
+  JCEF documents ("model: Can be cleared to show no context menu",
+  [CefContextMenuHandler](https://github.com/chromiumembedded/java-cef/blob/master/java/org/cef/handler/CefContextMenuHandler.java)).
+- **macOS: Cmd+C/V/X/A/Z.** CEF expects the application's main menu to carry the Edit shortcuts ("Shortcuts are
+  handled via the application top menu on Mac", CEF forum
+  [Copy (Cmd+C) and Paste (Cmd+V) do not work](https://magpcss.org/ceforum/viewtopic.php?f=6&t=12561)); the app's
+  menu is JavaFX's, without Edit, so Cmd+V did nothing. `CefKeyboardHandler.onPreKeyEvent` turns them into the frame's
+  `copy()/paste()/cut()/selectAll()/undo()/redo()` (`EditShortcuts`).
+- **Linux (the Raspberry Pi), off-screen rendering:** the keys reach Chromium through the AWT component, and JCEF
+  passed Ctrl+C/V/A on without their meaning, did not call the keyboard handler, and turned a lone Shift or Ctrl into
+  an empty text input that deleted the selected text (so Ctrl+A then Ctrl+C emptied a field). A standard AWT
+  `KeyEventDispatcher` for the browser's component runs the frame commands, keeps lone modifier keys away from
+  Chromium (their state still comes with the next key), and the component lets Tab move between the page's fields
+  (`setFocusTraversalKeysEnabled(false)`). Checked in the Pi box with real X input (`xdotool`, `xclip`, `PasteCheck`):
+  Ctrl+V pastes, Ctrl+A selects, Shift/Ctrl alone keep the selection, Tab moves to the password, capitals are typed
+  right, a right click opens no menu and the page keeps answering. Not confirmed there: copying *from* the page to
+  the system clipboard.
+
 ### Raspberry Pi: never the desktop
 
 The browser's window lies over the app's full-screen window, which stays underneath all the time: opening the

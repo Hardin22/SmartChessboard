@@ -71,12 +71,26 @@ public final class JcefExitProbe {
         System.out.println("[exit-probe] page ready=" + ready + ", mode " + mode);
         switch (mode) {
             case "hide" -> SwingUtilities.invokeAndWait(() -> frame[0].setVisible(false));
-            case "close" -> SwingUtilities.invokeAndWait(() -> {
-                page.close();
-                browser[0].close(true);
-                client[0].dispose();
-                frame[0].dispose();
-            });
+            case "close" -> {
+                // JCEF's lifecycle: the browser's window goes only after onBeforeClose (disposing it right after
+                // close() let JCEF touch a destroyed view: +[CefHandler setVisibility:], a crash)
+                java.util.concurrent.CountDownLatch closed = new java.util.concurrent.CountDownLatch(1);
+                client[0].addLifeSpanHandler(new org.cef.handler.CefLifeSpanHandlerAdapter() {
+                    @Override
+                    public void onBeforeClose(CefBrowser b) {
+                        closed.countDown();
+                    }
+                });
+                SwingUtilities.invokeAndWait(() -> {
+                    page.close();
+                    browser[0].close(true);
+                });
+                System.out.println("[exit-probe] closed " + closed.await(10, TimeUnit.SECONDS));
+                SwingUtilities.invokeAndWait(() -> {
+                    client[0].dispose();
+                    frame[0].dispose();
+                });
+            }
             case "dispose" -> app.dispose();
             case "runtime" -> JcefRuntime.shutdown();
             default -> {

@@ -18,6 +18,7 @@ import java.awt.image.BufferedImage;
 import java.net.URL;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -65,6 +66,9 @@ class BrowserJcefE2E {
         boolean osr = System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("linux");
         SwingUtilities.invokeAndWait(() -> {
             CefClient client = app.createClient();
+            if (!Boolean.getBoolean("jcef.e2e.withoutStandardHandlers")) { // (to show what the handlers prevent)
+                BrowserWindow.installStandardHandlers(client);
+            }
             browser = client.createBrowser(base + "?site=lichess", osr, false);
             frame = new JFrame("javaChess JCEF test");
             frame.add(browser.getUIComponent());
@@ -284,5 +288,24 @@ class BrowserJcefE2E {
 
     private static String placement(BoardReading r) {
         return r == null ? null : r.placement();
+    }
+
+    @Test
+    void aRightClickOpensNoMenuAndTheBrowserKeepsAnswering() throws Exception {
+        // on macOS Chromium's native context menu is a modal NSMenu: the app hung inside it (8 October 2026)
+        BoardSnapshot s = open("?site=lichess");
+        double x = s.board().rect().centerX();
+        double y = s.board().rect().centerY();
+        org.json.JSONObject press = new org.json.JSONObject().put("type", "mousePressed").put("x", x).put("y", y)
+                .put("button", "right").put("buttons", 2).put("clickCount", 1);
+        org.json.JSONObject release = new org.json.JSONObject(press.toString()).put("type", "mouseReleased")
+                .put("buttons", 0);
+        page.call("Input.dispatchMouseEvent", press).get(5, TimeUnit.SECONDS);
+        page.call("Input.dispatchMouseEvent", release).get(5, TimeUnit.SECONDS);
+        Thread.sleep(800);
+        assertEquals("2", page.evaluate("1 + 1").get(5, TimeUnit.SECONDS), "the browser still answers");
+        CompletableFuture<Boolean> edt = new CompletableFuture<>();
+        SwingUtilities.invokeLater(() -> edt.complete(true));
+        assertTrue(edt.get(5, TimeUnit.SECONDS), "and so does the Swing thread");
     }
 }
