@@ -481,6 +481,14 @@ public class BrowserController implements NavigationAware {
         }
 
         @Override
+        public void readPositionAgain() {
+            BoardWatcher wt = watcher;
+            if (wt != null) {
+                wt.forgetReported();
+            }
+        }
+
+        @Override
         public void pageAccess(boolean allowed) {
             handsOff = !allowed;
             BoardWatcher wt = watcher;

@@ -696,7 +696,7 @@ public final class BotGameTrial {
     }
 
     /** lichess lobby: "play against the computer" dialog, strength 1, our side, play. */
-    private static final String LICHESS_START = "(() => {"
+    public static final String LICHESS_START = "(() => {"
             + " const dialog = document.querySelector('dialog .game-setup');"
             + " if (!dialog) {"
             + "   const open = document.querySelector('.lobby__start__button--ai')"
@@ -719,7 +719,7 @@ public final class BotGameTrial {
      * chess.com's guest flow on /play/computer: close sign-up prompts, pick the first (weakest) bot, choose the
      * colour, press Play. Button texts may be Italian (browser locale) or English.
      */
-    private static final String CHESSCOM_START = "(() => {"
+    public static final String CHESSCOM_START = "(() => {"
             + " const visible = (e) => e && e.getBoundingClientRect().width > 0;"
             + " const btns = [...document.querySelectorAll('button, a')].filter(visible);"
             + " const byText = (re) => btns.find(b => re.test((b.textContent || '').replace(/\\s+/g, ' ').trim()));"
@@ -775,12 +775,12 @@ public final class BotGameTrial {
 
     // ------------------------------------------------------------------ Stockfish for the trial's own moves
 
-    static final class Engine implements AutoCloseable {
+    public static final class Engine implements AutoCloseable {
         private final Process process;
         private final PrintWriter in;
         private final BufferedReader outReader;
 
-        Engine(String path) throws Exception {
+        public Engine(String path) throws Exception {
             process = new ProcessBuilder(path).redirectErrorStream(true).start();
             in = new PrintWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8), true);
             outReader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
@@ -795,7 +795,7 @@ public final class BotGameTrial {
             }
         }
 
-        String bestMove(String fen) throws Exception {
+        public String bestMove(String fen) throws Exception {
             in.println("position fen " + fen);
             in.println("go movetime " + Integer.getInteger("trial.movetime", 100));
             String line;

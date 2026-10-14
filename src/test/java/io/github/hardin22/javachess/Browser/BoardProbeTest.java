@@ -149,4 +149,33 @@ class BoardProbeTest {
         assertFalse(BoardProbe.SCRIPT.contains("appendChild"), "the probe must never change the page");
         assertFalse(BoardProbe.SCRIPT.contains("innerHTML ="), "the probe must never change the page");
     }
+
+    @Test
+    void chesscomPlayAgainstTheComputerAt720PixelsWithTheBoardScrolledAway() {
+        // recorded in the user's flow (Pi box, 720x1920 window, 8 October 2026): the page scrolls the board away
+        BoardSnapshot s = BoardProbe.parse(fixture("chesscom-play-computer-720"));
+        assertEquals(ChessSite.CHESS_COM, s.site());
+        assertEquals(PageInfo.Kind.GAME, s.page().kind());
+        assertEquals("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR", s.board().placement(), "read although off screen");
+        assertFalse(s.board().rect().mostlyInside(s.viewportWidth(), s.viewportHeight()), "the board is off screen");
+    }
+
+    @Test
+    void chesscomAfterPickingTheBotIsAnotherAddressOfTheSameGame() {
+        BoardSnapshot before = BoardProbe.parse(fixture("chesscom-play-computer-720"));
+        BoardSnapshot s = BoardProbe.parse(fixture("chesscom-bot-martin-720"));
+        assertTrue(s.url().endsWith("/play/computer/Martinfoot-BOT"));
+        assertEquals(PageInfo.Kind.GAME, s.page().kind());
+        assertEquals(before.board().placement(), s.board().placement(), "the same start position");
+        assertTrue(s.board().rect().w() > s.viewportWidth(), "wider than the page (720 vs 705 px)");
+        assertTrue(s.board().rect().mostlyInside(s.viewportWidth(), s.viewportHeight()));
+    }
+
+    @Test
+    void lichessGameAgainstTheComputerAt720Pixels() {
+        BoardSnapshot s = BoardProbe.parse(fixture("lichess-computer-game-720"));
+        assertEquals(ChessSite.LICHESS, s.site());
+        assertEquals(PageInfo.Kind.GAME, s.page().kind());
+        assertTrue(s.board().placement() != null);
+    }
 }

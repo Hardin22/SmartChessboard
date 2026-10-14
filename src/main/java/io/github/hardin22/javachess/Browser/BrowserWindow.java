@@ -51,6 +51,7 @@ public final class BrowserWindow {
     private final BrowserBar bar;
     private final CdpPageDriver driver;
     private final boolean offscreen;
+    private final java.util.concurrent.atomic.AtomicInteger pageResizes = new java.util.concurrent.atomic.AtomicInteger();
 
     /**
      * Creates the window (hidden) and the browser on {@code url}. Must run on the Swing thread; throws when
@@ -133,6 +134,47 @@ public final class BrowserWindow {
         content.add(bar, BorderLayout.NORTH);
         content.add(browser.getUIComponent(), BorderLayout.CENTER);
         frame.setContentPane(content);
+        if (offscreen && browser.getUIComponent() instanceof com.jogamp.opengl.GLAutoDrawable gl) {
+            // off-screen, the page is drawn from the last picture Chromium sent; when the OpenGL surface is
+            // created again, it stays empty (black) until the page changes: logged to tell when it happens
+            gl.addGLEventListener(new com.jogamp.opengl.GLEventListener() {
+                @Override
+                public void init(com.jogamp.opengl.GLAutoDrawable d) {
+                    log.info("Page surface (OpenGL) created");
+                }
+
+                @Override
+                public void dispose(com.jogamp.opengl.GLAutoDrawable d) {
+                    log.info("Page surface (OpenGL) disposed");
+                }
+
+                @Override
+                public void display(com.jogamp.opengl.GLAutoDrawable d) {
+                }
+
+                @Override
+                public void reshape(com.jogamp.opengl.GLAutoDrawable d, int x, int y, int w, int h) {
+                    log.info("Page surface (OpenGL) reshaped to {}x{}", w, h);
+                }
+            });
+        }
+        browser.getUIComponent().addHierarchyListener(e -> {
+            long flags = e.getChangeFlags() & (java.awt.event.HierarchyEvent.DISPLAYABILITY_CHANGED
+                    | java.awt.event.HierarchyEvent.SHOWING_CHANGED | java.awt.event.HierarchyEvent.PARENT_CHANGED);
+            if (flags != 0) {
+                log.info("Page area: displayable {}, showing {} (change {})", e.getComponent().isDisplayable(),
+                        e.getComponent().isShowing(), flags);
+            }
+        });
+        browser.getUIComponent().addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                // Chromium lays the page out again at every size change (seen as a white flash): it must not
+                // happen during a game, only when the window is shown
+                pageResizes.incrementAndGet();
+                log.info("Page area {}x{}", e.getComponent().getWidth(), e.getComponent().getHeight());
+            }
+        });
         frame.addWindowListener(new java.awt.event.WindowAdapter() {
             @Override
             public void windowClosing(java.awt.event.WindowEvent e) {
@@ -182,6 +224,11 @@ public final class BrowserWindow {
             return Boolean.parseBoolean(forced);
         }
         return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("linux");
+    }
+
+    /** How many times the page's area changed size (diagnostics and tests). */
+    public int pageResizes() {
+        return pageResizes.get();
     }
 
     public PageDriver page() {
@@ -236,6 +283,7 @@ public final class BrowserWindow {
         GraphicsDevice device = deviceAt(bounds);
         Rectangle screen = device.getDefaultConfiguration().getBounds();
         Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(device.getDefaultConfiguration());
+        bar.resetHeight(); // the window is being laid out anyway
         frame.setBounds(windowBounds(bounds, coverScreen, screen, insets));
         frame.setAlwaysOnTop(!isMac()); // kiosk window manager: stay above the app's full-screen window
         frame.setVisible(true);

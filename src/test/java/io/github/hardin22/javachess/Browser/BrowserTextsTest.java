@@ -80,4 +80,16 @@ class BrowserTextsTest {
         assertTrue(f.getFamily().toLowerCase().contains("geist"), f.getFamily());
         assertEquals(26f, f.getSize2D());
     }
+
+    @Test
+    void theExplanationOfAStuckReadingFits() {
+        BrowserBar.Fonts fonts = BrowserBar.Fonts.load();
+        FontMetrics body = metrics(fonts.body());
+        for (String why : List.of("unreadable", "no_board", "small", "moving", "no_position", "not_stable")) {
+            String text = I18n.t("browser.status.reading.stuck",
+                    I18n.t("browser.status.reading.why." + why));
+            int lines = BrowserBar.WrappingText.lines(text, body, TEXT_WIDTH).size();
+            assertTrue(lines <= 3, why + " in " + lines + " lines: " + text);
+        }
+    }
 }

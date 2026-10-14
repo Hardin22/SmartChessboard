@@ -55,6 +55,13 @@ public final class BrowserSession {
          * the app keeps its hands off them, so that the site's bot check sees only the user.
          */
         void pageAccess(boolean allowed);
+
+        /**
+         * The board watcher reports the current position again at its next reading. It reports only changes, so a
+         * synchronisation that starts again on an unchanged board (another address of the same page, Scollega and
+         * Collega, back and forward) would otherwise wait for good ("Leggo la scacchiera...", 8 October 2026).
+         */
+        void readPositionAgain();
     }
 
     /** Why the app keeps its hands off the page; see {@link Commands#pageAccess}. */
@@ -72,6 +79,10 @@ public final class BrowserSession {
     static final long SLOW_LOAD_MS = 15_000;
     /** On a verification page whose end was not noticed, the page is read once again after this long. */
     static final long VERIFICATION_RECHECK_MS = 30_000;
+    /** A reading of the board that does not conclude: asked again (and the board shown) every this many ms... */
+    static final long READING_RETRY_MS = 1_500;
+    /** ...and after this long the bar tells why, with what to do. */
+    static final long READING_STUCK_MS = 5_000;
     static final long CRASH_RELOAD_EVERY_MS = 60_000;
     /** How long after a load started a complete document counts as loaded without Chromium's notice. */
     static final long LOAD_END_GRACE_MS = 2_000;
@@ -107,6 +118,12 @@ public final class BrowserSession {
     private boolean loginFormSeen;
     private long verificationSince;
     private HandsOff handsOff;
+    private long readingSince = -1;
+    private long lastShowBoard = Long.MIN_VALUE;
+    /** While the board is followed and scrolled out of view, it is brought back at most this often. */
+    static final long SHOW_BOARD_EVERY_MS = 3_000;
+    private int readingRetries;
+    private boolean readingStuckLogged;
 
     public BrowserSession(Executor executor, PhysicalBoard board, OnlineGameSync.MoveSender sender,
                           Consumer<ArchivedGame> archive, Commands commands, LongSupplier clock) {
@@ -363,6 +380,7 @@ public final class BrowserSession {
             if (!sync.isActive() && !pausedOnPage && visible && isMainBoard(s) && info.kind().syncsAutomatically()) {
                 startSync(info);
             }
+            keepBoardInView(s);
             sync.tick();
         });
     }
@@ -379,6 +397,7 @@ public final class BrowserSession {
     public void tick() {
         post(() -> {
             sync.tick();
+            watchReading();
             if ((handsOff == HandsOff.VERIFICATION || loginFormSeen)
                     && clock.getAsLong() - verificationSince >= VERIFICATION_RECHECK_MS
                     && (login == null || login.state() != LoginAssistant.State.FILLING)) {
@@ -418,6 +437,77 @@ public final class BrowserSession {
         OnlineGameSync.Mode mode = info.kind() == PageInfo.Kind.ANALYSIS ? OnlineGameSync.Mode.ANALYSIS
                 : OnlineGameSync.Mode.PLAY;
         sync.start(mode, info);
+        commands.readPositionAgain();
+        readingSince = clock.getAsLong();
+        readingRetries = 0;
+        readingStuckLogged = false;
+    }
+
+    /**
+     * The followed board scrolled out of view (chess.com's /play/computer scrolls it away at 720 px): the player
+     * must see it, so the page is scrolled back to it, at most every {@link #SHOW_BOARD_EVERY_MS}.
+     */
+    private void keepBoardInView(BoardSnapshot s) {
+        BoardSnapshot.BoardView b = s.board();
+        if (!sync.isActive() || b == null || s.viewportWidth() <= 0
+                || b.rect().mostlyInside(s.viewportWidth(), s.viewportHeight())) {
+            return;
+        }
+        long now = clock.getAsLong();
+        if (lastShowBoard == Long.MIN_VALUE || now - lastShowBoard >= SHOW_BOARD_EVERY_MS) {
+            lastShowBoard = now;
+            log.info("The followed board is out of view ({}): showing it", b.rect());
+            commands.showBoard();
+        }
+    }
+
+    /** Milliseconds the synchronisation has been waiting for its first reading of the board (-1 when not). */
+    private long readingFor() {
+        if (!sync.isActive() || sync.state().phase() != OnlineGameSync.Phase.WAITING_BOARD || readingSince < 0) {
+            return -1;
+        }
+        return clock.getAsLong() - readingSince;
+    }
+
+    /** Why the board's position has not been read yet, in the user's words (also logged). */
+    String readingDiagnosis() {
+        if (problem == BoardWatcher.Problem.PAGE_UNREADABLE || snapshot == null) {
+            return I18n.t("browser.status.reading.why.unreadable");
+        }
+        BoardSnapshot.BoardView b = snapshot.board();
+        if (b == null) {
+            return I18n.t("browser.status.reading.why.no_board");
+        }
+        if (!isMainBoard(snapshot)) {
+            return I18n.t("browser.status.reading.why.small");
+        }
+        if (b.animating()) {
+            return I18n.t("browser.status.reading.why.moving");
+        }
+        if (b.placement() == null) {
+            return I18n.t("browser.status.reading.why.no_position");
+        }
+        return I18n.t("browser.status.reading.why.not_stable");
+    }
+
+    /** A reading that does not conclude: ask for it again and bring the board into view, a couple of times. */
+    private void watchReading() {
+        long waited = readingFor();
+        if (waited < 0) {
+            return;
+        }
+        if (readingRetries < 2 && waited >= READING_RETRY_MS * (readingRetries + 1)) {
+            readingRetries++;
+            log.info("The board is not read after {} ms ({}): reading it again and showing it", waited,
+                    readingDiagnosis());
+            commands.readPositionAgain();
+            commands.showBoard();
+        }
+        if (waited >= READING_STUCK_MS && !readingStuckLogged) {
+            readingStuckLogged = true;
+            log.warn("The board is still not read after {} ms: {} (snapshot {})", waited, readingDiagnosis(),
+                    snapshot == null ? "none" : snapshot.board());
+        }
     }
 
     // ------------------------------------------------------------------ actions
@@ -602,7 +692,15 @@ public final class BrowserSession {
         BrowserStatus hidden = hiddenBoard(stop);
         switch (s.phase()) {
             case WAITING_BOARD -> {
-                return hidden != null ? hidden : BrowserStatus.of(BrowserStatus.State.READING, -1, stop);
+                if (hidden != null) {
+                    return hidden;
+                }
+                if (readingFor() >= READING_STUCK_MS) {
+                    return BrowserStatus.of(BrowserStatus.State.READING, -1,
+                            List.of(BrowserStatus.Action.RESYNC, BrowserStatus.Action.RELOAD))
+                            .withDetail(I18n.t("browser.status.reading.stuck", readingDiagnosis()));
+                }
+                return BrowserStatus.of(BrowserStatus.State.READING, -1, stop);
             }
             case SETUP -> {
                 BrowserStatus st = BrowserStatus.of(BrowserStatus.State.SETUP, BrowserStatus.NO_PROGRESS, stop);
