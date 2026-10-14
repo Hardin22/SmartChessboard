@@ -1,12 +1,13 @@
 // javaChess smart board firmware
 // ---------------------------------------------------------------------------
-// Reads 64 Hall sensors through four CD74HC4067 multiplexers, debounces them
-// and reports occupancy changes to the app; drives 64 WS2812 LEDs with the
-// frames the app sends. Serial protocol version 2, documented in
+// Reads 64 Hall sensors (TI DRV5032AJ, output LOW = magnet) through the PCB's
+// chain of four quadrants, each with two 74HC165 shift registers, debounces
+// them and reports occupancy changes to the app; drives 64 WS2812B LEDs with
+// the frames the app sends. Serial protocol version 2, documented in
 // docs/hardware-protocol.md. Every line ends with "*XX" (XOR checksum).
 //
-// Board: Arduino Uno / Nano (ATmega328P) or any board supported by
-// Adafruit_NeoPixel. Library: "Adafruit NeoPixel" (Library Manager).
+// Board: Arduino Uno / Nano (ATmega328P). Library: "Adafruit NeoPixel"
+// (Library Manager).
 //
 // Everything that depends on the PCB is in the CONFIGURATION section.
 // ---------------------------------------------------------------------------
@@ -18,55 +19,52 @@
 // Serial speed. Must match board.baud in the app (default 250000; 250000 is
 // exact on a 16 MHz AVR, 115200 has a 2% error).
 const unsigned long BAUD_RATE = 250000;
-const char FIRMWARE_VERSION[] = "2.0.0";
+const char FIRMWARE_VERSION[] = "3.0.0";
 
-// Multiplexer address lines, shared by the four CD74HC4067.
-const uint8_t PIN_MUX_S0 = 8;
-const uint8_t PIN_MUX_S1 = 9;
-const uint8_t PIN_MUX_S2 = 10;
-const uint8_t PIN_MUX_S3 = 11;
+// Sensor chain (connector J1 of the first quadrant: 5V, -, GND, -, CLK, LOAD,
+// DATA). The 74HC165 shift on the rising edge of CLK; LOAD is /PL, active
+// low (10k pull-up on the PCB); DATA is QH of the first quadrant.
+const uint8_t PIN_CLK = 13;
+const uint8_t PIN_LOAD = 9;
+const uint8_t PIN_DATA = 12;
+// Pulse widths. The 74HC parts need tens of ns at 5 V: these give a wide
+// margin also at the end of the chain (3 buffer stages). A full read of the
+// 64 bits takes about 0.5 ms.
+const uint8_t LOAD_PULSE_US = 5;
+const uint8_t CLK_PULSE_US = 3;
 
-// Signal (common I/O) pin of each multiplexer.
-const uint8_t MUX_SIGNAL_PINS[4] = {4, 5, 6, 7};
-
-// A3144-style Hall sensors pull the line LOW when a magnet (piece) is near.
-const bool SENSOR_ACTIVE_LOW = true;
-// Use the internal pull-up on the signal pins (no external resistors needed).
-const bool SIGNAL_PULLUP = true;
-// Settling time after changing the multiplexer address.
-const uint8_t MUX_SETTLE_US = 10;
-// A reading must be stable this long before it is reported (contact bounce,
-// pieces sliding over squares).
-const uint16_t DEBOUNCE_MS = 30;
+// A DRV5032 samples at 20 Hz: a change counts once it has stayed the same for
+// this long (at least two samples), so a piece sliding over a square is not
+// reported.
+const uint16_t DEBOUNCE_MS = 80;
 // Full occupancy is sent this often; the app uses it to resynchronise and to
 // detect a dead link.
 const uint16_t HEARTBEAT_MS = 1000;
 
-// WS2812 data pin and number of LEDs. The order of the LEDs on the strip is
-// handled by the app (led.layout / led.origin / led.direction), the firmware
-// only knows LED indices 0..63.
-const uint8_t PIN_LEDS = 12;
+// Quadrants in chain order (Q0 is the one plugged into the Arduino): the
+// square of the bottom-left corner of each, as file 0-7 and rank 0-7.
+// Q0 = e1-h4, Q1 = a1-d4, Q2 = a5-d8, Q3 = e5-h8.
+const uint8_t QUAD_FILE[4] = {4, 0, 0, 4};
+const uint8_t QUAD_RANK[4] = {0, 0, 4, 4};
+
+// WS2812B data pin and number of LEDs (one per square; the order of the LEDs
+// on the strip is handled by the app: led.layout / led.origin /
+// led.direction). Without a strip connected the LED commands are still
+// acknowledged, so the app works the same.
+const uint8_t PIN_LEDS = 6;
 const uint16_t NUM_LEDS = 64;
 // Power cap 0-255 applied to every LED. 64 LEDs at full white draw ~3.8 A:
 // keep this low unless the PCB has a proper 5 V supply.
 const uint8_t LED_POWER_CAP = 50;
 
-// Square wired to each multiplexer channel: SQUARE_OF[mux][channel].
-// Squares are numbered 0 = a1, 1 = b1, ... 7 = h1, 8 = a2, ... 63 = h8.
-#define SQ(file, rank) ((uint8_t)(((rank) - 1) * 8 + ((file) - 'A')))
-const uint8_t SQUARE_OF[4][16] = {
-    // MUX 1 (signal pin 4)
-    {SQ('A', 4), SQ('A', 3), SQ('A', 2), SQ('A', 1), SQ('B', 4), SQ('B', 3), SQ('B', 2), SQ('B', 1),
-     SQ('C', 4), SQ('C', 3), SQ('C', 2), SQ('C', 1), SQ('D', 4), SQ('D', 3), SQ('D', 2), SQ('D', 1)},
-    // MUX 2 (signal pin 5)
-    {SQ('E', 4), SQ('E', 3), SQ('E', 2), SQ('E', 1), SQ('F', 4), SQ('F', 3), SQ('F', 2), SQ('F', 1),
-     SQ('G', 4), SQ('G', 3), SQ('G', 2), SQ('G', 1), SQ('H', 4), SQ('H', 3), SQ('H', 2), SQ('H', 1)},
-    // MUX 3 (signal pin 6)
-    {SQ('D', 5), SQ('D', 6), SQ('D', 7), SQ('D', 8), SQ('B', 5), SQ('B', 6), SQ('B', 7), SQ('B', 8),
-     SQ('C', 5), SQ('C', 6), SQ('C', 7), SQ('C', 8), SQ('A', 5), SQ('A', 6), SQ('A', 7), SQ('A', 8)},
-    // MUX 4 (signal pin 7)
-    {SQ('E', 5), SQ('E', 6), SQ('E', 7), SQ('E', 8), SQ('F', 5), SQ('F', 6), SQ('F', 7), SQ('F', 8),
-     SQ('G', 5), SQ('G', 6), SQ('G', 7), SQ('G', 8), SQ('H', 5), SQ('H', 6), SQ('H', 7), SQ('H', 8)}};
+// Main board only: A0 reads the board's 5 V through a 10k/10k divider. While
+// it is missing (only the PC's USB) CLK, LOAD and the LED pin are left high
+// impedance so the quadrants are not powered through the pins, and every
+// square reads empty. Set to false on a bare Arduino wired straight to the
+// first quadrant (A0 is not connected there).
+const bool USE_POWER_SENSE = false;
+const uint8_t PIN_POWER_SENSE = A0;
+const uint16_t POWER_SENSE_MIN_ADC = 400;  // ~1.95 V at the pin = bus below ~3.9 V
 
 // ========================= END OF CONFIGURATION ============================
 
@@ -156,17 +154,43 @@ void sendError(const char *reason) {
 
 // ------------------------------- sensors -----------------------------------
 
-void selectChannel(uint8_t channel) {
-  digitalWrite(PIN_MUX_S0, channel & 1);
-  digitalWrite(PIN_MUX_S1, (channel >> 1) & 1);
-  digitalWrite(PIN_MUX_S2, (channel >> 2) & 1);
-  digitalWrite(PIN_MUX_S3, (channel >> 3) & 1);
-  delayMicroseconds(MUX_SETTLE_US);
+// Square read at each position of the chain (64 bits, first read = Q0's).
+// Inside a quadrant the bits come out as U101 D7..D0 = H24 H23 H22 H21 H14
+// H13 H12 H11, then U102 D7..D0 = H44 H43 H42 H41 H34 H33 H32 H31, where Hrc
+// is row r from the top (towards rank 8) and column c from the left.
+const uint8_t BIT_RC[16] = {24, 23, 22, 21, 14, 13, 12, 11, 44, 43, 42, 41, 34, 33, 32, 31};
+uint8_t squareOfBit[64];
+bool boardPowered = true;
+
+void buildSquareTable() {
+  for (uint8_t q = 0; q < 4; q++) {
+    for (uint8_t i = 0; i < 16; i++) {
+      uint8_t r = BIT_RC[i] / 10, c = BIT_RC[i] % 10;
+      squareOfBit[q * 16 + i] = (QUAD_RANK[q] + (4 - r)) * 8 + QUAD_FILE[q] + (c - 1);
+    }
+  }
 }
 
-bool readSensor(uint8_t mux) {
-  bool level = digitalRead(MUX_SIGNAL_PINS[mux]) == HIGH;
-  return SENSOR_ACTIVE_LOW ? !level : level;
+// Reads the 64 sensors: bit i of the result = square i occupied. The 74HC165
+// shows its first bit right after the load, then shifts on every rising edge.
+uint64_t readChain() {
+  if (!boardPowered) return 0;
+  digitalWrite(PIN_LOAD, LOW);
+  delayMicroseconds(LOAD_PULSE_US);
+  digitalWrite(PIN_LOAD, HIGH);
+  delayMicroseconds(LOAD_PULSE_US);
+  uint64_t occupied = 0;
+  for (uint8_t i = 0; i < 64; i++) {
+    if (digitalRead(PIN_DATA) == LOW) {  // DRV5032: LOW = magnet = piece
+      occupied |= (uint64_t)1 << squareOfBit[i];
+    }
+    digitalWrite(PIN_CLK, HIGH);
+    delayMicroseconds(CLK_PULSE_US);
+    digitalWrite(PIN_CLK, LOW);
+    delayMicroseconds(CLK_PULSE_US);
+    if ((i & 15) == 15) readSerial();  // keep the 64-byte receive buffer from overflowing
+  }
+  return occupied;
 }
 
 void updateSquare(uint8_t square, bool reading, uint16_t now) {
@@ -185,13 +209,53 @@ void updateSquare(uint8_t square, bool reading, uint16_t now) {
 }
 
 void scanBoard() {
-  for (uint8_t channel = 0; channel < 16; channel++) {
-    selectChannel(channel);
-    uint16_t now = (uint16_t)millis();
-    for (uint8_t mux = 0; mux < 4; mux++) {
-      updateSquare(SQUARE_OF[mux][channel], readSensor(mux), now);
-    }
-    readSerial();  // keep the 64-byte receive buffer from overflowing
+  uint64_t reading = readChain();
+  uint16_t now = (uint16_t)millis();
+  for (uint8_t square = 0; square < 64; square++) {
+    updateSquare(square, (reading >> square) & 1, now);
+  }
+}
+
+// Outputs towards the quadrants only while the board has its 5 V.
+void setOutputs(bool on) {
+  if (on) {
+    pinMode(PIN_CLK, OUTPUT);
+    digitalWrite(PIN_CLK, LOW);
+    pinMode(PIN_LOAD, OUTPUT);
+    digitalWrite(PIN_LOAD, HIGH);
+    pinMode(PIN_DATA, INPUT_PULLUP);  // no cable: squares read empty instead of random
+    pinMode(PIN_LEDS, OUTPUT);
+    digitalWrite(PIN_LEDS, LOW);
+  } else {
+    pinMode(PIN_CLK, INPUT);
+    pinMode(PIN_LOAD, INPUT);
+    pinMode(PIN_DATA, INPUT);
+    pinMode(PIN_LEDS, INPUT);
+  }
+}
+
+// The divider brings A0 back to its real value at once; discharging it first
+// makes a disconnected A0 read 0 (no 5 V) instead of floating.
+bool readPowerSense() {
+  pinMode(PIN_POWER_SENSE, OUTPUT);
+  digitalWrite(PIN_POWER_SENSE, LOW);
+  delayMicroseconds(10);
+  pinMode(PIN_POWER_SENSE, INPUT);
+  return (uint16_t)analogRead(PIN_POWER_SENSE) > POWER_SENSE_MIN_ADC;
+}
+
+void checkPower() {
+  if (!USE_POWER_SENSE) return;
+  bool powered = readPowerSense();
+  if (powered == boardPowered) return;
+  boardPowered = powered;
+  setOutputs(powered);
+  if (powered) {
+    delay(50);  // let sensors and LEDs settle
+    strip.begin();
+    strip.show();
+  } else {
+    sendError("power");
   }
 }
 
@@ -277,7 +341,7 @@ void handleLine(char *text, uint16_t length) {
         sendError("frame");
         return;
       }
-      strip.show();  // interrupts are off for ~2 ms: the app waits for "K" before sending more
+      if (boardPowered) strip.show();  // interrupts are off for ~2 ms: the app waits for "K" before sending more
       sendAck();
       break;
     }
@@ -293,7 +357,7 @@ void handleLine(char *text, uint16_t length) {
     }
     case 'C':
       strip.clear();
-      strip.show();
+      if (boardPowered) strip.show();
       sendAck();
       break;
     default:
@@ -325,27 +389,17 @@ void readSerial() {
 
 void setup() {
   Serial.begin(BAUD_RATE);
-
-  pinMode(PIN_MUX_S0, OUTPUT);
-  pinMode(PIN_MUX_S1, OUTPUT);
-  pinMode(PIN_MUX_S2, OUTPUT);
-  pinMode(PIN_MUX_S3, OUTPUT);
-  for (uint8_t mux = 0; mux < 4; mux++) {
-    pinMode(MUX_SIGNAL_PINS[mux], SIGNAL_PULLUP ? INPUT_PULLUP : INPUT);
-  }
+  buildSquareTable();
+  if (USE_POWER_SENSE) boardPowered = readPowerSense();
+  setOutputs(boardPowered);
 
   strip.begin();
   strip.clear();
-  strip.show();
+  if (boardPowered) strip.show();
 
   // Start from the real state of the board without reporting it square by
   // square: the app gets it with the first "B" line.
-  for (uint8_t channel = 0; channel < 16; channel++) {
-    selectChannel(channel);
-    for (uint8_t mux = 0; mux < 4; mux++) {
-      if (readSensor(mux)) occupancy |= (uint64_t)1 << SQUARE_OF[mux][channel];
-    }
-  }
+  occupancy = readChain();
   rawState = occupancy;
   for (uint8_t i = 0; i < 64; i++) rawChangedAt[i] = 0;
 
@@ -355,6 +409,7 @@ void setup() {
 
 void loop() {
   readSerial();
+  checkPower();
   scanBoard();
   if (millis() - lastHeartbeat >= HEARTBEAT_MS) {
     sendOccupancy();

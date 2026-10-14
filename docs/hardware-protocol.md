@@ -1,33 +1,37 @@
 # Smart board: firmware and serial protocol
 
 The board is an Arduino (Uno/Nano class) connected to the Raspberry Pi over USB. It reads 64 Hall
-sensors through four CD74HC4067 multiplexers and drives 64 WS2812 LEDs. The app talks to it with the
-line protocol below (version 2).
+sensors (TI DRV5032AJ, output LOW = magnet) on four quadrant PCBs chained together, each with two
+74HC165 shift registers, and drives 64 WS2812B LEDs (one per square). The app talks to it with the line
+protocol below (version 2).
 
 | Item | Default | Where to change |
 |---|---|---|
-| Multiplexer address S0-S3 | pins 8, 9, 10, 11 | `PIN_MUX_S0..S3` in `firmware/smartboard/smartboard.ino` |
-| Multiplexer signal (mux 1-4) | pins 4, 5, 6, 7 | `MUX_SIGNAL_PINS` |
-| Mux channel → square wiring | current prototype | `SQUARE_OF` table (uses `SQ('E', 2)` for readability) |
-| Sensor polarity | active low (A3144), internal pull-up | `SENSOR_ACTIVE_LOW`, `SIGNAL_PULLUP` |
-| Debounce | 30 ms stable reading | `DEBOUNCE_MS` |
-| LED data pin / count | pin 12, 64 LEDs | `PIN_LEDS`, `NUM_LEDS` |
+| Sensor chain CLK / LOAD (/PL, active low) / DATA (QH) | pins 13, 9, 12 | `PIN_CLK`, `PIN_LOAD`, `PIN_DATA` in `firmware/smartboard/smartboard.ino` |
+| Quadrants in chain order | Q0 e1-h4, Q1 a1-d4, Q2 a5-d8, Q3 e5-h8 | `QUAD_FILE`, `QUAD_RANK` |
+| Bit order inside a quadrant | U101 H24..H11, then U102 H44..H31 | `BIT_RC` |
+| Debounce | 80 ms stable reading (the DRV5032 samples at 20 Hz) | `DEBOUNCE_MS` |
+| LED data pin / count | pin 6, 64 LEDs | `PIN_LEDS`, `NUM_LEDS` |
 | LED power cap | 50 / 255 | `LED_POWER_CAP` (64 LEDs at full white ≈ 3.8 A) |
+| 5 V sense of the main board | off (bare Arduino) | `USE_POWER_SENSE` (A0, 10k/10k divider on the main board) |
 | Serial speed | 250000 baud | `BAUD_RATE` in the firmware **and** `board.baud` in config.properties |
 | LED order on the strip | snake from a1 along the ranks | app side: `led.layout`, `led.origin`, `led.direction` |
+
+Reading the chain: LOAD low 5 µs, high 5 µs, then for each of the 64 bits read DATA, CLK high 3 µs, CLK
+low 3 µs (the first bit is valid before the first clock). Q0, the quadrant plugged into the Arduino,
+comes out first; after the 64th bit the chain reads 0 (SER of the last quadrant pulled down).
 
 ## Flashing
 
 1. Arduino IDE (or `arduino-cli`), library **Adafruit NeoPixel** from the Library Manager.
 2. Open `firmware/smartboard/smartboard.ino`, board *Arduino Uno* (or yours), upload.
-3. Serial Monitor at 250000 baud should show `H 2 2.0.0*..` and a `B...` line every second.
+3. Serial Monitor at 250000 baud should show `H 2 3.0.0*..` and a `B...` line every second.
 
-`firmware/board-test/board-test.ino` is a bring-up sketch for a new PCB (115200 baud, interactive):
-LED walk by index (to check the strip order), single LED colors (GRB vs RGB), live sensor monitor with
-mux/channel of every change and an 8x8 occupancy print. Use it to fill in `SQUARE_OF` for the PCB.
+`firmware/board-test/board-test.ino` was written for an earlier multiplexer prototype and does not match
+the 74HC165 PCB; the bring-up sketches of the PCB project (test_quadrante_uno) are the reference for it.
 
 Command line build check: `arduino-cli compile --fqbn arduino:avr:uno firmware/smartboard`
-(6.4 KB flash, 917 B RAM on an Uno).
+(6.4 KB flash, 937 B RAM on an Uno).
 
 ## App configuration (config.properties)
 
