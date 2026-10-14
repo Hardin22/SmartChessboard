@@ -407,6 +407,99 @@ class OnlineGameSyncTest {
         assertEquals(1, archived.size(), "archived once");
     }
 
+    // ------------------------------------------------------------------ the page changes address
+
+    /** Six plies played and replicated, the user to move. */
+    private void sixPlies() {
+        for (String[] pair : new String[][]{{"e2e4", "e7e5"}, {"g1f3", "b8c6"}, {"f1b5", "a7a6"}}) {
+            board.move(pair[0]);
+            see();
+            site.opponentPlays(pair[1]);
+            see();
+            board.replicated();
+        }
+    }
+
+    private void newGamePage(String url) {
+        site.url = url;
+        sync.start(OnlineGameSync.Mode.PLAY, PageInfo.of(url).withHint("game"));
+    }
+
+    @Test
+    void theMateSentFromTheBoardIsKeptWhenTheSiteOpensTheGamesOwnAddress() {
+        // chess.com, 14 October: Rxf8# played on the board; half a second later, before the page showed the move,
+        // the site went from /play/computer/<bot> to /game/computer/<id>. The game was archived without the mate.
+        startGame(false);
+        board.move("e2e4");
+        see();
+        site.opponentPlays("e7e5");
+        see();
+        board.replicated();
+        board.move("f1c4");
+        see();
+        site.opponentPlays("b8c6");
+        see();
+        board.replicated();
+        board.move("d1h5");
+        see();
+        site.opponentPlays("g8f6");
+        see();
+        board.replicated();
+        board.move("h5f7"); // the site takes it, but the address changes before the next reading
+        assertEquals(OnlineGameSync.Phase.SENDING, sync.phase());
+
+        sync.stopForPageChange(PageInfo.of("https://lichess.org/abcd1234/white").withHint("game"));
+        assertTrue(archived.isEmpty(), "not archived while the next page may go on with it");
+        newGamePage("https://lichess.org/abcd1234/white");
+        assertEquals(OnlineGameSync.Phase.SENDING, sync.phase(), "the game goes on, the mate still unconfirmed");
+        see(); // the new page shows the final position
+        assertEquals(OnlineGameSync.Phase.GAME_OVER, sync.phase());
+        assertEquals(1, archived.size());
+        assertEquals("1-0", archived.get(0).result());
+        assertEquals(7, archived.get(0).movesUci().size());
+        assertEquals("h5f7", archived.get(0).movesUci().get(6));
+        assertEquals(1, sent.stream().filter("h5f7"::equals).count(), "the mate is not clicked again");
+    }
+
+    @Test
+    void aGameNoPageGoesOnWithIsArchivedAsItWas() {
+        startGame(false);
+        sixPlies();
+        sync.stopForPageChange(PageInfo.of("https://lichess.org/other123").withHint("game"));
+        later(OnlineGameSync.HANDOVER_MS - 1);
+        assertTrue(archived.isEmpty());
+        later(1);
+        assertEquals(1, archived.size());
+        assertEquals("*", archived.get(0).result());
+        assertEquals(6, archived.get(0).movesUci().size());
+        later(OnlineGameSync.HANDOVER_MS);
+        sync.stop();
+        assertEquals(1, archived.size(), "archived once");
+    }
+
+    @Test
+    void anotherGameOnTheNextPageArchivesThePreviousOne() {
+        startGame(false);
+        sixPlies();
+        sync.stopForPageChange(PageInfo.of("https://lichess.org/next5678").withHint("game"));
+        site.position("rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq - 0 1"); // another game (the start position would be a take-back)
+        newGamePage("https://lichess.org/next5678");
+        see();
+        assertEquals(1, archived.size(), "the previous game, as it was");
+        assertEquals("*", archived.get(0).result());
+        assertEquals(6, archived.get(0).movesUci().size());
+        assertEquals(OnlineGameSync.Phase.SETUP, sync.phase(), "the new game is set up");
+    }
+
+    @Test
+    void leavingForAPageThatIsNotAGameArchivesAtOnce() {
+        startGame(false);
+        sixPlies();
+        sync.stopForPageChange(PageInfo.of("https://lichess.org/"));
+        assertEquals(1, archived.size());
+        assertEquals("*", archived.get(0).result());
+    }
+
     @Test
     void theResultShownByThePageEndsTheGame() {
         startGame(false);

@@ -98,6 +98,11 @@ public final class OnlineGameSync {
     static final long DISAGREE_MS = 1500;
     static final int UNRESOLVED_BEFORE_RESYNC = 3;
     static final int MIN_PLIES_TO_SAVE = 6;
+    /**
+     * How long a game left by a change of address waits for the next page to continue it (chess.com opens the
+     * game's own address, /game/..., half a second after the last move) before it is archived as it was.
+     */
+    static final long HANDOVER_MS = 15_000;
     private static final int MAX_TAKEBACK = 6;
 
     private final PhysicalBoard board;
@@ -137,6 +142,14 @@ public final class OnlineGameSync {
     private BoardWatcher.ReadMode readMode = BoardWatcher.ReadMode.PAGE;
     private State lastState;
     private int pageFallbacks;
+
+    /** A game left by a change of address, waiting for the next page to continue it. */
+    private record Carried(PageInfo page, Side mySide, Board internal, String initialFen, List<String> moves,
+                           Move pending, String lastSan, String lastFrom, String lastTo) {
+    }
+
+    private Carried carried;
+    private long carriedSince;
 
     /**
      * @param owner executor of the thread that owns this object (board events and send results are posted to it)
@@ -188,6 +201,7 @@ public final class OnlineGameSync {
         long id = ++session;
         resetGame();
         phase = Phase.WAITING_BOARD;
+        boolean continued = continueCarried();
         board.attach(new PhysicalBoard.Listener() {
             @Override
             public void onPhysicalMove(String from, String to) {
@@ -228,11 +242,72 @@ public final class OnlineGameSync {
             }
         });
         log.info("Online synchronisation started ({}, {})", mode, page.url());
+        if (continued) {
+            board.play(internal, movingSide());
+            log.info("Continuing the game of the previous page ({} plies{})", moves.size(),
+                    pending != null ? ", " + lastSan + " waiting for the page" : "");
+        }
+        emit();
+    }
+
+    /**
+     * Takes over the game a change of address left (see {@link #stopForPageChange}) when this page is a game
+     * page of the same site: the moves already played stay, and the next reading of the page goes on from them
+     * (the last move sent, the mate, the result). Otherwise that game is archived as it was.
+     */
+    private boolean continueCarried() {
+        Carried c = carried;
+        if (c == null) {
+            return false;
+        }
+        carried = null;
+        if (mode != Mode.PLAY || page.kind() != PageInfo.Kind.GAME || page.site() != c.page().site()) {
+            archiveCarried(c);
+            return false;
+        }
+        mySide = c.mySide();
+        internal = c.internal();
+        initialFen = c.initialFen();
+        moves.addAll(c.moves());
+        lastSan = c.lastSan();
+        lastFrom = c.lastFrom();
+        lastTo = c.lastTo();
+        pending = c.pending();
+        pendingSince = clock.getAsLong();
+        attempts = SEND_ATTEMPTS; // not clicked again on a page that may already show something else
+        phase = pending != null ? Phase.SENDING : turnPhase();
+        return true;
+    }
+
+    /**
+     * The page moved to another address. A game in progress on a game page is kept for the next page of the same
+     * site to continue it ({@link #HANDOVER_MS}): chess.com opens the game's own address right after the last
+     * move, before the page has shown it. Anything else ends as {@link #stop()} does.
+     */
+    public void stopForPageChange(PageInfo next) {
+        boolean keep = phase != Phase.IDLE && phase != Phase.GAME_OVER && phase != Phase.SETUP
+                && phase != Phase.WAITING_BOARD && mode == Mode.PLAY && !saved && !moves.isEmpty()
+                && page.kind() == PageInfo.Kind.GAME && next.kind() == PageInfo.Kind.GAME
+                && next.site() == page.site();
+        if (!keep) {
+            stop();
+            return;
+        }
+        archiveCarried(carried);
+        carried = new Carried(page, mySide, internal.clone(), initialFen, List.copyOf(moves), pending, lastSan,
+                lastFrom, lastTo);
+        carriedSince = clock.getAsLong();
+        session++;
+        board.detach();
+        phase = Phase.IDLE;
+        log.info("Online synchronisation stopped: the game ({} plies) waits for the next page", moves.size());
         emit();
     }
 
     /** Ends the synchronisation; a game in progress is archived as interrupted. */
     public void stop() {
+        archiveCarried(carried);
+        carried = null;
         if (phase == Phase.IDLE) {
             return;
         }
@@ -300,10 +375,15 @@ public final class OnlineGameSync {
 
     /** Called a few times per second: resends moves the page did not show, settles disagreements. */
     public void tick() {
+        long now = clock.getAsLong();
+        if (carried != null && now - carriedSince >= HANDOVER_MS) {
+            log.info("No page went on with the previous game");
+            archiveCarried(carried);
+            carried = null;
+        }
         if (phase == Phase.IDLE) {
             return;
         }
-        long now = clock.getAsLong();
         long confirm = readMode == BoardWatcher.ReadMode.PAGE ? CONFIRM_MS : CONFIRM_VISION_MS;
         if (pending != null && now - pendingSince >= confirm) {
             if (attempts < SEND_ATTEMPTS) {
@@ -660,15 +740,34 @@ public final class OnlineGameSync {
             return;
         }
         saved = true;
-        String label = switch (page.site()) {
+        archiveGame(page, initialFen, internal, moves, result);
+    }
+
+    /** A game left by a change of address that no page continued: archived as it was, if it is a real one. */
+    private void archiveCarried(Carried c) {
+        if (c == null) {
+            return;
+        }
+        boolean real = PgnCodec.START_FEN.split(" ")[0].equals(c.initialFen().split(" ")[0])
+                && c.moves().size() >= MIN_PLIES_TO_SAVE;
+        if (!real) {
+            log.info("Not archived (previous page, {} plies from {})", c.moves().size(), c.initialFen());
+            return;
+        }
+        archiveGame(c.page(), c.initialFen(), c.internal(), c.moves(), null);
+    }
+
+    private void archiveGame(PageInfo where, String fromFen, Board finalBoard, List<String> played,
+                             String gameResult) {
+        String label = switch (where.site()) {
             case CHESS_COM -> "Chess.com";
             case LICHESS -> "Lichess (browser)";
             case OTHER -> "Online (browser)";
         };
         ArchivedGame game = new ArchivedGame(0, ArchivedGame.GameMode.BROWSER, label, "", "",
-                result != null ? result : "*", result != null ? "" : "Interrotta", "", "", LocalDateTime.now(),
-                initialFen, internal.getFen(), List.copyOf(moves));
-        log.info("Online game archived ({} plies, {})", moves.size(), game.result());
+                gameResult != null ? gameResult : "*", gameResult != null ? "" : "Interrotta", "", "",
+                LocalDateTime.now(), fromFen, finalBoard.getFen(), List.copyOf(played));
+        log.info("Online game archived ({} plies, {})", played.size(), game.result());
         archive.accept(game);
     }
 

@@ -274,7 +274,7 @@ public final class BrowserSession {
         if (!next.samePage(page)) {
             if (sync.isActive()) {
                 log.info("Page changed: {} -> {}", page.url(), newUrl);
-                sync.stop();
+                sync.stopForPageChange(next);
             }
             pausedOnPage = false;
             snapshot = null;
