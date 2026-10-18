@@ -89,42 +89,44 @@ accuracy and move labels are computed by the real review engine. Design principl
 
 ## Hardware
 
-The board is a grid of 64 Hall sensors read through four 16-channel multiplexers by an Arduino, which also drives a
-WS2812B LED strip. The Arduino talks to the Raspberry Pi over USB serial (250000 baud). The custom PCB is being
-manufactured; the prototype below uses off-the-shelf modules.
+The board is a grid of 64 Hall sensors on four quadrant PCBs (16 squares each) chained together and read by an
+Arduino, which also drives a WS2812B LED strip (one LED per square). The Arduino talks to the Raspberry Pi over USB
+serial (250000 baud).
 
-### Bill of materials (indicative)
+### Parts
 
 | Qty | Part | Notes |
 |---|---|---|
-| 1 | Raspberry Pi 4 or 5 (4–8 GB) | Runs the app. A desktop computer works too. |
+| 1 | Raspberry Pi 4 or 5 (4–8 GB; 8 GB recommended with the integrated browser) | Runs the app. A desktop computer works too. |
 | 1 | Display, 720×1920 (e.g. 8.8" IPS bar) or any HDMI screen | Touch is optional (mouse works). |
-| 1 | Arduino Uno / Nano (ATmega328) | Firmware in [`firmware/smartboard/`](firmware/smartboard/smartboard.ino). |
-| 4 | CD74HC4067 16-channel analog multiplexer | One per 16 squares. |
-| 64 | A3144 (or similar) unipolar Hall-effect sensor | Active low; the Arduino enables internal pull-ups. |
-| 32 | Neodymium magnet, ~6×3 mm | One glued under each piece (same pole facing down). |
-| 64 | WS2812B LED (strip, 30 or 60/m, or single pixels) | Wired in a "snake" from A1 to H1, then H2 to A2... |
-| 1 | 5 V power supply, ≥ 4 A | 64 LEDs at full white draw ~3.8 A; the firmware caps brightness. |
-| 1 | 330 Ω resistor, 1000 µF capacitor | On the LED data line / across the LED supply. |
-| 1 | USB cable Arduino ↔ Raspberry Pi | Serial link and Arduino power. |
+| 1 | Arduino Nano on the main board (an Uno works for tests) | Firmware in [`firmware/smartboard/`](firmware/smartboard/smartboard.ino). |
+| 4 | Quadrant PCB: 16 × TI DRV5032AJ Hall sensor (10k pull-up each), 2 × 74HC165, 1 × 74HC14 | Output LOW = magnet = piece. The quadrants are daisy-chained (J2 → J1). |
+| 32 | Magnet under each piece | The DRV5032AJ needs ~7 mT (max 9.5): weak or off-centre magnets (pawns) may not be read. |
+| 64 | WS2812B 5050, 30 LEDs/m (one per square) | Eight strips of 8 along the ranks; order set in the app. |
+| 1 | 5 V supply for the main board | LEDs are powered from the board (PTC 3 A), never from USB. |
+| 1 | USB cable Arduino ↔ Raspberry Pi | Serial link. |
 
 ### Wiring
 
 | Arduino pin | Connection |
 |---|---|
-| D8, D9, D10, D11 | S0, S1, S2, S3 of **all four** multiplexers (shared address lines) |
-| D4, D5, D6, D7 | SIG of multiplexer 1, 2, 3, 4 |
-| D12 | WS2812B data in (through the 330 Ω resistor) |
-| 5 V / GND | Multiplexers, sensors; LEDs from the external 5 V supply with a common ground |
+| D13 | CLK of the sensor chain (74HC165 CP, shifts on the rising edge) |
+| D9 | LOAD of the sensor chain (74HC165 /PL, active low, 10k pull-up on the PCB) |
+| D12 | DATA of the sensor chain (QH of the first quadrant; internal pull-up) |
+| D6 | WS2812B data in (through 220 Ω on the main board) |
+| A0 | Main board only: 5 V sense (10k/10k divider), see `USE_POWER_SENSE` |
+| 5 V / GND | Quadrants: connector J1 = 5V, -, GND, -, CLK, LOAD, DATA |
 
-The channel-to-square map is the `SQUARE_OF` table in the firmware; the order of the LEDs on the strip is set on
-the app side (`led.layout`, `led.origin`, `led.direction`). `firmware/board-test/board-test.ino` is a bring-up
-sketch for a new board: LED walk, colour order check and a live sensor monitor to fill in `SQUARE_OF`.
+Chain order: Q0 (plugged into the Arduino) = e1–h4, Q1 = a1–d4, Q2 = a5–d8, Q3 = e5–h8. The bit order inside a
+quadrant and the full bit → square table are in [docs/hardware-protocol.md](docs/hardware-protocol.md) and in the
+`BIT_RC` / `QUAD_FILE` / `QUAD_RANK` constants of the firmware. The order of the LEDs on the strip is set on the app
+side (`led.layout`, `led.origin`, `led.direction`).
 
 ### Firmware and serial protocol
 
 Flash [`firmware/smartboard/smartboard.ino`](firmware/smartboard/smartboard.ino) with the Arduino IDE or
-`arduino-cli` (library: *Adafruit NeoPixel*). The board and the app speak a checksummed line protocol (v2) at
+`arduino-cli` (library: *Adafruit NeoPixel*). On the main board (Nano) set `USE_POWER_SENSE = true` first; on a bare
+Arduino wired straight to the first quadrant (test set-up) leave it `false`. The board and the app speak a checksummed line protocol (v2) at
 250000 baud: `+E4` / `-E4` when a piece is placed or lifted, a full occupancy heartbeat every second, LED frames
 sent as deltas and acknowledged by the board. Everything — commands, flow control, latency budget, configuration —
 is described in [docs/hardware-protocol.md](docs/hardware-protocol.md).

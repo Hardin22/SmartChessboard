@@ -24,11 +24,15 @@ comes out first; after the 64th bit the chain reads 0 (SER of the last quadrant 
 ## Flashing
 
 1. Arduino IDE (or `arduino-cli`), library **Adafruit NeoPixel** from the Library Manager.
-2. Open `firmware/smartboard/smartboard.ino`, board *Arduino Uno* (or yours), upload.
-3. Serial Monitor at 250000 baud should show `H 2 3.0.0*..` and a `B...` line every second.
+2. Open `firmware/smartboard/smartboard.ino`. On the main board (Arduino Nano with the A0 divider) set
+   `USE_POWER_SENSE = true`; on a bare Arduino wired straight to the first quadrant leave it `false` (A0 is not
+   connected there, so the firmware would think the 5 V is missing and read nothing).
+3. Board *Arduino Nano* (`arduino:avr:nano`; clones may need *ATmega328P (Old Bootloader)*,
+   `arduino:avr:nano:cpu=atmega328old`) or *Arduino Uno* (`arduino:avr:uno`), upload.
+4. Serial Monitor at 250000 baud should show `H 2 3.0.0*..` and a `B...` line every second.
 
-`firmware/board-test/board-test.ino` was written for an earlier multiplexer prototype and does not match
-the 74HC165 PCB; the bring-up sketches of the PCB project (test_quadrante_uno) are the reference for it.
+Quick check without the app: send `?*3F` and `R*52` (each followed by a newline) at 250000 baud; the `B` line is
+the occupancy, bit i = square i (a1 = bit 0, h8 = bit 63).
 
 Command line build check: `arduino-cli compile --fqbn arduino:avr:uno firmware/smartboard`
 (6.4 KB flash, 937 B RAM on an Uno).
@@ -97,8 +101,8 @@ Squares are `A1`..`H8`; numeric square indices are 0 = a1, 1 = b1, ... 7 = h1, 8
   next one. It always sends the **newest** frame, as a delta against the frame the firmware confirmed;
   after an error, a timeout or a reconnection it sends a full frame. Bursts of LED changes are merged
   into at most ~60 frames per second before they reach the serial port.
-* The firmware reads the serial port between multiplexer channels, so its 64-byte receive buffer never
-  overflows during a scan (a full scan takes about 0.7 ms).
+* The firmware reads the serial port after every quadrant of the chain, so its 64-byte receive buffer never
+  overflows during a scan (a full read of the 64 bits takes about 0.5 ms).
 * The occupancy heartbeat lets the app recover from a lost `+`/`-` line (it diffs the snapshot with its
   state) and detect a dead link (no line for 4.5 s → reconnect).
 * Old firmware (`READY`, `+A1` without checksum) is still recognised: sensors work, LEDs need v2.
@@ -110,4 +114,4 @@ Squares are `A1`..`H8`; numeric square indices are 0 = a1, 1 = b1, ... 7 = h1, 8
 | App: event → LED frame handed to the serial writer | 0.13 ms average, 0.17 ms worst (simulator, `LedRendererTest`) |
 | Serial: typical delta (2 LEDs, 21 bytes) at 250000 baud | ~0.9 ms |
 | Firmware parse + `strip.show()` (64 LEDs) | ~2 ms |
-| Sensor change → `+E2` line | debounce 30 ms + ≤ 0.7 ms scan |
+| Sensor change → `+E2` line | sensor sampling (DRV5032, 20 Hz: ≤ 50 ms) + debounce 80 ms + ≤ 0.5 ms scan |
