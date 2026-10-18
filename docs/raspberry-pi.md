@@ -11,8 +11,9 @@ sudo apt install -y stockfish zstd unclutter     # engine, puzzle unpacking, hid
 sudo usermod -aG dialout "$USER"                  # access to /dev/ttyACM0 (log out and in again)
 ```
 
-Java 21 (Bookworm ships 17): install Temurin 21 from the Adoptium apt repository (this is what the
-Pi box below uses, see `docker/pi-sim/Dockerfile`):
+Java 21. On Raspberry Pi OS based on Debian 13 (Trixie) it is in the system repositories:
+`sudo apt install -y openjdk-21-jdk`. Bookworm ships only 17: install Temurin 21 from the Adoptium apt repository
+(this is what the Pi box below uses, see `docker/pi-sim/Dockerfile`; check the release with `cat /etc/os-release`):
 
 ```bash
 sudo apt install -y wget gpg
@@ -143,8 +144,9 @@ and stops the engine processes.
 
 ## 6. The board
 
-The Arduino is found automatically (`/dev/ttyACM*`, `/dev/ttyUSB*`), can be unplugged and plugged back
-while the app runs, and the app works without it. Firmware, wiring constants and the serial protocol:
+The Arduino is found automatically (`/dev/ttyACM*`, `/dev/ttyUSB*`; the user must be in the `dialout` group, see
+section 1), can be unplugged and plugged back while the app runs, and the app works without it. Flash the firmware
+before (on the main board's Nano with `USE_POWER_SENSE = true`, see hardware-protocol.md). Firmware, wiring constants and the serial protocol:
 [hardware-protocol.md](hardware-protocol.md). To try the app without the board:
 `JAVACHESS_OPTS="-Djavachess.board=sim -Djavachess.simulator.window=true" ./run_pi.sh`.
 
@@ -187,7 +189,7 @@ Verified in the box (7 Oct 2026):
 | Check | Result |
 |---|---|
 | Natives in the Pi jar | JavaFX gtk3/prism_sw/es2 for Linux arm64, OpenCV `linux/ARMv8` (loads in 109 ms), ONNX Runtime `linux-aarch64` (77 ms), jSerialComm `Linux/armv8_64` |
-| JCEF browser | `jcef-natives-linux-arm64` exists for 127.3.1; works (Lichess loads) with Chromium's libraries and `libcef.so` preloaded |
+| JCEF browser | (7 Oct, then JCEF 127.3.1; the app now uses jcefmaven 146.0.10 on every platform, see docs/browser.md) works with Chromium's libraries and `libcef.so` preloaded |
 | First frame (run_pi.sh, AppCDS warm) | 0.59-0.95 s; window sized to the full 720x1920 screen even without a window manager |
 | Bot game on the simulated board, 10 moves | moves detected, bot replies replicated, clean exit (no thread or process left) |
 | Frames, new UI | HOME and game: ~46 fps, 21 ms average (mostly Xvfb copying 720x1920), worst 39-45 ms; old UI worst 53-213 ms |
